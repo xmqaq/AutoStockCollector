@@ -80,7 +80,11 @@ class DatabaseConfig:
         db.stock_info.create_index([("code", 1)], unique=True)
         db.stock_info.create_index([("update_time", -1)])
 
-        db.financial.create_index([("code", 1), ("report_date", -1)], unique=True)
+        try:
+            db.financial.drop_index("code_1_report_date_-1")
+        except Exception:
+            pass
+        db.financial.create_index([("code", 1), ("report_date", -1), ("report_type", 1)], unique=True)
         db.financial.create_index([("report_date", -1)])
 
         db.news.create_index([("code", 1), ("publish_date", -1)])

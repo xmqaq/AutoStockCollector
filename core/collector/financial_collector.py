@@ -64,50 +64,37 @@ class FinancialCollector(BaseCollector):
         end_year: Optional[int] = None
     ) -> Optional[List[Dict[str, Any]]]:
         symbol = code[2:]
-
         prefix = "sh" if code.startswith("SH") else "sz"
         stock_param = f"{prefix}{symbol}"
 
-        data_sources = [
-            ("stock_financial_report_sina", {"stock": stock_param, "symbol": "资产负债表"}),
-            ("stock_financial_report_sina", {"stock": stock_param, "symbol": "利润表"}),
-            ("stock_financial_report_sina", {"stock": stock_param, "symbol": "现金流量表"}),
-            ("stock_yysj_em", {"symbol": symbol}),  # 东财兜底，优先级最低
-        ]
+        # 三张表各自独立采集，全部成功才有完整财报；以 report_type 区分
+        tables = ["资产负债表", "利润表", "现金流量表"]
+        all_records: List[Dict[str, Any]] = []
 
-        last_error = None
-        for source_name, params in data_sources:
+        for table_name in tables:
             try:
-                func = getattr(ak, source_name, None)
-                if func is None:
-                    continue
-
-                logger.info(f"Trying {source_name} for {code}")
-
-                if params:
-                    df = func(**params)
-                else:
-                    df = func()
-
+                df = ak.stock_financial_report_sina(stock=stock_param, symbol=table_name)
                 if df is None or df.empty:
                     continue
-
+                df = df.copy()
                 df["code"] = code
-
+                df["report_type"] = table_name
                 if "报告日" in df.columns:
                     df["report_date"] = pd.to_datetime(df["报告日"]).dt.strftime("%Y-%m-%d")
                 elif "报告日期" in df.columns:
                     df["report_date"] = pd.to_datetime(df["报告日期"]).dt.strftime("%Y-%m-%d")
-
                 df["_updated_at"] = datetime.now()
-                return self.normalize_dataframe(df, code)
-
+                records = self.normalize_dataframe(df, code)
+                all_records.extend(records)
+                logger.debug(f"{code} {table_name}: {len(records)} rows")
             except Exception as e:
-                last_error = e
-                logger.warning(f"{source_name} failed for {code}: {e}")
-                continue
+                logger.warning(f"stock_financial_report_sina {table_name} failed for {code}: {e}")
 
-        logger.error(f"All financial sources failed for {code}, last error: {last_error}")
+        if all_records:
+            logger.info(f"Financial collected for {code}: {len(all_records)} records across {len(tables)} tables")
+            return all_records
+
+        logger.error(f"All financial sources failed for {code}")
         return None
 
     def collect_balance_sheet(self, code: str, symbol: str = "") -> Optional[pd.DataFrame]:

@@ -25,10 +25,10 @@ class Settings:
     }
 
     RATE_LIMIT_CONFIG = {
-        "min_interval": 1.0,
-        "normal_interval": 2.0,
-        "batch_interval": 3.0,
-        "max_concurrent": 5,
+        "min_interval": 0.5,
+        "normal_interval": 1.0,
+        "batch_interval": 2.0,
+        "max_concurrent": 8,
     }
 
     CIRCUIT_BREAKER_CONFIG = {

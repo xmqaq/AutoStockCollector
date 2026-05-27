@@ -83,6 +83,9 @@ class Task:
         self.status = TaskStatus.COMPLETED
         self.end_time = datetime.now()
         elapsed = (self.end_time - self.start_time).total_seconds() if self.start_time else 0
+        self.progress = self.total
+        self.success = success_count
+        self.failed = failed_count
         self._persist(
             "completed",
             progress=self.total, total=self.total,
@@ -411,22 +414,19 @@ class TaskScheduler:
         def collect_one(code):
             if task.status == TaskStatus.CANCELLED:
                 return
+            saved = False
             try:
                 result = collect_fn(code)
-                with lock:
-                    if result:
-                        save_fn(result)
-                        cnt["success"] += 1
-                    else:
-                        cnt["failed"] += 1
-                    cnt["done"] += 1
-                    if cnt["done"] % progress_every == 0 or cnt["done"] == total:
-                        task.update_progress(cnt["done"], total, cnt["success"], cnt["failed"])
+                if result:
+                    save_fn(result)   # MongoDB 写入在锁外，pymongo 连接池线程安全
+                    saved = True
             except Exception as e:
-                with lock:
-                    cnt["failed"] += 1
-                    cnt["done"] += 1
                 logger.error(f"collect {code} failed: {e}")
+            with lock:
+                cnt["success" if saved else "failed"] += 1
+                cnt["done"] += 1
+                if cnt["done"] % progress_every == 0 or cnt["done"] == total:
+                    task.update_progress(cnt["done"], total, cnt["success"], cnt["failed"])
 
         max_workers = Settings.get_max_concurrent()
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
@@ -509,25 +509,22 @@ class TaskScheduler:
             code, date = item
             if task.status == TaskStatus.CANCELLED:
                 return
+            saved = False
             try:
                 result = collector.execute_with_retry(
                     collector.collect_single, code,
                     start_date=date, end_date=date
                 )
-                with lock:
-                    if result:
-                        self.kline_storage.save_kline_batch(result)
-                        cnt["success"] += 1
-                    else:
-                        cnt["failed"] += 1
-                    cnt["done"] += 1
-                    if cnt["done"] % 10 == 0 or cnt["done"] == total:
-                        task.update_progress(cnt["done"], total, cnt["success"], cnt["failed"])
+                if result:
+                    self.kline_storage.save_kline_batch(result)
+                    saved = True
             except Exception as e:
-                with lock:
-                    cnt["failed"] += 1
-                    cnt["done"] += 1
                 logger.error(f"backfill {code} {date}: {e}")
+            with lock:
+                cnt["success" if saved else "failed"] += 1
+                cnt["done"] += 1
+                if cnt["done"] % 10 == 0 or cnt["done"] == total:
+                    task.update_progress(cnt["done"], total, cnt["success"], cnt["failed"])
 
         max_workers = Settings.get_max_concurrent()
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
@@ -567,9 +564,16 @@ class TaskScheduler:
 
     def _execute_stock_info_task(self, task: Task):
         codes = task.params.get("codes", [])
+        mode = task.params.get("mode", "incremental")  # incremental | full
         collector = self._get_collector(TaskType.STOCK_INFO_COLLECTION.value)
         if not codes:
             codes = collector.get_all_stock_codes()
+
+        if mode == "incremental":
+            existing = set(self.stock_info_storage.distinct("code"))
+            before = len(codes)
+            codes = [c for c in codes if c not in existing]
+            logger.info(f"stock_info incremental: {before} total, {len(existing)} in DB, {len(codes)} to fetch")
 
         def collect_fn(code):
             return collector.execute_with_retry(collector.collect_single, code)
@@ -589,12 +593,19 @@ class TaskScheduler:
     def _execute_financial_task(self, task: Task):
         codes = task.params.get("codes", [])
         report_type = task.params.get("report_type", "annual")
+        mode = task.params.get("mode", "incremental")  # incremental | full
         collector = self._get_collector(TaskType.FINANCIAL_COLLECTION.value)
         if not codes:
             codes = collector.get_all_stock_codes()
 
         from core.storage.mongo_storage import FinancialStorage
         storage = FinancialStorage()
+
+        if mode == "incremental":
+            existing = set(storage.distinct("code"))
+            before = len(codes)
+            codes = [c for c in codes if c not in existing]
+            logger.info(f"financial incremental: {before} total, {len(existing)} in DB, {len(codes)} to fetch")
 
         def collect_fn(code):
             return collector.execute_with_retry(
@@ -632,22 +643,50 @@ class TaskScheduler:
     # ------------------------------------------------------------------ #
 
     def _execute_fund_flow_task(self, task: Task):
-        codes = task.params.get("codes", [])
-        collector = self._get_collector(TaskType.FUND_FLOW_COLLECTION.value)
-        if not codes:
-            codes = collector.get_all_stock_codes()
-
+        """
+        资金流向采集策略：
+        1. 全市场快照（stock_fund_flow_individual "即时"）— 一次调用覆盖所有股票
+        2. 行业资金流（stock_fund_flow_industry）— 板块级别数据
+        两个都是非东财接口，单次批量获取，不做逐股循环。
+        """
+        import akshare as ak
         from core.storage.mongo_storage import FundFlowStorage
+        from datetime import datetime
         storage = FundFlowStorage()
 
-        def collect_fn(code):
-            return collector.execute_with_retry(collector.collect_single, code)
+        task.update_progress(0, 2, 0, 0)
+        success, failed = 0, 0
 
-        self._parallel_collect(
-            task, codes,
-            collect_fn=collect_fn,
-            save_fn=lambda r: storage.save_fund_flow_batch(r if isinstance(r, list) else [r]),
-        )
+        # 1. 全市场个股即时资金流快照
+        try:
+            df = ak.stock_fund_flow_individual(symbol="即时")
+            if df is not None and not df.empty:
+                df["_updated_at"] = datetime.now()
+                records = df.to_dict("records")
+                storage.save_fund_flow_batch(records)
+                success += len(records)
+                logger.info(f"Fund flow individual: saved {len(records)} records")
+        except Exception as e:
+            failed += 1
+            logger.warning(f"stock_fund_flow_individual failed: {e}")
+
+        task.update_progress(1, 2, success, failed)
+
+        # 2. 行业板块资金流
+        collector = self._get_collector(TaskType.FUND_FLOW_COLLECTION.value)
+        try:
+            df = collector.collect_sector_flow()
+            if df is not None and not df.empty:
+                df["_updated_at"] = datetime.now()
+                records = df.to_dict("records")
+                storage.save_fund_flow_batch(records)
+                success += len(records)
+                logger.info(f"Fund flow sector: saved {len(records)} records")
+        except Exception as e:
+            failed += 1
+            logger.warning(f"collect_sector_flow failed: {e}")
+
+        task.complete(success, failed)
 
     # ------------------------------------------------------------------ #
     # 指数成分                                                              #

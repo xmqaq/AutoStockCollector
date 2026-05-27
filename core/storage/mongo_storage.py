@@ -160,11 +160,9 @@ class MongoStorage:
         sort: Optional[List[Tuple[str, int]]] = None
     ) -> Optional[Dict[str, Any]]:
         try:
-            cursor = self.collection.find(filter_doc or {}, projection)
             if sort:
-                cursor = cursor.sort(sort)
-            count = self.collection.count_documents(filter_doc or {})
-            return cursor.next() if count > 0 else None
+                return self.collection.find(filter_doc or {}, projection).sort(sort).limit(1).next()
+            return self.collection.find_one(filter_doc or {}, projection)
         except StopIteration:
             return None
         except Exception as e:
@@ -431,7 +429,7 @@ class FinancialStorage(MongoStorage):
         })
 
     def save_financial_batch(self, records: List[Dict[str, Any]]) -> Tuple[int, int]:
-        return self.upsert_many(records, ["code", "report_date"])
+        return self.upsert_many(records, ["code", "report_date", "report_type"])
 
 
 class NewsStorage(MongoStorage):
@@ -459,7 +457,11 @@ class NewsStorage(MongoStorage):
         return self.insert_one(news)
 
     def save_news_batch(self, records: List[Dict[str, Any]]) -> Tuple[int, int]:
-        return self.insert_many(records)
+        # 以 title+publish_date 为唯一键 upsert，避免重复采集时产生重复文档
+        valid = [r for r in records if r.get("title") and r.get("publish_date")]
+        if not valid:
+            return (0, 0)
+        return self.upsert_many(valid, ["title", "publish_date"])
 
 
 class FundFlowStorage(MongoStorage):
