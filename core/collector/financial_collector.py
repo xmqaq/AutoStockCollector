@@ -65,11 +65,14 @@ class FinancialCollector(BaseCollector):
     ) -> Optional[List[Dict[str, Any]]]:
         symbol = code[2:]
 
+        prefix = "sh" if code.startswith("SH") else "sz"
+        stock_param = f"{prefix}{symbol}"
+
         data_sources = [
-            ("stock_yysj_em", {"symbol": symbol}),
-            ("stock_financial_report_sina", {"symbol": symbol, "indicator": "资产负债表"}),
-            ("stock_financial_report_sina", {"symbol": symbol, "indicator": "利润表"}),
-            ("stock_financial_report_sina", {"symbol": symbol, "indicator": "现金流量表"}),
+            ("stock_financial_report_sina", {"stock": stock_param, "symbol": "资产负债表"}),
+            ("stock_financial_report_sina", {"stock": stock_param, "symbol": "利润表"}),
+            ("stock_financial_report_sina", {"stock": stock_param, "symbol": "现金流量表"}),
+            ("stock_yysj_em", {"symbol": symbol}),  # 东财兜底，优先级最低
         ]
 
         last_error = None

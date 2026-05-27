@@ -162,25 +162,36 @@ class Strategy3Fundamental(BaseStrategy):
 
     def score(self, code: str) -> float:
         try:
-            analysis = ai_analyzer.analyze(code, "fundamental")
+            from modules.strategies.valuation_factor import ValuationFactorAnalyzer
 
-            rating_scores = {
-                "推荐": 90,
-                "中性": 60,
-                "回避": 30
-            }
+            # ── AI 基本面分析得分（占 50%）────────────────────────────────
+            ai_score = 50
+            try:
+                analysis = ai_analyzer.analyze(code, "fundamental")
+                rating_scores = {"推荐": 90, "中性": 60, "回避": 30}
+                rating = analysis.get("investment_rating", "中性")
+                rating_score = rating_scores.get(rating, 50)
 
-            rating = analysis.get("investment_rating", "中性")
-            rating_score = rating_scores.get(rating, 50)
+                risk_score = 50
+                risk_level = analysis.get("risk_level", "中")
+                if risk_level == "低":
+                    risk_score = 80
+                elif risk_level == "高":
+                    risk_score = 30
 
-            risk_score = 50
-            risk_level = analysis.get("risk_level", "中")
-            if risk_level == "低":
-                risk_score = 80
-            elif risk_level == "高":
-                risk_score = 30
+                ai_score = rating_score * 0.6 + risk_score * 0.4
+            except Exception as e:
+                logger.warning(f"AI analysis failed for {code}, using valuation only: {e}")
 
-            total_score = rating_score * 0.6 + risk_score * 0.4
+            # ── PE/ROE 量化估值得分（占 50%）──────────────────────────────
+            valuation_score = 50
+            try:
+                vf = ValuationFactorAnalyzer().analyze(code)
+                valuation_score = vf.valuation_score
+            except Exception as e:
+                logger.warning(f"Valuation analysis failed for {code}: {e}")
+
+            total_score = ai_score * 0.5 + valuation_score * 0.5
             return min(100, total_score)
 
         except Exception as e:
@@ -216,7 +227,7 @@ class Strategy4SectorRotation(BaseStrategy):
             from core.collector.fund_flow_collector import BlockCollector
 
             block_collector = BlockCollector()
-            hot_blocks = block_collector.collect_hot_blocks()
+            hot_blocks = block_collector.collect_hot_blocks() or []
 
             block_scores = {}
             for block in hot_blocks[:10]:
@@ -240,10 +251,27 @@ class Strategy4SectorRotation(BaseStrategy):
                 momentum_score = min(100, max(0, 50 + recent_change))
 
             stock_info_storage = StockInfoStorage()
-            stock_info = stock_info_storage.get_by_code(code)
+            stock_info = stock_info_storage.get_by_code(code) or {}
             industry = stock_info.get("industry", "")
 
-            sector_score = 50
+            # 用行业名称匹配热门板块，计算真实板块得分
+            sector_score = 30  # 行业不在热门板块时给低分
+            if industry:
+                # block_scores key 是板块代码，需要通过名称匹配
+                for block in hot_blocks[:10]:
+                    block_name = block.get("name", "")
+                    if block_name and (industry in block_name or block_name in industry):
+                        rank = block.get("rank", 50)
+                        sector_score = max(0, 100 - rank * 5)
+                        break
+                else:
+                    # 尝试部分匹配
+                    for block in hot_blocks[:20]:
+                        block_name = block.get("name", "")
+                        if block_name and any(w in block_name for w in industry.split()):
+                            rank = block.get("rank", 50)
+                            sector_score = max(0, 80 - rank * 4)
+                            break
 
             total_score = momentum_score * 0.7 + sector_score * 0.3
             return min(100, total_score)

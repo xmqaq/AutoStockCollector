@@ -4,10 +4,11 @@
 """
 import sys
 import time
+from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional
 
-sys.path.insert(0, "/Users/chenyongzhou/CodeBuddy/AutoStockCollector")
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from config.database import DatabaseConfig
 from core.scheduler.enhanced_scheduler import enhanced_scheduler, EnhancedTaskScheduler

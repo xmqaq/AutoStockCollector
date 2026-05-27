@@ -612,6 +612,11 @@ class DragonTigerStorage(MongoStorage):
             sort=[("date", -1)]
         )
 
+    def save_dragon_tiger_batch(self, records: List[Dict[str, Any]]) -> int:
+        if not records:
+            return 0
+        return self.insert_many(records)
+
 
 class MarginStorage(MongoStorage):
     def __init__(self):

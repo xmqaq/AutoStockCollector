@@ -576,6 +576,175 @@ def get_stock_indices(stock_code):
     })
 
 
+@api_bp.route("/collect/news", methods=["POST"])
+def collect_news():
+    from core.collector.news_collector import NewsCollector
+    from core.storage.mongo_storage import NewsStorage
+
+    data = request.get_json() or {}
+    codes = data.get("codes")
+    limit = data.get("limit", 50)
+
+    collector = NewsCollector()
+    storage = NewsStorage()
+
+    start_time = datetime.now()
+    if codes:
+        all_records = []
+        for code in codes[:5]:
+            records = collector.collect_single(code)
+            if records:
+                all_records.extend(records if isinstance(records, list) else [records])
+    else:
+        all_records = collector.collect_recent_news(limit=limit)
+
+    if all_records:
+        storage.save_news_batch(all_records)
+
+    elapsed = (datetime.now() - start_time).total_seconds()
+    return jsonify({
+        "success": True,
+        "collected_count": len(all_records),
+        "elapsed_seconds": round(elapsed, 2)
+    })
+
+
+@api_bp.route("/collect/stock_info", methods=["POST"])
+def collect_stock_info():
+    from core.collector.stock_info_collector import StockInfoCollector
+    from core.storage.mongo_storage import StockInfoStorage
+
+    data = request.get_json() or {}
+    codes = data.get("codes")
+
+    collector = StockInfoCollector()
+    storage = StockInfoStorage()
+
+    start_time = datetime.now()
+    if codes:
+        records = collector.collect(codes=codes[:20])
+    else:
+        records = collector.collect(codes=None)
+
+    elapsed = (datetime.now() - start_time).total_seconds()
+    return jsonify({
+        "success": True,
+        "collected_count": len(records) if records else 0,
+        "elapsed_seconds": round(elapsed, 2)
+    })
+
+
+@api_bp.route("/collect/financial", methods=["POST"])
+def collect_financial():
+    from core.collector.financial_collector import FinancialCollector
+    from core.storage.mongo_storage import FinancialStorage
+
+    data = request.get_json() or {}
+    codes = data.get("codes", [])
+    report_type = data.get("report_type", "annual")
+
+    if not codes:
+        return jsonify({"error": "codes is required"}), 400
+
+    collector = FinancialCollector()
+
+    start_time = datetime.now()
+    records = collector.collect(codes=codes[:5], report_type=report_type)
+    elapsed = (datetime.now() - start_time).total_seconds()
+
+    return jsonify({
+        "success": True,
+        "collected_count": len(records),
+        "elapsed_seconds": round(elapsed, 2)
+    })
+
+
+@api_bp.route("/collect/fund_flow", methods=["POST"])
+def collect_fund_flow():
+    from core.collector.fund_flow_collector import FundFlowCollector
+    from core.storage.mongo_storage import FundFlowStorage
+
+    data = request.get_json() or {}
+    codes = data.get("codes", [])
+
+    if not codes:
+        return jsonify({"error": "codes is required"}), 400
+
+    collector = FundFlowCollector()
+
+    start_time = datetime.now()
+    records = collector.collect(codes=codes[:5])
+    elapsed = (datetime.now() - start_time).total_seconds()
+
+    return jsonify({
+        "success": True,
+        "collected_count": len(records),
+        "elapsed_seconds": round(elapsed, 2)
+    })
+
+
+@api_bp.route("/collect/dragon_tiger", methods=["POST"])
+def collect_dragon_tiger():
+    from core.collector.fund_flow_collector import DragonTigerCollector
+
+    data = request.get_json() or {}
+    date = data.get("date")
+
+    collector = DragonTigerCollector()
+
+    start_time = datetime.now()
+    records = collector.collect(date=date)
+    elapsed = (datetime.now() - start_time).total_seconds()
+
+    return jsonify({
+        "success": True,
+        "collected_count": len(records),
+        "elapsed_seconds": round(elapsed, 2)
+    })
+
+
+@api_bp.route("/collect/sector", methods=["POST"])
+def collect_sector():
+    from core.collector.fund_flow_collector import FundFlowCollector
+
+    collector = FundFlowCollector()
+
+    start_time = datetime.now()
+    df = collector.collect_sector_flow()
+    elapsed = (datetime.now() - start_time).total_seconds()
+
+    records = df.to_dict("records") if df is not None and not df.empty else []
+    return jsonify({
+        "success": True,
+        "collected_count": len(records),
+        "elapsed_seconds": round(elapsed, 2),
+        "sample": records[:3] if records else []
+    })
+
+
+@api_bp.route("/collect/dividend", methods=["POST"])
+def collect_dividend():
+    from core.collector.financial_collector import DividendCollector
+
+    data = request.get_json() or {}
+    codes = data.get("codes", [])
+
+    if not codes:
+        return jsonify({"error": "codes is required"}), 400
+
+    collector = DividendCollector()
+
+    start_time = datetime.now()
+    records = collector.collect(codes=codes[:5])
+    elapsed = (datetime.now() - start_time).total_seconds()
+
+    return jsonify({
+        "success": True,
+        "collected_count": len(records),
+        "elapsed_seconds": round(elapsed, 2)
+    })
+
+
 def success_response(data: Any, message: str = "Success") -> Dict[str, Any]:
     return {
         "success": True,

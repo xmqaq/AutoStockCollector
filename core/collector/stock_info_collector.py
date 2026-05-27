@@ -47,9 +47,9 @@ class StockInfoCollector(BaseCollector):
         symbol = code[2:].lower()
 
         data_sources = [
+            ("stock_profile_cninfo", {"symbol": code[2:]}),
             ("stock_individual_info_em", {"symbol": symbol}),
             ("stock_info_a_code_name", None),
-            ("stock_profile_cninfo", {"symbol": symbol}),
         ]
 
         last_error = None
@@ -69,19 +69,21 @@ class StockInfoCollector(BaseCollector):
 
                     if source_name == "stock_individual_info_em":
                         for _, row in df.iterrows():
-                            field = row["item"]
-                            value = row["value"]
-                            field_lower = field.lower().replace(" ", "_")
+                            field = row.get("item", "")
+                            value = row.get("value", "")
+                            field_lower = str(field).lower().replace(" ", "_")
                             info[field_lower] = value
+                    elif source_name == "stock_profile_cninfo":
+                        for col in df.columns:
+                            info[col] = df.iloc[0][col]
                     elif "代码" in df.columns and "名称" in df.columns:
-                        stock_row = df[df["代码"] == symbol.upper() or df["代码"] == code[2:]]
+                        stock_row = df[df["代码"].astype(str) == code[2:]]
                         if not stock_row.empty:
                             for col in df.columns:
                                 info[col.lower()] = stock_row.iloc[0][col]
                     else:
                         for col in df.columns:
-                            if len(df) > 0:
-                                info[col.lower()] = df.iloc[0][col]
+                            info[col.lower()] = df.iloc[0][col]
 
                     info["_updated_at"] = datetime.now()
                     return info

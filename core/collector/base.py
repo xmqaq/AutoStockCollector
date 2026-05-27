@@ -127,27 +127,12 @@ class BaseCollector(ABC):
         self,
         func: Callable,
         *args,
+        source: Optional[str] = None,
         **kwargs
     ) -> Any:
-        last_exception = None
-
-        for attempt in range(self.retry_times):
-            try:
-                return func(*args, **kwargs)
-            except Exception as e:
-                last_exception = e
-                if attempt < self.retry_times - 1:
-                    delay = self.retry_delay * (2 ** attempt)
-                    logger.warning(
-                        f"Attempt {attempt + 1} failed, retrying in {delay}s: {str(e)}"
-                    )
-                    time.sleep(delay)
-                else:
-                    logger.error(
-                        f"All {self.retry_times} attempts failed: {str(e)}"
-                    )
-
-        raise last_exception
+        return self.risk_controller.execute_with_protection(
+            func, *args, source=source, **kwargs
+        )
 
     def execute_protected(
         self,
@@ -261,22 +246,42 @@ class BaseCollector(ABC):
         return all_results
 
     def get_all_stock_codes(self) -> List[str]:
-        try:
-            import akshare as ak
-            stock_info = ak.stock_info_a_code_name()
+        """
+        从沪深交易所官网获取全量A股代码，避免走BSE代理被阻断的接口。
+        SSE: stock_info_sh_name_code  SZSE: stock_info_sz_name_code
+        """
+        import akshare as ak
+        codes: List[str] = []
 
-            codes = []
-            for _, row in stock_info.iterrows():
-                code = row["code"]
-                if code.startswith("6"):
-                    codes.append(f"SH{code}")
-                else:
-                    codes.append(f"SZ{code}")
+        # 沪市（上交所）
+        for symbol in ("主板A股", "科创板"):
+            try:
+                df = ak.stock_info_sh_name_code(symbol=symbol)
+                for _, row in df.iterrows():
+                    raw = str(row.get("证券代码", "")).strip()
+                    if raw:
+                        codes.append(f"SH{raw}")
+            except Exception as e:
+                logger.warning(f"SSE {symbol} list failed: {e}")
 
-            return codes
-        except Exception as e:
-            logger.error(f"Failed to get stock codes: {e}")
-            return []
+        # 深市（深交所）
+        for symbol in ("A股列表",):
+            try:
+                df = ak.stock_info_sz_name_code(symbol=symbol)
+                col = "A股代码" if "A股代码" in df.columns else df.columns[0]
+                for _, row in df.iterrows():
+                    raw = str(row.get(col, "")).strip().zfill(6)
+                    if raw and raw != "000000":
+                        codes.append(f"SZ{raw}")
+            except Exception as e:
+                logger.warning(f"SZSE {symbol} list failed: {e}")
+
+        if not codes:
+            logger.error("Failed to get any stock codes from SSE/SZSE")
+        else:
+            logger.info(f"Got {len(codes)} stock codes (SSE+SZSE)")
+
+        return codes
 
 
 class ProgressTracker:

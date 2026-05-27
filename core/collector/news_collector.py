@@ -46,29 +46,48 @@ class NewsCollector(BaseCollector):
         return all_records
 
     def collect_recent_news(self, limit: int = 100) -> List[Dict[str, Any]]:
-        try:
-            df = ak.news东方财富負务云(offset=0, size=limit)
-            if df is None or df.empty:
-                return []
+        # stock_news_em: 东方财富综合新闻（有实际标题和内容）
+        # news_economic_baidu: 百度经济日历（宏观经济事件，非新闻）
+        sources = [
+            ("stock_news_em", {"symbol": "all"}, {
+                "新闻标题": "title", "新闻内容": "content",
+                "发布时间": "publish_date", "文章来源": "source", "新闻链接": "url"
+            }),
+            ("stock_news_main_cx", {}, {
+                "标题": "title", "摘要": "content",
+                "时间": "publish_date", "来源": "source", "链接": "url"
+            }),
+        ]
+        for func_name, params, col_map in sources:
+            try:
+                func = getattr(ak, func_name, None)
+                if func is None:
+                    continue
+                df = func(**params) if params else func()
+                if df is None or df.empty:
+                    continue
 
-            records = []
-            for _, row in df.iterrows():
-                record = {
-                    "title": row.get("标题", ""),
-                    "content": row.get("内容", ""),
-                    "publish_date": row.get("发布时间", ""),
-                    "source": row.get("来源", ""),
-                    "url": row.get("来源 URL", ""),
-                    "news_type": "general",
-                    "_updated_at": datetime.now()
-                }
-                records.append(record)
+                records = []
+                for _, row in df.iterrows():
+                    record = {
+                        "title": str(row.get(next((k for k, v in col_map.items() if v == "title"), ""), "")),
+                        "content": str(row.get(next((k for k, v in col_map.items() if v == "content"), ""), "")),
+                        "publish_date": str(row.get(next((k for k, v in col_map.items() if v == "publish_date"), ""), "")),
+                        "source": str(row.get(next((k for k, v in col_map.items() if v == "source"), ""), "")),
+                        "url": str(row.get(next((k for k, v in col_map.items() if v == "url"), ""), "")),
+                        "news_type": "general",
+                        "_updated_at": datetime.now(),
+                    }
+                    records.append(record)
 
-            return records
+                if records:
+                    logger.info(f"collect_recent_news got {len(records)} records via {func_name}")
+                    return records[:limit]
 
-        except Exception as e:
-            logger.error(f"Failed to collect recent news: {e}")
-            return []
+            except Exception as e:
+                logger.warning(f"collect_recent_news via {func_name} failed: {e}")
+
+        return []
 
     def collect_stock_news(self) -> List[Dict[str, Any]]:
         data_sources = [

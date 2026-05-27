@@ -60,7 +60,16 @@ class IndexCollector:
         return results
 
     def collect_single(self, code: str, **kwargs) -> Optional[Dict[str, Any]]:
-        pass
+        """采集单个指数的成分股权重，成功后返回汇总信息"""
+        success = self._collect_index_components(code)
+        if not success:
+            return None
+        components = self.get_index_components(code)
+        return {
+            "index_code": code,
+            "component_count": len(components),
+            "updated_at": datetime.now().isoformat(),
+        }
 
     def _collect_index_components(self, index_code: str) -> bool:
         try:
@@ -75,14 +84,16 @@ class IndexCollector:
                 records.append(record)
 
             if records:
-                self.collection.update_many(
-                    {"index_code": index_code},
-                    {"$set": {"updated_at": datetime.now()}},
-                )
-                self.collection.delete_many({"index_code": index_code})
-
-                self.collection.insert_many(records)
                 logger.info(f"Collected {len(records)} components for index {index_code}")
+                try:
+                    self.collection.update_many(
+                        {"index_code": index_code},
+                        {"$set": {"updated_at": datetime.now()}},
+                    )
+                    self.collection.delete_many({"index_code": index_code})
+                    self.collection.insert_many(records)
+                except Exception as db_err:
+                    logger.warning(f"Failed to save index {index_code} to MongoDB: {db_err}")
                 return True
 
             return False

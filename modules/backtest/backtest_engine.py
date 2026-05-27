@@ -66,6 +66,11 @@ class RiskControlMixin:
 
 
 class BacktestStrategy(bt.Strategy, RiskControlMixin):
+    params = (
+        ("stop_loss", 0.05),
+        ("take_profit", 0.10),
+    )
+
     def __init__(self):
         self.data_live = True
         self.order = None
@@ -73,6 +78,9 @@ class BacktestStrategy(bt.Strategy, RiskControlMixin):
         self.buy_comm = None
         self.trades = []
         self.trade_history = []
+        # 将 Backtrader params 同步到 RiskControlMixin 属性
+        self.stop_loss = self.params.stop_loss
+        self.take_profit = self.params.take_profit
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
@@ -117,6 +125,16 @@ class BacktestStrategy(bt.Strategy, RiskControlMixin):
                 self.trades[-1]["pnl"] = trade.pnl
                 self.trades[-1]["pnl_percent"] = trade.pnl / self.buy_price * 100 if self.buy_price else 0
 
+    def _check_exit(self) -> bool:
+        """止损/止盈检查，在各子类 next() 开头调用。返回 True 表示已发出卖出指令。"""
+        if not self.position or self.order or not self.buy_price:
+            return False
+        should_exit, _ = self.should_exit(self.buy_price, self.data.close[0])
+        if should_exit:
+            self.order = self.sell()
+            return True
+        return False
+
 
 class MovingAverageStrategy(BacktestStrategy):
     params = (
@@ -140,6 +158,8 @@ class MovingAverageStrategy(BacktestStrategy):
     def next(self):
         if self.order:
             return
+        if self._check_exit():
+            return
 
         if not self.position:
             if self.crossover > 0:
@@ -161,6 +181,8 @@ class MomentumStrategy(BacktestStrategy):
 
     def next(self):
         if self.order:
+            return
+        if self._check_exit():
             return
 
         if not self.position:
@@ -187,6 +209,8 @@ class MeanReversionStrategy(BacktestStrategy):
 
     def next(self):
         if self.order:
+            return
+        if self._check_exit():
             return
 
         if not self.position:
@@ -217,6 +241,8 @@ class MACDStrategy(BacktestStrategy):
     def next(self):
         if self.order:
             return
+        if self._check_exit():
+            return
 
         if not self.position:
             if self.crossover > 0:
@@ -243,6 +269,8 @@ class RSIStrategy(BacktestStrategy):
     def next(self):
         if self.order:
             return
+        if self._check_exit():
+            return
 
         if not self.position:
             if self.rsi < self.params.lower:
@@ -268,6 +296,8 @@ class FundFlowStrategy(BacktestStrategy):
     def next(self):
         if self.order:
             return
+        if self._check_exit():
+            return
 
         current_volume = self.data.volume[0]
         avg_volume = self.volume_sma[0]
@@ -292,6 +322,8 @@ class DragonTigerStrategy(BacktestStrategy):
 
     def next(self):
         if self.order:
+            return
+        if self._check_exit():
             return
 
         self.holding_count += 1
@@ -490,6 +522,9 @@ class PerformanceMetrics:
 
 
 class BacktestEngine:
+    # ST/退市标识前缀（用于代码/名称过滤）
+    _EXCLUDED_PREFIXES = ("*ST", "ST", "PT", "退市")
+
     def __init__(self):
         self.kline_storage = KlineStorage()
         self.strategy_map = {
@@ -537,6 +572,11 @@ class BacktestEngine:
             "trailing_percent": trailing_percent,
         }
 
+        # 过滤 ST、退市、流动性枯竭标的
+        codes = self._filter_excluded_codes(codes)
+        if not codes:
+            return {"error": "All codes filtered out (ST/delisted/illiquid)"}
+
         total_results = []
         all_trades = []
 
@@ -548,7 +588,8 @@ class BacktestEngine:
                     start_date=start_date,
                     end_date=end_date,
                     initial_cash=initial_cash,
-                    commission=commission
+                    commission=commission,
+                    risk_config=risk_config
                 )
 
                 if result:
@@ -582,6 +623,40 @@ class BacktestEngine:
             "trades": all_trades[:100]
         }
 
+    def _filter_excluded_codes(self, codes: List[str]) -> List[str]:
+        """过滤 ST、退市、流动性枯竭标的"""
+        from core.storage.mongo_storage import StockInfoStorage
+        try:
+            info_storage = StockInfoStorage()
+            valid = []
+            for code in codes:
+                info = info_storage.get_by_code(code)
+                if info:
+                    name = info.get("name", "") or ""
+                    if any(name.startswith(p) for p in self._EXCLUDED_PREFIXES):
+                        logger.info(f"Backtest skip {code} ({name}): ST/delisted")
+                        continue
+                    status = info.get("status", "")
+                    if status in ("退市", "delisted"):
+                        logger.info(f"Backtest skip {code}: delisted")
+                        continue
+                valid.append(code)
+            return valid
+        except Exception as e:
+            logger.warning(f"Code filter failed, using original list: {e}")
+            return codes
+
+    def _is_limit_day(self, row: Dict[str, Any]) -> bool:
+        """判断是否为涨跌停（无法正常交易）"""
+        pct = row.get("pct_chg", row.get("涨跌幅", None))
+        if pct is None:
+            return False
+        try:
+            pct = float(pct)
+            return abs(pct) >= 9.8
+        except (TypeError, ValueError):
+            return False
+
     def _calculate_days(self, start_date: str, end_date: str) -> int:
         from utils.helpers import parse_date
         try:
@@ -598,7 +673,8 @@ class BacktestEngine:
         start_date: str,
         end_date: str,
         initial_cash: float,
-        commission: float
+        commission: float,
+        risk_config: Optional[Dict[str, Any]] = None
     ) -> Optional[Dict[str, Any]]:
         klines = self.kline_storage.query_by_date_range(
             code=code,
@@ -618,6 +694,14 @@ class BacktestEngine:
             return None
 
         df = df.sort_values("date").reset_index(drop=True)
+
+        # 过滤涨跌停日（无法正常交易）
+        if "pct_chg" in df.columns or "涨跌幅" in df.columns:
+            pct_col = "pct_chg" if "pct_chg" in df.columns else "涨跌幅"
+            df = df[df[pct_col].apply(
+                lambda x: abs(float(x)) < 9.8 if x not in (None, "") else True
+            )]
+
         df["date"] = pd.to_datetime(df["date"])
 
         df = df.set_index("date")
@@ -626,22 +710,31 @@ class BacktestEngine:
             if col not in df.columns:
                 df[col] = 0
 
+        risk_config = risk_config or {}
+        stop_loss = risk_config.get("stop_loss", 0.05)
+        take_profit = risk_config.get("take_profit", 0.10)
+        slippage = risk_config.get("slippage", 0.001)
+
         cerebro = bt.Cerebro()
 
-        cerebro.addstrategy(strategy_class)
+        cerebro.addstrategy(strategy_class, stop_loss=stop_loss, take_profit=take_profit)
 
         data_feed = DataLoader(dataname=df)
         cerebro.adddata(data_feed)
 
         cerebro.broker.setcash(initial_cash)
         cerebro.broker.setcommission(commission=commission)
+        cerebro.broker.set_slippage_perc(slippage)
 
         cerebro.addsizer(bt.sizers.PercentSizer, stake=10)
 
         try:
             initial_value = cerebro.broker.getvalue()
-            cerebro.run()
+            strats = cerebro.run()
             final_value = cerebro.broker.getvalue()
+
+            # 从策略实例取实际成交记录（修复之前恒返回空列表的问题）
+            trades = strats[0].trades if strats else []
 
             total_return = PerformanceMetrics.calculate_total_return(initial_value, final_value)
 
@@ -654,7 +747,7 @@ class BacktestEngine:
                 "final_value": final_value,
                 "total_return": total_return,
                 "annualized_return": annualized_return,
-                "trades": []
+                "trades": trades
             }
 
         except Exception as e:

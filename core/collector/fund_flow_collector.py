@@ -59,10 +59,13 @@ class FundFlowCollector(BaseCollector):
     ) -> Optional[List[Dict[str, Any]]]:
         symbol = code[2:]
 
+        market = "sh" if code.startswith("SH") else "sz"
+
+        # stock_fund_flow_individual: 全市场即时快照，需按代码过滤（非东财接口）
+        # stock_individual_fund_flow: 个股历史资金流（东财，代理可能阻断）
         data_sources = [
             ("stock_fund_flow_individual", {"symbol": "即时"}),
-            ("stock_main_fund_flow", {}),
-            ("stock_individual_fund_flow", {"stock": symbol}),
+            ("stock_individual_fund_flow", {"stock": symbol, "market": market}),
         ]
 
         last_error = None
@@ -72,31 +75,34 @@ class FundFlowCollector(BaseCollector):
                 if func is None:
                     continue
 
-                logger.info(f"Trying {source_name} for fund flow")
+                logger.info(f"Trying {source_name} for fund flow of {code}")
 
-                if params:
-                    df = func(**params)
-                else:
-                    df = func()
+                df = func(**params) if params else func()
 
-                if df is not None and not df.empty:
-                    if source_name == "stock_fund_flow_individual":
-                        df["code"] = code
-                        df["_updated_at"] = datetime.now()
-                        return self.normalize_dataframe(df, code)
-                    elif "代码" in df.columns:
-                        code_data = df[df["代码"].astype(str).str.contains(symbol)]
+                if df is None or df.empty:
+                    continue
+
+                if source_name == "stock_fund_flow_individual":
+                    # 全市场数据，按股票代码过滤
+                    col = "股票代码"
+                    if col in df.columns:
+                        code_data = df[df[col].astype(str) == symbol]
                         if not code_data.empty:
                             code_data = code_data.copy()
+                            code_data["code"] = code
                             code_data["_updated_at"] = datetime.now()
                             return self.normalize_dataframe(code_data, code)
+                else:
+                    df["code"] = code
+                    df["_updated_at"] = datetime.now()
+                    return self.normalize_dataframe(df, code)
 
             except Exception as e:
                 last_error = e
                 logger.warning(f"{source_name} failed: {e}")
                 continue
 
-        logger.error(f"All fund flow sources failed, last error: {last_error}")
+        logger.error(f"All fund flow sources failed for {code}, last error: {last_error}")
         return None
 
     def collect_money_flow(
@@ -118,12 +124,25 @@ class FundFlowCollector(BaseCollector):
             return pd.DataFrame()
 
     def collect_sector_flow(self) -> pd.DataFrame:
-        try:
-            df = ak.stock_sector_fund_flow_rank(indicator="即时")
-            return df
-        except Exception as e:
-            logger.error(f"Failed to collect sector flow: {e}")
-            return pd.DataFrame()
+        # stock_fund_flow_industry: 行业资金流向（非东财），优先使用
+        # stock_sector_fund_flow_rank: 东财板块排名，代理可能阻断
+        for func_name, params in [
+            ("stock_fund_flow_industry", {"symbol": "即时"}),
+            ("stock_sector_fund_flow_rank", {"indicator": "今日", "sector_type": "行业资金流"}),
+        ]:
+            try:
+                func = getattr(ak, func_name, None)
+                if func is None:
+                    continue
+                df = func(**params)
+                if df is not None and not df.empty:
+                    logger.info(f"Collected {len(df)} sector records via {func_name}")
+                    return df
+            except Exception as e:
+                logger.warning(f"Sector flow via {func_name} failed: {e}")
+
+        logger.error("Failed to collect sector flow from all sources")
+        return pd.DataFrame()
 
 
 class DragonTigerCollector(BaseCollector):
@@ -147,6 +166,8 @@ class DragonTigerCollector(BaseCollector):
             df["_updated_at"] = datetime.now()
 
             records = self.normalize_dataframe(df)
+            if records:
+                self.storage.save_dragon_tiger_batch(records)
             return records
 
         except Exception as e:

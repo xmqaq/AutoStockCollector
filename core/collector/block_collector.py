@@ -50,9 +50,9 @@ class BlockCollector(BaseCollector):
 
     def _collect_industry_with_multi_source(self) -> List[Dict[str, Any]]:
         data_sources = [
-            ("stock_board_industry_name_em", {}),
             ("stock_board_industry_name_ths", {}),
             ("stock_board_industry_summary_ths", {}),
+            ("stock_board_industry_name_em", {}),  # 东财兜底，优先级最低
         ]
 
         for source_name, params in data_sources:
@@ -90,9 +90,9 @@ class BlockCollector(BaseCollector):
 
     def _collect_concept_with_multi_source(self) -> List[Dict[str, Any]]:
         data_sources = [
-            ("stock_board_concept_name_em", {}),
             ("stock_board_concept_name_ths", {}),
             ("stock_board_concept_summary_ths", {}),
+            ("stock_board_concept_name_em", {}),  # 东财兜底，优先级最低
         ]
 
         for source_name, params in data_sources:

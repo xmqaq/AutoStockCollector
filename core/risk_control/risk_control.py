@@ -4,7 +4,7 @@
 import time
 import threading
 from typing import Optional, Dict, Callable
-from datetime import datetime, timedelta
+from datetime import datetime
 from collections import defaultdict
 from functools import wraps
 from config.settings import Settings
@@ -15,25 +15,39 @@ logger = get_logger(__name__)
 
 
 class RateLimiter:
-    def __init__(self, min_interval: float = 1.0):
+    """
+    滑动窗口 burst 限速器。
+    burst 个令牌可同时通过，超出后等到最旧的令牌过期才能再发。
+    例：burst=5, interval=2.0 → 每 2 秒最多 5 个请求 = 2.5 req/s，
+    5 个并发线程均可立即通行，互不阻塞。
+    """
+
+    def __init__(self, min_interval: float = 1.0, burst: int = 1):
         self.min_interval = min_interval
-        self.last_call_time: Dict[str, float] = {}
+        self.burst = burst
+        self._timestamps: Dict[str, list] = {}
         self._lock = threading.Lock()
 
     def wait_if_needed(self, key: str = "default"):
-        with self._lock:
-            current_time = time.time()
-            last_time = self.last_call_time.get(key, 0)
-            elapsed = current_time - last_time
-
-            if elapsed < self.min_interval:
-                sleep_time = self.min_interval - elapsed
-                time.sleep(sleep_time)
-
-            self.last_call_time[key] = time.time()
+        while True:
+            with self._lock:
+                now = time.time()
+                window_start = now - self.min_interval
+                ts = [t for t in self._timestamps.get(key, []) if t > window_start]
+                if len(ts) < self.burst:
+                    ts.append(now)
+                    self._timestamps[key] = ts
+                    return
+                # 等最旧的令牌过期
+                sleep_for = ts[0] + self.min_interval - now
+            if sleep_for > 0:
+                time.sleep(sleep_for)
 
     def set_interval(self, interval: float):
         self.min_interval = interval
+
+    def set_burst(self, burst: int):
+        self.burst = burst
 
 
 class CircuitBreaker:
@@ -60,10 +74,9 @@ class CircuitBreaker:
     @property
     def state(self) -> str:
         with self._lock:
-            if self._state == self.OPEN:
-                if self._should_attempt_reset():
-                    self._state = self.HALF_OPEN
-                    self._half_open_calls = 0
+            if self._state == self.OPEN and self._should_attempt_reset():
+                self._state = self.HALF_OPEN
+                self._half_open_calls = 0
             return self._state
 
     def _should_attempt_reset(self) -> bool:
@@ -80,7 +93,6 @@ class CircuitBreaker:
         with self._lock:
             self._failure_count += 1
             self._last_failure_time = time.time()
-
             if self._failure_count >= self.failure_threshold:
                 self._state = self.OPEN
                 logger.warning(
@@ -91,13 +103,17 @@ class CircuitBreaker:
         with self._lock:
             if self._state == self.CLOSED:
                 return True
-            elif self._state == self.HALF_OPEN:
+            if self._state == self.HALF_OPEN:
                 if self._half_open_calls < self.half_open_max_calls:
                     self._half_open_calls += 1
                     return True
                 return False
-            else:
-                return False
+            # OPEN: check if recovery timeout elapsed
+            if self._should_attempt_reset():
+                self._state = self.HALF_OPEN
+                self._half_open_calls = 1
+                return True
+            return False
 
     def reset(self):
         with self._lock:
@@ -119,17 +135,10 @@ class ExponentialBackoff:
         self.max_attempts = max_attempts
 
     def get_delay(self, attempt: int) -> float:
-        delay = min(self.base_delay * (2 ** attempt), self.max_delay)
-        return delay
+        return min(self.base_delay * (2 ** attempt), self.max_delay)
 
-    def execute_with_retry(
-        self,
-        func: Callable,
-        *args,
-        **kwargs
-    ):
+    def execute_with_retry(self, func: Callable, *args, **kwargs):
         last_exception = None
-
         for attempt in range(self.max_attempts):
             try:
                 return func(*args, **kwargs)
@@ -137,15 +146,10 @@ class ExponentialBackoff:
                 last_exception = e
                 if attempt < self.max_attempts - 1:
                     delay = self.get_delay(attempt)
-                    logger.warning(
-                        f"Attempt {attempt + 1} failed, retrying in {delay}s: {e}"
-                    )
+                    logger.warning(f"Attempt {attempt + 1} failed, retrying in {delay}s: {e}")
                     time.sleep(delay)
                 else:
-                    logger.error(
-                        f"All {self.max_attempts} attempts failed: {e}"
-                    )
-
+                    logger.error(f"All {self.max_attempts} attempts failed: {e}")
         raise last_exception
 
 
@@ -170,9 +174,13 @@ class ConcurrentController:
         with self._lock:
             return self._current_concurrent
 
-    def wait_if_max_concurrent(self):
+    def __enter__(self):
         self.acquire()
-        return self.release
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.release()
+        return False
 
 
 class SceneAdapter:
@@ -183,7 +191,8 @@ class SceneAdapter:
     def __init__(self):
         self._scene = self.SCENE_NORMAL
         self._rate_limiter = RateLimiter(
-            Settings.RATE_LIMIT_CONFIG["normal_interval"]
+            Settings.RATE_LIMIT_CONFIG["normal_interval"],
+            burst=Settings.get_max_concurrent()
         )
 
     def set_scene(self, scene: str):
@@ -214,26 +223,22 @@ class RiskController:
             self._initialized = True
 
             self.rate_limiter = RateLimiter(
-                Settings.RATE_LIMIT_CONFIG["min_interval"]
+                Settings.RATE_LIMIT_CONFIG["min_interval"],
+                burst=Settings.get_max_concurrent()
             )
-
             self.circuit_breaker = CircuitBreaker(
                 failure_threshold=Settings.CIRCUIT_BREAKER_CONFIG["failure_threshold"],
                 recovery_timeout=Settings.CIRCUIT_BREAKER_CONFIG["recovery_timeout"],
                 half_open_max_calls=Settings.CIRCUIT_BREAKER_CONFIG["half_open_max_calls"],
             )
-
             self.exponential_backoff = ExponentialBackoff(
                 base_delay=Settings.COLLECTOR_CONFIG["retry_delay"],
                 max_attempts=Settings.COLLECTOR_CONFIG["retry_times"],
             )
-
             self.concurrent_controller = ConcurrentController(
                 max_concurrent=Settings.get_max_concurrent()
             )
-
             self.scene_adapter = SceneAdapter()
-
             self._source_failure_count: Dict[str, int] = defaultdict(int)
             self._source_circuit_breakers: Dict[str, CircuitBreaker] = {}
 
@@ -248,29 +253,23 @@ class RiskController:
     def check_circuit_breaker(self, source: Optional[str] = None) -> bool:
         if source is None:
             return self.circuit_breaker.can_execute()
-
         if source not in self._source_circuit_breakers:
             self._source_circuit_breakers[source] = CircuitBreaker()
-
         return self._source_circuit_breakers[source].can_execute()
 
     def record_success(self, source: Optional[str] = None):
         self.circuit_breaker.record_success()
-
         if source and source in self._source_circuit_breakers:
             self._source_circuit_breakers[source].record_success()
-
         self._source_failure_count[source or "default"] = 0
 
     def record_failure(self, source: Optional[str] = None):
         self.circuit_breaker.record_failure()
-
         if source:
             if source not in self._source_circuit_breakers:
                 self._source_circuit_breakers[source] = CircuitBreaker()
             self._source_circuit_breakers[source].record_failure()
             self._source_failure_count[source] += 1
-
         logger.warning(f"Data source failure recorded. Source: {source}")
 
     def execute_with_protection(
@@ -280,20 +279,37 @@ class RiskController:
         source: Optional[str] = None,
         **kwargs
     ):
-        self.wait_for_rate_limit(source or "default")
-
+        """
+        执行保护：
+        1. 熔断检查
+        2. 限速（锁外 sleep）
+        3. 获取并发槽 → 执行调用 → 释放槽
+        4. 重试 sleep 在信号量外，不占并发槽
+        """
         if not self.check_circuit_breaker(source):
             raise Exception(f"Circuit breaker is open for source: {source}")
 
-        try:
-            with self.concurrent_controller:
-                result = self.exponential_backoff.execute_with_retry(func, *args, **kwargs)
+        last_exc = None
+        max_attempts = self.exponential_backoff.max_attempts
+
+        for attempt in range(max_attempts):
+            if attempt > 0:
+                delay = self.exponential_backoff.get_delay(attempt - 1)
+                logger.warning(f"Retry attempt {attempt}/{max_attempts - 1}, waiting {delay}s")
+                time.sleep(delay)  # 重试等待在信号量外，不占并发槽
+
+            self.wait_for_rate_limit(source or "default")
+
+            try:
+                with self.concurrent_controller:  # 仅在实际 HTTP 调用期间持有槽
+                    result = func(*args, **kwargs)
                 self.record_success(source)
                 return result
+            except Exception as e:
+                last_exc = e
+                self.record_failure(source)
 
-        except Exception as e:
-            self.record_failure(source)
-            raise
+        raise last_exc
 
     def acquire_concurrent_slot(self):
         return self.concurrent_controller.acquire()

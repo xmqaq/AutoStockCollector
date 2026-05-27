@@ -243,58 +243,123 @@ class MiniMaxAdapter(BaseModelAdapter):
 
 
 class SparkAdapter(BaseModelAdapter):
+    """
+    讯飞星火适配器 - 使用 WebSocket + HMAC-SHA256 鉴权
+    配置说明:
+      api_key   格式: "<api_key>:<api_secret>"（冒号分隔）
+      base_url  填写星火 app_id
+      model_name 填写模型域名，如 "generalv3.5"
+    """
+
+    # WebSocket 接入地址（按 model_name 映射）
+    _WS_HOST = "spark-api.xf-yun.com"
+    _WS_PATH_MAP = {
+        "lite": "/v1.1/chat",
+        "generalv2": "/v2.1/chat",
+        "generalv3": "/v3.1/chat",
+        "generalv3.5": "/v3.5/chat",
+        "4.0Ultra": "/v4.0/chat",
+    }
+
+    def _build_ws_url(self, api_key: str, api_secret: str) -> str:
+        import hmac
+        import hashlib
+        import base64
+        import urllib.parse
+        from email.utils import formatdate
+
+        date = formatdate(usegmt=True)
+        path = self._WS_PATH_MAP.get(self.config.model_name, "/v3.5/chat")
+        signature_origin = (
+            f"host: {self._WS_HOST}\n"
+            f"date: {date}\n"
+            f"GET {path} HTTP/1.1"
+        )
+        sig = base64.b64encode(
+            hmac.new(api_secret.encode(), signature_origin.encode(), digestmod=hashlib.sha256).digest()
+        ).decode()
+        auth_origin = (
+            f'api_key="{api_key}", algorithm="hmac-sha256", '
+            f'headers="host date request-line", signature="{sig}"'
+        )
+        authorization = base64.b64encode(auth_origin.encode()).decode()
+        params = urllib.parse.urlencode({
+            "authorization": authorization,
+            "date": date,
+            "host": self._WS_HOST,
+        })
+        return f"wss://{self._WS_HOST}{path}?{params}"
+
     def _make_request(self, prompt: str) -> tuple:
         try:
-            import requests
+            import websocket
+            import json as _json
+            import threading as _threading
         except ImportError:
-            return self._fallback_response(prompt)
+            raise RuntimeError("websocket-client not installed, run: pip install websocket-client")
 
-        api_key = self.config.api_key
-        if not api_key:
-            return "Spark API key not configured", 0, 0
+        raw_key = self.config.api_key
+        if not raw_key or ":" not in raw_key:
+            raise ValueError("Spark api_key must be '<api_key>:<api_secret>'")
 
-        app_id = self.config.base_url
-        if not app_id:
-            app_id = "default_app_id"
+        api_key, api_secret = raw_key.split(":", 1)
+        app_id = self.config.base_url or ""
+        ws_url = self._build_ws_url(api_key, api_secret)
 
-        url = f"https://spark-api.xf-yun.com/v3.1/chat"
+        result_chunks: list = []
+        error_holder: list = []
+        done_event = _threading.Event()
 
-        payload = {
-            "header": {
-                "app_id": app_id,
-                "api_key": api_key
-            },
-            "parameter": {
-                "chat": {
-                    "domain": self.config.model_name,
-                    "temperature": self.config.temperature,
-                    "max_tokens": self.config.max_tokens
-                }
-            },
-            "payload": {
-                "message": {
-                    "text": [
-                        {"role": "user", "content": prompt}
-                    ]
-                }
+        def on_message(ws, message):
+            data = _json.loads(message)
+            code = data.get("header", {}).get("code", -1)
+            if code != 0:
+                error_holder.append(f"Spark error code {code}: {data.get('header', {}).get('message', '')}")
+                done_event.set()
+                return
+            choices = data.get("payload", {}).get("choices", {}).get("text", [])
+            for item in choices:
+                result_chunks.append(item.get("content", ""))
+            status = data.get("header", {}).get("status", -1)
+            if status == 2:
+                done_event.set()
+
+        def on_error(ws, error):
+            error_holder.append(str(error))
+            done_event.set()
+
+        def on_open(ws):
+            payload = {
+                "header": {"app_id": app_id, "uid": "user"},
+                "parameter": {
+                    "chat": {
+                        "domain": self.config.model_name,
+                        "temperature": self.config.temperature,
+                        "max_tokens": self.config.max_tokens,
+                    }
+                },
+                "payload": {"message": {"text": [{"role": "user", "content": prompt}]}},
             }
-        }
+            ws.send(_json.dumps(payload))
 
-        try:
-            response = requests.post(url, json=payload, timeout=self.config.timeout)
-            if response.status_code == 200:
-                result = response.json()
-                choices = result.get("payload", {}).get("choices", {}).get("text", [])
-                if choices:
-                    text = choices[0].get("content", "")
-                    tokens = len(prompt) + len(text)
-                    return text, tokens // 2, tokens // 2
-            return "Spark response error", 0, 0
-        except Exception as e:
-            return f"Spark error: {str(e)}", 0, 0
+        ws_app = websocket.WebSocketApp(
+            ws_url,
+            on_message=on_message,
+            on_error=on_error,
+            on_open=on_open,
+        )
+        t = _threading.Thread(target=ws_app.run_forever, daemon=True)
+        t.start()
+        done_event.wait(timeout=self.config.timeout)
+        ws_app.close()
 
-    def _fallback_response(self, prompt: str) -> tuple:
-        return "Spark not available", 0, 0
+        if error_holder:
+            raise RuntimeError(error_holder[0])
+
+        text = "".join(result_chunks)
+        input_tokens = len(prompt) // 4
+        output_tokens = len(text) // 4
+        return text, input_tokens, output_tokens
 
 
 class PromptVersionManager:
@@ -709,9 +774,8 @@ class ModelManager:
         return fallback_order
 
     def _fallback_response(self, prompt: str) -> str:
-        fallback_result = self._rule_engine.execute(prompt)
-        logger.warning(f"All AI models failed, using rule engine fallback")
-        return fallback_result
+        logger.warning("All AI models failed, using rule engine fallback")
+        return rule_engine_fallback.execute(prompt)
 
     def _record_call(
         self,
@@ -755,6 +819,70 @@ class ModelManager:
             "cost": cost,
             "timestamp": datetime.now()
         })
+
+    def get_model_stats(self) -> Dict[str, Any]:
+        total_calls = len(self._call_history)
+        successful_calls = sum(1 for c in self._call_history if c.success)
+
+        stats_by_model = {}
+        for model_name in self._model_configs:
+            model_calls = [c for c in self._call_history if c.model_name == model_name]
+            if model_calls:
+                stats_by_model[model_name] = {
+                    "total_calls": len(model_calls),
+                    "successful_calls": sum(1 for c in model_calls if c.success),
+                    "avg_response_time": sum(c.response_time for c in model_calls) / len(model_calls),
+                    "total_tokens": sum(c.total_tokens for c in model_calls),
+                    "total_cost": sum(c.cost for c in model_calls)
+                }
+
+        return {
+            "total_calls": total_calls,
+            "success_rate": successful_calls / total_calls if total_calls > 0 else 0,
+            "cache_size": len(self._result_cache),
+            "models": stats_by_model,
+            "token_usage": dict(self._token_usage),
+            "cost_usage": dict(self._cost_usage)
+        }
+
+    def get_token_usage_summary(self) -> Dict[str, Any]:
+        summary = {}
+        for model_name, usage in self._token_usage.items():
+            summary[model_name] = {
+                "input_tokens": usage["input"],
+                "output_tokens": usage["output"],
+                "total_tokens": usage["total"],
+                "estimated_cost": self._cost_usage.get(model_name, 0)
+            }
+        return summary
+
+    def register_prompt_template(
+        self,
+        template_id: str,
+        name: str,
+        prompt_text: str,
+        description: str = ""
+    ) -> PromptTemplate:
+        return self._prompt_manager.register_template(template_id, name, prompt_text, description)
+
+    def get_prompt_template(self, template_id: str) -> Optional[PromptTemplate]:
+        return self._prompt_manager.get_active_template(template_id)
+
+    def rollback_prompt(self, template_id: str, version: int) -> bool:
+        return self._prompt_manager.rollback(template_id, version)
+
+    def clear_cache(self):
+        self._result_cache.clear()
+        logger.info("AI result cache cleared")
+
+    def clear_token_stats(self):
+        self._token_usage.clear()
+        self._cost_usage.clear()
+        logger.info("Token statistics cleared")
+
+    def shutdown(self):
+        self._async_processor.stop()
+        logger.info("ModelManager shutdown")
 
 
 class RuleEngineFallback:
@@ -800,10 +928,10 @@ class RuleEngineFallback:
         volumes = [k.get("volume", 0) for k in klines]
 
         current_price = closes[0]
-        ma5 = sum(closes[:5]) / 5
+        ma5 = sum(closes[:5]) / min(5, len(closes))
+        ma10 = sum(closes[:10]) / min(10, len(closes))
         ma20 = sum(closes[:20]) / min(20, len(closes))
-        ma60_sum = sum(closes[:min(60, len(closes))])
-        ma60 = ma60_sum / min(60, len(closes))
+        ma60 = sum(closes[:min(60, len(closes))]) / min(60, len(closes))
 
         change_pct = 0
         if len(closes) >= 2 and closes[1] > 0:
@@ -919,71 +1047,5 @@ class RuleEngineFallback:
 
 
 rule_engine_fallback = RuleEngineFallback()
-
-
-def get_model_stats(self) -> Dict[str, Any]:
-    total_calls = len(self._call_history)
-    successful_calls = sum(1 for c in self._call_history if c.success)
-
-    stats_by_model = {}
-    for model_name in self._model_configs:
-        model_calls = [c for c in self._call_history if c.model_name == model_name]
-        if model_calls:
-            stats_by_model[model_name] = {
-                "total_calls": len(model_calls),
-                "successful_calls": sum(1 for c in model_calls if c.success),
-                "avg_response_time": sum(c.response_time for c in model_calls) / len(model_calls),
-                "total_tokens": sum(c.total_tokens for c in model_calls),
-                "total_cost": sum(c.cost for c in model_calls)
-            }
-
-    return {
-        "total_calls": total_calls,
-        "success_rate": successful_calls / total_calls if total_calls > 0 else 0,
-        "cache_size": len(self._result_cache),
-        "models": stats_by_model,
-        "token_usage": dict(self._token_usage),
-        "cost_usage": dict(self._cost_usage)
-    }
-
-def get_token_usage_summary(self) -> Dict[str, Any]:
-    summary = {}
-    for model_name, usage in self._token_usage.items():
-        summary[model_name] = {
-            "input_tokens": usage["input"],
-            "output_tokens": usage["output"],
-            "total_tokens": usage["total"],
-            "estimated_cost": self._cost_usage.get(model_name, 0)
-        }
-    return summary
-
-def register_prompt_template(
-    self,
-    template_id: str,
-    name: str,
-    prompt_text: str,
-    description: str = ""
-) -> PromptTemplate:
-    return self._prompt_manager.register_template(template_id, name, prompt_text, description)
-
-def get_prompt_template(self, template_id: str) -> Optional[PromptTemplate]:
-    return self._prompt_manager.get_active_template(template_id)
-
-def rollback_prompt(self, template_id: str, version: int) -> bool:
-    return self._prompt_manager.rollback(template_id, version)
-
-def clear_cache(self):
-    self._result_cache.clear()
-    logger.info("AI result cache cleared")
-
-def clear_token_stats(self):
-    self._token_usage.clear()
-    self._cost_usage.clear()
-    logger.info("Token statistics cleared")
-
-def shutdown(self):
-    self._async_processor.stop()
-    logger.info("ModelManager shutdown")
-
 
 model_manager = ModelManager()

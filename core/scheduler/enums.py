@@ -21,3 +21,6 @@ class TaskType(Enum):
     FUND_FLOW_COLLECTION = "fund_flow"
     INCREMENTAL_COLLECTION = "incremental"
     BACKFILL_COLLECTION = "backfill"
+    INDEX_COLLECTION = "index"
+    DRAGON_TIGER_COLLECTION = "dragon_tiger"
+    SECTOR_COLLECTION = "sector"

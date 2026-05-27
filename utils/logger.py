@@ -102,6 +102,59 @@ def clean_old_logs(days: Optional[int] = None):
 
 
 def init_task_logger(task_id: str) -> LogManager:
+    """创建按 task_id 独立归集的日志记录器，日志写入 logs/tasks/<task_id>/ 专属目录"""
     task_log_dir = LogManager._log_dir / "tasks" / task_id
     task_log_dir.mkdir(parents=True, exist_ok=True)
-    return get_logger(f"task_{task_id}", log_level="INFO", log_type="normal")
+
+    logger_name = f"task_{task_id}"
+    key = f"{logger_name}_task"
+
+    if key in LogManager._instances:
+        return LogManager._instances[key]
+
+    manager = LogManager.__new__(LogManager)
+    manager.name = logger_name
+    manager.log_level = "INFO"
+    manager.log_type = "task"
+    manager.logger = None
+
+    manager.logger = logging.getLogger(logger_name)
+    manager.logger.setLevel(logging.INFO)
+    manager.logger.handlers.clear()
+
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+
+    # 任务专属文件 handler（写入 logs/tasks/<task_id>/task.log）
+    task_file = task_log_dir / "task.log"
+    task_handler = TimedRotatingFileHandler(
+        filename=str(task_file),
+        when="midnight",
+        interval=1,
+        backupCount=LogManager.RETENTION_DAYS["normal"],
+        encoding="utf-8"
+    )
+    task_handler.setFormatter(formatter)
+    manager.logger.addHandler(task_handler)
+
+    # 错误级别单独归档（写入 logs/tasks/<task_id>/error.log）
+    error_file = task_log_dir / "error.log"
+    error_handler = TimedRotatingFileHandler(
+        filename=str(error_file),
+        when="midnight",
+        interval=1,
+        backupCount=LogManager.RETENTION_DAYS["error"],
+        encoding="utf-8"
+    )
+    error_handler.setLevel(logging.ERROR)
+    error_handler.setFormatter(formatter)
+    manager.logger.addHandler(error_handler)
+
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    manager.logger.addHandler(console_handler)
+
+    LogManager._instances[key] = manager
+    return manager

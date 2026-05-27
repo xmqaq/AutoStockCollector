@@ -2,7 +2,7 @@
 辅助函数工具库
 """
 from datetime import datetime, timedelta
-from typing import List, Optional, Any, Dict
+from typing import List, Optional, Any, Dict, Set
 import pandas as pd
 import re
 
@@ -15,22 +15,97 @@ def parse_date(date_str: str) -> datetime:
     return datetime.strptime(date_str, "%Y-%m-%d")
 
 
+# ── A 股法定节假日（内置，用于 AKShare 不可用时的兜底） ──────────────────
+# 涵盖 2020-2026 年，后续可继续追加
+_ASHARE_HOLIDAYS: Set[str] = {
+    # 2020
+    "2020-01-01","2020-01-24","2020-01-27","2020-01-28","2020-01-29","2020-01-30","2020-01-31",
+    "2020-04-06","2020-05-01","2020-05-04","2020-05-05","2020-06-25","2020-06-26",
+    "2020-10-01","2020-10-02","2020-10-05","2020-10-06","2020-10-07","2020-10-08",
+    # 2021
+    "2021-01-01","2021-02-11","2021-02-12","2021-02-15","2021-02-16","2021-02-17",
+    "2021-04-05","2021-05-03","2021-05-04","2021-05-05","2021-06-14",
+    "2021-09-20","2021-09-21","2021-10-01","2021-10-04","2021-10-05","2021-10-06","2021-10-07",
+    # 2022
+    "2022-01-03","2022-01-31","2022-02-01","2022-02-02","2022-02-03","2022-02-04",
+    "2022-04-04","2022-04-05","2022-05-02","2022-05-03","2022-05-04",
+    "2022-06-03","2022-09-12","2022-10-03","2022-10-04","2022-10-05","2022-10-06","2022-10-07",
+    # 2023
+    "2023-01-02","2023-01-23","2023-01-24","2023-01-25","2023-01-26","2023-01-27",
+    "2023-04-05","2023-05-01","2023-05-02","2023-05-03",
+    "2023-06-22","2023-06-23","2023-09-29","2023-10-02","2023-10-03","2023-10-04","2023-10-05","2023-10-06",
+    # 2024
+    "2024-01-01","2024-02-09","2024-02-12","2024-02-13","2024-02-14","2024-02-15",
+    "2024-04-04","2024-04-05","2024-05-01","2024-05-02","2024-05-03",
+    "2024-06-10","2024-09-16","2024-09-17",
+    "2024-10-01","2024-10-02","2024-10-03","2024-10-04","2024-10-07",
+    # 2025
+    "2025-01-01","2025-01-28","2025-01-29","2025-01-30","2025-01-31","2025-02-03","2025-02-04",
+    "2025-04-04","2025-05-01","2025-05-02","2025-05-05",
+    "2025-06-02","2025-10-01","2025-10-02","2025-10-03","2025-10-06","2025-10-07","2025-10-08",
+    # 2026
+    "2026-01-01","2026-02-17","2026-02-18","2026-02-19","2026-02-20","2026-02-23","2026-02-24",
+    "2026-04-06","2026-05-01","2026-05-04","2026-05-05",
+    "2026-06-19","2026-09-25","2026-10-01","2026-10-02","2026-10-05","2026-10-06","2026-10-07","2026-10-08",
+}
+
+# 内存缓存：从 AKShare 获取到的完整交易日集合
+_trading_day_cache: Optional[Set[str]] = None
+
+
+def _load_trading_calendar() -> Set[str]:
+    """从 AKShare 获取完整交易日历，失败时返回空集（由调用方回退到兜底逻辑）"""
+    global _trading_day_cache
+    if _trading_day_cache is not None:
+        return _trading_day_cache
+    try:
+        import akshare as ak
+        df = ak.tool_trade_date_hist_sina()
+        if df is not None and not df.empty:
+            col = df.columns[0]
+            _trading_day_cache = {str(d)[:10] for d in df[col]}
+            return _trading_day_cache
+    except Exception:
+        pass
+    _trading_day_cache = set()
+    return _trading_day_cache
+
+
+def is_trading_day(date: datetime) -> bool:
+    if date.weekday() >= 5:
+        return False
+    date_str = format_date(date)
+    calendar = _load_trading_calendar()
+    if calendar:
+        return date_str in calendar
+    # 兜底：排除内置节假日
+    return date_str not in _ASHARE_HOLIDAYS
+
+
 def get_trading_days(start_date: str, end_date: str) -> List[str]:
     start = parse_date(start_date)
     end = parse_date(end_date)
 
+    # 优先使用 AKShare 日历做区间过滤
+    calendar = _load_trading_calendar()
+    if calendar:
+        days = []
+        current = start
+        while current <= end:
+            d = format_date(current)
+            if d in calendar:
+                days.append(d)
+            current += timedelta(days=1)
+        return days
+
+    # 兜底：周一到周五，排除内置节假日
     days = []
     current = start
     while current <= end:
-        if current.weekday() < 5:
+        if is_trading_day(current):
             days.append(format_date(current))
         current += timedelta(days=1)
-
     return days
-
-
-def is_trading_day(date: datetime) -> bool:
-    return date.weekday() < 5
 
 
 def get_latest_trading_day(before_date: Optional[datetime] = None) -> datetime:
@@ -38,12 +113,10 @@ def get_latest_trading_day(before_date: Optional[datetime] = None) -> datetime:
         before_date = datetime.now()
 
     current = before_date
-    days_checked = 0
-    while days_checked < 10:
+    for _ in range(10):
         if is_trading_day(current):
             return current
         current -= timedelta(days=1)
-        days_checked += 1
 
     return before_date
 
