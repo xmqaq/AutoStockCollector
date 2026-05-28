@@ -25,7 +25,7 @@
       <el-table v-else :data="filteredList" stripe v-loading="loading">
         <el-table-column prop="code" label="代码" width="120">
           <template #default="{ row }">
-            <el-link type="primary" @click="goToStock(row.code)">{{ row.code }}</el-link>
+            <span class="code-link" @click="goToStock(row.code)">{{ row.code }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="name" label="名称" width="120" />
@@ -211,5 +211,13 @@ onMounted(() => {
 
 .group-tabs :deep(.el-tabs__nav-wrap::after) {
   background: #2c2c2c;
+}
+
+.code-link {
+  color: #409eff;
+  cursor: pointer;
+}
+.code-link:hover {
+  color: #79bbff;
 }
 </style>

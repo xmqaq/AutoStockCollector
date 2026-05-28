@@ -126,7 +126,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import StockSearch from '@/components/StockSearch/index.vue'
 import KlineChart from '@/components/KlineChart/index.vue'
@@ -238,10 +238,19 @@ async function loadNews() {
   }
 }
 
-// Auto-load if code in query
-if (currentCode.value) {
-  loadStock(currentCode.value)
-}
+// Reload when navigating to a different stock code without unmounting the component
+watch(() => route.query.code, (code) => {
+  if (code && code !== currentCode.value) {
+    currentCode.value = code as string
+    loadStock(code as string)
+  }
+})
+
+onMounted(() => {
+  if (currentCode.value) {
+    loadStock(currentCode.value)
+  }
+})
 </script>
 
 <style scoped>

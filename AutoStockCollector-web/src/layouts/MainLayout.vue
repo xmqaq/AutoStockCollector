@@ -11,12 +11,12 @@
         background-color="#141414"
         text-color="#c0c4cc"
         active-text-color="#409eff"
-        router
       >
         <el-menu-item
           v-for="item in menuItems"
           :key="item.path"
           :index="item.path"
+          @click="router.push(item.path)"
         >
           <el-icon><component :is="item.icon" /></el-icon>
           <template #title>{{ item.label }}</template>
@@ -52,7 +52,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useCollectStore } from '@/stores/collectStore'
 import {
   DataAnalysis,
@@ -68,6 +68,7 @@ import {
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
+const router = useRouter()
 const collectStore = useCollectStore()
 
 const menuItems = [
@@ -84,6 +85,12 @@ const menuItems = [
 ]
 
 const activeMenu = computed(() => route.path)
+
+function handleMenuSelect(path: string) {
+  if (route.path !== path) {
+    router.push(path)
+  }
+}
 
 const currentTitle = computed(() => {
   const item = menuItems.find(m => route.path.startsWith(m.path))

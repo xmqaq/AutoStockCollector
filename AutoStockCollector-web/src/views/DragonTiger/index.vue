@@ -30,14 +30,14 @@
     <!-- Table -->
     <el-card shadow="never" class="section-card" v-loading="loading">
       <template #header>
-        <span>龙虎榜数据（共 {{ tableData.length }} 条）</span>
+        <span>龙虎榜数据（共 {{ total }} 条）</span>
       </template>
       <el-empty v-if="tableData.length === 0 && !loading" description="暂无龙虎榜数据" />
-      <el-table v-else :data="paginatedDragonTiger" stripe>
+      <el-table v-else :data="tableData" stripe>
         <el-table-column prop="date" label="日期" width="120" sortable />
         <el-table-column prop="code" label="代码" width="110">
           <template #default="{ row }">
-            <el-link type="primary" @click="goToStock(row.code)">{{ row.code }}</el-link>
+            <span class="code-link" @click="goToStock(row.code)">{{ row.code }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="name" label="名称" width="100" />
@@ -70,21 +70,23 @@
         </el-table-column>
       </el-table>
       <el-pagination
-        v-if="tableData.length > pageSize"
+        v-if="total > 0"
         v-model:current-page="currentPage"
         v-model:page-size="pageSize"
         :page-sizes="[20, 50, 100, 200]"
-        :total="tableData.length"
+        :total="total"
         layout="total, sizes, prev, pager, next"
         background
         class="table-pagination"
+        @current-change="onPageChange"
+        @size-change="onPageSizeChange"
       />
     </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { dragonTigerApi } from '@/api/dragonTiger'
 import { fmtAmount, fmtChange, fmtNumber, RISE_COLOR, FALL_COLOR } from '@/utils/format'
@@ -96,23 +98,22 @@ import dayjs from 'dayjs'
 const router = useRouter()
 const loading = ref(false)
 const tableData = ref<DragonTigerRecord[]>([])
+const total = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(50)
-const paginatedDragonTiger = computed(() =>
-  tableData.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value)
-)
-watch(tableData, () => { currentPage.value = 1 })
 const dateRange = ref<[string, string]>([
   dayjs().subtract(6, 'month').format('YYYY-MM-DD'),
   dayjs().format('YYYY-MM-DD'),
 ])
 const codeFilter = ref('')
 
-async function loadData() {
+async function loadData(resetPage = true) {
+  if (resetPage) currentPage.value = 1
   loading.value = true
   try {
-    const params: { start_date?: string; end_date?: string; code?: string; limit?: number } = {
-      limit: 500,
+    const params: Record<string, string | number> = {
+      page: currentPage.value,
+      page_size: pageSize.value,
     }
     if (dateRange.value) {
       params.start_date = dateRange.value[0]
@@ -122,12 +123,24 @@ async function loadData() {
       params.code = normalizeCode(codeFilter.value)
     }
     const res = await dragonTigerApi.getDragonTiger(params)
-    tableData.value = res.data?.data || res.data || []
+    tableData.value = res.data?.data || []
+    total.value = res.data?.total ?? tableData.value.length
   } catch {
     tableData.value = []
+    total.value = 0
   } finally {
     loading.value = false
   }
+}
+
+function onPageChange(page: number) {
+  currentPage.value = page
+  loadData(false)
+}
+
+function onPageSizeChange(size: number) {
+  pageSize.value = size
+  loadData(true)
 }
 
 function goToStock(code: string) {
@@ -164,6 +177,14 @@ onMounted(() => {
   gap: 12px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.code-link {
+  color: #409eff;
+  cursor: pointer;
+}
+.code-link:hover {
+  color: #79bbff;
 }
 
 .table-pagination {

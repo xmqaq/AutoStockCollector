@@ -1058,21 +1058,23 @@ def get_dragon_tiger_list():
     start_date = request.args.get("start_date")
     end_date = request.args.get("end_date")
     code = request.args.get("code")
-    limit = int(request.args.get("limit", 200))
+    page = max(1, int(request.args.get("page", 1)))
+    page_size = min(200, max(1, int(request.args.get("page_size", 50))))
 
     filter_doc = {}
     if code:
         filter_doc["code"] = code
     if start_date and end_date:
         try:
-            # 上榜日 存储为 datetime，需转换后比较
             sd = _dt.strptime(start_date[:10], "%Y-%m-%d")
             ed = _dt.strptime(end_date[:10], "%Y-%m-%d").replace(hour=23, minute=59, second=59)
             filter_doc["上榜日"] = {"$gte": sd, "$lte": ed}
         except Exception:
             pass
 
-    records = storage.find_many(filter_doc, sort=[("上榜日", -1)], limit=limit)
+    total = storage.collection.count_documents(filter_doc)
+    skip = (page - 1) * page_size
+    records = storage.find_many(filter_doc, sort=[("上榜日", -1)], skip=skip, limit=page_size)
 
     result = []
     for r in records:
@@ -1094,7 +1096,9 @@ def get_dragon_tiger_list():
 
     return jsonify({
         "success": True,
-        "count": len(result),
+        "total": total,
+        "page": page,
+        "page_size": page_size,
         "data": result
     })
 

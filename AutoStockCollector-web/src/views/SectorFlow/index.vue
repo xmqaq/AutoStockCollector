@@ -31,7 +31,7 @@
         <el-table v-else :data="sectorStocks" stripe size="small">
           <el-table-column prop="code" label="代码" width="110">
             <template #default="{ row }">
-              <el-link type="primary" @click="goToStock(row.code || row)">{{ row.code || row }}</el-link>
+              <span class="code-link" @click="goToStock(row.code || row)">{{ row.code || row }}</span>
             </template>
           </el-table-column>
           <el-table-column prop="name" label="名称" />
@@ -242,5 +242,13 @@ onMounted(() => {
 .table-pagination :deep(.el-pagination__total),
 .table-pagination :deep(.el-pagination__sizes .el-select .el-input__wrapper) {
   color: #909399;
+}
+
+.code-link {
+  color: #409eff;
+  cursor: pointer;
+}
+.code-link:hover {
+  color: #79bbff;
 }
 </style>
