@@ -301,14 +301,24 @@ class MongoStorage:
         except TypeError:
             pass
 
+        # 将字符串日期转为 datetime，兼容 MongoDB 中存储为 datetime 的字段
+        from datetime import datetime as _dt
+        def _to_dt(s):
+            if isinstance(s, _dt):
+                return s
+            try:
+                return _dt.strptime(s[:10], "%Y-%m-%d")
+            except Exception:
+                return s
+
         filter_doc = {
             "code": code,
             date_field: {
-                "$gte": start_date,
-                "$lte": end_date
+                "$gte": _to_dt(start_date),
+                "$lte": _to_dt(end_date)
             }
         }
-        return self.find_many(filter_doc, sort=[(date_field, -1)])
+        return self.find_many(filter_doc, sort=[(date_field, 1)])
 
     def get_latest_record(
         self,

@@ -146,6 +146,9 @@ def get_kline(code):
     for record in records:
         record.pop("_id", None)
         record.pop("_updated_at", None)
+        # 将 datetime 对象统一转为 YYYY-MM-DD 字符串
+        if "date" in record and hasattr(record["date"], "strftime"):
+            record["date"] = record["date"].strftime("%Y-%m-%d")
 
     return jsonify({
         "success": True,
@@ -1026,11 +1029,19 @@ def get_margin_data():
         record.pop("_id", None)
         record.pop("_updated_at", None)
     
+    seen = set()
     result = []
     for r in records:
+        raw_date = r.get("信用交易日期", "")
+        # 日期格式统一为 YYYY-MM-DD
+        if isinstance(raw_date, str) and len(raw_date) == 8 and raw_date.isdigit():
+            raw_date = f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:]}"
+        dedup_key = str(raw_date)
+        if dedup_key in seen:
+            continue
+        seen.add(dedup_key)
         result.append({
-            "code": r.get("code", ""),
-            "date": r.get("信用交易日期", ""),
+            "date": raw_date,
             "rz_balance": r.get("rz_balance", r.get("融资余额", 0)),
             "rz_buy": r.get("rz_buy", r.get("融资买入额", 0)),
             "rq_volume": r.get("rq_volume", r.get("融券余量", 0)),
@@ -1047,24 +1058,27 @@ def get_margin_data():
 @api_bp.route("/sector", methods=["GET"])
 def get_sector_list():
     from core.storage.mongo_storage import BlockStorage
-    
+
     storage = BlockStorage()
-    
-    records = storage.find_many({"block_type": "industry"})
-    
-    for record in records:
-        record.pop("_id", None)
-        record.pop("_updated_at", None)
-    
+    # block 集合存储中文字段名，无 block_type 字段，直接取全部
+    records = storage.find_many({})
+
     result = []
     for r in records:
+        r.pop("_id", None)
+        r.pop("_updated_at", None)
+        # 兼容中文字段名（采集时直接存 DataFrame 列名）
+        name = r.get("name") or r.get("行业") or r.get("block_name", "")
+        net_flow = r.get("net_flow") or r.get("净额") or 0
+        change_rate = r.get("change_rate") or r.get("行业-涨跌幅") or 0
+        if not name:
+            continue
         result.append({
-            "name": r.get("name", r.get("block_name", "")),
-            "type": r.get("type", r.get("block_type", "")),
-            "net_flow": r.get("net_flow", 0),
-            "change_rate": r.get("change_rate", 0),
+            "name": name,
+            "net_flow": float(net_flow) if net_flow else 0,
+            "change_rate": float(change_rate) if change_rate else 0,
         })
-    
+
     return jsonify({
         "success": True,
         "count": len(result),
