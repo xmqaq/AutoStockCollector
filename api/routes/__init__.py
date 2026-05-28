@@ -745,6 +745,193 @@ def collect_dividend():
     })
 
 
+@api_bp.route("/db/clear", methods=["POST"])
+def clear_collections():
+    """清空指定的数据集合，默认清空所有8类数据"""
+    from config.database import DatabaseConfig
+
+    data = request.get_json() or {}
+    collections = data.get("collections", [
+        "kline", "stock_info", "financial", "news",
+        "fund_flow", "dragon_tiger", "block", "margin_data"
+    ])
+
+    db = DatabaseConfig.get_database()
+    results = {}
+    for coll in collections:
+        try:
+            result = db[coll].delete_many({})
+            results[coll] = result.deleted_count
+        except Exception as e:
+            results[coll] = f"error: {e}"
+
+    return jsonify({
+        "success": True,
+        "deleted": results,
+        "timestamp": datetime.now().isoformat()
+    })
+
+
+def _build_history_tasks(start_date: str, end_date: str, task_types=None) -> list:
+    """根据日期范围构建8类数据任务配置"""
+    all_tasks = [
+        {
+            "task_type": "kline",
+            "params": {"start_date": start_date, "end_date": end_date, "adjust": "qfq"}
+        },
+        {
+            "task_type": "stock_info",
+            "params": {"mode": "full"}
+        },
+        {
+            "task_type": "financial",
+            "params": {"report_type": "annual", "start_date": start_date, "end_date": end_date}
+        },
+        {
+            "task_type": "news",
+            "params": {"limit": 500, "start_date": start_date, "end_date": end_date}
+        },
+        {
+            "task_type": "fund_flow",
+            "params": {"start_date": start_date, "end_date": end_date}
+        },
+        {
+            "task_type": "dragon_tiger",
+            "params": {"start_date": start_date, "end_date": end_date}
+        },
+        {
+            "task_type": "sector",
+            "params": {}
+        },
+        {
+            "task_type": "margin",
+            "params": {"start_date": start_date, "end_date": end_date}
+        },
+    ]
+    if task_types:
+        return [t for t in all_tasks if t["task_type"] in task_types]
+    return all_tasks
+
+
+@api_bp.route("/collect/history", methods=["POST"])
+def start_history_collection():
+    """启动历史数据全量采集，通过 start_date/end_date 指定时间范围
+
+    Body 参数:
+      start_date  (必填) 开始日期，格式 YYYY-MM-DD，如 2025-01-01
+      end_date    (必填) 结束日期，格式 YYYY-MM-DD，如 2025-12-31
+      task_types  (可选) 指定只跑哪几类，如 ["kline","financial"]，默认全部8类
+    """
+    from core.scheduler.scheduler import scheduler
+
+    data = request.get_json() or {}
+    start_date = data.get("start_date")
+    end_date = data.get("end_date")
+    task_types = data.get("task_types")
+
+    if not start_date or not end_date:
+        return jsonify({"error": "start_date 和 end_date 均为必填项，格式 YYYY-MM-DD"}), 400
+
+    tasks = _build_history_tasks(start_date, end_date, task_types)
+
+    started = {}
+    failed = {}
+    for task_cfg in tasks:
+        ttype = task_cfg["task_type"]
+        try:
+            task_id = scheduler.create_task(ttype, task_cfg["params"])
+            scheduler.start_task(task_id)
+            started[ttype] = task_id
+        except Exception as e:
+            failed[ttype] = str(e)
+
+    return jsonify({
+        "success": True,
+        "start_date": start_date,
+        "end_date": end_date,
+        "started": started,
+        "failed": failed,
+        "total_started": len(started),
+        "timestamp": datetime.now().isoformat()
+    })
+
+
+@api_bp.route("/collect/progress_all", methods=["GET"])
+def progress_all():
+    """聚合查询所有8类数据任务的最新进度"""
+    from core.scheduler.scheduler import scheduler
+
+    all_tasks = scheduler.list_tasks(limit=200)
+
+    # 8类数据类型
+    target_types = ["kline", "stock_info", "financial", "news",
+                    "fund_flow", "dragon_tiger", "sector", "margin"]
+
+    # 每种类型取最新的任务（优先运行中的，其次按时间倒序）
+    latest_by_type = {}
+    for task in all_tasks:
+        ttype = task.get("task_type")
+        if ttype not in target_types:
+            continue
+        existing = latest_by_type.get(ttype)
+        if not existing:
+            latest_by_type[ttype] = task
+            continue
+        # 优先 running > pending > 其他
+        status_priority = {"running": 3, "pending": 2, "completed": 1, "failed": 0, "cancelled": 0}
+        cur_p = status_priority.get(task.get("status", ""), 0)
+        old_p = status_priority.get(existing.get("status", ""), 0)
+        if cur_p > old_p:
+            latest_by_type[ttype] = task
+
+    summary = {}
+    total_progress = 0
+    total_items = 0
+    completed_count = 0
+
+    for ttype in target_types:
+        task = latest_by_type.get(ttype)
+        if not task:
+            summary[ttype] = {"status": "not_started", "progress": 0, "total": 0, "percent": 0.0, "task_id": None}
+            continue
+
+        progress = task.get("progress", 0)
+        total = task.get("total", 0)
+        status = task.get("status", "unknown")
+        percent = round(progress / total * 100, 1) if total > 0 else (100.0 if status == "completed" else 0.0)
+        success = task.get("success", 0)
+        failed_cnt = task.get("failed", 0)
+
+        summary[ttype] = {
+            "status": status,
+            "progress": progress,
+            "total": total,
+            "percent": percent,
+            "success": success,
+            "failed": failed_cnt,
+            "task_id": task.get("task_id"),
+            "elapsed_time": round(task.get("elapsed_time", 0), 1),
+        }
+
+        if status == "completed":
+            completed_count += 1
+        if total > 0:
+            total_progress += progress
+            total_items += total
+
+    overall_percent = round(total_progress / total_items * 100, 1) if total_items > 0 else 0.0
+
+    return jsonify({
+        "success": True,
+        "overall_percent": overall_percent,
+        "completed_types": completed_count,
+        "total_types": len(target_types),
+        "all_done": completed_count == len(target_types),
+        "tasks": summary,
+        "timestamp": datetime.now().isoformat()
+    })
+
+
 def success_response(data: Any, message: str = "Success") -> Dict[str, Any]:
     return {
         "success": True,

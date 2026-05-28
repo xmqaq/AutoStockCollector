@@ -61,41 +61,53 @@ class FinancialCollector(BaseCollector):
         code: str,
         report_type: str = "annual",
         start_year: Optional[int] = None,
-        end_year: Optional[int] = None
+        end_year: Optional[int] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
     ) -> Optional[List[Dict[str, Any]]]:
-        symbol = code[2:]
-        prefix = "sh" if code.startswith("SH") else "sz"
-        stock_param = f"{prefix}{symbol}"
+        symbol = code[2:]  # 去掉 SH/SZ 前缀，THS 只要纯数字代码
 
-        # 三张表各自独立采集，全部成功才有完整财报；以 report_type 区分
-        tables = ["资产负债表", "利润表", "现金流量表"]
-        all_records: List[Dict[str, Any]] = []
+        # 从 start_date/end_date 推导年份范围
+        if start_date and start_year is None:
+            start_year = int(start_date[:4])
+        if end_date and end_year is None:
+            end_year = int(end_date[:4])
+        if end_year is None:
+            end_year = datetime.now().year
+        if start_year is None:
+            start_year = end_year - 5
 
-        for table_name in tables:
-            try:
-                df = ak.stock_financial_report_sina(stock=stock_param, symbol=table_name)
-                if df is None or df.empty:
-                    continue
-                df = df.copy()
-                df["code"] = code
-                df["report_type"] = table_name
-                if "报告日" in df.columns:
-                    df["report_date"] = pd.to_datetime(df["报告日"]).dt.strftime("%Y-%m-%d")
-                elif "报告日期" in df.columns:
-                    df["report_date"] = pd.to_datetime(df["报告日期"]).dt.strftime("%Y-%m-%d")
-                df["_updated_at"] = datetime.now()
-                records = self.normalize_dataframe(df, code)
-                all_records.extend(records)
-                logger.debug(f"{code} {table_name}: {len(records)} rows")
-            except Exception as e:
-                logger.warning(f"stock_financial_report_sina {table_name} failed for {code}: {e}")
+        try:
+            df = ak.stock_financial_abstract_ths(symbol=symbol, indicator="按报告期")
+            if df is None or df.empty:
+                logger.warning(f"stock_financial_abstract_ths returned empty for {code}")
+                return None
 
-        if all_records:
-            logger.info(f"Financial collected for {code}: {len(all_records)} records across {len(tables)} tables")
-            return all_records
+            df = df.copy()
+            # 报告期列名兼容
+            date_col = "报告期" if "报告期" in df.columns else df.columns[0]
+            df["report_date"] = pd.to_datetime(df[date_col], errors="coerce").dt.strftime("%Y-%m-%d")
+            df = df.dropna(subset=["report_date"])
 
-        logger.error(f"All financial sources failed for {code}")
-        return None
+            # 按年份过滤
+            df = df[
+                (df["report_date"] >= f"{start_year}-01-01") &
+                (df["report_date"] <= f"{end_year}-12-31")
+            ]
+            if df.empty:
+                return None
+
+            df["code"] = code
+            df["report_type"] = report_type
+            df["_updated_at"] = datetime.now()
+
+            records = self.normalize_dataframe(df, code)
+            logger.debug(f"{code}: {len(records)} financial records ({start_year}~{end_year})")
+            return records if records else None
+
+        except Exception as e:
+            logger.error(f"stock_financial_abstract_ths failed for {code}: {e}")
+            return None
 
     def collect_balance_sheet(self, code: str, symbol: str = "") -> Optional[pd.DataFrame]:
         if not symbol:

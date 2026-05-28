@@ -208,6 +208,9 @@ class TaskScheduler:
         )
         from core.collector.index_collector import IndexCollector
 
+        from core.collector.fund_flow_collector import MarginCollector
+        from core.collector.block_collector import BlockCollector
+
         mapping = {
             TaskType.KLINE_COLLECTION.value: KlineCollector,
             TaskType.INCREMENTAL_COLLECTION.value: KlineCollector,
@@ -218,6 +221,8 @@ class TaskScheduler:
             TaskType.FUND_FLOW_COLLECTION.value: FundFlowCollector,
             TaskType.DRAGON_TIGER_COLLECTION.value: DragonTigerCollector,
             TaskType.INDEX_COLLECTION.value: IndexCollector,
+            TaskType.MARGIN_COLLECTION.value: MarginCollector,
+            TaskType.BLOCK_COLLECTION.value: BlockCollector,
         }
 
         cls = mapping.get(task_type)
@@ -378,6 +383,8 @@ class TaskScheduler:
                 TaskType.INDEX_COLLECTION.value: self._execute_index_task,
                 TaskType.DRAGON_TIGER_COLLECTION.value: self._execute_dragon_tiger_task,
                 TaskType.SECTOR_COLLECTION.value: self._execute_sector_task,
+                TaskType.MARGIN_COLLECTION.value: self._execute_margin_task,
+                TaskType.BLOCK_COLLECTION.value: self._execute_block_task,
             }
             handler = dispatch.get(task.task_type)
             if handler is None:
@@ -594,6 +601,8 @@ class TaskScheduler:
         codes = task.params.get("codes", [])
         report_type = task.params.get("report_type", "annual")
         mode = task.params.get("mode", "incremental")  # incremental | full
+        start_date = task.params.get("start_date")
+        end_date = task.params.get("end_date")
         collector = self._get_collector(TaskType.FINANCIAL_COLLECTION.value)
         if not codes:
             codes = collector.get_all_stock_codes()
@@ -609,7 +618,10 @@ class TaskScheduler:
 
         def collect_fn(code):
             return collector.execute_with_retry(
-                collector.collect_single, code, report_type=report_type
+                collector.collect_single, code,
+                report_type=report_type,
+                start_date=start_date,
+                end_date=end_date,
             )
 
         self._parallel_collect(
@@ -644,10 +656,9 @@ class TaskScheduler:
 
     def _execute_fund_flow_task(self, task: Task):
         """
-        资金流向采集策略：
-        1. 全市场快照（stock_fund_flow_individual "即时"）— 一次调用覆盖所有股票
-        2. 行业资金流（stock_fund_flow_industry）— 板块级别数据
-        两个都是非东财接口，单次批量获取，不做逐股循环。
+        资金流向采集策略（非东财，规避代理拦截）：
+        1. 大单成交明细（stock_fund_flow_big_deal）— 当日全市场大单，约5000条
+        2. 行业资金流（stock_fund_flow_industry "即时"）— 90个行业板块快照
         """
         import akshare as ak
         from core.storage.mongo_storage import FundFlowStorage
@@ -657,18 +668,19 @@ class TaskScheduler:
         task.update_progress(0, 2, 0, 0)
         success, failed = 0, 0
 
-        # 1. 全市场个股即时资金流快照
+        # 1. 大单成交明细
         try:
-            df = ak.stock_fund_flow_individual(symbol="即时")
+            df = ak.stock_fund_flow_big_deal()
             if df is not None and not df.empty:
                 df["_updated_at"] = datetime.now()
+                df["_date"] = datetime.now().strftime("%Y-%m-%d")
                 records = df.to_dict("records")
                 storage.save_fund_flow_batch(records)
                 success += len(records)
-                logger.info(f"Fund flow individual: saved {len(records)} records")
+                logger.info(f"Fund flow big deal: saved {len(records)} records")
         except Exception as e:
             failed += 1
-            logger.warning(f"stock_fund_flow_individual failed: {e}")
+            logger.warning(f"stock_fund_flow_big_deal failed: {e}")
 
         task.update_progress(1, 2, success, failed)
 
@@ -707,11 +719,13 @@ class TaskScheduler:
     # ------------------------------------------------------------------ #
 
     def _execute_dragon_tiger_task(self, task: Task):
+        start_date = task.params.get("start_date")
+        end_date = task.params.get("end_date")
         date = task.params.get("date")
         collector = self._get_collector(TaskType.DRAGON_TIGER_COLLECTION.value)
         task.update_progress(0, 1, 0, 0)
         try:
-            records = collector.collect(date=date)
+            records = collector.collect(date=date, start_date=start_date, end_date=end_date)
             task.complete(len(records), 0)
         except Exception as e:
             task.fail(str(e))
@@ -726,6 +740,46 @@ class TaskScheduler:
         try:
             df = collector.collect_sector_flow()
             records = df.to_dict("records") if df is not None and not df.empty else []
+            task.complete(len(records), 0)
+        except Exception as e:
+            task.fail(str(e))
+
+    # ------------------------------------------------------------------ #
+    # 两融数据                                                              #
+    # ------------------------------------------------------------------ #
+
+    def _execute_margin_task(self, task: Task):
+        start_date = task.params.get("start_date", "20260101")
+        end_date = task.params.get("end_date", datetime.now().strftime("%Y%m%d"))
+        # 转换日期格式：2026-01-01 -> 20260101
+        start_date = start_date.replace("-", "")
+        end_date = end_date.replace("-", "")
+
+        collector = self._get_collector(TaskType.MARGIN_COLLECTION.value)
+        from core.storage.mongo_storage import MarginStorage
+        storage = MarginStorage()
+
+        task.update_progress(0, 1, 0, 0)
+        try:
+            records = collector.collect_detailed_margin(
+                start_date=start_date,
+                end_date=end_date
+            )
+            if records:
+                storage.save_margin_batch(records)
+            task.complete(len(records), 0)
+        except Exception as e:
+            task.fail(str(e))
+
+    # ------------------------------------------------------------------ #
+    # 板块数据                                                              #
+    # ------------------------------------------------------------------ #
+
+    def _execute_block_task(self, task: Task):
+        collector = self._get_collector(TaskType.BLOCK_COLLECTION.value)
+        task.update_progress(0, 1, 0, 0)
+        try:
+            records = collector.collect()
             task.complete(len(records), 0)
         except Exception as e:
             task.fail(str(e))

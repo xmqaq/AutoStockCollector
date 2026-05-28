@@ -24,3 +24,5 @@ class TaskType(Enum):
     INDEX_COLLECTION = "index"
     DRAGON_TIGER_COLLECTION = "dragon_tiger"
     SECTOR_COLLECTION = "sector"
+    MARGIN_COLLECTION = "margin"
+    BLOCK_COLLECTION = "block"

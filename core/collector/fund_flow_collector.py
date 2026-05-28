@@ -154,15 +154,22 @@ class DragonTigerCollector(BaseCollector):
     def collect(
         self,
         date: Optional[str] = None,
-        end_date: Optional[str] = None
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
+        # 标准化日期格式为 YYYYMMDD
+        def _fmt(d: str) -> str:
+            return d.replace("-", "") if d else d
+
+        s = _fmt(start_date) or _fmt(date) or "20260101"
+        e = _fmt(end_date) or _fmt(date) or datetime.now().strftime("%Y%m%d")
+
         try:
-            df = ak.stock_lhb_stock_statistic_em(symbol="近一月")
-            
+            df = ak.stock_lhb_detail_em(start_date=s, end_date=e)
+
             if df is None or df.empty:
                 return []
 
-            df["date"] = date or end_date or datetime.now().strftime("%Y%m%d")
             df["_updated_at"] = datetime.now()
 
             records = self.normalize_dataframe(df)
