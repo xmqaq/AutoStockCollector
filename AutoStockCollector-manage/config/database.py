@@ -71,38 +71,62 @@ class DatabaseConfig:
             logger.info("MongoDB connection closed")
 
     @classmethod
+    def _dedup_collection(cls, collection, key_field: str):
+        """按 key_field 去重，保留 _id 最大（最新插入）的文档"""
+        pipeline = [
+            {"$sort": {"_id": -1}},
+            {"$group": {"_id": f"${key_field}", "keep": {"$first": "$_id"}}},
+        ]
+        keep_ids = [r["keep"] for r in collection.aggregate(pipeline)]
+        if not keep_ids:
+            return
+        result = collection.delete_many({"_id": {"$nin": keep_ids}})
+        if result.deleted_count:
+            logger.info(f"Deduplicated {collection.name}.{key_field}: removed {result.deleted_count} duplicates")
+
+    @classmethod
+    def _safe_index(cls, collection, keys, **kwargs):
+        """创建索引，失败时只打 WARNING 不中断启动"""
+        try:
+            collection.create_index(keys, **kwargs)
+        except Exception as e:
+            logger.warning(f"Index skipped [{collection.name}]: {e}")
+
+    @classmethod
     def ensure_indexes(cls):
         db = cls.get_database()
 
-        db.kline.create_index([("code", 1), ("date", -1)], unique=True)
-        db.kline.create_index([("date", -1)])
+        cls._safe_index(db.kline, [("code", 1), ("date", -1)], unique=True)
+        cls._safe_index(db.kline, [("date", -1)])
 
-        db.stock_info.create_index([("code", 1)], unique=True)
-        db.stock_info.create_index([("update_time", -1)])
+        cls._safe_index(db.stock_info, [("code", 1)], unique=True)
+        cls._safe_index(db.stock_info, [("update_time", -1)])
 
         try:
             db.financial.drop_index("code_1_report_date_-1")
         except Exception:
             pass
-        db.financial.create_index([("code", 1), ("report_date", -1), ("report_type", 1)], unique=True)
-        db.financial.create_index([("report_date", -1)])
+        cls._safe_index(db.financial, [("code", 1), ("report_date", -1), ("report_type", 1)], unique=True)
+        cls._safe_index(db.financial, [("report_date", -1)])
 
-        db.news.create_index([("code", 1), ("publish_date", -1)])
-        db.news.create_index([("publish_date", -1)])
+        cls._safe_index(db.news, [("code", 1), ("publish_date", -1)])
+        cls._safe_index(db.news, [("publish_date", -1)])
 
-        db.fund_flow.create_index([("code", 1), ("date", -1)], unique=True)
-        db.fund_flow.create_index([("date", -1)])
+        cls._safe_index(db.fund_flow, [("code", 1), ("date", -1)], unique=True)
+        cls._safe_index(db.fund_flow, [("date", -1)])
 
-        db.task.create_index([("task_id", 1)], unique=True)
-        db.task.create_index([("status", 1), ("create_time", -1)])
+        # task 集合先去重再建唯一索引，避免历史脏数据导致 duplicate key error
+        cls._dedup_collection(db.task, "task_id")
+        cls._safe_index(db.task, [("task_id", 1)], unique=True)
+        cls._safe_index(db.task, [("status", 1), ("create_time", -1)])
 
-        db.watchlist.create_index([("user_id", 1), ("group_id", 1)])
-        db.watchlist.create_index([("code", 1)])
+        cls._safe_index(db.watchlist, [("user_id", 1), ("group_id", 1)])
+        cls._safe_index(db.watchlist, [("code", 1)])
 
-        db.ai_result.create_index([("code", 1), ("strategy", 1), ("date", -1)], unique=True)
-        db.ai_result.create_index([("created_at", -1)])
+        cls._safe_index(db.ai_result, [("code", 1), ("strategy", 1), ("date", -1)], unique=True)
+        cls._safe_index(db.ai_result, [("created_at", -1)])
 
-        logger.info("Database indexes created successfully")
+        logger.info("Database indexes ensured successfully")
 
 
 def get_database() -> Database:
