@@ -49,7 +49,7 @@
         </div>
       </template>
       <el-empty v-if="collectStore.tasks.length === 0" description="暂无任务记录" />
-      <el-table v-else :data="collectStore.tasks" stripe>
+      <el-table v-else :data="pagedTasks" stripe>
         <el-table-column prop="task_id" label="任务ID" width="200" show-overflow-tooltip />
         <el-table-column prop="task_type" label="类型" width="120">
           <template #default="{ row }">
@@ -86,6 +86,16 @@
           </template>
         </el-table-column>
       </el-table>
+      <el-pagination
+        v-if="collectStore.tasks.length > taskPageSize"
+        v-model:current-page="currentTaskPage"
+        v-model:page-size="taskPageSize"
+        :page-sizes="[20, 50, 100, 200]"
+        :total="collectStore.tasks.length"
+        layout="total, sizes, prev, pager, next"
+        background
+        class="table-pagination"
+      />
     </el-card>
 
     <!-- Collect modal -->
@@ -98,7 +108,7 @@
             range-separator="至"
             start-placeholder="开始日期"
             end-placeholder="结束日期"
-            format="YYYY-MM-DD"
+            format="YYYY年MM月DD日"
             value-format="YYYY-MM-DD"
             style="width:100%"
           />
@@ -125,7 +135,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { useCollectStore } from '@/stores/collectStore'
 import { collectApi } from '@/api/collect'
@@ -142,6 +152,12 @@ use([GaugeChart, TooltipComponent, CanvasRenderer])
 
 const collectStore = useCollectStore()
 const loading = ref(false)
+const currentTaskPage = ref(1)
+const taskPageSize = ref(50)
+const pagedTasks = computed(() =>
+  collectStore.tasks.slice((currentTaskPage.value - 1) * taskPageSize.value, currentTaskPage.value * taskPageSize.value)
+)
+watch(() => collectStore.tasks, () => { currentTaskPage.value = 1 })
 const showCollectModal = ref(false)
 const collectLoading = ref(false)
 const taskStatusFilter = ref('')
@@ -355,5 +371,15 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.table-pagination {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+.table-pagination :deep(.el-pagination__total),
+.table-pagination :deep(.el-pagination__sizes .el-select .el-input__wrapper) {
+  color: #909399;
 }
 </style>

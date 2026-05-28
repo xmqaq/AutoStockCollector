@@ -25,7 +25,7 @@
       <div v-else class="news-list">
         <el-collapse>
           <el-collapse-item
-            v-for="(news, idx) in newsList"
+            v-for="(news, idx) in paginatedNews"
             :key="idx"
             :name="idx"
           >
@@ -50,13 +50,23 @@
             </div>
           </el-collapse-item>
         </el-collapse>
+        <el-pagination
+          v-if="newsList.length > pageSize"
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :page-sizes="[20, 50, 100, 200]"
+          :total="newsList.length"
+          layout="total, sizes, prev, pager, next"
+          background
+          class="table-pagination"
+        />
       </div>
     </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { newsApi } from '@/api/news'
 import { fmtDateTime } from '@/utils/format'
 import { normalizeCode } from '@/utils/stockCode'
@@ -66,6 +76,12 @@ import { Search } from '@element-plus/icons-vue'
 const loading = ref(false)
 const newsList = ref<NewsRecord[]>([])
 const codeFilter = ref('')
+const currentPage = ref(1)
+const pageSize = ref(20)
+const paginatedNews = computed(() =>
+  newsList.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value)
+)
+watch(newsList, () => { currentPage.value = 1 })
 
 async function loadNews() {
   loading.value = true
@@ -177,5 +193,15 @@ onMounted(() => {
 .text-muted {
   color: #606266;
   font-style: italic;
+}
+
+.table-pagination {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+.table-pagination :deep(.el-pagination__total),
+.table-pagination :deep(.el-pagination__sizes .el-select .el-input__wrapper) {
+  color: #909399;
 }
 </style>

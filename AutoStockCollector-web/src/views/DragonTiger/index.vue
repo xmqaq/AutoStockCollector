@@ -9,7 +9,7 @@
           range-separator="至"
           start-placeholder="开始日期"
           end-placeholder="结束日期"
-          format="YYYY-MM-DD"
+          format="YYYY年MM月DD日"
           value-format="YYYY-MM-DD"
           size="small"
           style="width:280px"
@@ -33,7 +33,7 @@
         <span>龙虎榜数据（共 {{ tableData.length }} 条）</span>
       </template>
       <el-empty v-if="tableData.length === 0 && !loading" description="暂无龙虎榜数据" />
-      <el-table v-else :data="tableData" stripe>
+      <el-table v-else :data="paginatedDragonTiger" stripe>
         <el-table-column prop="date" label="日期" width="120" sortable />
         <el-table-column prop="code" label="代码" width="110">
           <template #default="{ row }">
@@ -69,12 +69,22 @@
           </template>
         </el-table-column>
       </el-table>
+      <el-pagination
+        v-if="tableData.length > pageSize"
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        :page-sizes="[20, 50, 100, 200]"
+        :total="tableData.length"
+        layout="total, sizes, prev, pager, next"
+        background
+        class="table-pagination"
+      />
     </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { dragonTigerApi } from '@/api/dragonTiger'
 import { fmtAmount, fmtChange, fmtNumber, RISE_COLOR, FALL_COLOR } from '@/utils/format'
@@ -86,6 +96,12 @@ import dayjs from 'dayjs'
 const router = useRouter()
 const loading = ref(false)
 const tableData = ref<DragonTigerRecord[]>([])
+const currentPage = ref(1)
+const pageSize = ref(50)
+const paginatedDragonTiger = computed(() =>
+  tableData.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value)
+)
+watch(tableData, () => { currentPage.value = 1 })
 const dateRange = ref<[string, string]>([
   dayjs().subtract(6, 'month').format('YYYY-MM-DD'),
   dayjs().format('YYYY-MM-DD'),
@@ -96,7 +112,7 @@ async function loadData() {
   loading.value = true
   try {
     const params: { start_date?: string; end_date?: string; code?: string; limit?: number } = {
-      limit: 200,
+      limit: 500,
     }
     if (dateRange.value) {
       params.start_date = dateRange.value[0]
@@ -148,5 +164,15 @@ onMounted(() => {
   gap: 12px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.table-pagination {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+.table-pagination :deep(.el-pagination__total),
+.table-pagination :deep(.el-pagination__sizes .el-select .el-input__wrapper) {
+  color: #909399;
 }
 </style>

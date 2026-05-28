@@ -9,7 +9,7 @@
           range-separator="至"
           start-placeholder="开始日期"
           end-placeholder="结束日期"
-          format="YYYY-MM-DD"
+          format="YYYY年MM月DD日"
           value-format="YYYY-MM-DD"
           size="small"
           style="width:280px"
@@ -36,7 +36,7 @@
         <span>融资融券明细（共 {{ tableData.length }} 条）</span>
       </template>
       <el-empty v-if="tableData.length === 0 && !loading" description="暂无融资融券数据" />
-      <el-table v-else :data="tableData" stripe size="small">
+      <el-table v-else :data="paginatedMargin" stripe size="small">
         <el-table-column prop="date" label="日期" width="120" sortable />
         <el-table-column label="融资余额" width="130" prop="rz_balance" sortable>
           <template #default="{ row }">{{ fmtAmount(row.rz_balance) }}</template>
@@ -51,12 +51,22 @@
           <template #default="{ row }">{{ fmtAmount(row.rq_sell) }}</template>
         </el-table-column>
       </el-table>
+      <el-pagination
+        v-if="tableData.length > pageSize"
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        :page-sizes="[20, 50, 100, 200]"
+        :total="tableData.length"
+        layout="total, sizes, prev, pager, next"
+        background
+        class="table-pagination"
+      />
     </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { LineChart } from 'echarts/charts'
@@ -72,6 +82,12 @@ use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomCompon
 
 const loading = ref(false)
 const tableData = ref<MarginRecord[]>([])
+const currentPage = ref(1)
+const pageSize = ref(50)
+const paginatedMargin = computed(() =>
+  tableData.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value)
+)
+watch(tableData, () => { currentPage.value = 1 })
 const dateRange = ref<[string, string]>([
   dayjs().subtract(6, 'month').format('YYYY-MM-DD'),
   dayjs().format('YYYY-MM-DD'),
@@ -171,5 +187,15 @@ onMounted(() => {
   gap: 12px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.table-pagination {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+.table-pagination :deep(.el-pagination__total),
+.table-pagination :deep(.el-pagination__sizes .el-select .el-input__wrapper) {
+  color: #909399;
 }
 </style>

@@ -65,7 +65,7 @@
                 range-separator="至"
                 start-placeholder="开始日期"
                 end-placeholder="结束日期"
-                format="YYYY-MM-DD"
+                format="YYYY年MM月DD日"
                 value-format="YYYY-MM-DD"
                 size="small"
                 style="width:280px"

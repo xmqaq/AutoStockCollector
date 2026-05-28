@@ -51,7 +51,7 @@
     <el-card shadow="never" class="section-card" v-loading="loading">
       <template #header><span>板块列表</span></template>
       <el-empty v-if="sectors.length === 0 && !loading" description="暂无板块数据" />
-      <el-table v-else :data="sectors" stripe size="small">
+      <el-table v-else :data="paginatedSectors" stripe size="small">
         <el-table-column prop="name" label="板块名称" min-width="180">
           <template #default="{ row }">
             <el-link type="primary" @click="loadSectorStocks(row.name)">{{ row.name }}</el-link>
@@ -72,12 +72,22 @@
           </template>
         </el-table-column>
       </el-table>
+      <el-pagination
+        v-if="sectors.length > pageSize"
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        :page-sizes="[20, 50, 100, 200]"
+        :total="sectors.length"
+        layout="total, sizes, prev, pager, next"
+        background
+        class="table-pagination"
+      />
     </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
@@ -95,6 +105,12 @@ const router = useRouter()
 const loading = ref(false)
 const stocksLoading = ref(false)
 const sectors = ref<SectorRecord[]>([])
+const currentPage = ref(1)
+const pageSize = ref(50)
+const paginatedSectors = computed(() =>
+  sectors.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value)
+)
+watch(sectors, () => { currentPage.value = 1 })
 const drawerVisible = ref(false)
 const selectedSector = ref('')
 const sectorStocks = ref<unknown[]>([])
@@ -216,5 +232,15 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.table-pagination {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+.table-pagination :deep(.el-pagination__total),
+.table-pagination :deep(.el-pagination__sizes .el-select .el-input__wrapper) {
+  color: #909399;
 }
 </style>
