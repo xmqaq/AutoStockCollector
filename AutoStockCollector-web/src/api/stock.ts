@@ -8,7 +8,7 @@ export interface StockInfoResponse {
 }
 
 export async function getStockInfo(code: string) {
-  const response = await client.get<StockInfoResponse>(`/stock/${code}/info`);
+  const response = await client.get<{ data: StockInfoResponse }>(`/stock/${code}/info`);
   return response.data;
 }
 

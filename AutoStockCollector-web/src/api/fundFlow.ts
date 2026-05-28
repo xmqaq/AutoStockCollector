@@ -3,13 +3,13 @@ import type { FundFlowRecord } from '@/types';
 
 export interface FundFlowResponse {
   success: boolean;
-  data?: FundFlowRecord[];
+  data?: FundFlowRecord | FundFlowRecord[];
   error?: string;
 }
 
 export async function getFundFlow(code: string) {
-  const response = await client.get<FundFlowResponse>(`/fund-flow/${code}`);
-  return response.data?.data || [];
+  const response = await client.get<{ data: FundFlowResponse }>(`/fund-flow/${code}`);
+  return response.data?.data?.data;
 }
 
 export async function collectFundFlow(codes?: string[]) {

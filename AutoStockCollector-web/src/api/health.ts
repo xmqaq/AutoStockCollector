@@ -5,7 +5,7 @@ export interface HealthResponse {
   timestamp: string;
 }
 
-export async function getHealth(): Promise<HealthResponse> {
+export async function getHealth(): Promise<HealthResponse | undefined> {
   const response = await client.get<HealthResponse>('/health');
   return response.data;
 }

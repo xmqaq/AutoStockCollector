@@ -16,7 +16,7 @@ export interface MarginParams {
 }
 
 export async function getMargin(params?: MarginParams) {
-  const response = await client.get<MarginResponse>('/margin', params);
+  const response = await client.get<{ data: MarginResponse }>('/margin', params);
   return response.data;
 }
 

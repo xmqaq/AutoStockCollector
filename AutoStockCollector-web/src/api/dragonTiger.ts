@@ -16,7 +16,7 @@ export interface DragonTigerParams {
 }
 
 export async function getDragonTiger(params?: DragonTigerParams) {
-  const response = await client.get<DragonTigerResponse>('/dragon_tiger', params);
+  const response = await client.get<{ data: DragonTigerResponse }>('/dragon_tiger', params);
   return response.data;
 }
 

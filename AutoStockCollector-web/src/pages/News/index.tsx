@@ -68,26 +68,34 @@ export default function News() {
     setSearchText(value);
   };
 
+  const formatDate = (dateStr: string | undefined) => {
+    if (!dateStr) return '-';
+    try {
+      return new Date(dateStr).toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return '-';
+    }
+  };
+
   const columns = [
-    { 
-      title: '时间', 
-      dataIndex: 'publish_time', 
-      key: 'publish_time', 
+    {
+      title: '时间',
+      key: 'time',
       width: 150,
-      render: (t: string) => t ? new Date(t).toLocaleString('zh-CN', { 
-        year: 'numeric', 
-        month: '2-digit', 
-        day: '2-digit', 
-        hour: '2-digit', 
-        minute: '2-digit' 
-      }) : '-'
+      render: (_: unknown, record: NewsItem) => formatDate(record.publish_time || record.publish_date),
     },
-    { 
-      title: '股票', 
-      dataIndex: 'code', 
-      key: 'code', 
+    {
+      title: '股票',
+      dataIndex: 'code',
+      key: 'stock',
       width: 100,
-      render: (code: string) => code ? <Tag color="blue">{code}</Tag> : '-'
+      render: (code: string) => code ? <Tag color="blue">{code}</Tag> : '-',
     },
     { title: '标题', dataIndex: 'title', key: 'title', ellipsis: true },
     { title: '来源', dataIndex: 'source', key: 'source', width: 100 },
@@ -95,13 +103,12 @@ export default function News() {
       title: '操作',
       key: 'action',
       width: 80,
-      render: (_: unknown, record: NewsItem) => (
+      render: (_: unknown, record: NewsItem) =>
         record.url ? (
           <a href={record.url} target="_blank" rel="noopener noreferrer">
             查看原文
           </a>
-        ) : '-'
-      ),
+        ) : '-',
     },
   ];
 
@@ -135,13 +142,13 @@ export default function News() {
         ) : filteredData.length > 0 ? (
           <Table
             columns={columns}
-            dataSource={filteredData.map(d => ({ ...d, key: d.id || `${d.code}-${d.publish_time}` }))}
-            pagination={{ 
+            dataSource={filteredData.map((d, i) => ({ ...d, key: d.id || d.title || String(i) }))}
+            pagination={{
               pageSize: 15,
               total: total,
               showSizeChanger: true,
               showQuickJumper: true,
-              showTotal: (total) => `共 ${total} 条`
+              showTotal: (tot) => `共 ${tot} 条`,
             }}
             size="small"
             expandable={{
@@ -156,7 +163,7 @@ export default function News() {
             }}
           />
         ) : (
-          <Empty description={data.length === 0 ? "暂无新闻数据" : "未找到匹配的新闻"} />
+          <Empty description={data.length === 0 ? '暂无新闻数据' : '未找到匹配的新闻'} />
         )}
       </Card>
     </div>

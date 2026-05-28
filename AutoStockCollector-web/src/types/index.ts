@@ -5,9 +5,9 @@ export interface KlineRecord {
   high: number;
   low: number;
   close: number;
-  volume: number;
-  amount: number;
-  change_rate: number;
+  volume?: number;
+  amount?: number;
+  change_rate?: number;
 }
 
 export interface StockInfo {
@@ -31,13 +31,14 @@ export interface FinancialRecord {
 }
 
 export interface NewsItem {
-  id: string;
-  code: string;
+  id?: string;
+  code?: string;
   title: string;
-  content: string;
-  publish_time: string;
-  source: string;
-  url: string;
+  content?: string;
+  publish_time?: string;
+  publish_date?: string;
+  source?: string;
+  url?: string;
 }
 
 export interface FundFlowRecord {
@@ -45,8 +46,8 @@ export interface FundFlowRecord {
   date: string;
   volume: number;
   amount: number;
-  direction: 'buy' | 'sell';
-  price: number;
+  direction?: 'buy' | 'sell';
+  price?: number;
 }
 
 export interface DragonTigerRecord {
@@ -66,7 +67,7 @@ export interface SectorItem {
 }
 
 export interface MarginRecord {
-  code: string;
+  code?: string;
   date: string;
   rz_balance: number;
   rz_buy: number;
@@ -83,7 +84,7 @@ export interface TaskProgress {
   total: number;
   success: number;
   failed: number;
-  duration: number;
+  duration?: number;
   message?: string;
   error_message?: string;
   create_time?: string;
@@ -102,4 +103,16 @@ export interface ApiResponse<T> {
   data?: T;
   count?: number;
   message?: string;
+}
+
+export interface StockInfoResponse {
+  success: boolean;
+  data?: {
+    code?: string;
+    name?: string;
+    股票简称?: string;
+    所属行业?: string;
+    市场?: string;
+    [key: string]: unknown;
+  };
 }

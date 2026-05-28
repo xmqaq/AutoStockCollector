@@ -12,8 +12,8 @@ export interface FinancialParams {
 }
 
 export async function getFinancial(code: string, params?: FinancialParams) {
-  const response = await client.get<FinancialResponse>(`/financial/${code}`, params);
-  return response.data?.data || [];
+  const response = await client.get<{ data: FinancialResponse }>(`/financial/${code}`, params);
+  return response.data?.data?.data || [];
 }
 
 export async function collectFinancial(codes?: string[]) {

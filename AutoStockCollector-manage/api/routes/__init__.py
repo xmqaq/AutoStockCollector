@@ -960,3 +960,146 @@ def error_response(message: str, code: int = 400) -> tuple:
         "error": message,
         "timestamp": datetime.now().isoformat()
     }), code
+
+
+@api_bp.route("/dragon_tiger", methods=["GET"])
+def get_dragon_tiger_list():
+    from core.storage.mongo_storage import DragonTigerStorage
+    
+    storage = DragonTigerStorage()
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+    code = request.args.get("code")
+    limit = int(request.args.get("limit", 100))
+    
+    filter_doc = {}
+    if code:
+        filter_doc["code"] = code
+    if start_date and end_date:
+        filter_doc["date"] = {"$gte": start_date, "$lte": end_date}
+    
+    records = storage.find_many(filter_doc, sort=[("date", -1)], limit=limit)
+    
+    for record in records:
+        record.pop("_id", None)
+        record.pop("_updated_at", None)
+    
+    result = []
+    for r in records:
+        result.append({
+            "code": r.get("code", ""),
+            "name": r.get("name", r.get("股票名称", "")),
+            "date": r.get("date", r.get("日期", "")),
+            "reason": r.get("reason", r.get("上榜原因", "")),
+            "total_amount": r.get("total_amount", r.get("总成交额", 0)),
+            "net_buy": r.get("net_buy", r.get("净买入额", 0)),
+        })
+    
+    return jsonify({
+        "success": True,
+        "count": len(result),
+        "data": result
+    })
+
+
+@api_bp.route("/margin", methods=["GET"])
+def get_margin_data():
+    from core.storage.mongo_storage import MarginStorage
+    
+    storage = MarginStorage()
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+    code = request.args.get("code")
+    limit = int(request.args.get("limit", 100))
+    
+    filter_doc = {}
+    if code:
+        filter_doc["code"] = code
+    if start_date and end_date:
+        filter_doc["信用交易日期"] = {"$gte": start_date, "$lte": end_date}
+    
+    records = storage.find_many(filter_doc, sort=[("信用交易日期", -1)], limit=limit)
+    
+    for record in records:
+        record.pop("_id", None)
+        record.pop("_updated_at", None)
+    
+    result = []
+    for r in records:
+        result.append({
+            "code": r.get("code", ""),
+            "date": r.get("信用交易日期", ""),
+            "rz_balance": r.get("rz_balance", r.get("融资余额", 0)),
+            "rz_buy": r.get("rz_buy", r.get("融资买入额", 0)),
+            "rq_volume": r.get("rq_volume", r.get("融券余量", 0)),
+            "rq_sell": r.get("rq_sell", r.get("融券卖出量", 0)),
+        })
+    
+    return jsonify({
+        "success": True,
+        "count": len(result),
+        "data": result
+    })
+
+
+@api_bp.route("/sector", methods=["GET"])
+def get_sector_list():
+    from core.storage.mongo_storage import BlockStorage
+    
+    storage = BlockStorage()
+    
+    records = storage.find_many({"block_type": "industry"})
+    
+    for record in records:
+        record.pop("_id", None)
+        record.pop("_updated_at", None)
+    
+    result = []
+    for r in records:
+        result.append({
+            "name": r.get("name", r.get("block_name", "")),
+            "type": r.get("type", r.get("block_type", "")),
+            "net_flow": r.get("net_flow", 0),
+            "change_rate": r.get("change_rate", 0),
+        })
+    
+    return jsonify({
+        "success": True,
+        "count": len(result),
+        "data": result
+    })
+
+
+@api_bp.route("/sector/<sector_name>/stocks", methods=["GET"])
+def get_sector_stocks(sector_name):
+    from core.storage.mongo_storage import BlockStorage, KlineStorage
+    
+    block_storage = BlockStorage()
+    kline_storage = KlineStorage()
+    
+    blocks = block_storage.find_many({"name": sector_name})
+    
+    if not blocks:
+        return jsonify({
+            "success": True,
+            "count": 0,
+            "data": []
+        })
+    
+    result = []
+    for block in blocks:
+        code = block.get("code")
+        if code:
+            latest = kline_storage.find_one({"code": code}, sort=[("date", -1)])
+            result.append({
+                "code": code,
+                "name": block.get("name", ""),
+                "change_rate": latest.get("change_rate", 0) if latest else 0,
+                "net_flow": block.get("net_flow", 0),
+            })
+    
+    return jsonify({
+        "success": True,
+        "count": len(result),
+        "data": result
+    })

@@ -13,14 +13,14 @@ export interface KlineResponse {
   data: KlineRecord[];
 }
 
-export async function getKline(code: string, params?: KlineParams) {
+export async function getKline(code: string, params?: KlineParams): Promise<KlineRecord[]> {
   const response = await client.get<KlineResponse>(`/kline/${code}`, params);
   return response.data?.data || [];
 }
 
 export async function getLatestKline(code: string) {
   const response = await client.get<{ success: boolean; data: KlineRecord }>(`/kline/${code}/latest`);
-  return response.data;
+  return response.data?.data;
 }
 
 export async function collectKline(codes: string[], start_date?: string, end_date?: string, adjust = 'qfq') {

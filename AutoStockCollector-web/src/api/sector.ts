@@ -8,12 +8,12 @@ export interface SectorResponse {
 }
 
 export async function getSectorList() {
-  const response = await client.get<SectorResponse>('/sector');
+  const response = await client.get<{ data: SectorResponse }>('/sector');
   return response.data;
 }
 
 export async function getSectorStocks(sectorName: string) {
-  const response = await client.get<SectorResponse>(`/sector/${encodeURIComponent(sectorName)}/stocks`);
+  const response = await client.get<{ data: SectorResponse }>(`/sector/${encodeURIComponent(sectorName)}/stocks`);
   return response.data;
 }
 

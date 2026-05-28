@@ -18,6 +18,8 @@ const typeNameMap: Record<string, string> = {
   dragon_tiger: '龙虎榜',
   block: '板块数据',
   margin_data: '融资融券',
+  margin: '融资融券',
+  sector: '板块数据',
 };
 
 const statusMap: Record<string, { color: string; text: string }> = {
@@ -26,6 +28,7 @@ const statusMap: Record<string, { color: string; text: string }> = {
   pending: { color: 'default', text: '等待中' },
   failed: { color: 'red', text: '失败' },
   cancelled: { color: 'orange', text: '已取消' },
+  not_started: { color: 'default', text: '未开始' },
 };
 
 export default function Dashboard() {
@@ -45,10 +48,14 @@ export default function Dashboard() {
         healthCheck().catch(() => null),
       ]);
 
-      if (progressRes.status === 'fulfilled' && progressRes.value?.data) {
-        const data = progressRes.value.data;
-        setTasks(data.tasks || []);
+      if (progressRes.status === 'fulfilled' && progressRes.value) {
+        const data = progressRes.value;
         setAllDone(data.all_done || false);
+        
+        if (data.tasks) {
+          const taskList: TaskProgress[] = Object.values(data.tasks);
+          setTasks(taskList);
+        }
       }
 
       if (healthRes.status === 'fulfilled' && healthRes.value) {
@@ -193,7 +200,7 @@ export default function Dashboard() {
             ) : tasks.length > 0 ? (
               <Table 
                 columns={columns} 
-                dataSource={tasks.map((t) => ({ ...t, key: t.type || t.task_id }))} 
+                dataSource={tasks.map((t, i) => ({ ...t, key: t.type || t.task_type || i }))} 
                 pagination={false} 
                 size="small" 
                 style={{ marginTop: 16 }} 
@@ -215,8 +222,8 @@ export default function Dashboard() {
                 renderItem={(item) => (
                   <List.Item>
                     <List.Item.Meta
-                      title={<a href={item.url} target="_blank" rel="noopener noreferrer">{item.title}</a>}
-                      description={new Date(item.publish_time).toLocaleDateString('zh-CN')}
+                      title={<a href={item.url || '#'} target="_blank" rel="noopener noreferrer">{item.title}</a>}
+                      description={item.publish_time || item.publish_date ? new Date(item.publish_time || item.publish_date || '').toLocaleDateString('zh-CN') : ''}
                     />
                   </List.Item>
                 )}
