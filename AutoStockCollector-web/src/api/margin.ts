@@ -1,7 +1,14 @@
 import client from './client';
 import type { MarginRecord } from '@/types';
 
-interface MarginParams {
+export interface MarginResponse {
+  success: boolean;
+  count?: number;
+  data?: MarginRecord[];
+  error?: string;
+}
+
+export interface MarginParams {
   start_date?: string;
   end_date?: string;
   code?: string;
@@ -9,5 +16,11 @@ interface MarginParams {
 }
 
 export async function getMargin(params?: MarginParams) {
-  return client.get<{ success: boolean; data: MarginRecord[]; count: number }>('/margin', { params });
+  const response = await client.get<MarginResponse>('/margin', params);
+  return response.data;
+}
+
+export async function collectMargin(params?: { start_date?: string; end_date?: string }) {
+  const response = await client.post<MarginResponse>('/collect/margin', params);
+  return response.data;
 }

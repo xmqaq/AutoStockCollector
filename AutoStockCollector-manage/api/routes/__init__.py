@@ -145,6 +145,7 @@ def get_kline(code):
 
     for record in records:
         record.pop("_id", None)
+        record.pop("_updated_at", None)
 
     return jsonify({
         "success": True,
@@ -163,6 +164,9 @@ def get_latest_kline(code):
 
     if not record:
         return jsonify({"error": "No data found"}), 404
+    
+    record.pop("_id", None)
+    record.pop("_updated_at", None)
 
     return jsonify({
         "success": True,
@@ -196,11 +200,17 @@ def get_financial(code):
     if report_date:
         record = storage.get_by_code_and_period(code, report_date)
         records = [record] if record else []
+        if record:
+            record.pop("_id", None)
+            record.pop("_updated_at", None)
     else:
         records = storage.find_many(
             {"code": code},
             sort=[("report_date", -1)]
         )
+        for record in records:
+            record.pop("_id", None)
+            record.pop("_updated_at", None)
 
     return jsonify({
         "success": True,
@@ -904,6 +914,8 @@ def progress_all():
         failed_cnt = task.get("failed", 0)
 
         summary[ttype] = {
+            "type": ttype,
+            "task_type": ttype,
             "status": status,
             "progress": progress,
             "total": total,

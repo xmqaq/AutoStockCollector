@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ConfigProvider, theme } from 'antd';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import MainLayout from './layouts/MainLayout';
 import Dashboard from './pages/Dashboard';
 import StockDetail from './pages/StockDetail';
@@ -48,23 +49,25 @@ const darkTheme = {
 
 function App() {
   return (
-    <ConfigProvider theme={darkTheme}>
-      <Router>
-        <MainLayout>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/stock/:code" element={<StockDetail />} />
-            <Route path="/stock" element={<StockDetail />} />
-            <Route path="/monitor" element={<DataMonitor />} />
-            <Route path="/dragon-tiger" element={<DragonTiger />} />
-            <Route path="/fund-flow" element={<FundFlow />} />
-            <Route path="/margin" element={<MarginTrading />} />
-            <Route path="/sector" element={<SectorFlow />} />
-            <Route path="/news" element={<News />} />
-          </Routes>
-        </MainLayout>
-      </Router>
-    </ConfigProvider>
+    <ErrorBoundary>
+      <ConfigProvider theme={darkTheme}>
+        <Router>
+          <MainLayout>
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/stock/:code" element={<StockDetail />} />
+              <Route path="/stock" element={<StockDetail />} />
+              <Route path="/monitor" element={<DataMonitor />} />
+              <Route path="/dragon-tiger" element={<DragonTiger />} />
+              <Route path="/fund-flow" element={<FundFlow />} />
+              <Route path="/margin" element={<MarginTrading />} />
+              <Route path="/sector" element={<SectorFlow />} />
+              <Route path="/news" element={<News />} />
+            </Routes>
+          </MainLayout>
+        </Router>
+      </ConfigProvider>
+    </ErrorBoundary>
   );
 }
 

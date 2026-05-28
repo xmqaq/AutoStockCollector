@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Card, Row, Col, Typography, DatePicker, Table, Spin } from 'antd';
+import { Card, Row, Col, Typography, DatePicker, Table, Spin, Empty } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { getDragonTiger } from '@/api/dragonTiger';
@@ -10,14 +10,6 @@ import styles from './DragonTiger.module.css';
 
 const { Title } = Typography;
 const { RangePicker } = DatePicker;
-
-const mockData: DragonTigerRecord[] = [
-  { code: 'SH600519', name: '贵州茅台', date: '2024-01-15', reason: '涨幅偏离值达7%', total_amount: 12500000000, net_buy: 850000000 },
-  { code: 'SH601318', name: '中国平安', date: '2024-01-15', reason: '振幅值达15%', total_amount: 8900000000, net_buy: -320000000 },
-  { code: 'SZ000001', name: '平安银行', date: '2024-01-14', reason: '涨幅偏离值达7%', total_amount: 5600000000, net_buy: 450000000 },
-  { code: 'SZ300750', name: '宁德时代', date: '2024-01-14', reason: '换手率达20%', total_amount: 15200000000, net_buy: 1200000000 },
-  { code: 'SH600036', name: '招商银行', date: '2024-01-13', reason: '跌幅偏离值达7%', total_amount: 7800000000, net_buy: -680000000 },
-];
 
 export default function DragonTiger() {
   const navigate = useNavigate();
@@ -37,14 +29,15 @@ export default function DragonTiger() {
         end_date: dateRange[1].format('YYYY-MM-DD'),
         code: code || undefined,
       });
-      const resData = res as unknown as { data?: DragonTigerRecord[] };
-      if (resData?.data && Array.isArray(resData.data)) {
-        setData(resData.data);
+      
+      if (res?.data && Array.isArray(res.data)) {
+        setData(res.data);
       } else {
-        setData(mockData);
+        setData([]);
       }
-    } catch {
-      setData(mockData);
+    } catch (err) {
+      console.error('Failed to fetch dragon tiger data:', err);
+      setData([]);
     } finally {
       setLoading(false);
     }
@@ -68,11 +61,11 @@ export default function DragonTiger() {
     { title: '日期', dataIndex: 'date', key: 'date', width: 120 },
     { title: '上榜原因', dataIndex: 'reason', key: 'reason' },
     { title: '总成交额', dataIndex: 'total_amount', key: 'total_amount', 
-      render: (v: number) => fmtAmount(v), width: 120 },
+      render: (v: number) => v ? fmtAmount(v) : '-', width: 120 },
     { title: '净买入额', dataIndex: 'net_buy', key: 'net_buy', 
       render: (v: number) => (
         <span style={{ color: v >= 0 ? '#ef5350' : '#26a69a' }}>
-          {v >= 0 ? '+' : ''}{fmtAmount(v)}
+          {v ? `${v >= 0 ? '+' : ''}${fmtAmount(v)}` : '-'}
         </span>
       ), width: 120 },
   ];
@@ -101,17 +94,23 @@ export default function DragonTiger() {
           <div style={{ textAlign: 'center', padding: 50 }}>
             <Spin />
           </div>
-        ) : (
+        ) : data.length > 0 ? (
           <Table
             columns={columns}
-            dataSource={data.map(d => ({ ...d, key: `${d.code}-${d.date}` }))}
-            pagination={{ pageSize: 10 }}
+            dataSource={data.map((d, i) => ({ ...d, key: d.code ? `${d.code}-${d.date}` : i }))}
+            pagination={{ 
+              pageSize: 10,
+              showSizeChanger: true,
+              showTotal: (total) => `共 ${total} 条`
+            }}
             size="small"
             onRow={(record) => ({
               onClick: () => handleRowClick(record),
               style: { cursor: 'pointer' },
             })}
           />
+        ) : (
+          <Empty description="暂无龙虎榜数据" />
         )}
       </Card>
     </div>

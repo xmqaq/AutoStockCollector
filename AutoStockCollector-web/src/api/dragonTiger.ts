@@ -1,7 +1,14 @@
 import client from './client';
 import type { DragonTigerRecord } from '@/types';
 
-interface DragonTigerParams {
+export interface DragonTigerResponse {
+  success: boolean;
+  count?: number;
+  data?: DragonTigerRecord[];
+  error?: string;
+}
+
+export interface DragonTigerParams {
   start_date?: string;
   end_date?: string;
   code?: string;
@@ -9,5 +16,11 @@ interface DragonTigerParams {
 }
 
 export async function getDragonTiger(params?: DragonTigerParams) {
-  return client.get<{ success: boolean; data: DragonTigerRecord[]; count: number }>('/dragon-tiger', { params });
+  const response = await client.get<DragonTigerResponse>('/dragon_tiger', params);
+  return response.data;
+}
+
+export async function collectDragonTiger() {
+  const response = await client.post<{ success: boolean }>('/collect/dragon_tiger');
+  return response;
 }

@@ -1,17 +1,23 @@
 import client from './client';
 import type { SectorItem } from '@/types';
 
-interface SectorStock {
-  code: string;
-  name: string;
-  change_rate: number;
-  net_flow: number;
+export interface SectorResponse {
+  success: boolean;
+  data?: SectorItem[];
+  error?: string;
 }
 
 export async function getSectorList() {
-  return client.get<{ success: boolean; data: SectorItem[] }>('/sector/list');
+  const response = await client.get<SectorResponse>('/sector');
+  return response.data;
 }
 
-export async function getSectorStocks(name: string) {
-  return client.get<{ success: boolean; data: SectorStock[] }>(`/sector/${encodeURIComponent(name)}/stocks`);
+export async function getSectorStocks(sectorName: string) {
+  const response = await client.get<SectorResponse>(`/sector/${encodeURIComponent(sectorName)}/stocks`);
+  return response.data;
+}
+
+export async function collectSector(params?: { codes?: string[] }) {
+  const response = await client.post<SectorResponse>('/collect/sector', params);
+  return response.data;
 }

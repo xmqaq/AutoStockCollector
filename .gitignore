@@ -4,6 +4,8 @@
 # Keep these
 !README.md
 !LICENSE.md
+!前端项目文档.md
+
 
 # OS
 .DS_Store

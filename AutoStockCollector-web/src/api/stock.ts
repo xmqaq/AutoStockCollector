@@ -1,10 +1,18 @@
 import client from './client';
 import type { StockInfo } from '@/types';
 
+export interface StockInfoResponse {
+  success: boolean;
+  data?: StockInfo;
+  error?: string;
+}
+
 export async function getStockInfo(code: string) {
-  return client.get<StockInfo>(`/stock/${code}/info`);
+  const response = await client.get<StockInfoResponse>(`/stock/${code}/info`);
+  return response.data;
 }
 
 export async function getStockIndices(code: string) {
-  return client.get(`/stock/${code}/indices`);
+  const response = await client.get(`/stock/${code}/indices`);
+  return response.data;
 }

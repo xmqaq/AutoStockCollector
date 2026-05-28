@@ -1,8 +1,22 @@
 import client from './client';
 import type { FinancialRecord } from '@/types';
 
-export async function getFinancial(code: string, report_date?: string) {
-  return client.get<FinancialRecord[]>(`/financial/${code}`, {
-    params: { report_date },
-  });
+export interface FinancialResponse {
+  success: boolean;
+  data?: FinancialRecord[];
+  error?: string;
+}
+
+export interface FinancialParams {
+  report_date?: string;
+}
+
+export async function getFinancial(code: string, params?: FinancialParams) {
+  const response = await client.get<FinancialResponse>(`/financial/${code}`, params);
+  return response.data?.data || [];
+}
+
+export async function collectFinancial(codes?: string[]) {
+  const response = await client.post<{ success: boolean; results: unknown[] }>('/collect/financial', { codes });
+  return response.data;
 }

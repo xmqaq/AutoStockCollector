@@ -75,6 +75,8 @@ export interface MarginRecord {
 }
 
 export interface TaskProgress {
+  task_id: string;
+  task_type: string;
   type: string;
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
   progress: number;
@@ -83,13 +85,15 @@ export interface TaskProgress {
   failed: number;
   duration: number;
   message?: string;
+  error_message?: string;
+  create_time?: string;
 }
 
 export interface CollectProgressResponse {
   success: boolean;
-  data: {
-    all_done: boolean;
-    tasks: TaskProgress[];
+  data?: {
+    all_done?: boolean;
+    tasks?: TaskProgress[];
   };
 }
 

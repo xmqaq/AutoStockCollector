@@ -407,7 +407,11 @@ class StockInfoStorage(MongoStorage):
         super().__init__("stock_info")
 
     def get_by_code(self, code: str) -> Optional[Dict[str, Any]]:
-        return self.find_one({"code": code})
+        record = self.find_one({"code": code})
+        if record:
+            record.pop("_id", None)
+            record.pop("_updated_at", None)
+        return record
 
     def save_stock_info(self, info: Dict[str, Any]) -> bool:
         info["_updated_at"] = datetime.now()
@@ -442,11 +446,15 @@ class NewsStorage(MongoStorage):
         limit: int = 100
     ) -> List[Dict[str, Any]]:
         filter_doc = {"code": code} if code else {}
-        return self.find_many(
+        records = self.find_many(
             filter_doc,
             sort=[("publish_date", -1)],
             limit=limit
         )
+        for record in records:
+            record.pop("_id", None)
+            record.pop("_updated_at", None)
+        return records
 
     def save_news(self, news: Dict[str, Any]) -> str:
         if "title" in news and "publish_date" in news:
@@ -469,10 +477,14 @@ class FundFlowStorage(MongoStorage):
         super().__init__("fund_flow")
 
     def get_latest_flow(self, code: str) -> Optional[Dict[str, Any]]:
-        return self.find_one(
+        record = self.find_one(
             {"code": code},
             sort=[("date", -1)]
         )
+        if record:
+            record.pop("_id", None)
+            record.pop("_updated_at", None)
+        return record
 
     def save_fund_flow_batch(self, records: List[Dict[str, Any]]) -> Tuple[int, int]:
         return self.upsert_many(records, ["code", "date"])

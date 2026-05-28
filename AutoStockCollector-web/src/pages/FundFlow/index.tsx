@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Card, Row, Col, Typography, Spin } from 'antd';
+import { Card, Row, Col, Typography, Spin, Empty } from 'antd';
 import { getFundFlow } from '@/api/fundFlow';
 import type { FundFlowRecord } from '@/types';
 import { fmtAmount, RISE_COLOR, FALL_COLOR } from '@/utils/stockCode';
@@ -9,14 +9,6 @@ import styles from './FundFlow.module.css';
 
 const { Title } = Typography;
 
-const mockData: FundFlowRecord[] = [
-  { code: 'SH600519', date: '2024-01-15', volume: 1250000, amount: 285000000, direction: 'buy', price: 1820.50 },
-  { code: 'SH601318', date: '2024-01-14', volume: 980000, amount: 89000000, direction: 'sell', price: 48.25 },
-  { code: 'SH600036', date: '2024-01-13', volume: 1560000, amount: 152000000, direction: 'buy', price: 35.80 },
-  { code: 'SZ000001', date: '2024-01-12', volume: 780000, amount: 12500000, direction: 'buy', price: 9.65 },
-  { code: 'SZ300750', date: '2024-01-11', volume: 2100000, amount: 680000000, direction: 'sell', price: 178.50 },
-];
-
 export default function FundFlow() {
   const [data, setData] = useState<FundFlowRecord[]>([]);
   const [code, setCode] = useState('');
@@ -24,21 +16,21 @@ export default function FundFlow() {
 
   const fetchData = useCallback(async () => {
     if (!code) {
-      setData(mockData);
+      setData([]);
       return;
     }
     
     setLoading(true);
     try {
       const res = await getFundFlow(code);
-      const resData = res as unknown as FundFlowRecord[];
-      if (Array.isArray(resData)) {
-        setData(resData);
+      if (Array.isArray(res)) {
+        setData(res);
       } else {
-        setData(mockData.filter(d => d.code === code));
+        setData([]);
       }
-    } catch {
-      setData(mockData.filter(d => d.code === code));
+    } catch (err) {
+      console.error('Failed to fetch fund flow data:', err);
+      setData([]);
     } finally {
       setLoading(false);
     }
@@ -54,16 +46,26 @@ export default function FundFlow() {
 
   const buyData = data.filter(d => d.direction === 'buy');
   const sellData = data.filter(d => d.direction === 'sell');
-  const totalBuy = buyData.reduce((sum, d) => sum + d.amount, 0);
-  const totalSell = sellData.reduce((sum, d) => sum + d.amount, 0);
+  const totalBuy = buyData.reduce((sum, d) => sum + (d.amount || 0), 0);
+  const totalSell = sellData.reduce((sum, d) => sum + (d.amount || 0), 0);
 
   const barOption = {
     backgroundColor: 'transparent',
     tooltip: { trigger: 'axis' },
     legend: { data: ['买入', '卖出'], textStyle: { color: '#8c8c8c' } },
     grid: { left: 60, right: 20, top: 40, bottom: 40 },
-    xAxis: { type: 'category', data: data.map(d => d.date), axisLine: { lineStyle: { color: '#303030' } }, axisLabel: { color: '#8c8c8c' } },
-    yAxis: { type: 'value', axisLine: { lineStyle: { color: '#303030' } }, axisLabel: { color: '#8c8c8c', formatter: (v: number) => fmtAmount(v) }, splitLine: { lineStyle: { color: '#262626' } } },
+    xAxis: { 
+      type: 'category', 
+      data: data.map(d => d.date || ''), 
+      axisLine: { lineStyle: { color: '#303030' } }, 
+      axisLabel: { color: '#8c8c8c' } 
+    },
+    yAxis: { 
+      type: 'value', 
+      axisLine: { lineStyle: { color: '#303030' } }, 
+      axisLabel: { color: '#8c8c8c', formatter: (v: number) => fmtAmount(v) }, 
+      splitLine: { lineStyle: { color: '#262626' } } 
+    },
     series: [
       { name: '买入', type: 'bar', data: data.map(d => d.direction === 'buy' ? d.amount : 0), itemStyle: { color: RISE_COLOR } },
       { name: '卖出', type: 'bar', data: data.map(d => d.direction === 'sell' ? d.amount : 0), itemStyle: { color: FALL_COLOR } },
@@ -120,9 +122,7 @@ export default function FundFlow() {
         ) : data.length > 0 ? (
           <ReactECharts option={barOption} style={{ height: 300 }} />
         ) : (
-          <div style={{ textAlign: 'center', padding: 50, color: '#8c8c8c' }}>
-            选择股票查看资金流向
-          </div>
+          <Empty description={code ? "暂无资金流向数据" : "请选择股票查看资金流向"} />
         )}
       </Card>
     </div>

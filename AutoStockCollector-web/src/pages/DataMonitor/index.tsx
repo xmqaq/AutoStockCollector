@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Card, Typography, Alert, Button, Modal, DatePicker, message, Popconfirm, Space } from 'antd';
+import { Card, Typography, Alert, Button, Modal, DatePicker, message, Popconfirm, Space, Empty, Spin } from 'antd';
 import { RocketOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
 import dayjs from 'dayjs';
@@ -16,16 +16,20 @@ export default function DataMonitor() {
   const [collecting, setCollecting] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
+  const [loading, setLoading] = useState(false);
 
   const fetchProgress = useCallback(async () => {
     try {
+      setLoading(true);
       const res = await getProgressAll();
-      const data = res as unknown as { data?: { tasks?: typeof tasks; all_done?: boolean } };
-      if (data?.data) {
-        setTasks(data.data.tasks || [], data.data.all_done || false);
+      if (res?.data) {
+        setTasks(res.data.tasks || [], res.data.all_done || false);
       }
     } catch (err) {
       console.error('Failed to fetch progress:', err);
+      message.error('获取采集进度失败');
+    } finally {
+      setLoading(false);
     }
   }, [setTasks]);
 
@@ -101,7 +105,15 @@ export default function DataMonitor() {
       </Card>
 
       <Card title="采集进度详情" className={styles.tableCard}>
-        <ProgressTable data={tasks} />
+        {loading && tasks.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 50 }}>
+            <Spin />
+          </div>
+        ) : tasks.length > 0 ? (
+          <ProgressTable data={tasks} />
+        ) : (
+          <Empty description="暂无采集任务" />
+        )}
       </Card>
 
       <Card className={styles.actionCard}>
@@ -109,7 +121,14 @@ export default function DataMonitor() {
           <Button type="primary" icon={<RocketOutlined />} onClick={() => setModalVisible(true)}>
             启动采集
           </Button>
-          <Popconfirm title="确认清空数据库？" description="此操作不可恢复" onConfirm={handleClear}>
+          <Popconfirm 
+            title="确认清空数据库？" 
+            description="此操作不可恢复，将清空所有采集的数据"
+            onConfirm={handleClear}
+            okText="确认"
+            cancelText="取消"
+            okButtonProps={{ danger: true }}
+          >
             <Button danger icon={<DeleteOutlined />}>
               清空数据库
             </Button>
@@ -126,6 +145,8 @@ export default function DataMonitor() {
         onOk={handleCollect}
         onCancel={() => setModalVisible(false)}
         confirmLoading={collecting}
+        okText="开始采集"
+        cancelText="取消"
       >
         <div style={{ marginBottom: 16 }}>
           <p>选择采集日期范围：</p>
@@ -133,6 +154,7 @@ export default function DataMonitor() {
             value={dateRange}
             onChange={(dates) => setDateRange(dates as [dayjs.Dayjs, dayjs.Dayjs] | null)}
             style={{ width: '100%' }}
+            disabledDate={(current) => current && current > dayjs().endOf('day')}
           />
         </div>
       </Modal>

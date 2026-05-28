@@ -11,14 +11,6 @@ import styles from './MarginTrading.module.css';
 const { Title } = Typography;
 const { RangePicker } = DatePicker;
 
-const mockData: MarginRecord[] = [
-  { code: 'SH600519', date: '2024-01-15', rz_balance: 285000000000, rz_buy: 15200000000, rq_volume: 1200000, rq_sell: 850000 },
-  { code: 'SH601318', date: '2024-01-14', rz_balance: 198000000000, rz_buy: 9800000000, rq_volume: 2100000, rq_sell: 1800000 },
-  { code: 'SH600036', date: '2024-01-13', rz_balance: 145000000000, rz_buy: 7600000000, rq_volume: 980000, rq_sell: 720000 },
-  { code: 'SZ000001', date: '2024-01-12', rz_balance: 89000000000, rz_buy: 4500000000, rq_volume: 560000, rq_sell: 420000 },
-  { code: 'SZ300750', date: '2024-01-11', rz_balance: 168000000000, rz_buy: 11200000000, rq_volume: 1800000, rq_sell: 1450000 },
-];
-
 export default function MarginTrading() {
   const [data, setData] = useState<MarginRecord[]>([]);
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs]>([
@@ -36,14 +28,15 @@ export default function MarginTrading() {
         end_date: dateRange[1].format('YYYY-MM-DD'),
         code: code || undefined,
       });
-      const resData = res as unknown as { data?: MarginRecord[] };
-      if (resData?.data && Array.isArray(resData.data)) {
-        setData(resData.data);
+      
+      if (res?.data && Array.isArray(res.data)) {
+        setData(res.data);
       } else {
-        setData(mockData);
+        setData([]);
       }
-    } catch {
-      setData(mockData);
+    } catch (err) {
+      console.error('Failed to fetch margin data:', err);
+      setData([]);
     } finally {
       setLoading(false);
     }
@@ -62,21 +55,31 @@ export default function MarginTrading() {
     tooltip: { trigger: 'axis' },
     legend: { data: ['融资余额', '融资买入额'], textStyle: { color: '#8c8c8c' } },
     grid: { left: 60, right: 20, top: 40, bottom: 40 },
-    xAxis: { type: 'category', data: data.map(d => d.date), axisLine: { lineStyle: { color: '#303030' } }, axisLabel: { color: '#8c8c8c' } },
-    yAxis: { type: 'value', axisLine: { lineStyle: { color: '#303030' } }, axisLabel: { color: '#8c8c8c', formatter: (v: number) => fmtAmount(v) }, splitLine: { lineStyle: { color: '#262626' } } },
+    xAxis: { 
+      type: 'category', 
+      data: data.map(d => d.date || ''), 
+      axisLine: { lineStyle: { color: '#303030' } }, 
+      axisLabel: { color: '#8c8c8c' } 
+    },
+    yAxis: { 
+      type: 'value', 
+      axisLine: { lineStyle: { color: '#303030' } }, 
+      axisLabel: { color: '#8c8c8c', formatter: (v: number) => fmtAmount(v) }, 
+      splitLine: { lineStyle: { color: '#262626' } } 
+    },
     series: [
-      { name: '融资余额', type: 'line', data: data.map(d => d.rz_balance), smooth: true, lineStyle: { color: '#ef5350' }, itemStyle: { color: '#ef5350' } },
-      { name: '融资买入额', type: 'line', data: data.map(d => d.rz_buy), smooth: true, lineStyle: { color: '#26a69a' }, itemStyle: { color: '#26a69a' } },
+      { name: '融资余额', type: 'line', data: data.map(d => d.rz_balance || 0), smooth: true, lineStyle: { color: '#ef5350' }, itemStyle: { color: '#ef5350' } },
+      { name: '融资买入额', type: 'line', data: data.map(d => d.rz_buy || 0), smooth: true, lineStyle: { color: '#26a69a' }, itemStyle: { color: '#26a69a' } },
     ],
   };
 
   const columns = [
     { title: '股票代码', dataIndex: 'code', key: 'code', width: 100 },
     { title: '日期', dataIndex: 'date', key: 'date', width: 120 },
-    { title: '融资余额', dataIndex: 'rz_balance', key: 'rz_balance', render: (v: number) => fmtAmount(v) },
-    { title: '融资买入额', dataIndex: 'rz_buy', key: 'rz_buy', render: (v: number) => fmtAmount(v) },
-    { title: '融券余量', dataIndex: 'rq_volume', key: 'rq_volume', render: (v: number) => fmtAmount(v) },
-    { title: '融券卖出量', dataIndex: 'rq_sell', key: 'rq_sell', render: (v: number) => fmtAmount(v) },
+    { title: '融资余额', dataIndex: 'rz_balance', key: 'rz_balance', render: (v: number) => v ? fmtAmount(v) : '-' },
+    { title: '融资买入额', dataIndex: 'rz_buy', key: 'rz_buy', render: (v: number) => v ? fmtAmount(v) : '-' },
+    { title: '融券余量', dataIndex: 'rq_volume', key: 'rq_volume', render: (v: number) => v ? fmtAmount(v) : '-' },
+    { title: '融券卖出量', dataIndex: 'rq_sell', key: 'rq_sell', render: (v: number) => v ? fmtAmount(v) : '-' },
   ];
 
   return (
@@ -106,17 +109,25 @@ export default function MarginTrading() {
         ) : data.length > 0 ? (
           <ReactECharts option={chartOption} style={{ height: 300 }} />
         ) : (
-          <Empty description="暂无数据" />
+          <Empty description="暂无融资融券数据" />
         )}
       </Card>
 
       <Card className={styles.tableCard}>
-        <Table
-          columns={columns}
-          dataSource={data.map(d => ({ ...d, key: `${d.code}-${d.date}` }))}
-          pagination={{ pageSize: 10 }}
-          size="small"
-        />
+        {data.length > 0 ? (
+          <Table
+            columns={columns}
+            dataSource={data.map((d, i) => ({ ...d, key: d.code ? `${d.code}-${d.date}` : i }))}
+            pagination={{ 
+              pageSize: 10,
+              showSizeChanger: true,
+              showTotal: (total) => `共 ${total} 条`
+            }}
+            size="small"
+          />
+        ) : !loading && (
+          <Empty description="暂无融资融券数据" />
+        )}
       </Card>
     </div>
   );
