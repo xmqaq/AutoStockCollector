@@ -20,6 +20,8 @@ export interface DragonTigerRecord {
   reason: string
   total_amount: number
   net_buy: number
+  close?: number
+  change_rate?: number
 }
 
 export interface MarginRecord {
@@ -105,6 +107,9 @@ export interface CollectProgress {
   failed: number
   task_id?: string
   elapsed_time?: number
+  record_count?: number
+  date_from?: string
+  date_to?: string
   last_update?: string
 }
 

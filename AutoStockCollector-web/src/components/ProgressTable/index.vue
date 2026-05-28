@@ -34,9 +34,16 @@
         />
       </template>
     </el-table-column>
-    <el-table-column label="耗时" width="90" align="center">
+    <el-table-column label="数据量" width="100" align="center">
       <template #default="{ row }">
-        <span class="text-muted">{{ row.elapsed_time ? `${row.elapsed_time}s` : '--' }}</span>
+        <span class="text-count">{{ fmtCount(row.record_count) }}</span>
+      </template>
+    </el-table-column>
+    <el-table-column label="数据区间" min-width="180">
+      <template #default="{ row }">
+        <span class="text-muted date-range">
+          {{ row.date_from && row.date_to ? `${row.date_from} ~ ${row.date_to}` : '--' }}
+        </span>
       </template>
     </el-table-column>
   </el-table>
@@ -44,7 +51,6 @@
 
 <script setup lang="ts">
 import type { CollectProgress } from '@/types'
-import { fmtDateTime } from '@/utils/format'
 
 interface Props {
   data: CollectProgress[]
@@ -66,6 +72,12 @@ const TASK_TYPE_LABELS: Record<string, string> = {
 
 function taskTypeLabel(type: string): string {
   return TASK_TYPE_LABELS[type] || type
+}
+
+function fmtCount(n?: number): string {
+  if (!n) return '--'
+  if (n >= 10000) return `${(n / 10000).toFixed(1)}万`
+  return String(n)
 }
 
 function calcPercent(row: CollectProgress): number {
@@ -109,5 +121,13 @@ function badgeLabel(row: CollectProgress): string {
 .text-muted {
   color: #909399;
   font-size: 12px;
+}
+.text-count {
+  color: #409eff;
+  font-size: 13px;
+  font-weight: 500;
+}
+.date-range {
+  font-size: 11px;
 }
 </style>

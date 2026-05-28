@@ -14,6 +14,9 @@ export const useCollectStore = defineStore('collect', () => {
   })
 
   const totalSuccessCount = computed(() => {
+    // 优先累加各集合实际记录数（DB中的数据量）
+    const dbTotal = progressList.value.reduce((acc, p) => acc + (p.record_count || 0), 0)
+    if (dbTotal > 0) return dbTotal
     return progressList.value.reduce((acc, p) => acc + (p.progress || 0), 0)
   })
 

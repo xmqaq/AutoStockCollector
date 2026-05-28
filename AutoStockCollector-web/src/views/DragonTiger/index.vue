@@ -54,6 +54,20 @@
             </span>
           </template>
         </el-table-column>
+        <el-table-column label="涨跌幅" width="100" sortable prop="change_rate">
+          <template #default="{ row }">
+            <span v-if="row.change_rate !== undefined && row.change_rate !== 0"
+              :style="{ color: row.change_rate >= 0 ? RISE_COLOR : FALL_COLOR }">
+              {{ fmtChange(row.change_rate) }}
+            </span>
+            <span v-else>--</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="收盘价" width="100" prop="close">
+          <template #default="{ row }">
+            {{ row.close ? fmtNumber(row.close) : '--' }}
+          </template>
+        </el-table-column>
       </el-table>
     </el-card>
   </div>
@@ -63,7 +77,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { dragonTigerApi } from '@/api/dragonTiger'
-import { fmtAmount, RISE_COLOR, FALL_COLOR } from '@/utils/format'
+import { fmtAmount, fmtChange, fmtNumber, RISE_COLOR, FALL_COLOR } from '@/utils/format'
 import { normalizeCode } from '@/utils/stockCode'
 import type { DragonTigerRecord } from '@/types'
 import { Search } from '@element-plus/icons-vue'

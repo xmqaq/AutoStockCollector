@@ -903,10 +903,55 @@ def _parse_task_ts(task_id: str) -> int:
         return 0
 
 
+def _get_collection_stats(db) -> dict:
+    """查询各集合的记录数和数据时间区间，用于 progress_all 展示"""
+    from pymongo import ASCENDING, DESCENDING
+    from datetime import datetime as _dt
+
+    def _fmt_dt(v):
+        if v is None:
+            return None
+        if hasattr(v, "strftime"):
+            return v.strftime("%Y-%m-%d")
+        s = str(v)
+        if len(s) == 8 and s.isdigit():
+            return f"{s[:4]}-{s[4:6]}-{s[6:]}"
+        return s[:10] if s else None
+
+    meta = {
+        "kline":        ("kline",        "date",       ASCENDING),
+        "stock_info":   ("stock_info",   None,         None),
+        "financial":    ("financial",    "report_date",ASCENDING),
+        "news":         ("news",         "datetime",   ASCENDING),
+        "fund_flow":    ("fund_flow",    None,         None),
+        "dragon_tiger": ("dragon_tiger", "上榜日",      ASCENDING),
+        "sector":       ("block",        None,         None),
+        "margin":       ("margin_data",  "信用交易日期", ASCENDING),
+    }
+    result = {}
+    for task_type, (coll_name, date_field, _) in meta.items():
+        coll = db[coll_name]
+        count = coll.count_documents({})
+        date_from, date_to = None, None
+        if date_field and count > 0:
+            try:
+                oldest = coll.find_one({date_field: {"$exists": True}}, sort=[(date_field, ASCENDING)])
+                newest = coll.find_one({date_field: {"$exists": True}}, sort=[(date_field, DESCENDING)])
+                date_from = _fmt_dt(oldest.get(date_field)) if oldest else None
+                date_to   = _fmt_dt(newest.get(date_field)) if newest else None
+            except Exception:
+                pass
+        result[task_type] = {"record_count": count, "date_from": date_from, "date_to": date_to}
+    return result
+
+
 @api_bp.route("/collect/progress_all", methods=["GET"])
 def progress_all():
     """聚合查询所有8类数据任务的最新进度（始终取最新一次任务）"""
     from core.scheduler.scheduler import scheduler
+    from config.database import DatabaseConfig
+    db = DatabaseConfig.get_database()
+    coll_stats = _get_collection_stats(db)
 
     all_tasks = scheduler.list_tasks(limit=500)
 
@@ -932,7 +977,16 @@ def progress_all():
     for ttype in target_types:
         task = latest_by_type.get(ttype)
         if not task:
-            summary[ttype] = {"status": "not_started", "progress": 0, "total": 0, "percent": 0.0, "task_id": None}
+            stats = coll_stats.get(ttype, {})
+            summary[ttype] = {
+                "task_type": ttype,
+                "status": "not_started",
+                "progress": 0, "total": 0, "percent": 0.0, "task_id": None,
+                "success": 0, "failed": 0, "elapsed_time": 0,
+                "record_count": stats.get("record_count", 0),
+                "date_from": stats.get("date_from"),
+                "date_to": stats.get("date_to"),
+            }
             continue
 
         progress = task.get("progress", 0)
@@ -942,6 +996,7 @@ def progress_all():
         success = task.get("success", 0)
         failed_cnt = task.get("failed", 0)
 
+        stats = coll_stats.get(ttype, {})
         summary[ttype] = {
             "type": ttype,
             "task_type": ttype,
@@ -953,6 +1008,9 @@ def progress_all():
             "failed": failed_cnt,
             "task_id": task.get("task_id"),
             "elapsed_time": round(task.get("elapsed_time", 0), 1),
+            "record_count": stats.get("record_count", 0),
+            "date_from": stats.get("date_from"),
+            "date_to": stats.get("date_to"),
         }
 
         if status == "completed":
@@ -994,36 +1052,46 @@ def error_response(message: str, code: int = 400) -> tuple:
 @api_bp.route("/dragon_tiger", methods=["GET"])
 def get_dragon_tiger_list():
     from core.storage.mongo_storage import DragonTigerStorage
-    
+    from datetime import datetime as _dt
+
     storage = DragonTigerStorage()
     start_date = request.args.get("start_date")
     end_date = request.args.get("end_date")
     code = request.args.get("code")
-    limit = int(request.args.get("limit", 100))
-    
+    limit = int(request.args.get("limit", 200))
+
     filter_doc = {}
     if code:
         filter_doc["code"] = code
     if start_date and end_date:
-        filter_doc["date"] = {"$gte": start_date, "$lte": end_date}
-    
-    records = storage.find_many(filter_doc, sort=[("date", -1)], limit=limit)
-    
-    for record in records:
-        record.pop("_id", None)
-        record.pop("_updated_at", None)
-    
+        try:
+            # 上榜日 存储为 datetime，需转换后比较
+            sd = _dt.strptime(start_date[:10], "%Y-%m-%d")
+            ed = _dt.strptime(end_date[:10], "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+            filter_doc["上榜日"] = {"$gte": sd, "$lte": ed}
+        except Exception:
+            pass
+
+    records = storage.find_many(filter_doc, sort=[("上榜日", -1)], limit=limit)
+
     result = []
     for r in records:
+        r.pop("_id", None)
+        r.pop("_updated_at", None)
+        raw_date = r.get("上榜日") or r.get("date") or r.get("日期", "")
+        if hasattr(raw_date, "strftime"):
+            raw_date = raw_date.strftime("%Y-%m-%d")
         result.append({
-            "code": r.get("code", ""),
-            "name": r.get("name", r.get("股票名称", "")),
-            "date": r.get("date", r.get("日期", "")),
-            "reason": r.get("reason", r.get("上榜原因", "")),
-            "total_amount": r.get("total_amount", r.get("总成交额", 0)),
-            "net_buy": r.get("net_buy", r.get("净买入额", 0)),
+            "code": r.get("code", r.get("代码", "")),
+            "name": r.get("name", r.get("名称", r.get("股票名称", ""))),
+            "date": raw_date,
+            "reason": r.get("reason", r.get("上榜原因", r.get("解读", ""))),
+            "total_amount": r.get("total_amount", r.get("龙虎榜成交额", r.get("市场总成交额", 0))),
+            "net_buy": r.get("net_buy", r.get("龙虎榜净买额", r.get("净买额", 0))),
+            "close": r.get("收盘价", 0),
+            "change_rate": r.get("涨跌幅", 0),
         })
-    
+
     return jsonify({
         "success": True,
         "count": len(result),
@@ -1042,9 +1110,11 @@ def get_margin_data():
     limit = int(request.args.get("limit", 100))
     
     filter_doc = {}
-    # margin 集合存储的是市场级汇总数据，无法按个股 code 过滤
+    # margin 集合存储的是市场级汇总数据；信用交易日期 存储为 8 位字符串 "20260527"
     if start_date and end_date:
-        filter_doc["信用交易日期"] = {"$gte": start_date, "$lte": end_date}
+        sd_8 = start_date.replace("-", "")[:8]
+        ed_8 = end_date.replace("-", "")[:8]
+        filter_doc["信用交易日期"] = {"$gte": sd_8, "$lte": ed_8}
 
     records = storage.find_many(filter_doc, sort=[("信用交易日期", -1)], limit=limit)
     

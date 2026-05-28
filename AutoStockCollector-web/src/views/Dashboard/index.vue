@@ -84,6 +84,7 @@
               v-for="(news, idx) in newsList"
               :key="idx"
               class="news-item"
+              @click="goToNews(news)"
             >
               <div class="news-title">{{ news.title }}</div>
               <div class="news-meta">{{ fmtDateTime(news.datetime || news.date) }}</div>
@@ -97,6 +98,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useCollectStore } from '@/stores/collectStore'
 import { newsApi } from '@/api/news'
 import { fmtAmount, fmtDateTime } from '@/utils/format'
@@ -104,10 +106,15 @@ import type { NewsRecord } from '@/types'
 import ProgressTable from '@/components/ProgressTable/index.vue'
 import { Monitor, DataAnalysis, TrendCharts, ChatDotRound, Refresh } from '@element-plus/icons-vue'
 
+const router = useRouter()
 const collectStore = useCollectStore()
 const loading = ref(false)
 const newsList = ref<NewsRecord[]>([])
 const newsCount = ref(0)
+
+function goToNews(_news: NewsRecord) {
+  router.push('/news')
+}
 
 async function refreshData() {
   loading.value = true
