@@ -70,6 +70,7 @@ export interface NewsRecord {
   summary?: string
   datetime?: string
   date?: string
+  publish_date?: string
   source?: string
   url?: string
 }

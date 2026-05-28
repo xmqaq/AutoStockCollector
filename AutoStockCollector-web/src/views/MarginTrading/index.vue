@@ -73,7 +73,7 @@ use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomCompon
 const loading = ref(false)
 const tableData = ref<MarginRecord[]>([])
 const dateRange = ref<[string, string]>([
-  dayjs().subtract(90, 'day').format('YYYY-MM-DD'),
+  dayjs().subtract(6, 'month').format('YYYY-MM-DD'),
   dayjs().format('YYYY-MM-DD'),
 ])
 

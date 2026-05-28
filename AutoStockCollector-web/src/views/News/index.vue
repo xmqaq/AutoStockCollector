@@ -33,7 +33,7 @@
               <div class="news-item-title">
                 <span class="news-headline">{{ news.title }}</span>
                 <div class="news-meta">
-                  <span class="news-time">{{ fmtDateTime(news.datetime || news.date) }}</span>
+                  <span class="news-time">{{ fmtDateTime(news.publish_date || news.datetime || news.date) }}</span>
                   <el-tag v-if="news.source" size="small" type="info" class="news-source">
                     {{ news.source }}
                   </el-tag>

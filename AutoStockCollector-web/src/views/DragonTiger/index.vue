@@ -87,7 +87,7 @@ const router = useRouter()
 const loading = ref(false)
 const tableData = ref<DragonTigerRecord[]>([])
 const dateRange = ref<[string, string]>([
-  dayjs().subtract(30, 'day').format('YYYY-MM-DD'),
+  dayjs().subtract(6, 'month').format('YYYY-MM-DD'),
   dayjs().format('YYYY-MM-DD'),
 ])
 const codeFilter = ref('')

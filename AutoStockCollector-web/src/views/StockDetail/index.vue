@@ -115,7 +115,7 @@
           <div v-for="(news, idx) in newsList" :key="idx" class="news-item">
             <div class="news-title">{{ news.title }}</div>
             <div class="news-meta">
-              <span>{{ fmtDateTime(news.datetime || news.date) }}</span>
+              <span>{{ fmtDateTime(news.publish_date || news.datetime || news.date) }}</span>
               <span v-if="news.source" class="news-source">{{ news.source }}</span>
             </div>
           </div>

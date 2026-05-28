@@ -87,7 +87,7 @@
               @click="goToNews(news)"
             >
               <div class="news-title">{{ news.title }}</div>
-              <div class="news-meta">{{ fmtDateTime(news.datetime || news.date) }}</div>
+              <div class="news-meta">{{ fmtDateTime(news.publish_date || news.datetime || news.date) }}</div>
             </div>
           </div>
         </el-card>
@@ -112,8 +112,12 @@ const loading = ref(false)
 const newsList = ref<NewsRecord[]>([])
 const newsCount = ref(0)
 
-function goToNews(_news: NewsRecord) {
-  router.push('/news')
+function goToNews(news: NewsRecord) {
+  if (news.url) {
+    window.open(news.url, '_blank', 'noopener,noreferrer')
+  } else {
+    router.push('/news')
+  }
 }
 
 async function refreshData() {
