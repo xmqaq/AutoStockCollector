@@ -37,6 +37,20 @@ def init_app():
     except Exception as e:
         logger.warning(f"Database initialization warning: {e}")
 
+    # 每次启动时将 DB 中残留的 running/pending 任务标记为 cancelled
+    # 这些是上次进程被杀死前未能更新状态的任务
+    try:
+        from datetime import datetime as _dt
+        db = DatabaseConfig.get_database()
+        result = db.task.update_many(
+            {"status": {"$in": ["running", "pending"]}},
+            {"$set": {"status": "cancelled", "end_time": _dt.now()}}
+        )
+        if result.modified_count:
+            logger.info(f"Cleaned up {result.modified_count} stale running/pending tasks")
+    except Exception as e:
+        logger.warning(f"Stale task cleanup warning: {e}")
+
     logger.info("AutoStockCollector initialized successfully")
 
 

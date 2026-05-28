@@ -668,12 +668,14 @@ class TaskScheduler:
         task.update_progress(0, 2, 0, 0)
         success, failed = 0, 0
 
-        # 1. 大单成交明细
+        # 1. 大单成交明细（字段映射：股票代码→code, 成交时间取日期部分→date）
         try:
             df = ak.stock_fund_flow_big_deal()
             if df is not None and not df.empty:
+                today = datetime.now().strftime("%Y-%m-%d")
+                df["code"] = df["股票代码"].astype(str) if "股票代码" in df.columns else ""
+                df["date"] = df["成交时间"].astype(str).str[:10] if "成交时间" in df.columns else today
                 df["_updated_at"] = datetime.now()
-                df["_date"] = datetime.now().strftime("%Y-%m-%d")
                 records = df.to_dict("records")
                 storage.save_fund_flow_batch(records)
                 success += len(records)
@@ -736,11 +738,20 @@ class TaskScheduler:
 
     def _execute_sector_task(self, task: Task):
         collector = self._get_collector(TaskType.FUND_FLOW_COLLECTION.value)
+        from core.storage.mongo_storage import BlockStorage
+        storage = BlockStorage()
         task.update_progress(0, 1, 0, 0)
         try:
             df = collector.collect_sector_flow()
-            records = df.to_dict("records") if df is not None and not df.empty else []
-            task.complete(len(records), 0)
+            if df is not None and not df.empty:
+                df["block_type"] = "sector"
+                df["_updated_at"] = datetime.now()
+                records = df.to_dict("records")
+                for record in records:
+                    storage.save_block(record)
+                task.complete(len(records), 0)
+            else:
+                task.complete(0, 0)
         except Exception as e:
             task.fail(str(e))
 

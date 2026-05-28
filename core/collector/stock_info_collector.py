@@ -76,6 +76,8 @@ class StockInfoCollector(BaseCollector):
                     elif source_name == "stock_profile_cninfo":
                         for col in df.columns:
                             info[col] = df.iloc[0][col]
+                        # 统一 market 字段，供下游分析使用
+                        info["market"] = info.get("所属市场", "unknown")
                     elif "代码" in df.columns and "名称" in df.columns:
                         stock_row = df[df["代码"].astype(str) == code[2:]]
                         if not stock_row.empty:

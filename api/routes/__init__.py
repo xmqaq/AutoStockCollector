@@ -856,32 +856,33 @@ def start_history_collection():
     })
 
 
+def _parse_task_ts(task_id: str) -> int:
+    """从 task_id（如 kline_1779931587433）提取毫秒时间戳，用于排序"""
+    try:
+        return int(task_id.rsplit("_", 1)[-1])
+    except Exception:
+        return 0
+
+
 @api_bp.route("/collect/progress_all", methods=["GET"])
 def progress_all():
-    """聚合查询所有8类数据任务的最新进度"""
+    """聚合查询所有8类数据任务的最新进度（始终取最新一次任务）"""
     from core.scheduler.scheduler import scheduler
 
-    all_tasks = scheduler.list_tasks(limit=200)
+    all_tasks = scheduler.list_tasks(limit=500)
 
-    # 8类数据类型
     target_types = ["kline", "stock_info", "financial", "news",
                     "fund_flow", "dragon_tiger", "sector", "margin"]
 
-    # 每种类型取最新的任务（优先运行中的，其次按时间倒序）
-    latest_by_type = {}
+    # 每种类型只取 task_id 时间戳最大（最新）的那条，忽略状态优先级
+    latest_by_type: dict = {}
     for task in all_tasks:
         ttype = task.get("task_type")
         if ttype not in target_types:
             continue
+        tid = task.get("task_id", "")
         existing = latest_by_type.get(ttype)
-        if not existing:
-            latest_by_type[ttype] = task
-            continue
-        # 优先 running > pending > 其他
-        status_priority = {"running": 3, "pending": 2, "completed": 1, "failed": 0, "cancelled": 0}
-        cur_p = status_priority.get(task.get("status", ""), 0)
-        old_p = status_priority.get(existing.get("status", ""), 0)
-        if cur_p > old_p:
+        if not existing or _parse_task_ts(tid) > _parse_task_ts(existing.get("task_id", "")):
             latest_by_type[ttype] = task
 
     summary = {}
