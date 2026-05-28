@@ -52,12 +52,11 @@
       <template #header><span>板块列表</span></template>
       <el-empty v-if="sectors.length === 0 && !loading" description="暂无板块数据" />
       <el-table v-else :data="sectors" stripe size="small">
-        <el-table-column prop="name" label="板块名称" width="180">
+        <el-table-column prop="name" label="板块名称" min-width="180">
           <template #default="{ row }">
             <el-link type="primary" @click="loadSectorStocks(row.name)">{{ row.name }}</el-link>
           </template>
         </el-table-column>
-        <el-table-column prop="type" label="类型" width="100" />
         <el-table-column label="净流入" width="130" prop="net_flow" sortable>
           <template #default="{ row }">
             <span :style="{ color: (row.net_flow || 0) >= 0 ? RISE_COLOR : FALL_COLOR }">

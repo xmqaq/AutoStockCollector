@@ -50,7 +50,7 @@
       </template>
       <el-empty v-if="collectStore.tasks.length === 0" description="暂无任务记录" />
       <el-table v-else :data="collectStore.tasks" stripe>
-        <el-table-column prop="id" label="任务ID" width="200" show-overflow-tooltip />
+        <el-table-column prop="task_id" label="任务ID" width="200" show-overflow-tooltip />
         <el-table-column prop="task_type" label="类型" width="120">
           <template #default="{ row }">
             <el-tag size="small">{{ row.task_type }}</el-tag>
@@ -75,13 +75,13 @@
               v-if="row.status === 'running' || row.status === 'pending'"
               size="small"
               type="warning"
-              @click="handleCancel(row.id)"
+              @click="handleCancel(row.task_id)"
             >取消</el-button>
             <el-button
               v-if="row.status === 'failed' || row.status === 'cancelled'"
               size="small"
               type="primary"
-              @click="handleRetry(row.id)"
+              @click="handleRetry(row.task_id)"
             >重试</el-button>
           </template>
         </el-table-column>
@@ -167,9 +167,9 @@ const overallPercent = computed(() => {
   const withData = list.filter(p => p.total > 0)
   if (!withData.length) return 0
   const totalItems = withData.reduce((a, p) => a + p.total, 0)
-  const successItems = withData.reduce((a, p) => a + (p.success || 0), 0)
+  const doneItems = withData.reduce((a, p) => a + (p.progress || p.success || 0), 0)
   if (totalItems === 0) return 0
-  return Math.round((successItems / totalItems) * 100)
+  return Math.round((doneItems / totalItems) * 100)
 })
 
 const gaugeOption = computed(() => ({

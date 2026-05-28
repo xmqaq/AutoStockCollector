@@ -224,7 +224,7 @@ async function loadStrategies() {
   strategiesLoading.value = true
   try {
     const res = await strategyApi.getStrategyList()
-    strategies.value = res.data?.data || res.data || []
+    strategies.value = res.data?.strategies || res.data?.data || res.data || []
     if (strategies.value.length > 0) {
       form.value.strategy = strategies.value[0].id
     }
@@ -261,7 +261,7 @@ async function runBacktest() {
       end_date: dateRange.value[1],
       initial_cash: form.value.initial_cash,
     })
-    result.value = res.data?.data || res.data || {}
+    result.value = res.data?.report || res.data?.data || res.data || {}
   } catch {
     result.value = null
   } finally {

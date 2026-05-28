@@ -97,9 +97,14 @@ export interface TaskRecord {
 
 export interface CollectProgress {
   task_type: string
+  status: string
+  progress: number
   total: number
+  percent: number
   success: number
   failed: number
+  task_id?: string
+  elapsed_time?: number
   last_update?: string
 }
 

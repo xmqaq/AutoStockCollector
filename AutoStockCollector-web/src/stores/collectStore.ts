@@ -47,7 +47,7 @@ export const useCollectStore = defineStore('collect', () => {
     try {
       const res = await collectApi.getTasks({ status, limit })
       if (res.data) {
-        tasks.value = res.data.data || res.data || []
+        tasks.value = res.data.tasks || res.data.data || []
       }
     } finally {
       loading.value = false

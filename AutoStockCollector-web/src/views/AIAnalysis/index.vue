@@ -154,7 +154,7 @@ async function handleAnalyze() {
   cacheHit.value = false
   try {
     const res = await aiApi.analyze({ code: form.value.code, type: form.value.type })
-    const data = res.data?.data || res.data
+    const data = res.data?.result || res.data?.data || res.data
     result.value = data || {}
     rawResult.value = data
     // Cache it

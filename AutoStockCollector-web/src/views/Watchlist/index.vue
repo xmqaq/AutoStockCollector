@@ -126,7 +126,7 @@ async function loadData() {
       watchlistApi.getGroups(),
     ])
     watchlist.value = wRes.data?.data || wRes.data || []
-    groups.value = gRes.data?.data || gRes.data || []
+    groups.value = gRes.data?.groups || gRes.data?.data || gRes.data || []
   } catch {
     watchlist.value = []
   } finally {

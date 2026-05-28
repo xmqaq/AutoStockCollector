@@ -14,16 +14,10 @@
           size="small"
           style="width:280px"
         />
-        <el-input
-          v-model="codeFilter"
-          placeholder="股票代码（可选）"
-          size="small"
-          style="width:200px"
-          clearable
-        />
         <el-button type="primary" size="small" @click="loadData">
           <el-icon><Search /></el-icon> 查询
         </el-button>
+        <el-text size="small" type="info">融资融券为全市场汇总数据</el-text>
       </div>
     </el-card>
 
@@ -44,11 +38,6 @@
       <el-empty v-if="tableData.length === 0 && !loading" description="暂无融资融券数据" />
       <el-table v-else :data="tableData" stripe size="small">
         <el-table-column prop="date" label="日期" width="120" sortable />
-        <el-table-column prop="code" label="代码" width="110">
-          <template #default="{ row }">
-            <el-link type="primary" @click="goToStock(row.code)">{{ row.code }}</el-link>
-          </template>
-        </el-table-column>
         <el-table-column label="融资余额" width="130" prop="rz_balance" sortable>
           <template #default="{ row }">{{ fmtAmount(row.rz_balance) }}</template>
         </el-table-column>
@@ -68,7 +57,6 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { LineChart } from 'echarts/charts'
@@ -76,21 +64,18 @@ import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent } f
 import { CanvasRenderer } from 'echarts/renderers'
 import { marginApi } from '@/api/margin'
 import { fmtAmount } from '@/utils/format'
-import { normalizeCode } from '@/utils/stockCode'
 import type { MarginRecord } from '@/types'
 import { Search } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
 
 use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer])
 
-const router = useRouter()
 const loading = ref(false)
 const tableData = ref<MarginRecord[]>([])
 const dateRange = ref<[string, string]>([
   dayjs().subtract(90, 'day').format('YYYY-MM-DD'),
   dayjs().format('YYYY-MM-DD'),
 ])
-const codeFilter = ref('')
 
 const chartData = computed(() => {
   return [...tableData.value].sort((a, b) => a.date.localeCompare(b.date)).slice(0, 60)
@@ -140,15 +125,12 @@ const lineOption = computed(() => {
 async function loadData() {
   loading.value = true
   try {
-    const params: { start_date?: string; end_date?: string; code?: string; limit?: number } = {
+    const params: { start_date?: string; end_date?: string; limit?: number } = {
       limit: 200,
     }
     if (dateRange.value) {
       params.start_date = dateRange.value[0]
       params.end_date = dateRange.value[1]
-    }
-    if (codeFilter.value) {
-      params.code = normalizeCode(codeFilter.value)
     }
     const res = await marginApi.getMargin(params)
     tableData.value = res.data?.data || res.data || []
@@ -157,10 +139,6 @@ async function loadData() {
   } finally {
     loading.value = false
   }
-}
-
-function goToStock(code: string) {
-  router.push({ path: '/stock-detail', query: { code } })
 }
 
 onMounted(() => {

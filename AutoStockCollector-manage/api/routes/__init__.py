@@ -193,6 +193,35 @@ def get_stock_info(code):
     })
 
 
+def _map_financial_record(r: dict) -> dict:
+    """将财务记录中文字段名统一映射为英文，兼容 AKShare 直接存储的 DataFrame 列名"""
+    r.pop("_id", None)
+    r.pop("_updated_at", None)
+    # 报告期字段
+    report_date = (
+        r.get("report_date") or r.get("报告期") or r.get("日期") or ""
+    )
+    if hasattr(report_date, "strftime"):
+        report_date = report_date.strftime("%Y-%m-%d")
+    elif isinstance(report_date, str) and len(report_date) == 8 and report_date.isdigit():
+        report_date = f"{report_date[:4]}-{report_date[4:6]}-{report_date[6:]}"
+    return {
+        "code": r.get("code", ""),
+        "report_date": str(report_date)[:10],
+        "net_profit": r.get("net_profit") or r.get("净利润") or r.get("净利润(元)") or 0,
+        "revenue":    r.get("revenue")    or r.get("营业收入") or r.get("营业总收入(元)") or 0,
+        "roe":        r.get("roe")        or r.get("ROE") or r.get("净资产收益率") or 0,
+        "roa":        r.get("roa")        or r.get("ROA") or r.get("总资产收益率") or 0,
+        "eps":        r.get("eps")        or r.get("EPS") or r.get("每股收益") or 0,
+        "bps":        r.get("bps")        or r.get("BPS") or r.get("每股净资产") or 0,
+        **{k: v for k, v in r.items() if k not in (
+            "code", "report_date", "net_profit", "revenue", "roe", "roa", "eps", "bps",
+            "报告期", "日期", "净利润", "净利润(元)", "营业收入", "营业总收入(元)",
+            "ROE", "净资产收益率", "ROA", "总资产收益率", "EPS", "每股收益", "BPS", "每股净资产"
+        )},
+    }
+
+
 @api_bp.route("/financial/<code>", methods=["GET"])
 def get_financial(code):
     from core.storage.mongo_storage import FinancialStorage
@@ -202,18 +231,13 @@ def get_financial(code):
 
     if report_date:
         record = storage.get_by_code_and_period(code, report_date)
-        records = [record] if record else []
-        if record:
-            record.pop("_id", None)
-            record.pop("_updated_at", None)
+        records = [_map_financial_record(record)] if record else []
     else:
-        records = storage.find_many(
-            {"code": code},
-            sort=[("report_date", -1)]
-        )
-        for record in records:
-            record.pop("_id", None)
-            record.pop("_updated_at", None)
+        raw = storage.find_many({"code": code}, sort=[("report_date", -1)])
+        if not raw:
+            # 兼容中文报告期字段名排序
+            raw = storage.find_many({"code": code}, sort=[("报告期", -1)])
+        records = [_map_financial_record(r) for r in raw]
 
     return jsonify({
         "success": True,
@@ -1018,11 +1042,10 @@ def get_margin_data():
     limit = int(request.args.get("limit", 100))
     
     filter_doc = {}
-    if code:
-        filter_doc["code"] = code
+    # margin 集合存储的是市场级汇总数据，无法按个股 code 过滤
     if start_date and end_date:
         filter_doc["信用交易日期"] = {"$gte": start_date, "$lte": end_date}
-    
+
     records = storage.find_many(filter_doc, sort=[("信用交易日期", -1)], limit=limit)
     
     for record in records:

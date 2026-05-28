@@ -11,7 +11,7 @@
           :percentage="calcPercent(row)"
           :status="progressStatus(row)"
           :stroke-width="8"
-          :format="() => `${row.success || 0}/${row.total || 0}`"
+          :format="() => `${row.progress || row.success || 0}/${row.total || 0}`"
         />
       </template>
     </el-table-column>
@@ -34,9 +34,9 @@
         />
       </template>
     </el-table-column>
-    <el-table-column prop="last_update" label="最后更新" width="160">
+    <el-table-column label="耗时" width="90" align="center">
       <template #default="{ row }">
-        <span class="text-muted">{{ fmtDateTime(row.last_update) }}</span>
+        <span class="text-muted">{{ row.elapsed_time ? `${row.elapsed_time}s` : '--' }}</span>
       </template>
     </el-table-column>
   </el-table>
@@ -69,8 +69,9 @@ function taskTypeLabel(type: string): string {
 }
 
 function calcPercent(row: CollectProgress): number {
+  if (row.percent !== undefined && row.percent > 0) return Math.min(100, Math.round(row.percent))
   if (!row.total || row.total === 0) return 0
-  return Math.min(100, Math.round((row.success / row.total) * 100))
+  return Math.min(100, Math.round(((row.progress || row.success || 0) / row.total) * 100))
 }
 
 function progressStatus(row: CollectProgress): '' | 'success' | 'exception' | 'warning' {
@@ -82,19 +83,19 @@ function progressStatus(row: CollectProgress): '' | 'success' | 'exception' | 'w
 }
 
 function badgeType(row: CollectProgress): 'success' | 'danger' | 'warning' | 'info' | 'primary' {
-  const pct = calcPercent(row)
-  if (pct === 100) return 'success'
-  if (row.failed > 0) return 'danger'
-  if (pct > 0) return 'primary'
+  if (row.status === 'completed') return 'success'
+  if (row.status === 'failed') return 'danger'
+  if (row.status === 'running') return 'primary'
+  if (row.status === 'cancelled') return 'warning'
   return 'info'
 }
 
 function badgeLabel(row: CollectProgress): string {
-  const pct = calcPercent(row)
-  if (pct === 100) return '完成'
-  if (row.failed > 0 && (row.success || 0) === 0) return '失败'
-  if (pct > 0) return '进行中'
-  return '未开始'
+  const labels: Record<string, string> = {
+    completed: '完成', failed: '失败', running: '进行中',
+    cancelled: '取消', pending: '等待', not_started: '未开始',
+  }
+  return labels[row.status] || row.status || '未开始'
 }
 </script>
 
