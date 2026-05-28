@@ -7,6 +7,10 @@
 !前端项目文档.md
 
 
+# Logs
+logs/
+*.log
+
 # OS
 .DS_Store
 Thumbs.db
