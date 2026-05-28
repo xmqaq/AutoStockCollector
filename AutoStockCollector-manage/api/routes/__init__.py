@@ -241,7 +241,9 @@ def get_fund_flow(code):
     from core.storage.mongo_storage import FundFlowStorage
 
     storage = FundFlowStorage()
-    record = storage.get_latest_flow(code)
+    # fund_flow 存储的 code 为纯数字，兼容 SH/SZ 前缀入参
+    bare_code = code[2:] if code[:2] in ("SH", "SZ") else code
+    record = storage.get_latest_flow(bare_code)
 
     if not record:
         return jsonify({"error": "No fund flow data found"}), 404
