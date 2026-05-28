@@ -66,8 +66,8 @@
             <span>{{ row.success || 0 }}/{{ row.total || 0 }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="created_at" label="创建时间" width="160">
-          <template #default="{ row }">{{ fmtDateTime(row.created_at) }}</template>
+        <el-table-column prop="create_time" label="创建时间" width="160">
+          <template #default="{ row }">{{ fmtDateTime(row.create_time || row.created_at) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="160">
           <template #default="{ row }">

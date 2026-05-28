@@ -113,7 +113,13 @@ const lineOption = computed(() => {
     xAxis: {
       type: 'category',
       data: dates,
-      axisLabel: { color: '#909399', rotate: 30, fontSize: 10 },
+      axisLabel: {
+        color: '#909399',
+        rotate: 30,
+        fontSize: 10,
+        // 最多显示 8 个标签，避免密集重叠
+        interval: Math.max(0, Math.floor(dates.length / 8) - 1),
+      },
       axisLine: { lineStyle: { color: '#444' } },
     },
     yAxis: {

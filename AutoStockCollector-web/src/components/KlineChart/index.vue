@@ -92,12 +92,6 @@ const chartOption = computed(() => {
 
   const dates = kdata.map(d => d.date)
   const ohlc = kdata.map(d => [d.open, d.close, d.low, d.high])
-  const volumes = kdata.map(d => ({
-    value: d.volume,
-    itemStyle: {
-      color: d.close >= d.open ? RISE_COLOR : FALL_COLOR,
-    },
-  }))
 
   const ma5 = calcMA(kdata, 5)
   const ma10 = calcMA(kdata, 10)
@@ -150,36 +144,66 @@ const chartOption = computed(() => {
       textStyle: { color: '#909399' },
       data: ['K线', ...selectedMAs.value],
     },
+    // 顶层 axisPointer.link 让两个 grid 的 X 轴联动 —— 鼠标移到下半的成交量区也能触发 tooltip
+    axisPointer: {
+      link: [{ xAxisIndex: 'all' }],
+      label: { backgroundColor: '#555' },
+    },
     tooltip: {
       trigger: 'axis',
-      axisPointer: { type: 'cross' },
+      axisPointer: {
+        type: 'cross',
+        crossStyle: { color: '#888' },
+      },
       backgroundColor: '#2c2c2c',
       borderColor: '#444',
       textStyle: { color: '#e5eaf3', fontSize: 12 },
+      // 任意 series 触发都展示同一份完整 OHLC + 量 + 涨跌
       formatter(params: unknown[]) {
-        if (!params || !params.length) return ''
-        const kParam = (params as Array<{ seriesName: string; data: number[]; dataIndex: number }>).find(p => p.seriesName === 'K线')
-        if (!kParam) return ''
-        const date = dates[kParam.dataIndex]
-        const [open, close, low, high] = kParam.data
-        const vol = kdata[kParam.dataIndex]?.volume || 0
-        const chg = kdata[kParam.dataIndex]?.change_rate || 0
+        const arr = params as Array<{ seriesName: string; dataIndex: number }>
+        if (!arr || !arr.length) return ''
+        // 取任意一个 series 的 dataIndex（K线 / 成交量 / MAx 都来自同一 X 轴）
+        const idx = arr[0]?.dataIndex
+        if (idx === undefined || idx < 0) return ''
+        const rec = kdata[idx]
+        if (!rec) return ''
+        // 直接从源数据读，避开 ECharts 蜡烛 params.data 形如 [dataIndex, o, c, l, h] 带索引前缀的坑
+        const date = rec.date
+        const o = Number(rec.open)
+        const h = Number(rec.high)
+        const l = Number(rec.low)
+        const c = Number(rec.close)
+        const vol = Number(rec.volume)
+        const amt = Number(rec.amount)
+        const chg = Number(rec.change_rate)
+        const trn = Number(rec.turnover_rate)
+        const fmt = (n: number, d = 2) => Number.isFinite(n) ? n.toFixed(d) : '--'
+        const volStr = Number.isFinite(vol) && vol > 0 ? `${(vol / 100 / 1e4).toFixed(2)} 万手` : '--'
+        const amtStr = Number.isFinite(amt) && amt > 0
+          ? (amt >= 1e8 ? `${(amt / 1e8).toFixed(2)} 亿` : `${(amt / 1e4).toFixed(2)} 万`)
+          : '--'
+        const chgColor = Number.isFinite(chg) ? (chg >= 0 ? '#ef5350' : '#26a69a') : '#e5eaf3'
+        const chgStr = Number.isFinite(chg) ? `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%` : '--'
+        const row = (k: string, v: string, color = '#e5eaf3') =>
+          `<div style="display:flex;justify-content:space-between;gap:18px;line-height:1.6"><span style="color:#909399">${k}</span><span style="color:${color};font-weight:500">${v}</span></div>`
         return `
-          <div style="padding:4px 8px">
-            <div style="font-weight:bold;margin-bottom:4px">${date}</div>
-            <div>开: ${open}</div>
-            <div>高: ${high}</div>
-            <div>低: ${low}</div>
-            <div>收: ${close}</div>
-            <div>量: ${(vol / 1e4).toFixed(2)}万手</div>
-            <div>涨跌: ${chg >= 0 ? '+' : ''}${chg?.toFixed(2)}%</div>
+          <div style="padding:6px 10px;min-width:170px">
+            <div style="font-weight:bold;margin-bottom:6px;color:#e5eaf3">${date}</div>
+            ${row('开盘', fmt(o))}
+            ${row('最高', fmt(h), '#ef5350')}
+            ${row('最低', fmt(l), '#26a69a')}
+            ${row('收盘', fmt(c))}
+            ${row('涨跌幅', chgStr, chgColor)}
+            ${row('成交量', volStr)}
+            ${row('成交额', amtStr)}
+            ${row('换手率', Number.isFinite(trn) ? `${trn.toFixed(2)}%` : '--')}
           </div>
         `
       },
     },
+    // 单个 grid，K 线吃满，量价信息走 tooltip
     grid: [
-      { left: 60, right: 20, top: 40, height: '60%' },
-      { left: 60, right: 20, bottom: 60, height: '20%' },
+      { left: 60, right: 20, top: 40, bottom: 60 },
     ],
     xAxis: [
       {
@@ -193,19 +217,6 @@ const chartOption = computed(() => {
         min: 'dataMin',
         max: 'dataMax',
       },
-      {
-        type: 'category',
-        gridIndex: 1,
-        data: dates,
-        scale: true,
-        boundaryGap: false,
-        axisLine: { lineStyle: { color: '#444' } },
-        axisTick: { show: false },
-        axisLabel: { show: false },
-        splitLine: { show: false },
-        min: 'dataMin',
-        max: 'dataMax',
-      },
     ],
     yAxis: [
       {
@@ -215,26 +226,17 @@ const chartOption = computed(() => {
         splitLine: { lineStyle: { color: '#2c2c2c' } },
         axisLabel: { color: '#909399', fontSize: 11 },
       },
-      {
-        scale: true,
-        gridIndex: 1,
-        splitNumber: 2,
-        axisLine: { lineStyle: { color: '#444' } },
-        axisTick: { show: false },
-        axisLabel: { color: '#909399', fontSize: 11 },
-        splitLine: { lineStyle: { color: '#2c2c2c' } },
-      },
     ],
     dataZoom: [
       {
         type: 'inside',
-        xAxisIndex: [0, 1],
+        xAxisIndex: 0,
         start: Math.max(0, 100 - (80 / kdata.length) * 100),
         end: 100,
       },
       {
         type: 'slider',
-        xAxisIndex: [0, 1],
+        xAxisIndex: 0,
         bottom: 8,
         height: 20,
         start: Math.max(0, 100 - (80 / kdata.length) * 100),
@@ -256,13 +258,6 @@ const chartOption = computed(() => {
           borderColor: RISE_COLOR,
           borderColor0: FALL_COLOR,
         },
-      },
-      {
-        name: '成交量',
-        type: 'bar',
-        xAxisIndex: 1,
-        yAxisIndex: 1,
-        data: volumes,
       },
       ...maSeries,
     ],

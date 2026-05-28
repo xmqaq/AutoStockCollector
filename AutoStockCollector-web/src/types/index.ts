@@ -87,15 +87,20 @@ export interface FundFlowRecord {
 }
 
 export interface TaskRecord {
-  id: string
+  id?: string
+  task_id?: string
   task_type: string
   status: string
-  created_at: string
+  create_time?: string
+  created_at?: string
+  update_time?: string
   updated_at?: string
+  progress?: number
   total?: number
   success?: number
   failed?: number
   error_msg?: string
+  error_message?: string
 }
 
 export interface CollectProgress {
@@ -119,18 +124,23 @@ export interface WatchlistItem {
   name?: string
   group_id?: string
   priority?: number
+  add_time?: string
   added_at?: string
+  latest_price?: number | null
+  latest_date?: string | null
 }
 
 export interface WatchlistGroup {
   id: string
+  group_id?: string
   name: string
+  stock_count?: number
 }
 
 export interface StrategyItem {
-  id: string
   name: string
   description?: string
+  id?: string
 }
 
 export interface BacktestResult {

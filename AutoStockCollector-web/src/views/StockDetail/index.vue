@@ -68,14 +68,16 @@
                 format="YYYY年MM月DD日"
                 value-format="YYYY-MM-DD"
                 size="small"
-                style="width:280px"
+                style="width:300px"
+                :shortcuts="dateShortcuts"
+                :clearable="false"
                 @change="loadKline"
               />
             </div>
           </div>
         </template>
         <KlineChart v-if="klineData.length > 0" :data="klineData" chart-height="480px" />
-        <el-empty v-else-if="!klineLoading" description="暂无K线数据" :image-size="60" />
+        <el-empty v-else-if="!klineLoading" :description="emptyKlineHint" :image-size="60" />
       </el-card>
 
       <!-- Financial data -->
@@ -126,8 +128,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useRoute } from 'vue-router'
 import StockSearch from '@/components/StockSearch/index.vue'
 import KlineChart from '@/components/KlineChart/index.vue'
 import { stockApi } from '@/api/stock'
@@ -155,8 +157,42 @@ const klineDateRange = ref<[string, string]>([
   dayjs().format('YYYY-MM-DD'),
 ])
 
+// 数据库实际可用区间，用于空数据时给出提示
+const klineDataRange = ref<{ from: string | null; to: string | null }>({ from: null, to: null })
+
+const emptyKlineHint = computed(() => {
+  const range = klineDataRange.value
+  if (range.from && range.to) {
+    return `当前所选区间无 K 线数据（数据库可用区间：${range.from} ~ ${range.to}）`
+  }
+  return '暂无 K 线数据'
+})
+
+function shortcut(daysOrMonths: number, unit: 'day' | 'month' | 'year'): [Date, Date] {
+  const end = new Date()
+  const start = new Date()
+  if (unit === 'day') start.setDate(start.getDate() - daysOrMonths)
+  if (unit === 'month') start.setMonth(start.getMonth() - daysOrMonths)
+  if (unit === 'year') start.setFullYear(start.getFullYear() - daysOrMonths)
+  return [start, end]
+}
+
+const dateShortcuts = [
+  { text: '近 1 月', value: () => shortcut(1, 'month') },
+  { text: '近 3 月', value: () => shortcut(3, 'month') },
+  { text: '近 6 月', value: () => shortcut(6, 'month') },
+  { text: '近 1 年', value: () => shortcut(1, 'year') },
+  { text: '近 3 年', value: () => shortcut(3, 'year') },
+]
+
 async function loadStock(code: string) {
-  if (!code) return
+  if (!code) {
+    stockInfo.value = null
+    klineData.value = []
+    financialList.value = []
+    newsList.value = []
+    return
+  }
   currentCode.value = code
   await Promise.all([
     loadInfo(),
@@ -172,18 +208,19 @@ async function loadInfo() {
     const res = await stockApi.getStockInfo(currentCode.value)
     const raw = res.data?.data || res.data || null
     if (raw) {
-      // 后端返回中文字段，统一映射为英文
+      // 后端已规范输出 name/industry/list_date/area 以及补全 pe/pb/total_mv（百度估值）
+      // 此处仅做兜底，注册资金绝不再误用为总市值
       stockInfo.value = {
+        ...raw,
         code: raw.code || currentCode.value,
         name: raw.name || raw['A股简称'] || raw['公司名称'] || '--',
         industry: raw.industry || raw['所属行业'] || '--',
         area: raw.area || raw['注册地址'] || raw['办公地址'] || '--',
-        pe: raw.pe ?? raw['市盈率'] ?? null,
-        pb: raw.pb ?? raw['市净率'] ?? null,
-        total_mv: raw.total_mv || raw['注册资金'] || 0,
         list_date: raw.list_date || raw['上市日期'] || '--',
         market: raw.market || raw['所属市场'] || '--',
-        ...raw,
+        pe: raw.pe ?? null,
+        pb: raw.pb ?? null,
+        total_mv: raw.total_mv ?? null,
       } as StockInfo
     } else {
       stockInfo.value = null
@@ -205,6 +242,15 @@ async function loadKline() {
     }
     const res = await klineApi.getKline(currentCode.value, params)
     klineData.value = res.data?.data || res.data || []
+    // 空结果时拉一次全量，记录真实可用区间用于提示（后端可能升/降序，统一取 min/max）
+    const dates = (
+      klineData.value.length > 0
+        ? klineData.value
+        : ((await klineApi.getKline(currentCode.value)).data?.data || [])
+    ).map((r: { date: string }) => r.date).filter(Boolean).sort()
+    klineDataRange.value = dates.length > 0
+      ? { from: dates[0], to: dates[dates.length - 1] }
+      : { from: null, to: null }
   } catch {
     klineData.value = []
   } finally {

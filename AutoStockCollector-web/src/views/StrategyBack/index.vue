@@ -10,9 +10,9 @@
               <el-select v-model="form.strategy" style="width:100%" :loading="strategiesLoading">
                 <el-option
                   v-for="s in strategies"
-                  :key="s.id"
+                  :key="s.name"
                   :label="s.name"
-                  :value="s.id"
+                  :value="s.name"
                 />
               </el-select>
             </el-form-item>
@@ -226,7 +226,7 @@ async function loadStrategies() {
     const res = await strategyApi.getStrategyList()
     strategies.value = res.data?.strategies || res.data?.data || res.data || []
     if (strategies.value.length > 0) {
-      form.value.strategy = strategies.value[0].id
+      form.value.strategy = strategies.value[0].name
     }
   } catch {
     strategies.value = []

@@ -25,13 +25,12 @@
         <span :class="row.failed > 0 ? 'text-danger' : 'text-muted'">{{ row.failed || 0 }}</span>
       </template>
     </el-table-column>
-    <el-table-column label="状态" width="100" align="center">
+    <el-table-column label="状态" width="110" align="center">
       <template #default="{ row }">
-        <el-badge
-          :type="badgeType(row)"
-          :value="badgeLabel(row)"
-          :max="9999"
-        />
+        <span class="status-tag" :class="`status-${row.status}`">
+          <span class="status-dot" />
+          {{ badgeLabel(row) }}
+        </span>
       </template>
     </el-table-column>
     <el-table-column label="数据量" width="100" align="center">
@@ -130,4 +129,34 @@ function badgeLabel(row: CollectProgress): string {
 .date-range {
   font-size: 11px;
 }
+
+.status-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.status-completed  { color: #67c23a; background: rgba(103,194,58,.12); }
+.status-completed  .status-dot { background: #67c23a; }
+.status-running    { color: #409eff; background: rgba(64,158,255,.12); }
+.status-running    .status-dot { background: #409eff; box-shadow: 0 0 4px #409eff; }
+.status-failed     { color: #f56c6c; background: rgba(245,108,108,.12); }
+.status-failed     .status-dot { background: #f56c6c; }
+.status-cancelled  { color: #e6a23c; background: rgba(230,162,60,.12); }
+.status-cancelled  .status-dot { background: #e6a23c; }
+.status-pending,
+.status-not_started,
+.status-unknown    { color: #909399; background: rgba(144,147,153,.12); }
+.status-pending    .status-dot,
+.status-not_started .status-dot,
+.status-unknown    .status-dot { background: #909399; }
 </style>

@@ -23,22 +23,35 @@
       </div>
       <el-empty v-if="filteredList.length === 0 && !loading" description="暂无自选股，点击添加" />
       <el-table v-else :data="filteredList" stripe v-loading="loading">
-        <el-table-column prop="code" label="代码" width="120">
+        <el-table-column prop="code" label="代码" width="130">
           <template #default="{ row }">
             <span class="code-link" @click="goToStock(row.code)">{{ row.code }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="name" label="名称" width="120" />
-        <el-table-column prop="group_id" label="分组" width="120">
+        <el-table-column label="最新价" width="100" align="right">
+          <template #default="{ row }">
+            <span v-if="row.latest_price" class="price-val">{{ fmtNumber(row.latest_price) }}</span>
+            <span v-else class="text-muted">--</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="更新日期" width="120" align="center">
+          <template #default="{ row }">
+            <span class="text-muted">{{ row.latest_date ? row.latest_date.slice(0, 10) : '--' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="group_id" label="分组" width="100">
           <template #default="{ row }">
             <el-tag size="small" type="info">{{ groupName(row.group_id) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="priority" label="优先级" width="100" sortable />
-        <el-table-column prop="added_at" label="添加时间" min-width="160">
-          <template #default="{ row }">{{ fmtDateTime(row.added_at) }}</template>
+        <el-table-column prop="priority" label="优先级" width="90" sortable align="center" />
+        <el-table-column prop="add_time" label="添加时间" min-width="150">
+          <template #default="{ row }">
+            <span class="text-muted">{{ fmtDate(row.add_time || row.added_at) }}</span>
+          </template>
         </el-table-column>
-        <el-table-column label="操作" width="100">
+        <el-table-column label="操作" width="100" align="center">
           <template #default="{ row }">
             <el-button
               size="small"
@@ -84,7 +97,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { watchlistApi } from '@/api/watchlist'
-import { fmtDateTime } from '@/utils/format'
+import { fmtDateTime, fmtDate, fmtNumber } from '@/utils/format'
 import type { WatchlistItem, WatchlistGroup } from '@/types'
 import StockSearch from '@/components/StockSearch/index.vue'
 import { Plus } from '@element-plus/icons-vue'
@@ -108,10 +121,12 @@ const filteredList = computed(() => {
   return watchlist.value.filter(w => w.group_id === activeGroup.value)
 })
 
+const GROUP_LABEL_MAP: Record<string, string> = { default: '默认', all: '全部' }
+
 function groupName(id?: string): string {
   if (!id) return '默认'
   const g = groups.value.find(g => g.id === id)
-  return g?.name || id
+  return g?.name || GROUP_LABEL_MAP[id] || id
 }
 
 function goToStock(code: string) {

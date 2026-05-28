@@ -3,7 +3,9 @@ API路由定义
 """
 from flask import Blueprint, request, jsonify
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Optional
+import time
+import threading
 
 api_bp = Blueprint("api", __name__, url_prefix="/api/v1")
 
@@ -12,6 +14,98 @@ def _normalize_code(code: str) -> str:
     """统一股票代码格式，支持多种输入格式"""
     from utils.helpers import normalize_stock_code_flexible
     return normalize_stock_code_flexible(code)
+
+
+# ============================================================================
+# 实时数据补全：百度估值 + Sina K线
+# 数据库里的 stock_info 来自 cninfo（无 PE/PB/总市值），kline 来自腾讯（无 volume）
+# 在路由层用 AKShare 接口补齐
+# ============================================================================
+_realtime_cache: Dict[str, tuple] = {}  # key -> (timestamp, value)
+_cache_lock = threading.Lock()
+_CACHE_TTL = 60.0  # 秒
+
+
+def _cache_get(key: str):
+    with _cache_lock:
+        item = _realtime_cache.get(key)
+        if item and (time.time() - item[0]) < _CACHE_TTL:
+            return item[1]
+    return None
+
+
+def _cache_set(key: str, value):
+    with _cache_lock:
+        _realtime_cache[key] = (time.time(), value)
+
+
+def _fetch_valuation(bare_code: str) -> Dict[str, Optional[float]]:
+    """通过百度估值接口拉取 PE/PB/总市值（单位：亿元 → 元）"""
+    cache_key = f"valuation_{bare_code}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    import akshare as ak
+    result = {"pe": None, "pe_static": None, "pb": None, "total_mv": None}
+    indicators = [
+        ("pe", "市盈率(TTM)"),
+        ("pe_static", "市盈率(静)"),
+        ("pb", "市净率"),
+        ("total_mv_yi", "总市值"),  # 单位亿元
+    ]
+    for field, ind in indicators:
+        try:
+            df = ak.stock_zh_valuation_baidu(symbol=bare_code, indicator=ind, period="近一年")
+            if df is not None and not df.empty:
+                val = df.iloc[-1].get("value")
+                if val is not None:
+                    if field == "total_mv_yi":
+                        result["total_mv"] = float(val) * 1e8  # 亿 → 元
+                    else:
+                        result[field] = float(val)
+        except Exception:
+            continue
+    _cache_set(cache_key, result)
+    return result
+
+
+def _fetch_kline_with_volume(full_code: str) -> Dict[str, Dict]:
+    """新浪 stock_zh_a_daily 全量历史 → {date_str: {volume/amount/change_rate/turnover_rate}}
+    full_code: 'sh600000' / 'sz000001'，按整支股票缓存（外部接口的最小调用单位也是整支）
+    """
+    sym = full_code.lower()
+    cache_key = f"kline_daily_{sym}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    import akshare as ak
+    out: Dict[str, Dict] = {}
+    try:
+        df = ak.stock_zh_a_daily(symbol=sym, adjust="qfq")
+        if df is not None and not df.empty:
+            prev_close = None
+            for _, row in df.iterrows():
+                date_val = row.get("date")
+                date_str = date_val.strftime("%Y-%m-%d") if hasattr(date_val, "strftime") else str(date_val)[:10]
+                close = float(row.get("close") or 0)
+                volume_shares = float(row.get("volume") or 0)
+                amount_yuan = float(row.get("amount") or 0)
+                turnover_decimal = float(row.get("turnover") or 0)
+                # 涨跌幅由相邻收盘价计算
+                change_rate = ((close - prev_close) / prev_close * 100) if prev_close and prev_close > 0 else 0.0
+                out[date_str] = {
+                    "volume": volume_shares,  # 单位：股
+                    "amount": amount_yuan,    # 单位：元
+                    "change_rate": round(change_rate, 4),
+                    "turnover_rate": round(turnover_decimal * 100, 4),  # 百分比
+                }
+                prev_close = close
+    except Exception:
+        pass
+    _cache_set(cache_key, out)
+    return out
 
 
 def register_routes(app):
@@ -157,6 +251,24 @@ def get_kline(code):
         if "date" in record and hasattr(record["date"], "strftime"):
             record["date"] = record["date"].strftime("%Y-%m-%d")
 
+    # 检查首条是否缺 volume —— 数据库里 kline 来自腾讯接口，没有成交量/涨跌幅/换手率
+    need_augment = bool(records) and (
+        "volume" not in records[0] or records[0].get("volume") in (None, 0)
+    )
+    if need_augment:
+        vol_map = _fetch_kline_with_volume(code.lower())
+        # 新浪权威字段，直接覆盖（DB 里 amount 是腾讯接口的"千元"单位，与 volume/turnover 不一致）
+        AUTHORITATIVE = {"volume", "amount", "change_rate", "turnover_rate"}
+        for r in records:
+            ext = vol_map.get(r.get("date"))
+            if not ext:
+                continue
+            for k, v in ext.items():
+                if k in AUTHORITATIVE:
+                    r[k] = v  # 强制以新浪元单位为准
+                elif r.get(k) in (None, 0) or k not in r:
+                    r[k] = v
+
     return jsonify({
         "success": True,
         "code": code,
@@ -191,9 +303,26 @@ def get_stock_info(code):
 
     code = _normalize_code(code)
     storage = StockInfoStorage()
-    info = storage.get_by_code(code)
+    info = storage.get_by_code(code) or {"code": code}
 
-    if not info:
+    # 用百度估值接口补齐 PE/PB/总市值（DB 里只有 cninfo 公司简介，没这几个字段）
+    bare = code[2:] if code[:2] in ("SH", "SZ") else code
+    try:
+        valuation = _fetch_valuation(bare)
+        # 不覆盖已有的非空值（极少数情况采集器可能补过），但 注册资金 ≠ 总市值，必须覆盖
+        for k, v in valuation.items():
+            if v is not None:
+                info[k] = v
+    except Exception:
+        pass
+
+    # 统一暴露常用字段，前端不用再处理中文字段名
+    info["name"] = info.get("name") or info.get("A股简称") or info.get("公司名称") or ""
+    info["industry"] = info.get("industry") or info.get("所属行业") or ""
+    info["list_date"] = info.get("list_date") or info.get("上市日期") or ""
+    info["area"] = info.get("area") or info.get("注册地址") or info.get("办公地址") or ""
+
+    if not info or len(info) <= 1:
         return jsonify({"error": "Stock info not found"}), 404
 
     return jsonify({
@@ -360,6 +489,7 @@ def check_gaps():
 @api_bp.route("/watchlist", methods=["GET"])
 def get_watchlist():
     from modules.watchlist.watchlist import WatchlistManager
+    from core.storage.mongo_storage import StockInfoStorage
 
     user_id = request.args.get("user_id", "default")
     group_id = request.args.get("group_id")
@@ -367,11 +497,26 @@ def get_watchlist():
     manager = WatchlistManager()
     stocks = manager.get_watchlist(user_id, group_id)
 
+    info_storage = StockInfoStorage()
+    name_cache: dict = {}
+
     for stock in stocks:
         stock.pop("_id", None)
         stock.pop("_updated_at", None)
         if "add_time" in stock and hasattr(stock["add_time"], "isoformat"):
             stock["add_time"] = stock["add_time"].isoformat()
+        # 回填股票名称
+        if not stock.get("name"):
+            code = stock.get("code", "")
+            if code not in name_cache:
+                info = info_storage.get_by_code(code) or {}
+                name_cache[code] = (
+                    info.get("name")
+                    or info.get("A股简称")
+                    or info.get("公司名称")
+                    or ""
+                )
+            stock["name"] = name_cache[code]
 
     return jsonify({
         "success": True,
@@ -430,9 +575,20 @@ def get_watchlist_groups():
     manager = WatchlistManager()
     groups = manager.get_groups(user_id)
 
+    # 规范化输出：剥离 ObjectId，统一暴露 id 字段（与 group_id 同值）
+    normalized = []
+    for g in groups:
+        g.pop("_id", None)
+        if "create_time" in g and hasattr(g["create_time"], "isoformat"):
+            g["create_time"] = g["create_time"].isoformat()
+        gid = g.get("group_id") or g.get("id") or ""
+        g["id"] = gid
+        g["group_id"] = gid
+        normalized.append(g)
+
     return jsonify({
         "success": True,
-        "groups": groups
+        "groups": normalized
     })
 
 

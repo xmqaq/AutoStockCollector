@@ -117,6 +117,13 @@ class Task:
         if self.start_time:
             end = self.end_time or datetime.now()
             elapsed = (end - self.start_time).total_seconds()
+        # task_id 形如 "kline_1779931587433"（毫秒时间戳），可由此推导创建时间
+        create_time = None
+        try:
+            ts_ms = int(self.task_id.rsplit("_", 1)[-1])
+            create_time = datetime.fromtimestamp(ts_ms / 1000.0).isoformat()
+        except Exception:
+            create_time = self.start_time.isoformat() if self.start_time else None
         return {
             "task_id": self.task_id,
             "task_type": self.task_type,
@@ -128,6 +135,9 @@ class Task:
             "progress_percent": (self.progress / self.total * 100) if self.total > 0 else 0,
             "elapsed_time": elapsed,
             "error_message": self.error_message,
+            "create_time": create_time,
+            "start_time": self.start_time.isoformat() if self.start_time else None,
+            "end_time": self.end_time.isoformat() if self.end_time else None,
         }
 
 
@@ -281,6 +291,9 @@ class TaskScheduler:
         db_tasks = self.task_storage.find_many(
             query, sort=[("create_time", -1)], limit=limit
         )
+        def _iso(v):
+            return v.isoformat() if hasattr(v, "isoformat") else v
+
         db_list = [
             {
                 "task_id": t.get("task_id"),
@@ -288,7 +301,10 @@ class TaskScheduler:
                 "status": t.get("status"),
                 "progress": t.get("progress", 0),
                 "total": t.get("total", 0),
-                "create_time": t.get("create_time"),
+                "success": t.get("success", 0),
+                "failed": t.get("failed", 0),
+                "create_time": _iso(t.get("create_time")),
+                "update_time": _iso(t.get("update_time")),
             }
             for t in db_tasks
         ]
