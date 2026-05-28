@@ -11,12 +11,12 @@
         background-color="#141414"
         text-color="#c0c4cc"
         active-text-color="#409eff"
+        @select="handleMenuSelect"
       >
         <el-menu-item
           v-for="item in menuItems"
           :key="item.path"
           :index="item.path"
-          @click="router.push(item.path)"
         >
           <el-icon><component :is="item.icon" /></el-icon>
           <template #title>{{ item.label }}</template>
@@ -84,7 +84,11 @@ const menuItems = [
   { path: '/watchlist', label: '自选股', icon: StarFilled },
 ]
 
-const activeMenu = computed(() => route.path)
+const activeMenu = computed(() => {
+  const currentPath = route.path
+  const matchingItem = menuItems.find(item => currentPath.startsWith(item.path))
+  return matchingItem?.path || currentPath
+})
 
 function handleMenuSelect(path: string) {
   if (route.path !== path) {
@@ -93,8 +97,8 @@ function handleMenuSelect(path: string) {
 }
 
 const currentTitle = computed(() => {
-  const item = menuItems.find(m => route.path.startsWith(m.path))
-  return item?.label || 'AutoStockCollector'
+  const matchingItem = menuItems.find(item => route.path.startsWith(item.path))
+  return matchingItem?.label || 'AutoStockCollector'
 })
 
 let healthTimer: ReturnType<typeof setInterval>

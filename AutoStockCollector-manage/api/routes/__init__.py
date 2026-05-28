@@ -8,6 +8,12 @@ from typing import Any, Dict
 api_bp = Blueprint("api", __name__, url_prefix="/api/v1")
 
 
+def _normalize_code(code: str) -> str:
+    """统一股票代码格式，支持多种输入格式"""
+    from utils.helpers import normalize_stock_code_flexible
+    return normalize_stock_code_flexible(code)
+
+
 def register_routes(app):
     app.register_blueprint(api_bp)
 
@@ -131,6 +137,7 @@ def list_tasks():
 def get_kline(code):
     from core.storage.mongo_storage import KlineStorage
 
+    code = _normalize_code(code)
     if not code:
         return jsonify({"error": "code is required"}), 400
 
@@ -162,6 +169,7 @@ def get_kline(code):
 def get_latest_kline(code):
     from core.storage.mongo_storage import KlineStorage
 
+    code = _normalize_code(code)
     storage = KlineStorage()
     record = storage.find_one({"code": code}, sort=[("date", -1)])
 
@@ -181,6 +189,7 @@ def get_latest_kline(code):
 def get_stock_info(code):
     from core.storage.mongo_storage import StockInfoStorage
 
+    code = _normalize_code(code)
     storage = StockInfoStorage()
     info = storage.get_by_code(code)
 
@@ -226,6 +235,7 @@ def _map_financial_record(r: dict) -> dict:
 def get_financial(code):
     from core.storage.mongo_storage import FinancialStorage
 
+    code = _normalize_code(code)
     storage = FinancialStorage()
     report_date = request.args.get("report_date")
 
@@ -267,8 +277,8 @@ def get_news():
 def get_fund_flow(code):
     from core.storage.mongo_storage import FundFlowStorage
 
+    code = _normalize_code(code)
     storage = FundFlowStorage()
-    # fund_flow 存储的 code 为纯数字，兼容 SH/SZ 前缀入参
     bare_code = code[2:] if code[:2] in ("SH", "SZ") else code
     record = storage.get_latest_flow(bare_code)
 
@@ -357,6 +367,12 @@ def get_watchlist():
     manager = WatchlistManager()
     stocks = manager.get_watchlist(user_id, group_id)
 
+    for stock in stocks:
+        stock.pop("_id", None)
+        stock.pop("_updated_at", None)
+        if "add_time" in stock and hasattr(stock["add_time"], "isoformat"):
+            stock["add_time"] = stock["add_time"].isoformat()
+
     return jsonify({
         "success": True,
         "count": len(stocks),
@@ -393,6 +409,7 @@ def add_to_watchlist():
 def remove_from_watchlist(code):
     from modules.watchlist.watchlist import WatchlistManager
 
+    code = _normalize_code(code)
     user_id = request.args.get("user_id", "default")
 
     manager = WatchlistManager()
@@ -1063,7 +1080,7 @@ def get_dragon_tiger_list():
 
     filter_doc = {}
     if code:
-        filter_doc["code"] = code
+        filter_doc["code"] = _normalize_code(code)
     if start_date and end_date:
         try:
             sd = _dt.strptime(start_date[:10], "%Y-%m-%d")

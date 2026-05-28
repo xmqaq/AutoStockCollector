@@ -545,6 +545,69 @@ class TestM4API接口(unittest.TestCase):
             logger.error(f"✗ 缺少股票代码验证测试失败: {e}")
             self.fail(f"缺少股票代码验证测试失败: {e}")
 
+    def test_4_024_stock_code_format_compatibility(self):
+        """测试4.24: 股票代码格式兼容性测试"""
+        logger.info("\n[测试4.24] 股票代码格式兼容性测试")
+
+        test_cases = [
+            ("000001", "SZ000001"),
+            ("600000", "SH600000"),
+            ("SZ000001", "SZ000001"),
+            ("SH600000", "SH600000"),
+            ("sz000001", "SZ000001"),
+            ("SH600000", "SH600000"),
+            ("300001", "SZ300001"),
+            ("688001", "SH688001"),
+        ]
+
+        try:
+            for input_code, expected_code in test_cases:
+                response = self.client.get(f"/api/v1/kline/{input_code}")
+                self.assertEqual(response.status_code, 200)
+
+                data = json.loads(response.data)
+                self.assertTrue(data["success"])
+                self.assertEqual(data["code"], expected_code,
+                    f"股票代码 {input_code} 应转换为 {expected_code}，实际为 {data['code']}")
+
+                logger.info(f"  ✓ {input_code} -> {data['code']}")
+
+            logger.info("✓ 股票代码格式兼容性测试通过")
+
+        except Exception as e:
+            logger.error(f"✗ 股票代码格式兼容性测试失败: {e}")
+            self.fail(f"股票代码格式兼容性测试失败: {e}")
+
+    def test_4_025_stock_code_flexible_format_all_endpoints(self):
+        """测试4.25: 多接口股票代码格式兼容性测试"""
+        logger.info("\n[测试4.25] 多接口股票代码格式兼容性测试")
+
+        endpoints_to_test = [
+            ("/api/v1/kline/000001", "kline"),
+            ("/api/v1/stock/000001/info", "stock_info"),
+            ("/api/v1/financial/000001", "financial"),
+            ("/api/v1/fund-flow/000001", "fund_flow"),
+        ]
+
+        try:
+            for endpoint, name in endpoints_to_test:
+                response = self.client.get(endpoint)
+                self.assertIn(response.status_code, [200, 404],
+                    f"{name} 接口应返回 200 或 404")
+
+                if response.status_code == 200:
+                    data = json.loads(response.data)
+                    self.assertTrue(data.get("success", False) or "data" in data,
+                        f"{name} 接口应返回有效响应")
+
+                logger.info(f"  ✓ {name} 接口接受纯数字股票代码")
+
+            logger.info("✓ 多接口股票代码格式兼容性测试通过")
+
+        except Exception as e:
+            logger.error(f"✗ 多接口股票代码格式兼容性测试失败: {e}")
+            self.fail(f"多接口股票代码格式兼容性测试失败: {e}")
+
     @classmethod
     def tearDownClass(cls):
         """测试类清理"""

@@ -248,11 +248,14 @@ class WatchlistManager:
         if not code:
             return False
 
+        code = normalize_stock_code(code)
+
         code_upper = code.upper()
         if not (code_upper.startswith("SH") or code_upper.startswith("SZ")):
             return False
 
-        if len(code) != 10:
+        digits_only = "".join(c for c in code if c.isdigit())
+        if len(digits_only) != 6:
             return False
 
         return True

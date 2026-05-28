@@ -126,8 +126,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import StockSearch from '@/components/StockSearch/index.vue'
 import KlineChart from '@/components/KlineChart/index.vue'
 import { stockApi } from '@/api/stock'
@@ -250,6 +250,13 @@ onMounted(() => {
   if (currentCode.value) {
     loadStock(currentCode.value)
   }
+})
+
+onUnmounted(() => {
+  infoLoading.value = false
+  klineLoading.value = false
+  financialLoading.value = false
+  newsLoading.value = false
 })
 </script>
 

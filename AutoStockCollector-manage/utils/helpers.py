@@ -136,6 +136,44 @@ def normalize_stock_code(code: str) -> str:
     return code
 
 
+def normalize_stock_code_flexible(code: str) -> str:
+    """
+    灵活股票代码标准化函数，支持多种输入格式：
+    - 纯6位数字 (如 000001 -> SZ000001, 600000 -> SH600000)
+    - 已带前缀 (如 SZ000001, SH600000 -> 保持不变)
+    - 小写前缀 (如 sz000001 -> SZ000001)
+    - 无前缀带点号 (如 000001.SZ -> SZ000001)
+    """
+    if not code:
+        return code
+
+    code = code.strip().upper()
+
+    if code.startswith("SH") or code.startswith("SZ"):
+        return code
+
+    if "." in code:
+        parts = code.split(".")
+        if len(parts) == 2:
+            suffix = parts[1].upper()
+            digits = parts[0]
+            if suffix in ("SH", "SZ"):
+                return f"{suffix}{digits}"
+            elif suffix in ("SHANGHAI", "S"):
+                return f"SH{digits}"
+            elif suffix in ("SHENZHEN", "SZ"):
+                return f"SZ{digits}"
+
+    digits = "".join(c for c in code if c.isdigit())
+    if len(digits) == 6:
+        if digits.startswith("6"):
+            return f"SH{digits}"
+        elif digits.startswith("0") or digits.startswith("3"):
+            return f"SZ{digits}"
+
+    return code.upper()
+
+
 def parse_stock_name(name: str) -> Dict[str, Any]:
     patterns = {
         "st": r"\*?ST",

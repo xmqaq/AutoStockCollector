@@ -15,6 +15,7 @@ from utils.helpers import (
     is_trading_day,
     validate_stock_code,
     normalize_stock_code,
+    normalize_stock_code_flexible,
     calculate_change_percent,
     chunk_list,
     safe_float,
@@ -69,6 +70,19 @@ class TestStockCodeHelpers(unittest.TestCase):
         self.assertEqual(normalize_stock_code("000001"), "SZ000001")
         self.assertEqual(normalize_stock_code("SH600000"), "SH600000")
         self.assertEqual(normalize_stock_code("sz000001"), "SZ000001")
+
+    def test_normalize_stock_code_flexible(self):
+        self.assertEqual(normalize_stock_code_flexible("000001"), "SZ000001")
+        self.assertEqual(normalize_stock_code_flexible("600000"), "SH600000")
+        self.assertEqual(normalize_stock_code_flexible("SZ000001"), "SZ000001")
+        self.assertEqual(normalize_stock_code_flexible("SH600000"), "SH600000")
+        self.assertEqual(normalize_stock_code_flexible("sz000001"), "SZ000001")
+        self.assertEqual(normalize_stock_code_flexible("SH600000"), "SH600000")
+        self.assertEqual(normalize_stock_code_flexible("000001.SZ"), "SZ000001")
+        self.assertEqual(normalize_stock_code_flexible("600000.SH"), "SH600000")
+        self.assertEqual(normalize_stock_code_flexible(""), "")
+        self.assertEqual(normalize_stock_code_flexible("300001"), "SZ300001")
+        self.assertEqual(normalize_stock_code_flexible("688001"), "SH688001")
 
 
 class TestNumericHelpers(unittest.TestCase):
