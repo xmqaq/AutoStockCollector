@@ -1,0 +1,85 @@
+.container {
+  padding: 0;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.priceRow {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 16px;
+  background: #1a1a1a;
+  border-radius: 8px;
+}
+
+.stockName {
+  font-size: 24px;
+  font-weight: bold;
+  color: #fff;
+}
+
+.price {
+  font-size: 36px;
+  font-weight: bold;
+}
+
+.infoCard {
+  background: #1a1a1a;
+  border-color: #303030;
+  margin-bottom: 16px;
+}
+
+.infoCard :global(.ant-descriptions-item-label) {
+  color: #8c8c8c;
+}
+
+.infoCard :global(.ant-descriptions-item-content) {
+  color: #fff;
+}
+
+.chartCard {
+  background: #1a1a1a;
+  border-color: #303030;
+  margin-bottom: 16px;
+}
+
+.chartCard :global(.ant-card-head) {
+  border-color: #303030;
+  color: #fff;
+}
+
+.tableCard {
+  background: #1a1a1a;
+  border-color: #303030;
+}
+
+.tableCard :global(.ant-card-head) {
+  border-color: #303030;
+  color: #fff;
+}
+
+.tableCard :global(.ant-table) {
+  background: transparent;
+}
+
+.tableCard :global(.ant-table-thead > tr > th) {
+  background: #262626;
+  color: #fff;
+  border-color: #303030;
+}
+
+.tableCard :global(.ant-table-tbody > tr > td) {
+  color: #fff;
+  border-color: #303030;
+}
+
+.tableCard :global(.ant-table-tbody > tr:hover > td) {
+  background: #262626;
+}

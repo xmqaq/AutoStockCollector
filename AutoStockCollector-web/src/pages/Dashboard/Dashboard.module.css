@@ -1,0 +1,58 @@
+.container {
+  padding: 0;
+}
+
+.pageTitle {
+  margin-bottom: 16px !important;
+  color: #fff;
+}
+
+.statsRow {
+  margin-bottom: 16px;
+}
+
+.statCard {
+  background: #1a1a1a;
+  border-color: #303030;
+}
+
+.statCard :global(.ant-statistic-title) {
+  color: #8c8c8c;
+}
+
+.statCard :global(.ant-statistic-content) {
+  color: #fff;
+}
+
+.progressCard {
+  background: #1a1a1a;
+  border-color: #303030;
+}
+
+.progressCard :global(.ant-card-head) {
+  border-color: #303030;
+  color: #fff;
+}
+
+.newsCard {
+  background: #1a1a1a;
+  border-color: #303030;
+  height: 100%;
+}
+
+.newsCard :global(.ant-card-head) {
+  border-color: #303030;
+  color: #fff;
+}
+
+.newsCard :global(.ant-list-item) {
+  border-color: #262626;
+}
+
+.newsCard :global(.ant-list-item-meta-title) {
+  color: #fff !important;
+}
+
+.newsCard :global(.ant-list-item-meta-description) {
+  color: #8c8c8c;
+}

@@ -1,0 +1,42 @@
+.container {
+  padding: 0;
+}
+
+.filterCard {
+  background: #1a1a1a;
+  border-color: #303030;
+  margin-bottom: 16px;
+}
+
+.tableCard {
+  background: #1a1a1a;
+  border-color: #303030;
+}
+
+.tableCard :global(.ant-table) {
+  background: transparent;
+}
+
+.tableCard :global(.ant-table-thead > tr > th) {
+  background: #262626;
+  color: #fff;
+  border-color: #303030;
+}
+
+.tableCard :global(.ant-table-tbody > tr > td) {
+  color: #fff;
+  border-color: #303030;
+}
+
+.tableCard :global(.ant-table-tbody > tr:hover > td) {
+  background: #262626;
+}
+
+.tableCard :global(.ant-pagination-item) {
+  background: #262626;
+  border-color: #303030;
+}
+
+.tableCard :global(.ant-pagination-item a) {
+  color: #fff;
+}

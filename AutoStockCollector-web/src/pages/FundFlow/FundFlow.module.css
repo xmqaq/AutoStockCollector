@@ -1,0 +1,28 @@
+.container {
+  padding: 0;
+}
+
+.filterCard {
+  background: #1a1a1a;
+  border-color: #303030;
+  margin-bottom: 16px;
+}
+
+.statsRow {
+  margin-bottom: 16px;
+}
+
+.statCard {
+  background: #1a1a1a;
+  border-color: #303030;
+}
+
+.chartCard {
+  background: #1a1a1a;
+  border-color: #303030;
+}
+
+.chartCard :global(.ant-card-head) {
+  border-color: #303030;
+  color: #fff;
+}
