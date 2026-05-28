@@ -1,14 +1,4 @@
 """
 业务模块初始化
+子模块均采用懒加载，避免因可选依赖（如 backtrader）未安装导致整包初始化失败
 """
-from .watchlist.watchlist import WatchlistManager
-from .strategies.strategy_manager import StrategyManager
-from .backtest.backtest_engine import BacktestEngine
-from .ai.ai_analyzer import AIAnalyzer
-
-__all__ = [
-    "WatchlistManager",
-    "StrategyManager",
-    "BacktestEngine",
-    "AIAnalyzer",
-]
