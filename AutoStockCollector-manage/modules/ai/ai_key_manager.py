@@ -21,6 +21,7 @@ _BUILTIN: Dict[str, Dict] = {
     "glm":       {"name": "智谱 AI (GLM)",        "base_url": "https://open.bigmodel.cn/api/paas/v4",               "priority": 7},
     "doubao":    {"name": "字节豆包",             "base_url": "https://ark.cn-beijing.volces.com/api/v3",            "priority": 8},
     "mistral":   {"name": "Mistral AI",          "base_url": "https://api.mistral.ai/v1",                           "priority": 9},
+    "minimax":   {"name": "MiniMax",             "base_url": "https://api.minimax.io/v1",                           "priority": 10},
 }
 
 
@@ -65,8 +66,12 @@ class AIKeyManager:
     ) -> bool:
         import os
         db = DatabaseConfig.get_database()
-        # 经典环境变量兼容
-        env_map = {"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY", "qwen": "DASHSCOPE_API_KEY"}
+        env_map = {
+            "openai": "OPENAI_API_KEY",
+            "anthropic": "ANTHROPIC_API_KEY",
+            "qwen": "DASHSCOPE_API_KEY",
+            "minimax": "MINIMAX_API_KEY",
+        }
         if api_key:
             env_key = env_map.get(provider.lower())
             if env_key:
@@ -92,7 +97,12 @@ class AIKeyManager:
     def restore_keys_from_db(self):
         """服务重启后从 DB 恢复环境变量"""
         import os
-        env_map = {"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY", "qwen": "DASHSCOPE_API_KEY"}
+        env_map = {
+            "openai": "OPENAI_API_KEY",
+            "anthropic": "ANTHROPIC_API_KEY",
+            "qwen": "DASHSCOPE_API_KEY",
+            "minimax": "MINIMAX_API_KEY",
+        }
         try:
             db = DatabaseConfig.get_database()
             for doc in db[self.collection_name].find({"api_key": {"$exists": True, "$ne": ""}}):
@@ -110,7 +120,12 @@ class AIKeyManager:
     def delete_key(self, provider: str) -> bool:
         import os
         db = DatabaseConfig.get_database()
-        env_map = {"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY", "qwen": "DASHSCOPE_API_KEY"}
+        env_map = {
+            "openai": "OPENAI_API_KEY",
+            "anthropic": "ANTHROPIC_API_KEY",
+            "qwen": "DASHSCOPE_API_KEY",
+            "minimax": "MINIMAX_API_KEY",
+        }
         env_key = env_map.get(provider.lower())
         if env_key:
             os.environ.pop(env_key, None)
@@ -125,7 +140,6 @@ class AIKeyManager:
         p = provider.lower()
         timeout = 12
 
-        # 确定有效的 base_url
         effective_url = base_url.strip() or (_BUILTIN.get(p, {}).get("base_url", ""))
 
         try:
@@ -140,8 +154,19 @@ class AIKeyManager:
                     f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}",
                     timeout=timeout,
                 )
+            elif p == "minimax" and not base_url:
+                resp = req.get(
+                    "https://api.minimax.io/v1/models",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    timeout=timeout,
+                )
+            elif p == "minimax" and "anthropic" in base_url.lower():
+                resp = req.get(
+                    "https://api.minimax.io/anthropic/v1/models",
+                    headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"},
+                    timeout=timeout,
+                )
             elif effective_url:
-                # 所有其他厂商（含自定义）使用 OpenAI 兼容接口
                 url = effective_url.rstrip("/") + "/models"
                 resp = req.get(url, headers={"Authorization": f"Bearer {api_key}"}, timeout=timeout)
             else:

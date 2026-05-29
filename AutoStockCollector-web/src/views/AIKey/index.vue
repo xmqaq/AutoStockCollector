@@ -247,6 +247,7 @@ const PRESETS = [
   { value: 'glm',       label: '智谱 AI (GLM)',             provider: 'glm',       base_url: 'https://open.bigmodel.cn/api/paas/v4',             color: '#2563eb' },
   { value: 'doubao',    label: '字节豆包 (Doubao)',          provider: 'doubao',    base_url: 'https://ark.cn-beijing.volces.com/api/v3',          color: '#f59e0b' },
   { value: 'mistral',   label: 'Mistral AI',               provider: 'mistral',   base_url: 'https://api.mistral.ai/v1',                         color: '#f87c56' },
+  { value: 'minimax',   label: 'MiniMax',                  provider: 'minimax',   base_url: 'https://api.minimax.io/v1',                         color: '#00d4aa' },
   { value: 'cohere',    label: 'Cohere',                   provider: 'cohere',    base_url: 'https://api.cohere.com/v1',                         color: '#39594d' },
   { value: 'custom',    label: '自定义接口',                provider: '',          base_url: '',                                                  color: '#666688' },
 ]
