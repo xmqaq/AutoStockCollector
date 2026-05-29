@@ -53,6 +53,7 @@ class AIKeyManager:
         for k in keys:
             raw_key = k.pop("api_key", None)
             k["has_key"] = bool(raw_key)
+            k.setdefault("model", "")
         return sorted(keys, key=lambda x: x.get("priority", 99))
 
     def update_key(
@@ -63,6 +64,7 @@ class AIKeyManager:
         priority: int = 99,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
+        model: Optional[str] = None,
     ) -> bool:
         import os
         db = DatabaseConfig.get_database()
@@ -89,6 +91,8 @@ class AIKeyManager:
             doc["has_key"] = True
         if base_url is not None:
             doc["base_url"] = base_url
+        if model is not None:
+            doc["model"] = model
 
         db[self.collection_name].update_one({"provider": provider}, {"$set": doc}, upsert=True)
         logger.info(f"Updated AI key config for {provider}")
@@ -203,6 +207,81 @@ class AIKeyManager:
             return {"valid": False, "message": "连接失败，请检查网络环境"}
         except Exception as e:
             return {"valid": False, "message": f"验证出错: {str(e)[:80]}"}
+
+    # 各厂商兜底模型列表（API 不可达时使用）
+    _FALLBACK_MODELS: Dict[str, List[str]] = {
+        "openai":    ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo", "o1", "o1-mini", "o3-mini"],
+        "anthropic": ["claude-opus-4-5", "claude-sonnet-4-5", "claude-haiku-4-5",
+                      "claude-3-5-sonnet-20241022", "claude-3-opus-20240229", "claude-3-haiku-20240307"],
+        "qwen":      ["qwen-max", "qwen-max-longcontext", "qwen-plus", "qwen-turbo",
+                      "qwen2.5-72b-instruct", "qwen2.5-32b-instruct", "qwen2.5-14b-instruct"],
+        "deepseek":  ["deepseek-chat", "deepseek-reasoner"],
+        "gemini":    ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-pro", "gemini-1.5-flash"],
+        "moonshot":  ["moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"],
+        "glm":       ["glm-4-plus", "glm-4-flash", "glm-4", "glm-4-air", "glm-3-turbo"],
+        "doubao":    ["doubao-pro-256k", "doubao-pro-128k", "doubao-pro-32k", "doubao-lite-128k", "doubao-lite-32k"],
+        "mistral":   ["mistral-large-latest", "mistral-medium-latest", "mistral-small-latest", "codestral-latest"],
+        "minimax":   ["MiniMax-Text-01", "abab6.5s-chat", "abab6.5g-chat", "abab5.5s-chat"],
+        "cohere":    ["command-r-plus", "command-r", "command", "command-light"],
+    }
+
+    def fetch_models(self, provider: str, api_key: str, base_url: str = "") -> dict:
+        """从厂商 API 拉取可用模型列表，失败则返回兜底列表。"""
+        import requests as req
+        p = provider.lower()
+        timeout = 12
+        effective_url = base_url.strip() or (_BUILTIN.get(p, {}).get("base_url", ""))
+        fallback = self._FALLBACK_MODELS.get(p, [])
+
+        try:
+            if p == "anthropic":
+                resp = req.get(
+                    "https://api.anthropic.com/v1/models",
+                    headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"},
+                    timeout=timeout,
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    ids = [m.get("id") for m in data.get("data", []) if m.get("id")]
+                    return {"models": ids or fallback, "source": "api"}
+
+            elif p == "gemini":
+                resp = req.get(
+                    f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}",
+                    timeout=timeout,
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    ids = [m.get("name", "").split("/")[-1]
+                           for m in data.get("models", [])
+                           if "generateContent" in m.get("supportedGenerationMethods", [])]
+                    return {"models": ids or fallback, "source": "api"}
+
+            elif p == "minimax":
+                # MiniMax 无标准 /models，直接用兜底
+                return {"models": fallback, "source": "fallback"}
+
+            elif effective_url:
+                url = effective_url.rstrip("/") + "/models"
+                resp = req.get(url, headers={"Authorization": f"Bearer {api_key}"}, timeout=timeout)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    # 兼容 OpenAI 格式 {data: [{id:...}]} 和直接数组
+                    items = data.get("data") or data.get("models") or (data if isinstance(data, list) else [])
+                    ids = []
+                    for m in items:
+                        mid = m.get("id") or m.get("name") or (m if isinstance(m, str) else None)
+                        if mid:
+                            ids.append(mid)
+                    if ids:
+                        # 优先展示非 embedding/moderation 类模型
+                        chat_ids = [i for i in ids if not any(x in i.lower() for x in ("embed", "moderat", "whisper", "tts", "dall"))]
+                        return {"models": chat_ids or ids, "source": "api"}
+
+        except Exception as e:
+            logger.warning(f"fetch_models failed for {provider}: {e}")
+
+        return {"models": fallback, "source": "fallback"}
 
     def get_best_provider(self) -> Optional[str]:
         db = DatabaseConfig.get_database()

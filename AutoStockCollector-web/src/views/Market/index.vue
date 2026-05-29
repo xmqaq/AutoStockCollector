@@ -496,6 +496,15 @@ async function loadIndices() {
   }
 }
 
+async function loadWatchlistCodes() {
+  try {
+    const res = await watchlistApi.list()
+    watchlistCodes.value = (res.data?.data || []).map((s: { code: string }) => s.code)
+  } catch {
+    watchlistCodes.value = []
+  }
+}
+
 async function loadQuotes() {
   if (watchlistCodes.value.length === 0) return
   quotesLoading.value = true
@@ -510,29 +519,39 @@ async function loadQuotes() {
   }
 }
 
-function handleAddStock() {
-  const code = addCode.value.trim().toUpperCase()
+async function handleAddStock() {
+  const code = addCode.value.trim()
   if (!code) return
-  if (watchlistCodes.value.includes(code)) {
-    ElMessage.warning('已在列表中')
-    return
+  try {
+    await watchlistApi.addWatchlist({ code })
+    addCode.value = ''
+    await loadWatchlistCodes()
+    loadQuotes()
+  } catch {
+    ElMessage.error('添加失败，请检查股票代码')
   }
-  watchlistCodes.value.push(code)
-  localStorage.setItem('market_watchlist', JSON.stringify(watchlistCodes.value))
-  addCode.value = ''
-  loadQuotes()
 }
 
-function removeStock(code: string) {
-  watchlistCodes.value = watchlistCodes.value.filter(c => c !== code)
-  quotes.value = quotes.value.filter(q => q.code !== code)
-  localStorage.setItem('market_watchlist', JSON.stringify(watchlistCodes.value))
+async function removeStock(code: string) {
+  try {
+    await watchlistApi.removeWatchlist(code)
+    watchlistCodes.value = watchlistCodes.value.filter(c => c !== code)
+    quotes.value = quotes.value.filter(q => q.code !== code)
+  } catch {
+    ElMessage.error('删除失败')
+  }
 }
 
-function clearAll() {
-  watchlistCodes.value = []
-  quotes.value = []
-  localStorage.removeItem('market_watchlist')
+async function clearAll() {
+  try {
+    for (const code of [...watchlistCodes.value]) {
+      await watchlistApi.removeWatchlist(code)
+    }
+    watchlistCodes.value = []
+    quotes.value = []
+  } catch {
+    ElMessage.error('清空失败')
+  }
 }
 
 async function showMiniChart(row: StockQuote) {
@@ -570,13 +589,8 @@ watch(activeTab, (tab) => {
   else if (tab === 'signals') loadWatchlistForSignal()
 })
 
-onMounted(() => {
-  const saved = localStorage.getItem('market_watchlist')
-  if (saved) {
-    try {
-      watchlistCodes.value = JSON.parse(saved)
-    } catch {}
-  }
+onMounted(async () => {
+  await loadWatchlistCodes()
   loadIndices()
   if (watchlistCodes.value.length > 0) loadQuotes()
   refreshTimer = setInterval(() => {

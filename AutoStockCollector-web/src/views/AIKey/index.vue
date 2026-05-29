@@ -1,67 +1,66 @@
 <template>
   <div class="ak-page">
 
-    <!-- ── 页头 ── -->
+    <!-- 页头 -->
     <div class="ak-header">
       <div class="ak-header-left">
         <span class="ak-title">API Key 管理</span>
-        <span class="ak-badge">{{ keys.length }}</span>
+        <span class="ak-count">{{ keys.length }} 个厂商</span>
       </div>
       <button class="ak-add-btn" @click="openAddDialog">
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-          <line x1="5" y1="1" x2="5" y2="9"/><line x1="1" y1="5" x2="9" y2="5"/>
-        </svg>
+        <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="5.5" y1="1" x2="5.5" y2="10"/><line x1="1" y1="5.5" x2="10" y2="5.5"/></svg>
         新增厂商
       </button>
     </div>
 
-    <!-- ── 卡片列表 ── -->
-    <div v-loading="loading" element-loading-background="rgba(10,10,14,0.7)" class="ak-list">
-      <transition-group name="ak-slide" tag="div">
-        <div
-          v-for="row in keys"
-          :key="row.provider"
-          class="ak-card"
-          :class="{
-            'state-valid':   testState[row.provider] === 'valid',
-            'state-invalid': testState[row.provider] === 'invalid',
-          }"
-          :style="{ '--accent': providerColor(row.provider) }"
-        >
-          <div class="ak-stripe"></div>
+    <!-- 卡片列表 -->
+    <div v-loading="loading" element-loading-background="rgba(8,8,12,0.8)" class="ak-list">
+      <div
+        v-for="row in keys"
+        :key="row.provider"
+        class="ak-card"
+        :class="testState[row.provider]"
+        :style="{ '--accent': providerColor(row.provider) }"
+      >
+        <!-- 左色条 -->
+        <div class="ak-accent-bar"></div>
 
-          <!-- 厂商图标 -->
-          <div class="ak-icon" :style="{ background: providerColor(row.provider) }">
-            {{ row.name.charAt(0).toUpperCase() }}
+        <div class="ak-card-inner">
+          <!-- ── 卡头 ── -->
+          <div class="ak-card-head">
+            <div class="ak-provider-icon" :style="{ background: providerColor(row.provider) }">
+              {{ row.name.charAt(0).toUpperCase() }}
+            </div>
+            <div class="ak-provider-info">
+              <span class="ak-provider-name">{{ row.name }}</span>
+              <code class="ak-provider-id">{{ row.provider }}</code>
+            </div>
+            <div class="ak-head-actions">
+              <span
+                class="ak-status-dot"
+                :class="{
+                  dot_valid:   testState[row.provider] === 'valid',
+                  dot_invalid: testState[row.provider] === 'invalid',
+                  dot_key:     row.has_key && !testState[row.provider],
+                }"
+                :title="testState[row.provider] === 'valid' ? '验证通过' : testState[row.provider] === 'invalid' ? testMsg[row.provider] : row.has_key ? 'Key 已配置' : '未配置'"
+              ></span>
+              <el-switch
+                v-model="row.enabled"
+                size="small"
+                :style="{ '--el-switch-on-color': providerColor(row.provider) }"
+                @change="toggle(row)"
+              />
+              <button class="ak-icon-btn ak-del" @click="remove(row.provider)" title="删除">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/></svg>
+              </button>
+            </div>
           </div>
 
-          <!-- 主体 -->
-          <div class="ak-body">
-
-            <!-- 行1：名称 + 开关 + 删除 -->
-            <div class="ak-row ak-row-title">
-              <div class="ak-names">
-                <span class="ak-name">{{ row.name }}</span>
-                <code class="ak-pid">{{ row.provider }}</code>
-              </div>
-              <div class="ak-row-title-right">
-                <el-switch
-                  v-model="row.enabled"
-                  size="small"
-                  :style="{ '--el-switch-on-color': providerColor(row.provider) }"
-                  @change="toggle(row)"
-                />
-                <button class="ak-del-btn" @click="remove(row.provider)" title="删除">
-                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-                    <line x1="2" y1="2" x2="11" y2="11"/><line x1="11" y1="2" x2="2" y2="11"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            <!-- 行2：API Key 输入 + 内联保存 -->
-            <div class="ak-row ak-row-key">
-              <span class="ak-dot" :class="{ on: row.has_key }"></span>
+          <!-- ── API Key 行 ── -->
+          <div class="ak-section">
+            <span class="ak-section-label">API Key</span>
+            <div class="ak-key-row">
               <el-input
                 v-model="row.api_key"
                 type="password"
@@ -72,96 +71,107 @@
                 @keyup.enter="saveKey(row)"
               />
               <button
-                class="ak-save-btn"
-                :class="{
-                  active:   !!row.api_key,
-                  saving:   row._saving,
-                  saved:    row._saved,
-                }"
+                class="ak-btn ak-btn-save"
+                :class="{ active: !!row.api_key, saving: row._saving, saved: row._saved }"
                 :disabled="!row.api_key || row._saving"
                 @click="saveKey(row)"
               >
-                <span v-if="row._saving" class="ak-spinner">◌</span>
-                <span v-else-if="row._saved">✓</span>
+                <span v-if="row._saving" class="spin">◌</span>
+                <span v-else-if="row._saved">✓ 已保存</span>
                 <span v-else>保存</span>
               </button>
             </div>
+          </div>
 
-            <!-- 行3：Base URL（有则显示） -->
-            <div v-if="row.base_url" class="ak-row ak-row-url">
-              <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4">
-                <circle cx="5.5" cy="5.5" r="4.5"/>
-                <path d="M5.5 1C5.5 1 3.5 3 3.5 5.5s2 4.5 2 4.5"/>
-                <path d="M5.5 1C5.5 1 7.5 3 7.5 5.5s-2 4.5-2 4.5"/>
-                <line x1="1" y1="5.5" x2="10" y2="5.5"/>
-              </svg>
-              <span class="ak-url-text">{{ row.base_url }}</span>
-            </div>
+          <!-- ── Base URL（自定义时显示） ── -->
+          <div v-if="row.base_url && !isBuiltinUrl(row.provider, row.base_url)" class="ak-section ak-url-section">
+            <span class="ak-section-label">Base URL</span>
+            <code class="ak-url-val">{{ row.base_url }}</code>
+          </div>
 
-            <!-- 行4：模型选择 -->
-            <div class="ak-row ak-row-model">
-              <span class="ak-label">模型</span>
+          <!-- ── 模型选择 ── -->
+          <div class="ak-section">
+            <span class="ak-section-label">模型</span>
+            <div class="ak-model-row">
               <el-select
                 v-model="selectedModels[row.provider]"
-                placeholder="选择模型（可选）"
+                placeholder="选择模型"
                 filterable
                 clearable
                 size="small"
-                style="flex:1"
+                class="ak-model-select"
                 :loading="modelLoading[row.provider]"
-                @change="(val: string) => onModelChange(row.provider, val)"
               >
                 <el-option
                   v-for="m in modelOptions[row.provider] || []"
-                  :key="m.id || m"
-                  :label="typeof m === 'string' ? m : (m.name || m.id)"
-                  :value="typeof m === 'string' ? m : (m.id || m.name)"
+                  :key="m"
+                  :label="m"
+                  :value="m"
                 >
-                  <div class="model-option">
-                    <span>{{ typeof m === 'string' ? m : (m.name || m.id) }}</span>
-                    <el-tag v-if="m.id === defaultModels[row.provider] || m === defaultModels[row.provider]" size="small" type="info">默认</el-tag>
+                  <div class="model-opt">
+                    <span>{{ m }}</span>
+                    <el-tag v-if="m === confirmedModels[row.provider]" size="small" type="success" effect="plain">已选</el-tag>
+                    <el-tag v-else-if="m === defaultModels[row.provider]" size="small" type="info" effect="plain">默认</el-tag>
                   </div>
                 </el-option>
               </el-select>
-              <el-button
-                v-if="selectedModels[row.provider]"
-                size="small"
-                type="primary"
-                plain
+              <!-- 从 API 获取模型 -->
+              <button
+                class="ak-icon-btn ak-fetch-btn"
+                :class="{ loading: modelLoading[row.provider] }"
+                :disabled="modelLoading[row.provider]"
+                title="从 API 获取可用模型"
+                @click="fetchModelsFromApi(row)"
+              >
+                <svg v-if="!modelLoading[row.provider]" width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M11.5 6.5A5 5 0 1 1 8 2.07"/>
+                  <polyline points="11.5 1 11.5 4.5 8 4.5"/>
+                </svg>
+                <span v-else class="spin" style="font-size:12px">◌</span>
+              </button>
+              <!-- 确认保存 -->
+              <button
+                v-if="selectedModels[row.provider] && selectedModels[row.provider] !== confirmedModels[row.provider]"
+                class="ak-btn ak-btn-confirm"
                 @click="confirmModel(row.provider)"
               >
                 确认
-              </el-button>
-            </div>
-
-            <!-- 行5：验证 -->
-            <div class="ak-row ak-row-test">
-              <div class="ak-test-result" :class="testState[row.provider]">
-                <template v-if="testState[row.provider] === 'valid'">
-                  <span class="rdot valid"></span>验证通过
-                </template>
-                <template v-else-if="testState[row.provider] === 'invalid'">
-                  <el-tooltip :content="testMsg[row.provider]" placement="top" effect="dark">
-                    <span class="ak-invalid-wrap"><span class="rdot invalid"></span>验证失败</span>
-                  </el-tooltip>
-                </template>
-              </div>
-              <button
-                class="ak-test-btn"
-                :class="testState[row.provider] || 'idle'"
-                :disabled="testState[row.provider] === 'testing'"
-                @click="testKey(row)"
-              >
-                <span v-if="testState[row.provider] === 'testing'" class="ak-spinner">◌</span>
-                <span v-else-if="testState[row.provider] === 'valid'">✓ 有效</span>
-                <span v-else-if="testState[row.provider] === 'invalid'">✗ 无效</span>
-                <span v-else>验证 Key</span>
               </button>
+              <span v-else-if="confirmedModels[row.provider]" class="ak-confirmed-badge">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="1.5 5 4 7.5 8.5 2.5"/></svg>
+                {{ confirmedModels[row.provider] }}
+              </span>
             </div>
-
           </div>
+
+          <!-- ── 验证行 ── -->
+          <div class="ak-section ak-test-section">
+            <div class="ak-test-status">
+              <template v-if="testState[row.provider] === 'valid'">
+                <span class="ak-test-dot valid"></span><span class="ak-test-text valid">验证通过</span>
+              </template>
+              <template v-else-if="testState[row.provider] === 'invalid'">
+                <el-tooltip :content="testMsg[row.provider]" placement="top" effect="dark">
+                  <span class="ak-test-invalid">
+                    <span class="ak-test-dot invalid"></span><span class="ak-test-text invalid">验证失败</span>
+                  </span>
+                </el-tooltip>
+              </template>
+              <span v-else class="ak-test-text idle">未验证</span>
+            </div>
+            <button
+              class="ak-btn ak-btn-test"
+              :class="testState[row.provider] || 'idle'"
+              :disabled="testState[row.provider] === 'testing'"
+              @click="testKey(row)"
+            >
+              <span v-if="testState[row.provider] === 'testing'" class="spin">◌</span>
+              <span v-else>验证 Key</span>
+            </button>
+          </div>
+
         </div>
-      </transition-group>
+      </div>
 
       <div v-if="!loading && keys.length === 0" class="ak-empty">
         <div class="ak-empty-icon">⚷</div>
@@ -169,31 +179,14 @@
       </div>
     </div>
 
-    <!-- ── 新增对话框 ── -->
-    <el-dialog
-      v-model="showDialog"
-      :title="isCustom ? '自定义 AI 接口' : '新增 AI 厂商'"
-      width="500px"
-      @close="resetForm"
-    >
-      <el-form :model="form" :rules="formRules" ref="formRef" label-width="88px" class="ak-form">
-
-        <!-- 预设选择 -->
+    <!-- 新增对话框 -->
+    <el-dialog v-model="showDialog" :title="isCustom ? '自定义 AI 接口' : '新增 AI 厂商'" width="480px" @close="resetForm">
+      <el-form :model="form" :rules="formRules" ref="formRef" label-width="90px" class="ak-form">
         <el-form-item label="选择厂商">
-          <el-select
-            v-model="form.preset"
-            placeholder="选择主流厂商或自定义…"
-            style="width: 100%"
-            @change="onPresetChange"
-          >
+          <el-select v-model="form.preset" placeholder="选择主流厂商或自定义…" style="width:100%" @change="onPresetChange">
             <el-option-group label="主流厂商">
-              <el-option
-                v-for="p in PRESETS.filter(x => x.value !== 'custom')"
-                :key="p.value"
-                :label="p.label"
-                :value="p.value"
-              >
-                <div class="preset-option">
+              <el-option v-for="p in PRESETS.filter(x => x.value !== 'custom')" :key="p.value" :label="p.label" :value="p.value">
+                <div class="preset-opt">
                   <span class="preset-dot" :style="{ background: p.color }"></span>
                   <span>{{ p.label }}</span>
                   <code class="preset-url">{{ p.base_url.replace('https://', '') }}</code>
@@ -202,64 +195,31 @@
             </el-option-group>
             <el-option-group label="其他">
               <el-option label="自定义接口（OpenAI 兼容）" value="custom">
-                <div class="preset-option">
-                  <span class="preset-dot" style="background:#666"></span>
-                  <span>自定义接口（OpenAI 兼容）</span>
-                </div>
+                <div class="preset-opt"><span class="preset-dot" style="background:#666"></span><span>自定义接口</span></div>
               </el-option>
             </el-option-group>
           </el-select>
         </el-form-item>
-
-        <!-- 自定义时显示 Provider ID -->
         <el-form-item v-if="isCustom" label="Provider" prop="provider">
           <el-input v-model="form.provider" placeholder="自定义标识，如 my-llm" />
         </el-form-item>
-
-        <!-- 显示名称（预设时只读，自定义可编辑） -->
         <el-form-item label="显示名称" prop="name">
           <el-input v-model="form.name" :disabled="!isCustom && !!form.preset" />
         </el-form-item>
-
-        <!-- Base URL -->
         <el-form-item label="Base URL" :prop="isCustom ? 'base_url' : undefined">
-          <el-input
-            v-model="form.base_url"
-            :disabled="!isCustom && !!form.preset"
-            placeholder="https://api.example.com/v1"
-          />
-          <div v-if="!isCustom && form.preset" class="ak-form-tip">
-            预设地址，如需修改请选"自定义接口"
-          </div>
+          <el-input v-model="form.base_url" :disabled="!isCustom && !!form.preset" placeholder="https://api.example.com/v1" />
+          <div v-if="!isCustom && form.preset" class="form-tip">预设地址，如需修改请选"自定义接口"</div>
         </el-form-item>
-
-        <!-- API Key -->
         <el-form-item label="API Key">
-          <el-input
-            v-model="form.api_key"
-            type="password"
-            show-password
-            placeholder="粘贴 API Key（可留空，稍后配置）"
-          />
+          <el-input v-model="form.api_key" type="password" show-password placeholder="粘贴 API Key（可留空稍后配置）" />
         </el-form-item>
-
-        <!-- 启用 -->
         <el-form-item label="启用">
           <el-switch v-model="form.enabled" />
         </el-form-item>
-
       </el-form>
-
       <template #footer>
         <el-button @click="showDialog = false">取消</el-button>
-        <el-button
-          type="primary"
-          :loading="submitting"
-          :disabled="!form.preset"
-          @click="submitAdd"
-        >
-          添加
-        </el-button>
+        <el-button type="primary" :loading="submitting" :disabled="!form.preset" @click="submitAdd">添加</el-button>
       </template>
     </el-dialog>
 
@@ -272,26 +232,29 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { aiKeyApi, type AIKeyConfig } from '@/api/ai'
 
-// ── 预设厂商列表 ──────────────────────────────────────────────
 const PRESETS = [
-  { value: 'openai',    label: 'OpenAI',                  provider: 'openai',    base_url: 'https://api.openai.com/v1',                         color: '#10a37f' },
-  { value: 'anthropic', label: 'Anthropic (Claude)',       provider: 'anthropic', base_url: 'https://api.anthropic.com',                         color: '#d4805a' },
-  { value: 'qwen',      label: '通义千问 (Qwen)',           provider: 'qwen',      base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', color: '#5664f5' },
-  { value: 'deepseek',  label: 'DeepSeek',                 provider: 'deepseek',  base_url: 'https://api.deepseek.com/v1',                       color: '#4b7bf4' },
-  { value: 'gemini',    label: 'Google Gemini',            provider: 'gemini',    base_url: 'https://generativelanguage.googleapis.com/v1beta',  color: '#4285f4' },
-  { value: 'moonshot',  label: '月之暗面 (Moonshot)',       provider: 'moonshot',  base_url: 'https://api.moonshot.cn/v1',                        color: '#8b5cf6' },
-  { value: 'glm',       label: '智谱 AI (GLM)',             provider: 'glm',       base_url: 'https://open.bigmodel.cn/api/paas/v4',             color: '#2563eb' },
-  { value: 'doubao',    label: '字节豆包 (Doubao)',          provider: 'doubao',    base_url: 'https://ark.cn-beijing.volces.com/api/v3',          color: '#f59e0b' },
-  { value: 'mistral',   label: 'Mistral AI',               provider: 'mistral',   base_url: 'https://api.mistral.ai/v1',                         color: '#f87c56' },
-  { value: 'minimax',   label: 'MiniMax',                  provider: 'minimax',   base_url: 'https://api.minimax.io/v1/text/chatcompletion_v2', color: '#00d4aa' },
-  { value: 'cohere',    label: 'Cohere',                   provider: 'cohere',    base_url: 'https://api.cohere.com/v1',                         color: '#39594d' },
-  { value: 'custom',    label: '自定义接口',                provider: '',          base_url: '',                                                  color: '#666688' },
+  { value: 'openai',    label: 'OpenAI',                 provider: 'openai',    base_url: 'https://api.openai.com/v1',                         color: '#10a37f' },
+  { value: 'anthropic', label: 'Anthropic (Claude)',      provider: 'anthropic', base_url: 'https://api.anthropic.com',                         color: '#d4805a' },
+  { value: 'qwen',      label: '通义千问 (Qwen)',          provider: 'qwen',      base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', color: '#5664f5' },
+  { value: 'deepseek',  label: 'DeepSeek',                provider: 'deepseek',  base_url: 'https://api.deepseek.com/v1',                       color: '#4b7bf4' },
+  { value: 'gemini',    label: 'Google Gemini',           provider: 'gemini',    base_url: 'https://generativelanguage.googleapis.com/v1beta',  color: '#4285f4' },
+  { value: 'moonshot',  label: '月之暗面 (Moonshot)',      provider: 'moonshot',  base_url: 'https://api.moonshot.cn/v1',                        color: '#8b5cf6' },
+  { value: 'glm',       label: '智谱 AI (GLM)',            provider: 'glm',       base_url: 'https://open.bigmodel.cn/api/paas/v4',             color: '#2563eb' },
+  { value: 'doubao',    label: '字节豆包 (Doubao)',         provider: 'doubao',    base_url: 'https://ark.cn-beijing.volces.com/api/v3',          color: '#f59e0b' },
+  { value: 'mistral',   label: 'Mistral AI',              provider: 'mistral',   base_url: 'https://api.mistral.ai/v1',                         color: '#f87c56' },
+  { value: 'minimax',   label: 'MiniMax',                 provider: 'minimax',   base_url: 'https://api.minimax.io/v1/text/chatcompletion_v2',  color: '#00d4aa' },
+  { value: 'cohere',    label: 'Cohere',                  provider: 'cohere',    base_url: 'https://api.cohere.com/v1',                         color: '#39594d' },
+  { value: 'custom',    label: '自定义接口',               provider: '',          base_url: '',                                                  color: '#666688' },
 ]
 
-// ── 颜色 ──────────────────────────────────────────────────────
+const BUILTIN_URLS: Record<string, string> = Object.fromEntries(
+  PRESETS.filter(p => p.value !== 'custom').map(p => [p.provider, p.base_url])
+)
+
 const COLOR_MAP: Record<string, string> = Object.fromEntries(
   PRESETS.filter(p => p.value !== 'custom').map(p => [p.provider, p.color])
 )
+
 function providerColor(provider: string): string {
   const lower = provider.toLowerCase()
   for (const [k, v] of Object.entries(COLOR_MAP)) {
@@ -302,51 +265,59 @@ function providerColor(provider: string): string {
   return `hsl(${Math.abs(h) % 360},50%,52%)`
 }
 
-// ── 行数据类型（含前端临时状态） ──────────────────────────────
-type KeyRow = AIKeyConfig & { _saving?: boolean; _saved?: boolean }
+function isBuiltinUrl(provider: string, url: string): boolean {
+  return BUILTIN_URLS[provider] === url
+}
 
-// ── 状态 ─────────────────────────────────────────────────
-const loading = ref(false)
-const keys = ref<KeyRow[]>([])
+type KeyRow = AIKeyConfig & { _saving?: boolean; _saved?: boolean }
+type TestSt = 'idle' | 'testing' | 'valid' | 'invalid'
+
+const loading    = ref(false)
+const keys       = ref<KeyRow[]>([])
 const showDialog = ref(false)
 const submitting = ref(false)
-const formRef = ref<FormInstance>()
+const formRef    = ref<FormInstance>()
 
-type TestSt = 'idle' | 'testing' | 'valid' | 'invalid'
 const testState = ref<Record<string, TestSt>>({})
-const testMsg = ref<Record<string, string>>({})
+const testMsg   = ref<Record<string, string>>({})
 
-// 模型相关状态
-const modelOptions = ref<Record<string, any[]>>({})
-const modelLoading = ref<Record<string, boolean>>({})
-const selectedModels = ref<Record<string, string>>({})
+const modelOptions    = ref<Record<string, string[]>>({})
+const modelLoading    = ref<Record<string, boolean>>({})
+const selectedModels  = ref<Record<string, string>>({})
 const confirmedModels = ref<Record<string, string>>({})
 
 const defaultModels: Record<string, string> = {
-  'openai': 'gpt-4o-mini',
-  'anthropic': 'claude-3-5-sonnet-latest',
-  'qwen': 'qwen-plus',
-  'deepseek': 'deepseek-chat',
-  'minimax': 'MiniMax-Text-01',
-  'moonshot': 'moonshot-v1-8k',
-  'glm': 'glm-4-flash',
-  'doubao': 'doubao-pro-32k',
-  'mistral': 'mistral-small-latest',
+  openai:    'gpt-4o-mini',
+  anthropic: 'claude-sonnet-4-5',
+  qwen:      'qwen-plus',
+  deepseek:  'deepseek-chat',
+  minimax:   'MiniMax-Text-01',
+  moonshot:  'moonshot-v1-8k',
+  glm:       'glm-4-flash',
+  doubao:    'doubao-pro-32k',
+  mistral:   'mistral-small-latest',
+  gemini:    'gemini-2.0-flash',
+  cohere:    'command-r',
 }
 
-// ── 对话框表单 ────────────────────────────────────────────────
-const defaultForm = () => ({
-  preset:   '',
-  provider: '',
-  name:     '',
-  api_key:  '',
-  base_url: '',
-  enabled:  false,
-})
+// 兜底模型（后端 API 不可达时前端用）
+const fallbackModels: Record<string, string[]> = {
+  openai:    ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o1', 'o1-mini', 'o3-mini'],
+  anthropic: ['claude-opus-4-5', 'claude-sonnet-4-5', 'claude-haiku-4-5', 'claude-3-5-sonnet-20241022', 'claude-3-opus-20240229'],
+  qwen:      ['qwen-max', 'qwen-plus', 'qwen-turbo', 'qwen2.5-72b-instruct', 'qwen2.5-14b-instruct'],
+  deepseek:  ['deepseek-chat', 'deepseek-reasoner'],
+  gemini:    ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-pro', 'gemini-1.5-flash'],
+  moonshot:  ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
+  glm:       ['glm-4-plus', 'glm-4-flash', 'glm-4', 'glm-4-air', 'glm-3-turbo'],
+  doubao:    ['doubao-pro-256k', 'doubao-pro-128k', 'doubao-pro-32k', 'doubao-lite-32k'],
+  mistral:   ['mistral-large-latest', 'mistral-medium-latest', 'mistral-small-latest', 'codestral-latest'],
+  minimax:   ['MiniMax-Text-01', 'abab6.5s-chat', 'abab5.5s-chat'],
+  cohere:    ['command-r-plus', 'command-r', 'command', 'command-light'],
+}
+
+const defaultForm = () => ({ preset: '', provider: '', name: '', api_key: '', base_url: '', enabled: false })
 const form = ref(defaultForm())
-
 const isCustom = computed(() => form.value.preset === 'custom')
-
 const formRules = computed<FormRules>(() => ({
   provider: isCustom.value ? [{ required: true, message: '请输入 Provider 标识', trigger: 'blur' }] : [],
   name:     [{ required: true, message: '请输入显示名称', trigger: 'blur' }],
@@ -364,159 +335,21 @@ function onPresetChange(val: string) {
 function openAddDialog() { resetForm(); showDialog.value = true }
 function resetForm()     { form.value = defaultForm(); formRef.value?.clearValidate() }
 
-// ── 数据加载 ──────────────────────────────────────────────────
 async function loadKeys() {
   loading.value = true
   try {
     const res = await aiKeyApi.list()
     keys.value = (res.data?.data || []).map((k: AIKeyConfig) => ({ ...k, api_key: '' }))
-  } catch {
-    keys.value = []
-  } finally {
-    loading.value = false
-  }
-}
-
-// ── 保存 Key ─────────────────────────────────────────────────
-async function saveKey(row: KeyRow) {
-  if (!row.api_key) return
-  row._saving = true
-  try {
-    await aiKeyApi.update({
-      provider: row.provider,
-      name: row.name,
-      enabled: row.enabled,
-      priority: row.priority,
-      api_key: row.api_key,
-      base_url: row.base_url,
-    })
-    row.has_key  = true
-    row.api_key  = ''
-    row._saved   = true
-    testState.value[row.provider] = 'idle'
-    setTimeout(() => { row._saved = false }, 2200)
-  } catch {
-    ElMessage.error('保存失败')
-  } finally {
-    row._saving = false
-  }
-}
-
-// ── 开关 ──────────────────────────────────────────────────────
-async function toggle(row: KeyRow) {
-  try {
-    await aiKeyApi.update({
-      provider: row.provider,
-      name: row.name,
-      enabled: row.enabled,
-      priority: row.priority,
-      base_url: row.base_url,
-    })
-    ElMessage.success(row.enabled ? '已启用' : '已禁用')
-  } catch {
-    ElMessage.error('操作失败')
-    row.enabled = !row.enabled
-  }
-}
-
-// ── 删除 ──────────────────────────────────────────────────────
-async function remove(provider: string) {
-  try {
-    await ElMessageBox.confirm(`确认删除 "${provider}"？`, '删除确认', {
-      type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消',
-    })
-    await aiKeyApi.remove(provider)
-    ElMessage.success('已删除')
-    await loadKeys()
-  } catch (e: any) {
-    if (e !== 'cancel') ElMessage.error('删除失败')
-  }
-}
-
-// ── 验证 Key ─────────────────────────────────────────────────
-async function testKey(row: KeyRow) {
-  if (!row.has_key && !row.api_key) {
-    ElMessage.warning('请先输入 API Key')
-    return
-  }
-  testState.value[row.provider] = 'testing'
-  testMsg.value[row.provider]   = ''
-  try {
-    const res = await aiKeyApi.test(row.provider, row.api_key || undefined, row.base_url)
-    const { valid, message } = res.data ?? {}
-    testState.value[row.provider] = valid ? 'valid' : 'invalid'
-    testMsg.value[row.provider]   = message || (valid ? '有效' : '无效')
-    if (valid) {
-      ElMessage.success(`${row.name} — Key 有效`)
-      // 验证通过后自动加载模型列表
-      await loadModels(row.provider, row.api_key || '', row.base_url || '')
-    } else {
-      ElMessage.error(`${row.name} — ${message || '无效'}`)
-    }
-  } catch {
-    testState.value[row.provider] = 'invalid'
-    testMsg.value[row.provider]   = '请求失败，请检查后端'
-  }
-}
-
-// ── 模型选择 ────────────────────────────────────────────────
-async function loadModels(provider: string, apiKey?: string, baseUrl?: string) {
-  if (modelOptions.value[provider]?.length) return
-
-  modelLoading.value[provider] = true
-  try {
-    // 尝试从API获取模型列表
-    const fallbackModels = getFallbackModels(provider)
-    modelOptions.value[provider] = fallbackModels
-
-    // 预设置默认模型
-    if (!selectedModels.value[provider]) {
-      selectedModels.value[provider] = defaultModels[provider] || fallbackModels[0] || ''
-    }
-  } finally {
-    modelLoading.value[provider] = false
-  }
-}
-
-function getFallbackModels(provider: string): string[] {
-  const modelMap: Record<string, string[]> = {
-    'openai': ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'],
-    'anthropic': ['claude-3-5-sonnet-latest', 'claude-3-5-sonnet-20241022', 'claude-3-opus-latest', 'claude-3-sonnet-latest'],
-    'qwen': ['qwen-plus', 'qwen-turbo', 'qwen-max', 'qwen-max-longcontext'],
-    'deepseek': ['deepseek-chat', 'deepseek-coder'],
-    'minimax': ['MiniMax-Text-01', 'abab6-chat'],
-    'moonshot': ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
-    'glm': ['glm-4-flash', 'glm-4-plus', 'glm-4', 'glm-3-turbo'],
-    'doubao': ['doubao-pro-32k', 'doubao-pro-128k', 'doubao-lite-32k'],
-    'mistral': ['mistral-small-latest', 'mistral-medium-latest', 'mistral-large-latest'],
-  }
-  return modelMap[provider.toLowerCase()] || []
-}
-
-function onModelChange(provider: string, model: string) {
-  console.log(`Model selected for ${provider}:`, model)
-}
-
-async function confirmModel(provider: string) {
-  const model = selectedModels.value[provider]
-  if (!model) {
-    ElMessage.warning('请先选择模型')
-    return
-  }
-  confirmedModels.value[provider] = model
-  ElMessage.success(`已确认模型: ${model}`)
-  // 可以在这里保存模型选择到配置或进行其他操作
-}
-
-async function loadKeys() {
-  loading.value = true
-  try {
-    const res = await aiKeyApi.list()
-    keys.value = (res.data?.data || []).map((k: AIKeyConfig) => ({ ...k, api_key: '' }))
-    // 加载每个key的模型列表
     for (const key of keys.value) {
-      if (key.has_key || key.api_key) {
-        await loadModels(key.provider, key.api_key, key.base_url)
+      const fb = fallbackModels[key.provider] || []
+      if (!modelOptions.value[key.provider]?.length) {
+        modelOptions.value[key.provider] = fb
+      }
+      if (key.model) {
+        selectedModels.value[key.provider]  = key.model
+        confirmedModels.value[key.provider] = key.model
+      } else if (!selectedModels.value[key.provider]) {
+        selectedModels.value[key.provider] = defaultModels[key.provider] || fb[0] || ''
       }
     }
   } catch {
@@ -526,27 +359,115 @@ async function loadKeys() {
   }
 }
 
-// ── 提交新增 ──────────────────────────────────────────────────
+async function fetchModelsFromApi(row: KeyRow) {
+  if (!row.has_key && !row.api_key) {
+    ElMessage.warning('请先保存 API Key')
+    return
+  }
+  modelLoading.value[row.provider] = true
+  try {
+    const res = await aiKeyApi.fetchModels(row.provider)
+    const models: string[] = res.data?.models || []
+    if (models.length) {
+      modelOptions.value[row.provider] = models
+      const source = res.data?.source
+      ElMessage.success(source === 'api' ? `已从 API 获取 ${models.length} 个模型` : '使用内置模型列表')
+    } else {
+      ElMessage.warning('未获取到模型列表')
+    }
+  } catch {
+    ElMessage.error('获取模型失败')
+    const fb = fallbackModels[row.provider] || []
+    if (fb.length) modelOptions.value[row.provider] = fb
+  } finally {
+    modelLoading.value[row.provider] = false
+  }
+}
+
+async function saveKey(row: KeyRow) {
+  if (!row.api_key) return
+  row._saving = true
+  try {
+    await aiKeyApi.update({
+      provider: row.provider, name: row.name, enabled: row.enabled,
+      priority: row.priority, api_key: row.api_key, base_url: row.base_url,
+    })
+    row.has_key = true
+    row.api_key = ''
+    row._saved  = true
+    testState.value[row.provider] = 'idle'
+    setTimeout(() => { row._saved = false }, 2200)
+  } catch {
+    ElMessage.error('保存失败')
+  } finally {
+    row._saving = false
+  }
+}
+
+async function toggle(row: KeyRow) {
+  try {
+    await aiKeyApi.update({ provider: row.provider, name: row.name, enabled: row.enabled, priority: row.priority, base_url: row.base_url })
+    ElMessage.success(row.enabled ? '已启用' : '已禁用')
+  } catch {
+    ElMessage.error('操作失败')
+    row.enabled = !row.enabled
+  }
+}
+
+async function remove(provider: string) {
+  try {
+    await ElMessageBox.confirm(`确认删除 "${provider}"？`, '删除确认', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' })
+    await aiKeyApi.remove(provider)
+    ElMessage.success('已删除')
+    await loadKeys()
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error('删除失败')
+  }
+}
+
+async function testKey(row: KeyRow) {
+  if (!row.has_key && !row.api_key) { ElMessage.warning('请先输入 API Key'); return }
+  testState.value[row.provider] = 'testing'
+  testMsg.value[row.provider]   = ''
+  try {
+    const res = await aiKeyApi.test(row.provider, row.api_key || undefined, row.base_url)
+    const { valid, message } = res.data ?? {}
+    testState.value[row.provider] = valid ? 'valid' : 'invalid'
+    testMsg.value[row.provider]   = message || (valid ? '有效' : '无效')
+    if (valid) {
+      ElMessage.success(`${row.name} — Key 有效`)
+      await fetchModelsFromApi(row)
+    } else {
+      ElMessage.error(`${row.name} — ${message || '无效'}`)
+    }
+  } catch {
+    testState.value[row.provider] = 'invalid'
+    testMsg.value[row.provider]   = '请求失败，请检查后端'
+  }
+}
+
+async function confirmModel(provider: string) {
+  const model = selectedModels.value[provider]
+  if (!model) { ElMessage.warning('请先选择模型'); return }
+  const row = keys.value.find(k => k.provider === provider)
+  if (!row) return
+  try {
+    await aiKeyApi.update({ provider: row.provider, name: row.name, enabled: row.enabled, priority: row.priority, base_url: row.base_url, model })
+    confirmedModels.value[provider] = model
+    ElMessage.success(`已保存模型: ${model}`)
+  } catch {
+    ElMessage.error('模型保存失败')
+  }
+}
+
 async function submitAdd() {
   if (!formRef.value) return
   if (!await formRef.value.validate().catch(() => false)) return
-
-  const finalProvider = isCustom.value ? form.value.provider : form.value.provider
-  if (keys.value.some(k => k.provider === finalProvider)) {
-    ElMessage.warning(`"${finalProvider}" 已存在`)
-    return
-  }
-
+  const finalProvider = form.value.provider
+  if (keys.value.some(k => k.provider === finalProvider)) { ElMessage.warning(`"${finalProvider}" 已存在`); return }
   submitting.value = true
   try {
-    await aiKeyApi.update({
-      provider: finalProvider,
-      name:     form.value.name,
-      enabled:  form.value.enabled,
-      priority: 99,
-      api_key:  form.value.api_key || undefined,
-      base_url: form.value.base_url || undefined,
-    })
+    await aiKeyApi.update({ provider: finalProvider, name: form.value.name, enabled: form.value.enabled, priority: 99, api_key: form.value.api_key || undefined, base_url: form.value.base_url || undefined })
     ElMessage.success(`已添加 ${form.value.name}`)
     showDialog.value = false
     await loadKeys()
@@ -561,208 +482,154 @@ onMounted(loadKeys)
 </script>
 
 <style scoped>
-/* ── 整体 ──────────────────────────── */
-.ak-page {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  font-family: -apple-system, 'SF Pro Text', 'Segoe UI', sans-serif;
-}
+/* ── 页面 ── */
+.ak-page { display: flex; flex-direction: column; gap: 14px; font-family: -apple-system, 'SF Pro Text', 'Segoe UI', sans-serif; }
 
-/* ── 页头 ──────────────────────────── */
-.ak-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
+/* ── 页头 ── */
+.ak-header { display: flex; align-items: center; justify-content: space-between; }
 .ak-header-left { display: flex; align-items: center; gap: 8px; }
-.ak-title { font-size: 15px; font-weight: 700; color: #dde0f0; }
-.ak-badge {
-  font-size: 11px; padding: 1px 7px; border-radius: 20px;
-  background: #18182a; border: 1px solid #28283e; color: #5050a0;
-}
+.ak-title { font-size: 15px; font-weight: 700; color: #d8daf0; letter-spacing: -0.01em; }
+.ak-count { font-size: 11px; color: #3a3a60; background: #111120; border: 1px solid #1e1e30; border-radius: 20px; padding: 1px 8px; }
+
 .ak-add-btn {
-  display: flex; align-items: center; gap: 7px;
-  padding: 6px 14px; font-size: 12.5px; cursor: pointer;
-  background: #15151e; border: 1px solid #2a2a40; border-radius: 7px;
-  color: #7070aa; transition: all 0.15s;
+  display: flex; align-items: center; gap: 6px; padding: 6px 14px;
+  font-size: 12.5px; cursor: pointer; border-radius: 7px;
+  background: #0e0e1a; border: 1px solid #22223a; color: #6060a0;
+  transition: all 0.15s;
 }
-.ak-add-btn:hover { background: #1e1e30; border-color: #5555aa; color: #bbbbee; }
+.ak-add-btn:hover { background: #16162a; border-color: #4444aa; color: #a0a0dd; }
 
-/* ── 列表容器 ──────────────────────── */
-.ak-list { display: flex; flex-direction: column; gap: 0; }
+/* ── 卡片列表 ── */
+.ak-list { display: flex; flex-direction: column; gap: 10px; }
 
-/* ── 卡片 ──────────────────────────── */
+/* ── 卡片 ── */
 .ak-card {
-  position: relative;
-  display: flex;
-  align-items: stretch;
-  background: #111118;
-  border: 1px solid #1c1c28;
-  border-radius: 10px;
-  overflow: hidden;
-  margin-bottom: 8px;
+  display: flex; border-radius: 10px; overflow: hidden;
+  background: #0c0c14; border: 1px solid #18182a;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
-.ak-card:hover { border-color: #26263a; box-shadow: 0 2px 14px rgba(0,0,0,0.35); }
-.ak-card.state-valid   { border-color: #1a3824; }
-.ak-card.state-invalid { border-color: #381a1a; }
+.ak-card:hover { border-color: #222238; box-shadow: 0 2px 20px rgba(0,0,0,0.4); }
+.ak-card.valid   { border-color: #152a1e; }
+.ak-card.invalid { border-color: #2a1515; }
 
-/* 左侧彩条 */
-.ak-stripe { width: 3px; background: var(--accent); flex-shrink: 0; opacity: 0.8; }
+.ak-accent-bar { width: 3px; background: var(--accent); flex-shrink: 0; opacity: 0.7; }
+.ak-card-inner { flex: 1; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 
-/* 图标 */
-.ak-icon {
-  width: 34px; height: 34px; border-radius: 8px;
+/* ── 卡头 ── */
+.ak-card-head { display: flex; align-items: center; gap: 10px; }
+
+.ak-provider-icon {
+  width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
-  font-size: 14px; font-weight: 800; color: rgba(255,255,255,0.88);
-  flex-shrink: 0; align-self: center; margin: 0 12px 0 12px;
+  font-size: 13px; font-weight: 800; color: rgba(255,255,255,0.9);
 }
-
-/* 主体 */
-.ak-body {
-  flex: 1; padding: 11px 14px 11px 0;
-  display: flex; flex-direction: column; gap: 8px; min-width: 0;
-}
-.ak-row { display: flex; align-items: center; }
-
-/* 行1 */
-.ak-row-title { justify-content: space-between; }
-.ak-names { display: flex; align-items: baseline; gap: 7px; min-width: 0; flex: 1; }
-.ak-name { font-size: 13.5px; font-weight: 600; color: #d0d0e8; white-space: nowrap; }
-.ak-pid {
-  font-size: 10.5px; color: #40405a;
+.ak-provider-info { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 7px; }
+.ak-provider-name { font-size: 13.5px; font-weight: 600; color: #c8cae8; white-space: nowrap; }
+.ak-provider-id {
+  font-size: 10px; color: #303050; padding: 1px 5px;
+  background: #0e0e1e; border: 1px solid #1a1a2e; border-radius: 4px;
   font-family: 'JetBrains Mono', 'SF Mono', monospace;
-  padding: 1px 5px; background: #16162a; border: 1px solid #22223a; border-radius: 4px;
 }
-.ak-row-title-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.ak-del-btn {
+
+.ak-head-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+.ak-status-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: #1c1c30;
+  flex-shrink: 0; transition: all 0.3s; cursor: help;
+}
+.ak-status-dot.dot_valid   { background: #2ecc71; box-shadow: 0 0 7px rgba(46,204,113,0.5); }
+.ak-status-dot.dot_invalid { background: #e74c3c; box-shadow: 0 0 7px rgba(231,76,60,0.4); }
+.ak-status-dot.dot_key     { background: var(--accent); box-shadow: 0 0 5px var(--accent); opacity: 0.6; }
+
+.ak-icon-btn {
   width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
   background: transparent; border: 1px solid transparent; border-radius: 5px;
-  color: #383850; cursor: pointer; transition: all 0.12s; padding: 0;
+  cursor: pointer; color: #303050; transition: all 0.12s; padding: 0; flex-shrink: 0;
 }
-.ak-del-btn:hover { border-color: #6a2a2a; color: #c05050; background: #1c0d0d; }
+.ak-del:hover { border-color: #4a1a1a; color: #cc4444; background: #160a0a; }
 
-/* 行2：Key 输入 */
-.ak-row-key { gap: 7px; }
-.ak-dot {
-  width: 7px; height: 7px; border-radius: 50%;
-  background: #222235; flex-shrink: 0; transition: background 0.3s, box-shadow 0.3s;
-}
-.ak-dot.on { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+/* ── Section 通用 ── */
+.ak-section { display: flex; align-items: center; gap: 8px; }
+.ak-section-label { font-size: 11px; color: #404060; min-width: 52px; flex-shrink: 0; text-align: right; }
 
+/* ── Key 行 ── */
+.ak-key-row { flex: 1; display: flex; gap: 7px; }
 .ak-key-input { flex: 1; }
-.ak-key-input :deep(.el-input__wrapper) {
-  background: #161620 !important; box-shadow: none !important;
-  border: 1px solid #20203a !important;
-}
-.ak-key-input :deep(.el-input__wrapper:hover) { border-color: #30304a !important; }
+.ak-key-input :deep(.el-input__wrapper) { background: #0e0e1c !important; box-shadow: none !important; border: 1px solid #1a1a2e !important; }
+.ak-key-input :deep(.el-input__wrapper:hover) { border-color: #252545 !important; }
 .ak-key-input :deep(.el-input__wrapper.is-focus) { border-color: var(--accent) !important; }
-.ak-key-input :deep(.el-input__inner) {
-  color: #9090b8; font-family: 'JetBrains Mono', monospace; font-size: 12px;
+.ak-key-input :deep(.el-input__inner) { color: #8888b0; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+
+/* ── URL 行 ── */
+.ak-url-section { opacity: 0.7; }
+.ak-url-val {
+  font-size: 10.5px; color: #303055; font-family: 'JetBrains Mono', monospace;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px;
 }
 
-/* 保存按钮 */
-.ak-save-btn {
-  flex-shrink: 0;
-  padding: 4px 11px; font-size: 12px; border-radius: 5px; cursor: pointer;
-  border: 1px solid #20203a; background: #14141e; color: #38385a;
-  transition: all 0.15s;
-}
-.ak-save-btn.active {
-  border-color: var(--accent); color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-}
-.ak-save-btn.saved {
-  border-color: #1a4a2a; background: #0d1e14; color: #3d9a5a;
-}
-.ak-save-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+/* ── 模型行 ── */
+.ak-model-row { flex: 1; display: flex; align-items: center; gap: 6px; }
+.ak-model-select { flex: 1; }
+.ak-model-select :deep(.el-input__wrapper) { background: #0e0e1c !important; box-shadow: none !important; border: 1px solid #1a1a2e !important; }
+.ak-model-select :deep(.el-input__wrapper:hover) { border-color: #252545 !important; }
+.ak-model-select :deep(.el-select__wrapper) { background: #0e0e1c !important; box-shadow: none !important; border: 1px solid #1a1a2e !important; }
 
-/* 行3：Base URL */
-.ak-row-url { gap: 5px; }
-.ak-url-text {
-  font-size: 10.5px; color: #333350;
-  font-family: 'JetBrains Mono', monospace;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.ak-fetch-btn {
+  border: 1px solid #1a1a2e; background: #0e0e1c; color: #505080;
+}
+.ak-fetch-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.ak-fetch-btn.loading { opacity: 0.5; cursor: wait; }
+
+.ak-confirmed-badge {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 11px; color: #3a7a52; white-space: nowrap;
+  background: #0a1a10; border: 1px solid #152a1e; border-radius: 5px; padding: 2px 8px;
 }
 
-/* 行4：验证 */
-/* ── 模型选择行 ──────────────────────── */
-.ak-row-model {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  background: rgba(255,255,255,0.02);
-  border-top: 1px solid rgba(255,255,255,0.03);
-}
-.ak-row-model .ak-label {
-  font-size: 11px;
-  color: #606080;
-  min-width: 40px;
-}
-.model-option {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  gap: 8px;
-}
+.model-opt { display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 6px; }
 
-/* ── 测试行 ──────────────────────── */
-.ak-row-test { justify-content: space-between; padding: 6px 12px; }
-.ak-test-result {
-  font-size: 11.5px; color: #2a2a40; display: flex; align-items: center; gap: 5px; min-height: 20px;
+/* ── 测试行 ── */
+.ak-test-section { justify-content: space-between; padding-top: 4px; border-top: 1px solid #111120; margin-top: 2px; }
+.ak-test-status { display: flex; align-items: center; gap: 5px; }
+.ak-test-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.ak-test-dot.valid   { background: #2ecc71; }
+.ak-test-dot.invalid { background: #e74c3c; }
+.ak-test-text { font-size: 11.5px; }
+.ak-test-text.valid  { color: #3a8a52; }
+.ak-test-text.invalid{ color: #8a3a3a; }
+.ak-test-text.idle   { color: #2a2a44; }
+.ak-test-invalid { display: flex; align-items: center; gap: 5px; cursor: help; }
+
+/* ── 通用按钮 ── */
+.ak-btn {
+  flex-shrink: 0; padding: 4px 11px; font-size: 12px; border-radius: 5px;
+  cursor: pointer; border: 1px solid #1c1c2e; background: #0e0e1c; color: #404060;
+  transition: all 0.15s; white-space: nowrap;
 }
-.ak-test-result.valid   { color: #3a8a52; }
-.ak-test-result.invalid { color: #8a3a3a; }
-.ak-invalid-wrap { display: flex; align-items: center; gap: 5px; cursor: help; }
-.rdot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
-.rdot.valid   { background: #3a8a52; box-shadow: 0 0 6px rgba(58,138,82,.6); }
-.rdot.invalid { background: #8a3a3a; box-shadow: 0 0 6px rgba(138,58,58,.6); }
+.ak-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
-/* 验证按钮 */
-.ak-test-btn {
-  padding: 4px 12px; font-size: 11.5px; border-radius: 5px; cursor: pointer;
-  border: 1px solid #20203a; background: #12121c; color: #555588;
-  transition: all 0.15s;
-}
-.ak-test-btn:hover:not(:disabled) {
-  background: #1a1a2c; border-color: var(--accent); color: var(--accent);
-}
-.ak-test-btn.testing  { color: #444488; cursor: wait; }
-.ak-test-btn.valid    { border-color: #1a3824; background: #0a1810; color: #3a8a52; }
-.ak-test-btn.invalid  { border-color: #3a1a1a; background: #160a0a; color: #8a4040; }
-.ak-test-btn:disabled { opacity: 0.4; }
+.ak-btn-save.active { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.ak-btn-save.saved  { border-color: #152a1e; background: #0a1810; color: #3a8a52; }
 
-/* 旋转 */
-.ak-spinner { display: inline-block; animation: akSpin 0.9s linear infinite; }
-@keyframes akSpin { to { transform: rotate(360deg); } }
+.ak-btn-confirm { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.ak-btn-confirm:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }
 
-/* 空状态 */
-.ak-empty {
-  text-align: center; padding: 56px 0; color: #28284a;
-}
-.ak-empty-icon { font-size: 36px; opacity: 0.3; margin-bottom: 10px; }
+.ak-btn-test:hover:not(:disabled) { border-color: #303060; background: #141428; color: #8888cc; }
+.ak-btn-test.valid   { border-color: #152a1e; background: #0a1810; color: #3a8a52; }
+.ak-btn-test.invalid { border-color: #2a1515; background: #140a0a; color: #8a4040; }
 
-/* 过渡动画 */
-.ak-slide-enter-active { transition: all 0.25s ease; }
-.ak-slide-leave-active { transition: all 0.2s ease; }
-.ak-slide-enter-from  { opacity: 0; transform: translateY(-8px); }
-.ak-slide-leave-to    { opacity: 0; transform: translateY(-4px); }
+/* ── 旋转 ── */
+.spin { display: inline-block; animation: spinIt 0.8s linear infinite; }
+@keyframes spinIt { to { transform: rotate(360deg); } }
 
-/* ── 对话框 ──────────────────────────── */
-.ak-form :deep(.el-form-item__label) { color: #888899; font-size: 12.5px; }
+/* ── 空状态 ── */
+.ak-empty { text-align: center; padding: 60px 0; color: #222244; }
+.ak-empty-icon { font-size: 34px; opacity: 0.25; margin-bottom: 10px; }
 
-/* 预设选项 */
-.preset-option {
-  display: flex; align-items: center; gap: 8px; width: 100%;
-}
+/* ── 对话框 ── */
+.ak-form :deep(.el-form-item__label) { color: #7878a0; font-size: 12.5px; }
+.preset-opt { display: flex; align-items: center; gap: 8px; width: 100%; }
 .preset-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.preset-url {
-  margin-left: auto; font-size: 10.5px; color: #44445a;
-  font-family: 'JetBrains Mono', monospace; overflow: hidden;
-  text-overflow: ellipsis; white-space: nowrap; max-width: 200px;
-}
-.ak-form-tip { font-size: 11px; color: #44445a; margin-top: 4px; }
+.preset-url { margin-left: auto; font-size: 10px; color: #404060; font-family: monospace; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.form-tip { font-size: 11px; color: #404060; margin-top: 4px; }
 </style>

@@ -9,6 +9,7 @@ export interface AIKeyConfig {
   updated_at?: string
   api_key?: string
   base_url?: string
+  model?: string
 }
 
 export interface PickedStock {
@@ -165,6 +166,9 @@ export const aiKeyApi = {
   },
   reorder(priorities: { provider: string; priority: number }[]) {
     return client.put('/api/v1/ai-keys/reorder', { priorities })
+  },
+  fetchModels(provider: string) {
+    return client.get(`/api/v1/ai-keys/${provider}/models`)
   },
 }
 

@@ -1534,7 +1534,8 @@ def get_market_indices():
 
 @api_bp.route("/market/realtime-quotes", methods=["POST"])
 def get_realtime_quotes():
-    import akshare as ak
+    import re
+    import requests as _requests
     from datetime import datetime
 
     data = request.get_json() or {}
@@ -1544,40 +1545,113 @@ def get_realtime_quotes():
         return jsonify({"error": "codes is required"}), 400
 
     normalized_codes = [_normalize_code(c) for c in codes]
-    unique_codes = list(set(normalized_codes))
+    unique_codes = list(dict.fromkeys(normalized_codes))  # dedupe, preserve order
 
-    try:
-        df = ak.stock_zh_a_spot_em()
+    NO_PROXY = {"http": "", "https": ""}
+
+    def _fetch_tencent(code_list):
+        # Tencent expects lowercase sh/sz prefix
+        tencent_codes = ",".join(c.lower() for c in code_list)
+        r = _requests.get(
+            f"https://qt.gtimg.cn/q={tencent_codes}",
+            proxies=NO_PROXY,
+            timeout=10,
+        )
+        r.raise_for_status()
         results = []
+        for code in code_list:
+            m = re.search(rf'v_{code.lower()}="([^"]+)"', r.text)
+            if not m:
+                continue
+            p = m.group(1).split("~")
+            if len(p) < 36:
+                continue
+            def _f(v):
+                try:
+                    return float(v) if v else None
+                except (ValueError, TypeError):
+                    return None
+            # amount: p[35] = "price/volume/amount_yuan"
+            amount = None
+            try:
+                amount = float(p[35].split("/")[2])
+            except (IndexError, ValueError):
+                pass
+            results.append({
+                "code": code.upper(),
+                "name": p[1],
+                "price": _f(p[3]),
+                "change": _f(p[32]),
+                "change_amount": _f(p[31]),
+                "volume": _f(p[6]),   # 手
+                "amount": amount,      # 元
+                "open": _f(p[5]),
+                "high": _f(p[33]),
+                "low": _f(p[34]),
+                "prev_close": _f(p[4]),
+                "turnover": _f(p[38]),  # 换手率%
+            })
+        return results
 
-        for code in unique_codes:
-            code_num = code[2:]
-            row = df[df["代码"] == code_num]
-            if not row.empty:
-                results.append({
-                    "code": code.upper(),
-                    "name": str(row.iloc[0]["名称"]),
-                    "price": float(row.iloc[0]["最新价"]) if pd.notna(row.iloc[0]["最新价"]) else None,
-                    "change": float(row.iloc[0]["涨跌幅"]) if pd.notna(row.iloc[0]["涨跌幅"]) else 0,
-                    "change_amount": float(row.iloc[0]["涨跌额"]) if pd.notna(row.iloc[0]["涨跌额"]) else 0,
-                    "volume": float(row.iloc[0]["成交量"]) if pd.notna(row.iloc[0]["成交量"]) else None,
-                    "amount": float(row.iloc[0]["成交额"]) if pd.notna(row.iloc[0]["成交额"]) else None,
-                    "open": float(row.iloc[0]["今开"]) if pd.notna(row.iloc[0]["今开"]) else None,
-                    "high": float(row.iloc[0]["最高"]) if pd.notna(row.iloc[0]["最高"]) else None,
-                    "low": float(row.iloc[0]["最低"]) if pd.notna(row.iloc[0]["最低"]) else None,
-                    "prev_close": float(row.iloc[0]["昨收"]) if pd.notna(row.iloc[0]["昨收"]) else None,
-                    "turnover": float(row.iloc[0]["换手率"]) if pd.notna(row.iloc[0]["换手率"]) else None,
+    def _fetch_sina(code_list):
+        sina_codes = ",".join(c.lower() for c in code_list)
+        r = _requests.get(
+            f"http://hq.sinajs.cn/list={sina_codes}",
+            headers={"Referer": "https://finance.sina.com.cn", "User-Agent": "Mozilla/5.0"},
+            proxies=NO_PROXY,
+            timeout=10,
+        )
+        r.raise_for_status()
+        results = []
+        for code in code_list:
+            m = re.search(rf'hq_str_{code.lower()}="([^"]+)"', r.text)
+            if not m:
+                continue
+            p = m.group(1).split(",")
+            if len(p) < 10:
+                continue
+            def _f(v):
+                try:
+                    return float(v) if v else None
+                except (ValueError, TypeError):
+                    return None
+            prev_close = _f(p[2])
+            price = _f(p[3])
+            change = round((price - prev_close) / prev_close * 100, 2) if price and prev_close else None
+            results.append({
+                "code": code.upper(),
+                "name": p[0],
+                "price": price,
+                "change": change,
+                "change_amount": round(price - prev_close, 2) if price and prev_close else None,
+                "volume": _f(p[8]),
+                "amount": _f(p[9]),
+                "open": _f(p[1]),
+                "high": _f(p[4]),
+                "low": _f(p[5]),
+                "prev_close": prev_close,
+                "turnover": None,
+            })
+        return results
+
+    errors = []
+    for source, fetch_fn in [("tencent", _fetch_tencent), ("sina", _fetch_sina)]:
+        try:
+            results = fetch_fn(unique_codes)
+            if results:
+                return jsonify({
+                    "success": True,
+                    "count": len(results),
+                    "data": results,
+                    "timestamp": datetime.now().isoformat(),
+                    "source": source,
                 })
+        except Exception as e:
+            errors.append(f"{source}: {e}")
+            logger.warning(f"Realtime quotes source {source} failed: {e}")
 
-        return jsonify({
-            "success": True,
-            "count": len(results),
-            "data": results,
-            "timestamp": datetime.now().isoformat()
-        })
-    except Exception as e:
-        logger.error(f"Failed to get realtime quotes: {e}")
-        return jsonify({"error": str(e)}), 500
+    logger.error(f"All realtime-quotes sources failed: {errors}")
+    return jsonify({"error": "; ".join(errors)}), 500
 
 
 @api_bp.route("/market/minute-kline/<code>", methods=["GET"])
@@ -1638,9 +1712,10 @@ def update_ai_key():
     priority = data.get("priority", 99)
     api_key = data.get("api_key")
     base_url = data.get("base_url")
+    model = data.get("model")
     if not provider:
         return jsonify({"error": "provider is required"}), 400
-    ai_key_manager.update_key(provider, name, enabled, priority, api_key, base_url)
+    ai_key_manager.update_key(provider, name, enabled, priority, api_key, base_url, model)
     return jsonify({"success": True, "message": "Key updated"})
 
 
@@ -1668,6 +1743,23 @@ def reorder_ai_keys():
                 {"$set": {"priority": priority, "updated_at": datetime.now().isoformat()}}
             )
     return jsonify({"success": True, "updated": len(priorities)})
+
+
+@api_bp.route("/ai-keys/<provider>/models", methods=["GET"])
+def get_ai_key_models(provider):
+    from modules.ai.ai_key_manager import ai_key_manager
+    from config.database import DatabaseConfig
+
+    db = DatabaseConfig.get_database()
+    doc = db["ai_keys"].find_one({"provider": provider})
+    if not doc:
+        return jsonify({"error": "Provider not found"}), 404
+
+    api_key = doc.get("api_key", "")
+    base_url = doc.get("base_url", "")
+
+    result = ai_key_manager.fetch_models(provider, api_key, base_url)
+    return jsonify({"success": True, "models": result["models"], "source": result["source"]})
 
 
 @api_bp.route("/ai-keys/<provider>/test", methods=["POST"])
