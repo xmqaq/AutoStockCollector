@@ -26,8 +26,7 @@ __pycache__/
 .env
 .env.*
 !.env.example
-.playwright-mcp/page-2026-05-29T03-16-01-379Z.yml
-.playwright-mcp/page-2026-05-29T02-56-42-460Z.yml
-.playwright-mcp/page-2026-05-29T02-56-36-361Z.yml
-.playwright-mcp/page-2026-05-29T02-55-28-832Z.yml
-.playwright-mcp/page-2026-05-29T02-54-23-165Z.yml
+
+# Playwright / verification artifacts
+.playwright-mcp/
+*.png
