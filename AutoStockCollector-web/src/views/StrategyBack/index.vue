@@ -60,9 +60,19 @@
 
       <!-- Results panel -->
       <el-col :span="16">
-        <div v-if="!result && !loading" class="empty-hint">
-          <el-empty description="配置参数后点击开始回测" />
-        </div>
+        <el-card v-if="!result && !loading" shadow="never" class="section-card empty-hint-card">
+          <div class="empty-hint-inner">
+            <div class="empty-hint-icon">&#9654;</div>
+            <div class="empty-hint-title">策略回测</div>
+            <ul class="empty-hint-steps">
+              <li>在左侧选择回测策略</li>
+              <li>输入要回测的股票代码（可多只）</li>
+              <li>设置回测时间范围与初始资金</li>
+              <li>点击「开始回测」查看收益分析</li>
+            </ul>
+            <div class="empty-hint-note">回测基于历史K线数据，不代表未来实际收益</div>
+          </div>
+        </el-card>
 
         <template v-if="result">
           <!-- Metric cards -->
@@ -324,9 +334,88 @@ onMounted(() => {
 .text-fall { color: #26a69a; }
 .text-primary { color: #409eff; }
 
-.empty-hint {
+.empty-hint-card {
+  min-height: 340px;
   display: flex;
+  align-items: center;
   justify-content: center;
-  padding: 60px 0;
+}
+
+.empty-hint-card :deep(.el-card__body) {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 32px;
+}
+
+.empty-hint-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+}
+
+.empty-hint-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(64,158,255,0.12);
+  color: #409eff;
+  font-size: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: 4px;
+}
+
+.empty-hint-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #c8cdd6;
+}
+
+.empty-hint-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  counter-reset: step;
+}
+
+.empty-hint-steps li {
+  counter-increment: step;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #909399;
+}
+
+.empty-hint-steps li::before {
+  content: counter(step);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #2c2c2c;
+  color: #409eff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.empty-hint-note {
+  font-size: 11px;
+  color: #606266;
+  margin-top: 4px;
+  border-top: 1px solid #2c2c2c;
+  padding-top: 12px;
+  width: 100%;
 }
 </style>

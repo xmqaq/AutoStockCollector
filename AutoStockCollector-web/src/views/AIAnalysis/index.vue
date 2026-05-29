@@ -80,6 +80,24 @@
       </div>
     </el-card>
 
+    <!-- Intro panel (shown only before first analysis) -->
+    <el-card v-if="!result && !loading" shadow="never" class="section-card intro-card">
+      <template #header><span>支持的分析模式</span></template>
+      <div class="intro-grid">
+        <div
+          v-for="t in analysisTypes"
+          :key="t.value"
+          class="intro-item"
+          :class="{ 'intro-active': form.type === t.value }"
+          @click="form.type = t.value"
+        >
+          <div class="intro-badge">{{ t.badge }}</div>
+          <div class="intro-name">{{ t.label }}</div>
+          <div class="intro-desc">{{ t.desc }}</div>
+        </div>
+      </div>
+    </el-card>
+
     <el-card v-if="history.length > 0" shadow="never" class="section-card">
       <template #header><span>分析历史（本次会话）</span></template>
       <div class="history-list">
@@ -133,6 +151,14 @@ const typeLabels: Record<string, string> = {
   sentiment: '情绪分析',
   risk: '风险评估',
 }
+
+const analysisTypes = [
+  { value: 'comprehensive', label: '综合分析', badge: '综', desc: '全面评估技术面、基本面及市场情绪，给出综合投资建议' },
+  { value: 'technical', label: '技术分析', badge: '技', desc: '基于K线、均线、MACD、RSI等技术指标，判断价格趋势与买卖时机' },
+  { value: 'fundamental', label: '基本面', badge: '基', desc: '分析财务数据、估值指标、行业地位，评估公司内在价值' },
+  { value: 'sentiment', label: '情绪分析', badge: '情', desc: '基于新闻舆情、市场热度、资金流向，判断市场情绪与短期走势' },
+  { value: 'risk', label: '风险评估', badge: '险', desc: '评估持仓风险等级、波动率及市场系统性风险，辅助控仓决策' },
+]
 
 function analysisTypeLabel(type: string): string {
   return typeLabels[type] || type
@@ -289,6 +315,60 @@ onMounted(() => {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+.intro-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+
+.intro-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 20px 12px;
+  border-radius: 8px;
+  border: 1px solid #2c2c2c;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  text-align: center;
+}
+
+.intro-item:hover {
+  border-color: #409eff;
+  background: rgba(64,158,255,0.06);
+}
+
+.intro-active {
+  border-color: #409eff !important;
+  background: rgba(64,158,255,0.10) !important;
+}
+
+.intro-badge {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(64,158,255,0.15);
+  color: #409eff;
+  font-size: 16px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.intro-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e5eaf3;
+}
+
+.intro-desc {
+  font-size: 12px;
+  color: #7a8089;
+  line-height: 1.5;
 }
 
 .history-list {
