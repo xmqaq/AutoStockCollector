@@ -127,6 +127,7 @@ class Task:
         return {
             "task_id": self.task_id,
             "task_type": self.task_type,
+            "params": self.params,
             "status": self.status.value,
             "progress": self.progress,
             "total": self.total,
@@ -298,6 +299,7 @@ class TaskScheduler:
             {
                 "task_id": t.get("task_id"),
                 "task_type": t.get("task_type"),
+                "params": t.get("params", {}),
                 "status": t.get("status"),
                 "progress": t.get("progress", 0),
                 "total": t.get("total", 0),

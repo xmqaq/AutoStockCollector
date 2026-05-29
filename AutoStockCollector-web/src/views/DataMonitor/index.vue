@@ -3,8 +3,11 @@
     <!-- Toolbar -->
     <el-card shadow="never" class="toolbar-card">
       <div class="toolbar">
-        <el-button type="primary" @click="showCollectModal = true">
-          <el-icon><VideoPlay /></el-icon> 启动采集
+        <el-button type="primary" @click="showHistoryModal = true">
+          <el-icon><VideoPlay /></el-icon> 补历史
+        </el-button>
+        <el-button type="success" @click="openUpdateModal">
+          <el-icon><Refresh /></el-icon> 更新到最新
         </el-button>
         <el-button type="danger" @click="handleClearDb">
           <el-icon><Delete /></el-icon> 清空数据库
@@ -16,23 +19,11 @@
       </div>
     </el-card>
 
-    <el-row :gutter="16">
-      <!-- Gauge + Progress -->
-      <el-col :span="8">
-        <el-card shadow="never" class="section-card">
-          <template #header><span>总体进度</span></template>
-          <v-chart :option="gaugeOption" style="height:200px" autoresize />
-        </el-card>
-      </el-col>
-
-      <!-- Summary stats -->
-      <el-col :span="16">
-        <el-card shadow="never" class="section-card">
-          <template #header><span>采集进度明细</span></template>
-          <ProgressTable :data="collectStore.progressList" :loading="loading" />
-        </el-card>
-      </el-col>
-    </el-row>
+    <!-- Gauge: running tasks overall progress -->
+    <el-card shadow="never" class="section-card">
+      <template #header><span>运行中任务进度</span></template>
+      <v-chart :option="gaugeOption" style="height:200px" autoresize />
+    </el-card>
 
     <!-- Task history -->
     <el-card shadow="never" class="section-card" style="margin-top:16px">
@@ -53,7 +44,7 @@
         <el-table-column prop="task_id" label="任务ID" width="200" show-overflow-tooltip />
         <el-table-column prop="task_type" label="类型" width="120">
           <template #default="{ row }">
-            <el-tag size="small">{{ row.task_type }}</el-tag>
+            <el-tag size="small">{{ typeLabel(row.task_type) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="status" label="状态" width="100">
@@ -69,7 +60,14 @@
         <el-table-column prop="create_time" label="创建时间" width="160">
           <template #default="{ row }">{{ fmtDateTime(row.create_time || row.created_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="160">
+        <el-table-column label="参数" min-width="200">
+          <template #default="{ row }">
+            <span v-if="row.params?.start_date">{{ row.params.start_date }} ~ {{ row.params.end_date }}</span>
+            <span v-else-if="row.params?.mode">{{ row.params.mode }}</span>
+            <span v-else>快照</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="180">
           <template #default="{ row }">
             <el-button
               v-if="row.status === 'running' || row.status === 'pending'"
@@ -78,11 +76,11 @@
               @click="handleCancel(row.task_id)"
             >取消</el-button>
             <el-button
-              v-if="row.status === 'failed' || row.status === 'cancelled'"
+              v-else
               size="small"
               type="primary"
-              @click="handleRetry(row.task_id)"
-            >重试</el-button>
+              @click="handleRerun(row)"
+            >重跑</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -98,12 +96,21 @@
       />
     </el-card>
 
-    <!-- Collect modal -->
-    <el-dialog v-model="showCollectModal" title="启动历史数据采集" width="480px">
-      <el-form :model="collectForm" label-width="100px">
+    <!-- 补历史 dialog -->
+    <el-dialog v-model="showHistoryModal" title="补历史数据" width="520px">
+      <el-form label-width="90px">
+        <el-form-item label="快捷范围">
+          <el-radio-group v-model="historyPreset" @change="applyPreset">
+            <el-radio-button value="last1y">近一年</el-radio-button>
+            <el-radio-button value="ytd">今年以来</el-radio-button>
+            <el-radio-button value="2025">2025全年</el-radio-button>
+            <el-radio-button value="2024">2024全年</el-radio-button>
+            <el-radio-button value="custom">自定义</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
         <el-form-item label="日期范围">
           <el-date-picker
-            v-model="collectDateRange"
+            v-model="historyDateRange"
             type="daterange"
             range-separator="至"
             start-placeholder="开始日期"
@@ -114,21 +121,33 @@
           />
         </el-form-item>
         <el-form-item label="采集类型">
-          <el-checkbox-group v-model="collectForm.task_types">
-            <el-checkbox
-              v-for="t in taskTypeOptions"
-              :key="t.value"
-              :label="t.label"
-              :value="t.value"
-            />
+          <el-checkbox-group v-model="historyTypes">
+            <el-checkbox v-for="t in RANGE_TYPES" :key="t.value" :label="t.label" :value="t.value" />
           </el-checkbox-group>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showCollectModal = false">取消</el-button>
-        <el-button type="primary" @click="handleStartCollect" :loading="collectLoading">
-          开始采集
-        </el-button>
+        <el-button @click="showHistoryModal = false">取消</el-button>
+        <el-button type="primary" :loading="historyLoading" @click="handleHistory">开始采集</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 更新到最新 dialog -->
+    <el-dialog v-model="showUpdateModal" title="更新到最新" width="560px">
+      <el-table :data="updateRows" size="small">
+        <el-table-column width="50">
+          <template #default="{ row }">
+            <el-checkbox v-model="row.checked" />
+          </template>
+        </el-table-column>
+        <el-table-column prop="label" label="数据类型" width="120" />
+        <el-table-column label="当前覆盖" min-width="180">
+          <template #default="{ row }">{{ row.preview }}</template>
+        </el-table-column>
+      </el-table>
+      <template #footer>
+        <el-button @click="showUpdateModal = false">取消</el-button>
+        <el-button type="success" :loading="updateLoading" @click="handleUpdate">开始更新</el-button>
       </template>
     </el-dialog>
   </div>
@@ -140,7 +159,7 @@ import { ElMessageBox, ElMessage } from 'element-plus'
 import { useCollectStore } from '@/stores/collectStore'
 import { collectApi } from '@/api/collect'
 import { fmtDateTime } from '@/utils/format'
-import ProgressTable from '@/components/ProgressTable/index.vue'
+import { RANGE_TYPES, COLLECT_TYPES, TYPE_LABEL } from '@/utils/collectTypes'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { GaugeChart } from 'echarts/charts'
@@ -158,25 +177,97 @@ const pagedTasks = computed(() =>
   collectStore.tasks.slice((currentTaskPage.value - 1) * taskPageSize.value, currentTaskPage.value * taskPageSize.value)
 )
 watch(() => collectStore.tasks, () => { currentTaskPage.value = 1 })
-const showCollectModal = ref(false)
-const collectLoading = ref(false)
 const taskStatusFilter = ref('')
-const collectDateRange = ref<[string, string] | null>(null)
-const collectForm = ref({
-  task_types: [] as string[],
-})
 
-const taskTypeOptions = [
-  { label: 'K线数据', value: 'kline' },
-  { label: '财务数据', value: 'financial' },
-  { label: '新闻资讯', value: 'news' },
-  { label: '资金流向', value: 'fund_flow' },
-  { label: '龙虎榜', value: 'dragon_tiger' },
-  { label: '融资融券', value: 'margin' },
-  { label: '板块数据', value: 'sector' },
-  { label: '股票信息', value: 'stock_info' },
-]
+function typeLabel(type: string): string {
+  return TYPE_LABEL[type] || type
+}
 
+// ---------------- 补历史 ----------------
+const showHistoryModal = ref(false)
+const historyLoading = ref(false)
+const historyPreset = ref('last1y')
+const historyDateRange = ref<[string, string] | null>(null)
+const historyTypes = ref<string[]>(RANGE_TYPES.map(t => t.value))
+
+function fmt(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+function applyPreset(p: string) {
+  const today = new Date()
+  if (p === 'last1y') {
+    const s = new Date(today); s.setDate(s.getDate() - 365)
+    historyDateRange.value = [fmt(s), fmt(today)]
+  } else if (p === 'ytd') {
+    historyDateRange.value = [`${today.getFullYear()}-01-01`, fmt(today)]
+  } else if (p === '2025') {
+    historyDateRange.value = ['2025-01-01', '2025-12-31']
+  } else if (p === '2024') {
+    historyDateRange.value = ['2024-01-01', '2024-12-31']
+  }
+}
+applyPreset('last1y')
+
+async function handleHistory() {
+  if (!historyDateRange.value?.[0]) { ElMessage.warning('请选择日期范围'); return }
+  if (!historyTypes.value.length) { ElMessage.warning('请至少选择一类'); return }
+  historyLoading.value = true
+  try {
+    await collectApi.collectHistory({
+      start_date: historyDateRange.value[0],
+      end_date: historyDateRange.value[1],
+      task_types: historyTypes.value,
+    })
+    ElMessage.success('历史采集任务已启动')
+    showHistoryModal.value = false
+    await loadTasks()
+  } finally { historyLoading.value = false }
+}
+
+// ---------------- 更新到最新 ----------------
+const showUpdateModal = ref(false)
+const updateLoading = ref(false)
+const updateRows = ref<{ value: string; label: string; category: string; checked: boolean; preview: string }[]>([])
+
+function openUpdateModal() {
+  const statByType: Record<string, any> = {}
+  collectStore.progressList.forEach(p => { statByType[p.task_type] = p })
+  updateRows.value = COLLECT_TYPES.map(t => {
+    const st = statByType[t.value] || {}
+    let preview = ''
+    if (t.category === 'range') {
+      preview = st.date_to ? `已到 ${st.date_to}，将补到今天` : '暂无数据，将补近一年'
+    } else if (t.category === 'snapshot') {
+      preview = '抓取最新快照'
+    } else {
+      preview = '增量补充新增股票'
+    }
+    return { value: t.value, label: t.label, category: t.category, checked: true, preview }
+  })
+  showUpdateModal.value = true
+}
+
+async function handleUpdate() {
+  const types = updateRows.value.filter(r => r.checked).map(r => r.value)
+  if (!types.length) { ElMessage.warning('请至少选择一类'); return }
+  updateLoading.value = true
+  try {
+    const res = await collectApi.updateLatest({ task_types: types })
+    const skipped = res.data?.skipped || []
+    ElMessage.success(skipped.length ? `已启动，${skipped.length} 类已是最新跳过` : '更新任务已启动')
+    showUpdateModal.value = false
+    await loadTasks()
+  } finally { updateLoading.value = false }
+}
+
+// 重跑：completed/failed/cancelled 均按原参数新建并启动
+async function handleRerun(row: any) {
+  const res = await collectApi.createTask(row.task_type, row.params || {})
+  const id = res.data?.task_id
+  if (id) { await collectApi.startTask(id); ElMessage.success('已按原参数重跑'); await loadTasks() }
+}
+
+// ---------------- 仪表盘 ----------------
 const overallPercent = computed(() => {
   const list = collectStore.progressList
   if (!list.length) return 0
@@ -253,33 +344,6 @@ async function loadTasks() {
   await collectStore.fetchTasks(taskStatusFilter.value || undefined, 50)
 }
 
-async function handleStartCollect() {
-  if (!collectDateRange.value || !collectDateRange.value[0]) {
-    ElMessage.warning('请选择日期范围')
-    return
-  }
-  collectLoading.value = true
-  try {
-    const params: { start_date: string; end_date: string; task_types?: string[] } = {
-      start_date: collectDateRange.value[0],
-      end_date: collectDateRange.value[1],
-    }
-    if (collectForm.value.task_types.length > 0) {
-      params.task_types = collectForm.value.task_types
-    }
-    const res = await collectApi.collectHistory(params)
-    if (res.data?.success !== false) {
-      ElMessage.success('采集任务已启动')
-      showCollectModal.value = false
-      collectForm.value.task_types = []
-      collectDateRange.value = null
-      await loadTasks()
-    }
-  } finally {
-    collectLoading.value = false
-  }
-}
-
 async function handleClearDb() {
   try {
     await ElMessageBox.confirm(
@@ -305,12 +369,6 @@ async function handleClearDb() {
 async function handleCancel(id: string) {
   await collectApi.cancelTask(id)
   ElMessage.success('已取消任务')
-  await loadTasks()
-}
-
-async function handleRetry(id: string) {
-  await collectApi.retryTask(id)
-  ElMessage.success('已重新提交任务')
   await loadTasks()
 }
 

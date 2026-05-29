@@ -78,7 +78,7 @@ const collectStore = useCollectStore()
 
 const menuItems = [
   { path: '/dashboard', label: '系统总览', icon: DataAnalysis },
-  { path: '/data-monitor', label: '采集监控', icon: Monitor },
+  { path: '/data-monitor', label: '采集中心', icon: Monitor },
   { path: '/stock-detail', label: '股票详情', icon: TrendCharts },
   { path: '/market', label: '实时行情', icon: Odometer },
   { path: '/ai-analysis', label: 'AI分析', icon: MagicStick },
