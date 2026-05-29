@@ -1,87 +1,71 @@
 <template>
   <div class="watchlist">
-    <!-- Add stock -->
     <el-card shadow="never" class="section-card">
       <template #header>
         <div class="card-header">
-          <span>自选股管理</span>
+          <span>自选股</span>
           <el-button size="small" @click="showAddModal = true" type="primary">
-            <el-icon><Plus /></el-icon> 添加自选
+            <el-icon><Plus /></el-icon> 添加
           </el-button>
         </div>
       </template>
-      <div class="group-tabs" v-if="groups.length > 0">
-        <el-tabs v-model="activeGroup">
-          <el-tab-pane label="全部" name="all" />
-          <el-tab-pane
-            v-for="g in groups"
-            :key="g.id"
-            :label="g.name"
-            :name="g.id"
-          />
-        </el-tabs>
-      </div>
-      <el-empty v-if="filteredList.length === 0 && !loading" description="暂无自选股，点击添加" />
-      <el-table v-else :data="filteredList" stripe v-loading="loading">
-        <el-table-column prop="code" label="代码" width="130">
+      <el-empty v-if="list.length === 0 && !loading" description="暂无自选股" />
+      <el-table v-else :data="list" stripe v-loading="loading">
+        <el-table-column prop="code" label="代码" width="110">
           <template #default="{ row }">
             <span class="code-link" @click="goToStock(row.code)">{{ row.code }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="name" label="名称" width="120" />
-        <el-table-column label="最新价" width="100" align="right">
+        <el-table-column prop="name" label="名称" width="100" />
+        <el-table-column label="最新价" width="90" align="right">
           <template #default="{ row }">
-            <span v-if="row.latest_price" class="price-val">{{ fmtNumber(row.latest_price) }}</span>
+            <span v-if="row.latest_price">{{ fmtNumber(row.latest_price) }}</span>
             <span v-else class="text-muted">--</span>
           </template>
         </el-table-column>
-        <el-table-column label="更新日期" width="120" align="center">
+        <el-table-column label="涨跌幅" width="90" align="center">
           <template #default="{ row }">
-            <span class="text-muted">{{ row.latest_date ? row.latest_date.slice(0, 10) : '--' }}</span>
+            <span
+              v-if="row.change_rate !== null"
+              :style="{ color: (row.change_rate || 0) >= 0 ? RISE_COLOR : FALL_COLOR }"
+            >
+              {{ fmtChange(row.change_rate) }}
+            </span>
+            <span v-else class="text-muted">--</span>
           </template>
         </el-table-column>
-        <el-table-column prop="group_id" label="分组" width="100">
+        <el-table-column label="换手率" width="80" align="right">
           <template #default="{ row }">
-            <el-tag size="small" type="info">{{ groupName(row.group_id) }}</el-tag>
+            <span v-if="row.turnover_rate !== null">{{ row.turnover_rate?.toFixed(2) }}%</span>
+            <span v-else class="text-muted">--</span>
           </template>
         </el-table-column>
-        <el-table-column prop="priority" label="优先级" width="90" sortable align="center" />
-        <el-table-column prop="add_time" label="添加时间" min-width="150">
+        <el-table-column label="成交量" width="100" align="right">
           <template #default="{ row }">
-            <span class="text-muted">{{ fmtDate(row.add_time || row.added_at) }}</span>
+            <span v-if="row.volume">{{ fmtVolume(row.volume) }}</span>
+            <span v-else class="text-muted">--</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="100" align="center">
+        <el-table-column label="成交额" width="100" align="right">
           <template #default="{ row }">
-            <el-button
-              size="small"
-              type="danger"
-              plain
-              @click="handleRemove(row.code)"
-            >删除</el-button>
+            <span v-if="row.turnover">{{ fmtAmount(row.turnover) }}</span>
+            <span v-else class="text-muted">--</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="80" align="center">
+          <template #default="{ row }">
+            <el-button size="small" type="danger" plain @click="handleRemove(row.code)">
+              删除
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
     </el-card>
 
-    <!-- Add modal -->
-    <el-dialog v-model="showAddModal" title="添加自选股" width="400px">
+    <el-dialog v-model="showAddModal" title="添加自选股" width="380px">
       <el-form :model="addForm" label-width="80px">
         <el-form-item label="股票代码">
           <StockSearch v-model="addForm.code" @search="(c) => addForm.code = c" />
-        </el-form-item>
-        <el-form-item label="分组">
-          <el-select v-model="addForm.group_id" clearable placeholder="默认分组" style="width:100%">
-            <el-option
-              v-for="g in groups"
-              :key="g.id"
-              :label="g.name"
-              :value="g.id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="优先级">
-          <el-input-number v-model="addForm.priority" :min="0" :max="100" style="width:100%" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -93,12 +77,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { watchlistApi } from '@/api/watchlist'
-import { fmtDateTime, fmtDate, fmtNumber } from '@/utils/format'
-import type { WatchlistItem, WatchlistGroup } from '@/types'
+import { fmtNumber, fmtChange, fmtAmount, RISE_COLOR, FALL_COLOR } from '@/utils/format'
+import type { WatchlistItem } from '@/types'
 import StockSearch from '@/components/StockSearch/index.vue'
 import { Plus } from '@element-plus/icons-vue'
 
@@ -106,44 +90,28 @@ const router = useRouter()
 const loading = ref(false)
 const addLoading = ref(false)
 const showAddModal = ref(false)
-const watchlist = ref<WatchlistItem[]>([])
-const groups = ref<WatchlistGroup[]>([])
-const activeGroup = ref('all')
+const list = ref<WatchlistItem[]>([])
 
-const addForm = ref({
-  code: '',
-  group_id: '',
-  priority: 0,
-})
-
-const filteredList = computed(() => {
-  if (activeGroup.value === 'all') return watchlist.value
-  return watchlist.value.filter(w => w.group_id === activeGroup.value)
-})
-
-const GROUP_LABEL_MAP: Record<string, string> = { default: '默认', all: '全部' }
-
-function groupName(id?: string): string {
-  if (!id) return '默认'
-  const g = groups.value.find(g => g.id === id)
-  return g?.name || GROUP_LABEL_MAP[id] || id
-}
+const addForm = ref({ code: '' })
 
 function goToStock(code: string) {
   router.push({ path: '/stock-detail', query: { code } })
 }
 
+function fmtVolume(volume: number): string {
+  if (!volume) return '--'
+  if (volume >= 1e8) return (volume / 1e8).toFixed(2) + '亿'
+  if (volume >= 1e4) return (volume / 1e4).toFixed(2) + '万'
+  return volume.toFixed(0)
+}
+
 async function loadData() {
   loading.value = true
   try {
-    const [wRes, gRes] = await Promise.all([
-      watchlistApi.getWatchlist(),
-      watchlistApi.getGroups(),
-    ])
-    watchlist.value = wRes.data?.data || wRes.data || []
-    groups.value = gRes.data?.groups || gRes.data?.data || gRes.data || []
+    const res = await watchlistApi.getWatchlist()
+    list.value = res.data?.data || res.data || []
   } catch {
-    watchlist.value = []
+    list.value = []
   } finally {
     loading.value = false
   }
@@ -156,17 +124,11 @@ async function handleAdd() {
   }
   addLoading.value = true
   try {
-    const payload: { code: string; group_id?: string; priority?: number } = {
-      code: addForm.value.code,
-    }
-    if (addForm.value.group_id) payload.group_id = addForm.value.group_id
-    if (addForm.value.priority > 0) payload.priority = addForm.value.priority
-
-    const res = await watchlistApi.addWatchlist(payload)
+    const res = await watchlistApi.addWatchlist({ code: addForm.value.code })
     if (res.data?.success !== false) {
       ElMessage.success('添加成功')
       showAddModal.value = false
-      addForm.value = { code: '', group_id: '', priority: 0 }
+      addForm.value = { code: '' }
       await loadData()
     }
   } finally {
@@ -176,7 +138,7 @@ async function handleAdd() {
 
 async function handleRemove(code: string) {
   try {
-    await ElMessageBox.confirm(`确定要删除 ${code} 吗？`, '删除确认', {
+    await ElMessageBox.confirm(`确定删除 ${code} 吗？`, '删除确认', {
       confirmButtonText: '删除',
       cancelButtonText: '取消',
       type: 'warning',
@@ -189,9 +151,7 @@ async function handleRemove(code: string) {
   }
 }
 
-onMounted(() => {
-  loadData()
-})
+onMounted(() => loadData())
 </script>
 
 <style scoped>
@@ -220,19 +180,16 @@ onMounted(() => {
   justify-content: space-between;
 }
 
-.group-tabs :deep(.el-tabs__header) {
-  margin-bottom: 12px;
-}
-
-.group-tabs :deep(.el-tabs__nav-wrap::after) {
-  background: #2c2c2c;
-}
-
 .code-link {
   color: #409eff;
   cursor: pointer;
 }
 .code-link:hover {
   color: #79bbff;
+}
+
+.text-muted {
+  color: #606266;
+  font-size: 12px;
 }
 </style>

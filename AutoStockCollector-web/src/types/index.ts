@@ -121,13 +121,14 @@ export interface CollectProgress {
 
 export interface WatchlistItem {
   code: string
-  name?: string
-  group_id?: string
-  priority?: number
-  add_time?: string
-  added_at?: string
-  latest_price?: number | null
-  latest_date?: string | null
+  name: string
+  add_time: string
+  latest_price: number | null
+  latest_date: string | null
+  change_rate: number | null
+  volume: number | null
+  turnover: number | null
+  turnover_rate: number | null
 }
 
 export interface WatchlistGroup {

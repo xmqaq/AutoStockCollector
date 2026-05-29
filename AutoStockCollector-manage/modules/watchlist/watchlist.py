@@ -1,10 +1,10 @@
 """
 自选股管理模块
-支持标的分组、优先级采集、异动监控及全模块联动
+支持自选股管理、异动监控
 """
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
-from core.storage.mongo_storage import WatchlistStorage, KlineStorage
+from core.storage.mongo_storage import WatchlistStorage, KlineStorage, StockInfoStorage
 from utils.logger import get_logger
 from utils.helpers import normalize_stock_code
 
@@ -16,13 +16,13 @@ class WatchlistManager:
     def __init__(self):
         self.storage = WatchlistStorage()
         self.kline_storage = KlineStorage()
+        self.stock_info_storage = StockInfoStorage()
         self.default_user_id = "default"
 
     def add_stock(
         self,
         user_id: str,
         code: str,
-        group_id: str = "default",
         priority: int = 0
     ) -> bool:
         code = normalize_stock_code(code)
@@ -31,31 +31,76 @@ class WatchlistManager:
             logger.warning(f"Invalid stock code: {code}")
             return False
 
-        return self.storage.add_stock(user_id, code, group_id, priority)
+        return self.storage.add_stock(user_id, code, "default", priority)
 
     def remove_stock(self, user_id: str, code: str) -> bool:
         code = normalize_stock_code(code)
         return self.storage.remove_stock(user_id, code)
 
-    def get_watchlist(
-        self,
-        user_id: str = "default",
-        group_id: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
-        stocks = self.storage.get_user_watchlist(user_id, group_id)
+    def get_watchlist(self, user_id: str = "default") -> List[Dict[str, Any]]:
+        stocks = self.storage.get_user_watchlist(user_id)
+
+        name_cache: Dict[str, str] = {}
 
         enriched_stocks = []
         for stock in stocks:
             code = stock.get("code")
+
+            if code not in name_cache:
+                info = self.stock_info_storage.get_by_code(code)
+                name = ""
+                if info:
+                    name = info.get("name") or info.get("A股简称") or info.get("公司名称") or ""
+                name_cache[code] = name
+            stock["name"] = name_cache[code]
+
             latest_kline = self.kline_storage.find_one(
                 {"code": code},
                 sort=[("date", -1)]
             )
+            if latest_kline and latest_kline.get("volume") is None:
+                klines = self.kline_storage.find_many(
+                    {"code": code},
+                    sort=[("date", -1)],
+                    limit=2
+                )
+                if klines:
+                    for k in klines:
+                        if k.get("volume") is not None:
+                            latest_kline = k
+                            break
 
             stock["latest_price"] = latest_kline.get("close") if latest_kline else None
-            stock["change_pct"] = latest_kline.get("涨跌幅") if latest_kline else None
-            stock["volume"] = latest_kline.get("volume") if latest_kline else None
+
+            change_rate = (
+                latest_kline.get("change_rate")
+                or latest_kline.get("涨跌幅")
+                or latest_kline.get("change")
+            )
+            if change_rate is None and latest_kline:
+                prev_kline = self.kline_storage.find_one(
+                    {"code": code, "date": {"$lt": latest_kline.get("date")}},
+                    sort=[("date", -1)]
+                )
+                if prev_kline and prev_kline.get("close"):
+                    prev_close = float(prev_kline["close"])
+                    curr_close = float(latest_kline["close"])
+                    if prev_close > 0:
+                        change_rate = round((curr_close - prev_close) / prev_close * 100, 2)
+            stock["change_rate"] = change_rate
+
             stock["latest_date"] = latest_kline.get("date") if latest_kline else None
+
+            stock["volume"] = latest_kline.get("volume") if latest_kline else None
+            stock["turnover"] = latest_kline.get("amount") or latest_kline.get("成交额")
+            stock["turnover_rate"] = latest_kline.get("turnover_rate") or latest_kline.get("换手率")
+
+            stock.pop("_id", None)
+            stock.pop("_updated_at", None)
+            stock.pop("enabled", None)
+            stock.pop("user_id", None)
+            stock.pop("group_id", None)
+            stock.pop("priority", None)
 
             enriched_stocks.append(stock)
 

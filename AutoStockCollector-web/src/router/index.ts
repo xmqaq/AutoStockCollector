@@ -30,10 +30,28 @@ const router = createRouter({
           meta: { title: '股票详情' },
         },
         {
+          path: 'market',
+          name: 'Market',
+          component: () => import('@/views/Market/index.vue'),
+          meta: { title: '实时行情' },
+        },
+        {
           path: 'ai-analysis',
           name: 'AIAnalysis',
           component: () => import('@/views/AIAnalysis/index.vue'),
           meta: { title: 'AI分析' },
+        },
+        {
+          path: 'smart-pick',
+          name: 'SmartPick',
+          component: () => import('@/views/SmartPick/index.vue'),
+          meta: { title: '智能选股' },
+        },
+        {
+          path: 'ai-keys',
+          name: 'AIKeys',
+          component: () => import('@/views/AIKey/index.vue'),
+          meta: { title: 'AI Key管理' },
         },
         {
           path: 'strategy-back',
@@ -70,6 +88,12 @@ const router = createRouter({
           name: 'Watchlist',
           component: () => import('@/views/Watchlist/index.vue'),
           meta: { title: '自选股' },
+        },
+        {
+          path: 'strategy-config',
+          name: 'StrategyConfig',
+          component: () => import('@/views/StrategyConfig/index.vue'),
+          meta: { title: '策略管理' },
         },
       ],
     },

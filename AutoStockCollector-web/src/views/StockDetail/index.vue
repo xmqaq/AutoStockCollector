@@ -1,29 +1,43 @@
 <template>
   <div class="stock-detail">
-    <!-- Search -->
     <el-card shadow="never" class="section-card">
       <div class="search-bar">
-        <StockSearch v-model="currentCode" @search="loadStock" />
-        <span v-if="currentCode" class="current-code">当前：{{ currentCode }}</span>
+        <el-select
+          v-model="currentCode"
+          placeholder="选择自选股"
+          filterable
+          size="large"
+          style="width:220px"
+          @change="loadStock(currentCode)"
+        >
+          <el-option
+            v-for="stock in watchlist"
+            :key="stock.code"
+            :label="`${stock.code} ${stock.name}`"
+            :value="stock.code"
+          />
+        </el-select>
+        <span class="divider">|</span>
+        <StockSearch v-model="searchCode" @search="loadStock" />
       </div>
     </el-card>
 
     <div v-if="!currentCode" class="empty-hint">
-      <el-empty description="请输入股票代码查询详情" />
+      <el-empty description="请从上方选择股票" />
     </div>
 
     <template v-else>
-      <!-- Stock info -->
       <el-card shadow="never" class="section-card" v-loading="infoLoading">
-        <template #header><span>基础信息</span></template>
+        <template #header>
+          <div class="card-header">
+            <span>基础信息</span>
+            <el-tag v-if="stockInfo?.name" type="info">{{ stockInfo.name }}</el-tag>
+          </div>
+        </template>
         <div v-if="stockInfo" class="info-grid">
           <div class="info-item">
             <span class="info-label">代码</span>
             <span class="info-value">{{ stockInfo.code }}</span>
-          </div>
-          <div class="info-item">
-            <span class="info-label">名称</span>
-            <span class="info-value">{{ stockInfo.name || '--' }}</span>
           </div>
           <div class="info-item">
             <span class="info-label">行业</span>
@@ -53,7 +67,6 @@
         <el-empty v-else-if="!infoLoading" description="暂无基础信息" :image-size="60" />
       </el-card>
 
-      <!-- K-line chart -->
       <el-card shadow="never" class="section-card" v-loading="klineLoading">
         <template #header>
           <div class="card-header">
@@ -76,11 +89,10 @@
             </div>
           </div>
         </template>
-        <KlineChart v-if="klineData.length > 0" :data="klineData" chart-height="480px" />
+        <KlineChart v-if="klineData.length > 0" :data="klineData" chart-height="400px" />
         <el-empty v-else-if="!klineLoading" :description="emptyKlineHint" :image-size="60" />
       </el-card>
 
-      <!-- Financial data -->
       <el-card shadow="never" class="section-card" v-loading="financialLoading">
         <template #header><span>财务数据</span></template>
         <el-empty v-if="financialList.length === 0 && !financialLoading" description="暂无财务数据" :image-size="60" />
@@ -107,7 +119,6 @@
         </el-table>
       </el-card>
 
-      <!-- News -->
       <el-card shadow="never" class="section-card" v-loading="newsLoading">
         <template #header><span>相关新闻</span></template>
         <div v-if="newsList.length === 0 && !newsLoading" class="empty-state">
@@ -128,21 +139,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, computed, onMounted } from 'vue'
 import StockSearch from '@/components/StockSearch/index.vue'
 import KlineChart from '@/components/KlineChart/index.vue'
 import { stockApi } from '@/api/stock'
 import { klineApi } from '@/api/kline'
 import { financialApi } from '@/api/financial'
 import { newsApi } from '@/api/news'
+import { watchlistApi } from '@/api/watchlist'
 import { fmtAmount, fmtDateTime, fmtNumber } from '@/utils/format'
-import type { StockInfo, KlineRecord, FinancialRecord, NewsRecord } from '@/types'
+import type { StockInfo, KlineRecord, FinancialRecord, NewsRecord, WatchlistItem } from '@/types'
 import dayjs from 'dayjs'
 
-const route = useRoute()
+const currentCode = ref('')
+const searchCode = ref('')
+const watchlist = ref<WatchlistItem[]>([])
 
-const currentCode = ref((route.query.code as string) || '')
 const infoLoading = ref(false)
 const klineLoading = ref(false)
 const financialLoading = ref(false)
@@ -157,7 +169,6 @@ const klineDateRange = ref<[string, string]>([
   dayjs().format('YYYY-MM-DD'),
 ])
 
-// 数据库实际可用区间，用于空数据时给出提示
 const klineDataRange = ref<{ from: string | null; to: string | null }>({ from: null, to: null })
 
 const emptyKlineHint = computed(() => {
@@ -185,15 +196,19 @@ const dateShortcuts = [
   { text: '近 3 年', value: () => shortcut(3, 'year') },
 ]
 
-async function loadStock(code: string) {
-  if (!code) {
-    stockInfo.value = null
-    klineData.value = []
-    financialList.value = []
-    newsList.value = []
-    return
+async function loadWatchlist() {
+  try {
+    const res = await watchlistApi.getWatchlist()
+    watchlist.value = res.data?.data || res.data || []
+  } catch {
+    watchlist.value = []
   }
+}
+
+async function loadStock(code: string) {
+  if (!code) return
   currentCode.value = code
+  searchCode.value = ''
   await Promise.all([
     loadInfo(),
     loadKline(),
@@ -208,8 +223,6 @@ async function loadInfo() {
     const res = await stockApi.getStockInfo(currentCode.value)
     const raw = res.data?.data || res.data || null
     if (raw) {
-      // 后端已规范输出 name/industry/list_date/area 以及补全 pe/pb/total_mv（百度估值）
-      // 此处仅做兜底，注册资金绝不再误用为总市值
       stockInfo.value = {
         ...raw,
         code: raw.code || currentCode.value,
@@ -242,7 +255,6 @@ async function loadKline() {
     }
     const res = await klineApi.getKline(currentCode.value, params)
     klineData.value = res.data?.data || res.data || []
-    // 空结果时拉一次全量，记录真实可用区间用于提示（后端可能升/降序，统一取 min/max）
     const dates = (
       klineData.value.length > 0
         ? klineData.value
@@ -284,25 +296,11 @@ async function loadNews() {
   }
 }
 
-// Reload when navigating to a different stock code without unmounting the component
-watch(() => route.query.code, (code) => {
-  if (code && code !== currentCode.value) {
-    currentCode.value = code as string
-    loadStock(code as string)
+onMounted(async () => {
+  await loadWatchlist()
+  if (watchlist.value.length > 0) {
+    await loadStock(watchlist.value[0].code)
   }
-})
-
-onMounted(() => {
-  if (currentCode.value) {
-    loadStock(currentCode.value)
-  }
-})
-
-onUnmounted(() => {
-  infoLoading.value = false
-  klineLoading.value = false
-  financialLoading.value = false
-  newsLoading.value = false
 })
 </script>
 
@@ -329,18 +327,23 @@ onUnmounted(() => {
 .search-bar {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
 }
 
-.current-code {
-  color: #909399;
-  font-size: 13px;
+.divider {
+  color: #444;
+  font-size: 18px;
 }
 
 .card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.date-filter {
+  display: flex;
+  align-items: center;
 }
 
 .info-grid {

@@ -489,34 +489,15 @@ def check_gaps():
 @api_bp.route("/watchlist", methods=["GET"])
 def get_watchlist():
     from modules.watchlist.watchlist import WatchlistManager
-    from core.storage.mongo_storage import StockInfoStorage
 
     user_id = request.args.get("user_id", "default")
-    group_id = request.args.get("group_id")
 
     manager = WatchlistManager()
-    stocks = manager.get_watchlist(user_id, group_id)
-
-    info_storage = StockInfoStorage()
-    name_cache: dict = {}
+    stocks = manager.get_watchlist(user_id)
 
     for stock in stocks:
-        stock.pop("_id", None)
-        stock.pop("_updated_at", None)
         if "add_time" in stock and hasattr(stock["add_time"], "isoformat"):
             stock["add_time"] = stock["add_time"].isoformat()
-        # 回填股票名称
-        if not stock.get("name"):
-            code = stock.get("code", "")
-            if code not in name_cache:
-                info = info_storage.get_by_code(code) or {}
-                name_cache[code] = (
-                    info.get("name")
-                    or info.get("A股简称")
-                    or info.get("公司名称")
-                    or ""
-                )
-            stock["name"] = name_cache[code]
 
     return jsonify({
         "success": True,
@@ -535,14 +516,13 @@ def add_to_watchlist():
 
     user_id = data.get("user_id", "default")
     code = data.get("code")
-    group_id = data.get("group_id", "default")
     priority = data.get("priority", 0)
 
     if not code:
         return jsonify({"error": "code is required"}), 400
 
     manager = WatchlistManager()
-    success = manager.add_stock(user_id, code, group_id, priority)
+    success = manager.add_stock(user_id, code, priority)
 
     return jsonify({
         "success": success,
@@ -563,32 +543,6 @@ def remove_from_watchlist(code):
     return jsonify({
         "success": success,
         "message": "Removed from watchlist" if success else "Failed to remove"
-    })
-
-
-@api_bp.route("/watchlist/groups", methods=["GET"])
-def get_watchlist_groups():
-    from modules.watchlist.watchlist import WatchlistManager
-
-    user_id = request.args.get("user_id", "default")
-
-    manager = WatchlistManager()
-    groups = manager.get_groups(user_id)
-
-    # 规范化输出：剥离 ObjectId，统一暴露 id 字段（与 group_id 同值）
-    normalized = []
-    for g in groups:
-        g.pop("_id", None)
-        if "create_time" in g and hasattr(g["create_time"], "isoformat"):
-            g["create_time"] = g["create_time"].isoformat()
-        gid = g.get("group_id") or g.get("id") or ""
-        g["id"] = gid
-        g["group_id"] = gid
-        normalized.append(g)
-
-    return jsonify({
-        "success": True,
-        "groups": normalized
     })
 
 
@@ -1322,6 +1276,294 @@ def get_margin_data():
         "success": True,
         "count": len(result),
         "data": result
+    })
+
+
+MARKET_INDEX_CODES = [
+    {"code": "sh000001", "name": "上证指数", "name_en": "SSE"},
+    {"code": "sz399001", "name": "深证成指", "name_en": "SZSE"},
+    {"code": "sz399006", "name": "创业板指", "name_en": "GEM"},
+    {"code": "sh000688", "name": "科创50", "name_en": "STAR50"},
+]
+
+
+@api_bp.route("/market/indices", methods=["GET"])
+def get_market_indices():
+    import akshare as ak
+    from datetime import datetime
+
+    try:
+        df = ak.stock_zh_index_spot_em()
+        indices = []
+        for idx in MARKET_INDEX_CODES:
+            code = idx["code"][2:]
+            row = df[df["代码"] == code]
+            if not row.empty:
+                indices.append({
+                    "code": idx["code"].upper(),
+                    "name": idx["name"],
+                    "price": float(row.iloc[0]["最新价"]),
+                    "change": float(row.iloc[0]["涨跌幅"]),
+                    "change_amount": float(row.iloc[0]["涨跌额"]),
+                    "volume": float(row.iloc[0]["成交量"]),
+                    "amount": float(row.iloc[0]["成交额"]),
+                    "amplitude": float(row.iloc[0]["振幅"]) if "振幅" in row.columns else 0,
+                    "high": float(row.iloc[0]["最高"]) if "最高" in row.columns else None,
+                    "low": float(row.iloc[0]["最低"]) if "最低" in row.columns else None,
+                    "open": float(row.iloc[0]["今开"]) if "今开" in row.columns else None,
+                    "prev_close": float(row.iloc[0]["昨收"]) if "昨收" in row.columns else None,
+                })
+
+        return jsonify({
+            "success": True,
+            "count": len(indices),
+            "data": indices,
+            "timestamp": datetime.now().isoformat()
+        })
+    except Exception as e:
+        logger.error(f"Failed to get market indices: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@api_bp.route("/market/realtime-quotes", methods=["POST"])
+def get_realtime_quotes():
+    import akshare as ak
+    from datetime import datetime
+
+    data = request.get_json() or {}
+    codes = data.get("codes", [])
+
+    if not codes:
+        return jsonify({"error": "codes is required"}), 400
+
+    normalized_codes = [_normalize_code(c) for c in codes]
+    unique_codes = list(set(normalized_codes))
+
+    try:
+        df = ak.stock_zh_a_spot_em()
+        results = []
+
+        for code in unique_codes:
+            code_num = code[2:]
+            row = df[df["代码"] == code_num]
+            if not row.empty:
+                results.append({
+                    "code": code.upper(),
+                    "name": str(row.iloc[0]["名称"]),
+                    "price": float(row.iloc[0]["最新价"]) if pd.notna(row.iloc[0]["最新价"]) else None,
+                    "change": float(row.iloc[0]["涨跌幅"]) if pd.notna(row.iloc[0]["涨跌幅"]) else 0,
+                    "change_amount": float(row.iloc[0]["涨跌额"]) if pd.notna(row.iloc[0]["涨跌额"]) else 0,
+                    "volume": float(row.iloc[0]["成交量"]) if pd.notna(row.iloc[0]["成交量"]) else None,
+                    "amount": float(row.iloc[0]["成交额"]) if pd.notna(row.iloc[0]["成交额"]) else None,
+                    "open": float(row.iloc[0]["今开"]) if pd.notna(row.iloc[0]["今开"]) else None,
+                    "high": float(row.iloc[0]["最高"]) if pd.notna(row.iloc[0]["最高"]) else None,
+                    "low": float(row.iloc[0]["最低"]) if pd.notna(row.iloc[0]["最低"]) else None,
+                    "prev_close": float(row.iloc[0]["昨收"]) if pd.notna(row.iloc[0]["昨收"]) else None,
+                    "turnover": float(row.iloc[0]["换手率"]) if pd.notna(row.iloc[0]["换手率"]) else None,
+                })
+
+        return jsonify({
+            "success": True,
+            "count": len(results),
+            "data": results,
+            "timestamp": datetime.now().isoformat()
+        })
+    except Exception as e:
+        logger.error(f"Failed to get realtime quotes: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@api_bp.route("/market/minute-kline/<code>", methods=["GET"])
+def get_minute_kline(code):
+    import akshare as ak
+    from datetime import datetime
+
+    code = _normalize_code(code)
+    if not code:
+        return jsonify({"error": "invalid code"}), 400
+
+    try:
+        symbol = code.lower()
+        df = ak.stock_zh_a_minute(symbol=symbol, period="1", adjust="qfq")
+
+        records = []
+        for _, row in df.tail(240).iterrows():
+            dt_val = row.get("时间") or row.get("Datetime") or row.get("date")
+            if hasattr(dt_val, "strftime"):
+                time_str = dt_val.strftime("%Y-%m-%d %H:%M")
+            else:
+                time_str = str(dt_val)[:16] if dt_val else ""
+            records.append({
+                "time": time_str,
+                "price": float(row["最新价"]) if pd.notna(row.get("最新价")) else 0,
+                "volume": float(row["成交量"]) if pd.notna(row.get("成交量")) else 0,
+            })
+
+        return jsonify({
+            "success": True,
+            "code": code,
+            "count": len(records),
+            "data": records,
+            "timestamp": datetime.now().isoformat()
+        })
+    except Exception as e:
+        logger.error(f"Failed to get minute kline for {code}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+import pandas as pd
+
+
+@api_bp.route("/ai-keys", methods=["GET"])
+def list_ai_keys():
+    from modules.ai.ai_key_manager import ai_key_manager
+    keys = ai_key_manager.list_keys()
+    return jsonify({"success": True, "data": keys})
+
+
+@api_bp.route("/ai-keys", methods=["POST"])
+def update_ai_key():
+    from modules.ai.ai_key_manager import ai_key_manager
+    data = request.get_json() or {}
+    provider = data.get("provider")
+    name = data.get("name", provider)
+    enabled = data.get("enabled", False)
+    priority = data.get("priority", 99)
+    api_key = data.get("api_key")
+    if not provider:
+        return jsonify({"error": "provider is required"}), 400
+    ai_key_manager.update_key(provider, name, enabled, priority, api_key)
+    return jsonify({"success": True, "message": "Key updated"})
+
+
+@api_bp.route("/ai-keys/<provider>", methods=["DELETE"])
+def delete_ai_key(provider):
+    from modules.ai.ai_key_manager import ai_key_manager
+    ai_key_manager.delete_key(provider)
+    return jsonify({"success": True, "message": "Key deleted"})
+
+
+@api_bp.route("/pick/smart", methods=["POST"])
+def smart_pick():
+    from modules.ai.smart_picker import smart_picker
+    data = request.get_json() or {}
+    top_n = data.get("top_n", 10)
+    factors = data.get("factors", ["trend", "volume", "value", "fund_flow"])
+    results = smart_picker.pick(top_n=top_n, factors=factors)
+    return jsonify({"success": True, "count": len(results), "data": results})
+
+
+@api_bp.route("/strategy-configs", methods=["GET"])
+def get_strategy_configs():
+    from modules.strategies.strategy_config_manager import strategy_config_manager
+
+    enabled_only = request.args.get("enabled_only", "false").lower() == "true"
+    strategies = strategy_config_manager.list_strategies(enabled_only=enabled_only)
+
+    return jsonify({
+        "success": True,
+        "count": len(strategies),
+        "data": strategies
+    })
+
+
+@api_bp.route("/strategy-configs/<name>", methods=["GET"])
+def get_strategy_config(name):
+    from modules.strategies.strategy_config_manager import strategy_config_manager
+
+    strategy = strategy_config_manager.get_strategy(name)
+
+    if not strategy:
+        return jsonify({"error": "Strategy not found"}), 404
+
+    return jsonify({
+        "success": True,
+        "data": strategy
+    })
+
+
+@api_bp.route("/strategy-configs", methods=["POST"])
+def create_or_update_strategy_config():
+    from modules.strategies.strategy_config_manager import strategy_config_manager
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    name = data.get("name")
+    strategy_type = data.get("strategy_type")
+    description = data.get("description", "")
+    params = data.get("params", {})
+    enabled = data.get("enabled", True)
+
+    if not name or not strategy_type:
+        return jsonify({"error": "name and strategy_type are required"}), 400
+
+    success = strategy_config_manager.create_or_update_strategy(
+        name=name,
+        strategy_type=strategy_type,
+        description=description,
+        params=params,
+        enabled=enabled
+    )
+
+    return jsonify({
+        "success": success,
+        "message": "Strategy saved successfully"
+    })
+
+
+@api_bp.route("/strategy-configs/<name>", methods=["PUT"])
+def update_strategy_config(name):
+    from modules.strategies.strategy_config_manager import strategy_config_manager
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    params = data.get("params", {})
+    success = strategy_config_manager.update_strategy_params(name, params)
+
+    if not success:
+        return jsonify({"error": "Strategy not found"}), 404
+
+    return jsonify({
+        "success": True,
+        "message": "Strategy params updated"
+    })
+
+
+@api_bp.route("/strategy-configs/<name>/toggle", methods=["POST"])
+def toggle_strategy_config(name):
+    from modules.strategies.strategy_config_manager import strategy_config_manager
+
+    data = request.get_json() or {}
+    enabled = data.get("enabled", True)
+
+    success = strategy_config_manager.toggle_strategy(name, enabled)
+
+    if not success:
+        return jsonify({"error": "Strategy not found"}), 404
+
+    status_text = "enabled" if enabled else "disabled"
+    return jsonify({
+        "success": True,
+        "message": f"Strategy {status_text}"
+    })
+
+
+@api_bp.route("/strategy-configs/<name>", methods=["DELETE"])
+def delete_strategy_config(name):
+    from modules.strategies.strategy_config_manager import strategy_config_manager
+
+    success = strategy_config_manager.delete_strategy(name)
+
+    if not success:
+        return jsonify({"error": "Strategy not found"}), 404
+
+    return jsonify({
+        "success": True,
+        "message": "Strategy deleted"
     })
 
 

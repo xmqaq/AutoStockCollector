@@ -65,6 +65,10 @@ import {
   Promotion,
   ChatDotRound,
   StarFilled,
+  Setting,
+  Odometer,
+  Search,
+  Key,
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -75,8 +79,12 @@ const menuItems = [
   { path: '/dashboard', label: '系统总览', icon: DataAnalysis },
   { path: '/data-monitor', label: '采集监控', icon: Monitor },
   { path: '/stock-detail', label: '股票详情', icon: TrendCharts },
+  { path: '/market', label: '实时行情', icon: Odometer },
   { path: '/ai-analysis', label: 'AI分析', icon: MagicStick },
+  { path: '/smart-pick', label: '智能选股', icon: Search },
+  { path: '/ai-keys', label: 'AI Key管理', icon: Key },
   { path: '/strategy-back', label: '策略回测', icon: Histogram },
+  { path: '/strategy-config', label: '策略管理', icon: Setting },
   { path: '/dragon-tiger', label: '龙虎榜', icon: Lightning },
   { path: '/margin-trading', label: '融资融券', icon: Connection },
   { path: '/sector-flow', label: '板块流向', icon: Promotion },

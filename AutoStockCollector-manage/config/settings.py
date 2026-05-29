@@ -40,7 +40,7 @@ class Settings:
     API_CONFIG = {
         "host": "0.0.0.0",
         "port": 5555,
-        "debug": False,
+        "debug": True,
     }
 
     AI_MODEL_CONFIG = {

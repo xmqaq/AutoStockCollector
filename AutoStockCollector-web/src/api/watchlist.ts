@@ -5,15 +5,11 @@ export const watchlistApi = {
     return client.get('/api/v1/watchlist', { params: { user_id: userId } })
   },
 
-  addWatchlist(data: { code: string; group_id?: string; priority?: number }) {
+  addWatchlist(data: { code: string; priority?: number }) {
     return client.post('/api/v1/watchlist', data)
   },
 
   removeWatchlist(code: string) {
     return client.delete(`/api/v1/watchlist/${code}`)
-  },
-
-  getGroups() {
-    return client.get('/api/v1/watchlist/groups')
   },
 }

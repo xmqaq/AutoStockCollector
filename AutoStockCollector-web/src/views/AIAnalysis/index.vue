@@ -1,35 +1,43 @@
 <template>
   <div class="ai-analysis">
-    <!-- Input form -->
     <el-card shadow="never" class="section-card">
-      <template #header><span>AI智能分析</span></template>
-      <el-form :model="form" label-width="100px" style="max-width:500px">
-        <el-form-item label="股票代码">
-          <StockSearch v-model="form.code" @search="(c) => form.code = c" />
-        </el-form-item>
-        <el-form-item label="分析类型">
-          <el-select v-model="form.type" style="width:100%">
-            <el-option label="综合分析" value="comprehensive" />
-            <el-option label="技术分析" value="technical" />
-            <el-option label="基本面分析" value="fundamental" />
-            <el-option label="情绪分析" value="sentiment" />
-            <el-option label="风险评估" value="risk" />
-          </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-button
-            type="primary"
-            @click="handleAnalyze"
-            :loading="loading"
-            :disabled="!form.code"
-          >
-            开始分析
-          </el-button>
-        </el-form-item>
-      </el-form>
+      <div class="search-bar">
+        <el-select
+          v-model="currentCode"
+          placeholder="选择自选股"
+          filterable
+          size="large"
+          style="width:220px"
+          @change="handleSelectChange"
+        >
+          <el-option
+            v-for="stock in watchlist"
+            :key="stock.code"
+            :label="`${stock.code} ${stock.name}`"
+            :value="stock.code"
+          />
+        </el-select>
+        <span class="divider">|</span>
+        <StockSearch v-model="searchCode" @search="handleSearch" />
+        <span class="divider">|</span>
+        <el-select v-model="form.type" style="width:140px">
+          <el-option label="综合分析" value="comprehensive" />
+          <el-option label="技术分析" value="technical" />
+          <el-option label="基本面分析" value="fundamental" />
+          <el-option label="情绪分析" value="sentiment" />
+          <el-option label="风险评估" value="risk" />
+        </el-select>
+        <el-button
+          type="primary"
+          @click="handleAnalyze"
+          :loading="loading"
+          :disabled="!form.code"
+        >
+          开始分析
+        </el-button>
+      </div>
     </el-card>
 
-    <!-- Cache hint -->
     <el-alert
       v-if="cacheHit"
       title="当前结果来自本地缓存"
@@ -39,7 +47,6 @@
       style="margin-bottom:0"
     />
 
-    <!-- Result -->
     <el-card v-if="result" shadow="never" class="section-card result-card">
       <template #header>
         <div class="result-header">
@@ -65,7 +72,6 @@
         </el-descriptions-item>
       </el-descriptions>
 
-      <!-- Raw output if no structured fields -->
       <div
         v-if="!result.conclusion && !result.logic && rawResult"
         class="raw-result"
@@ -74,7 +80,6 @@
       </div>
     </el-card>
 
-    <!-- History -->
     <el-card v-if="history.length > 0" shadow="never" class="section-card">
       <template #header><span>分析历史（本次会话）</span></template>
       <div class="history-list">
@@ -96,12 +101,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import { aiApi } from '@/api/ai'
+import { watchlistApi } from '@/api/watchlist'
 import { fmtDateTime } from '@/utils/format'
 import { useAIStore } from '@/stores/collectStore'
 import StockSearch from '@/components/StockSearch/index.vue'
 import { ElMessage } from 'element-plus'
+import type { WatchlistItem } from '@/types'
 
 const aiStore = useAIStore()
 const loading = ref(false)
@@ -109,6 +116,10 @@ const cacheHit = ref(false)
 const result = ref<Record<string, unknown> | null>(null)
 const rawResult = ref<unknown>(null)
 const history = ref<unknown[]>([])
+const watchlist = ref<WatchlistItem[]>([])
+
+const currentCode = ref('')
+const searchCode = ref('')
 
 const form = ref({
   code: '',
@@ -133,7 +144,32 @@ function scoreType(score: number): 'success' | 'warning' | 'danger' | 'info' {
   return 'danger'
 }
 
-const cacheKey = computed(() => `${form.value.code}_${form.value.type}`)
+function handleSelectChange(code: string) {
+  if (code) {
+    form.value.code = code
+    searchCode.value = ''
+  }
+}
+
+function handleSearch(code: string) {
+  if (code) {
+    currentCode.value = ''
+    form.value.code = code
+  }
+}
+
+async function loadWatchlist() {
+  try {
+    const res = await watchlistApi.getWatchlist()
+    watchlist.value = res.data?.data || res.data || []
+    if (watchlist.value.length > 0 && !form.value.code) {
+      form.value.code = watchlist.value[0].code
+      currentCode.value = watchlist.value[0].code
+    }
+  } catch {
+    watchlist.value = []
+  }
+}
 
 async function handleAnalyze() {
   if (!form.value.code) {
@@ -141,8 +177,8 @@ async function handleAnalyze() {
     return
   }
 
-  // Check cache
-  const cached = aiStore.getCached(cacheKey.value)
+  const cacheKey = `${form.value.code}_${form.value.type}`
+  const cached = aiStore.getCached(cacheKey)
   if (cached) {
     result.value = cached as Record<string, unknown>
     rawResult.value = cached
@@ -157,9 +193,7 @@ async function handleAnalyze() {
     const data = res.data?.result || res.data?.data || res.data
     result.value = data || {}
     rawResult.value = data
-    // Cache it
-    aiStore.setCache(cacheKey.value, data)
-    // Add to history
+    aiStore.setCache(cacheKey, data)
     history.value.unshift(data)
     if (history.value.length > 10) history.value.pop()
   } catch {
@@ -177,6 +211,10 @@ function selectHistory(item: unknown) {
   if (data.type) form.value.type = data.type
   cacheHit.value = true
 }
+
+onMounted(() => {
+  loadWatchlist()
+})
 </script>
 
 <style scoped>
@@ -197,6 +235,18 @@ function selectHistory(item: unknown) {
   color: #e5eaf3;
   font-size: 14px;
   font-weight: 600;
+}
+
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.divider {
+  color: #444;
+  font-size: 18px;
 }
 
 .result-header {
