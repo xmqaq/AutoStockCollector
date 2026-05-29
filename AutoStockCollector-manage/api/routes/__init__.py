@@ -8,6 +8,8 @@ import time
 import threading
 from utils.logger import get_logger
 from modules.ai.engines.analysis import AnalysisEngine
+from modules.ai.engines.advice import AdviceEngine
+from modules.ai.engines.picker import PickerEngine
 
 logger = get_logger(__name__)
 
@@ -683,6 +685,57 @@ def ai_stock_analysis(code):
         return jsonify({"success": True, "data": result})
     except Exception as e:
         logger.error(f"AI stock analysis failed for {code}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+def _latest_pick_result():
+    """读 ai_pick_results 集合最近一条选股结果。"""
+    from config.database import DatabaseConfig
+    db = DatabaseConfig.get_database()
+    return db["ai_pick_results"].find_one({}, {"_id": 0}, sort=[("timestamp", -1)])
+
+
+@api_bp.route("/ai/stock/<code>/advice", methods=["POST"])
+def ai_stock_advice(code):
+    """买卖参考建议。"""
+    normalized = _normalize_code(code)
+    if not normalized:
+        return jsonify({"success": False, "error": "invalid code"}), 400
+    data = request.get_json() or {}
+    try:
+        result = AdviceEngine().advise(
+            normalized, cost=data.get("cost"), position=data.get("position")
+        )
+        return jsonify({"success": True, "data": result})
+    except Exception as e:
+        logger.error(f"AI advice failed for {code}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@api_bp.route("/ai/pick/run", methods=["POST"])
+def ai_pick_run():
+    """触发 AI 智能选股（两阶段漏斗）。"""
+    data = request.get_json() or {}
+    try:
+        result = PickerEngine().run(
+            strategy=data.get("strategy", "default"),
+            top_n=data.get("top_n", 10),
+            candidate_pool=data.get("candidate_pool", 50),
+        )
+        return jsonify({"success": True, "data": result})
+    except Exception as e:
+        logger.error(f"AI pick run failed: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@api_bp.route("/ai/pick/results", methods=["GET"])
+def ai_pick_results():
+    """读最近一次选股结果（缓存）。"""
+    try:
+        doc = _latest_pick_result()
+        return jsonify({"success": True, "data": doc})
+    except Exception as e:
+        logger.error(f"AI pick results failed: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 
