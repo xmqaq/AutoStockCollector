@@ -37,15 +37,25 @@ const router = createRouter({
         },
         {
           path: 'ai-analysis',
-          name: 'AIAnalysis',
-          component: () => import('@/views/AIAnalysis/index.vue'),
-          meta: { title: 'AI分析中心' },
+          redirect: '/ai-dashboard',
         },
         {
           path: 'ai-dashboard',
           name: 'AIDashboard',
           component: () => import('@/views/AIDashboard/index.vue'),
           meta: { title: 'AI分析仪表盘' },
+        },
+        {
+          path: 'stock-analysis',
+          name: 'StockAnalysis',
+          component: () => import('@/views/StockAnalysis/index.vue'),
+          meta: { title: '个股深度分析' },
+        },
+        {
+          path: 'ai-picker',
+          name: 'AIPicker',
+          component: () => import('@/views/AIPicker/index.vue'),
+          meta: { title: 'AI智能选股' },
         },
         {
           path: 'monitor',

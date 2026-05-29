@@ -70,6 +70,7 @@ import {
   Key,
   Wallet,
   Bell,
+  Search,
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -81,8 +82,9 @@ const menuItems = [
   { path: '/data-monitor', label: '采集中心', icon: Monitor },
   { path: '/stock-detail', label: '股票详情', icon: TrendCharts },
   { path: '/market', label: '实时行情', icon: Odometer },
-  { path: '/ai-analysis', label: 'AI分析中心', icon: MagicStick },
-  { path: '/ai-dashboard', label: 'AI仪表盘', icon: TrendCharts },
+  { path: '/ai-dashboard', label: 'AI智能中枢', icon: MagicStick },
+  { path: '/ai-picker', label: 'AI智能选股', icon: TrendCharts },
+  { path: '/stock-analysis', label: '个股深度分析', icon: Search },
   { path: '/position', label: '仓位管理', icon: Wallet },
   { path: '/monitor', label: 'AI盯盘', icon: Bell },
   { path: '/ai-keys', label: 'AI Key管理', icon: Key },
