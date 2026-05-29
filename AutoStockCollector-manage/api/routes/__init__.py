@@ -6,6 +6,9 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 import time
 import threading
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 api_bp = Blueprint("api", __name__, url_prefix="/api/v1")
 

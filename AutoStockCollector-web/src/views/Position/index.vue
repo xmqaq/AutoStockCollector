@@ -53,7 +53,7 @@
               </template>
             </el-table-column>
             <el-table-column prop="position_ratio" label="仓位占比" width="100">
-              <template #default="{ row">
+              <template #default="{ row }">
                 <el-progress
                   :percentage="row.position_ratio || 0"
                   :stroke-width="8"
@@ -63,12 +63,12 @@
               </template>
             </el-table-column>
             <el-table-column label="止损位" width="100" align="right">
-              <template #default="{ row">
+              <template #default="{ row }">
                 <span class="price-text stop-loss">{{ (row.stop_loss || 0).toFixed(2) }}</span>
               </template>
             </el-table-column>
             <el-table-column label="目标价" width="100" align="right">
-              <template #default="{ row">
+              <template #default="{ row }">
                 <span class="price-text target-price">{{ (row.target_price || 0).toFixed(2) }}</span>
               </template>
             </el-table-column>

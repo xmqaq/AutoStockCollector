@@ -211,7 +211,7 @@ const chartOption = computed(() => {
           value: d.volume,
           itemStyle: { color: d.change_rate >= 0 ? RISE_COLOR : FALL_COLOR },
         })),
-        xAxisIndex: 0,
+        xAxisIndex: 1,
         yAxisIndex: 1,
       }]
     : []

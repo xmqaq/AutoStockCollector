@@ -6,7 +6,7 @@
         <el-badge :value="unreadCount" :hidden="unreadCount === 0" :max="99">
           <el-button size="small" @click="markAllRead" :disabled="unreadCount === 0">
             全部已读
-          </el-badge>
+          </el-button>
         </el-badge>
       </div>
     </div>
@@ -64,18 +64,18 @@
           v-model="quietStart"
           placeholder="开始"
           style="width: 120px"
-          :start="00:00"
-          :step="01:00"
-          :end="23:00"
+          start="00:00"
+          step="01:00"
+          end="23:00"
         />
         <span>至</span>
         <el-time-select
           v-model="quietEnd"
           placeholder="结束"
           style="width: 120px"
-          :start="00:00"
-          :step="01:00"
-          :end="23:00"
+          start="00:00"
+          step="01:00"
+          end="23:00"
         />
       </div>
       <div class="setting-item">
