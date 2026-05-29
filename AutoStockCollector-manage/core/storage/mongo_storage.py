@@ -707,10 +707,10 @@ class DragonTigerStorage(MongoStorage):
             sort=[("date", -1)]
         )
 
-    def save_dragon_tiger_batch(self, records: List[Dict[str, Any]]) -> int:
+    def save_dragon_tiger_batch(self, records: List[Dict[str, Any]]) -> Tuple[int, int]:
         if not records:
-            return 0
-        return self.insert_many(records)
+            return (0, 0)
+        return self.upsert_many(records, ["代码", "上榜日", "上榜原因"])
 
 
 class MarginStorage(MongoStorage):
@@ -730,4 +730,6 @@ class MarginStorage(MongoStorage):
         )
 
     def save_margin_batch(self, records: List[Dict[str, Any]]) -> Tuple[int, int]:
-        return self.insert_many(records)
+        if not records:
+            return (0, 0)
+        return self.upsert_many(records, ["信用交易日期", "market"])
