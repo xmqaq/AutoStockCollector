@@ -282,3 +282,72 @@ export const backtestEnhancedApi = {
     return client.post('/api/v1/backtest/enhanced/win-rate', { codes })
   },
 }
+
+// ── 第二期一体化 AI 服务 ──────────────────────────────
+export interface AIScores {
+  technical: number
+  fundamental: number
+  fund_flow: number
+  sentiment: number
+  composite: number
+}
+
+export interface AIAnalysisResult {
+  code: string
+  name: string
+  scores: AIScores
+  current_price: number | null
+  llm: { summary: string; recommendation: string; risk_factors: string[] } | null
+  source: 'llm' | 'factor'
+  disclaimer: string
+}
+
+export interface AIAdvice {
+  action: string
+  reason: string
+  buy_zone: string
+  stop_loss: string
+  position_advice: string
+}
+
+export interface AIAdviceResult {
+  code: string
+  name: string
+  composite: number
+  current_price: number | null
+  advice: AIAdvice
+  source: 'llm' | 'rule'
+  disclaimer: string
+}
+
+export interface AIPick {
+  code: string
+  name: string
+  composite: number
+  recommendation: string
+  source: string
+}
+
+export interface AIPickResult {
+  strategy: string
+  picks: AIPick[]
+  candidate_count?: number
+  universe_count?: number
+  timestamp: string
+  disclaimer: string
+}
+
+export const aiServiceApi = {
+  analysis(code: string) {
+    return client.get(`/api/v1/ai/stock/${code}/analysis`)
+  },
+  advice(code: string, payload: { cost?: number; position?: number } = {}) {
+    return client.post(`/api/v1/ai/stock/${code}/advice`, payload)
+  },
+  pickRun(payload: { strategy?: string; top_n?: number; candidate_pool?: number } = {}) {
+    return client.post('/api/v1/ai/pick/run', payload)
+  },
+  pickResults() {
+    return client.get('/api/v1/ai/pick/results')
+  },
+}
