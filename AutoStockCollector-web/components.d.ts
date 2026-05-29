@@ -11,6 +11,10 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AlertNotification: typeof import('./src/components/AlertNotification/index.vue')['default']
+    AnalysisProgress: typeof import('./src/components/AnalysisProgress/index.vue')['default']
+    BacktestVisualizer: typeof import('./src/components/BacktestVisualizer/index.vue')['default']
+    BatchPick: typeof import('./src/components/BatchPick/index.vue')['default']
     ElAlert: typeof import('element-plus/es')['ElAlert']
     ElAside: typeof import('element-plus/es')['ElAside']
     ElBadge: typeof import('element-plus/es')['ElBadge']
@@ -59,9 +63,15 @@ declare module 'vue' {
     ElTooltip: typeof import('element-plus/es')['ElTooltip']
     HelloWorld: typeof import('./src/components/HelloWorld.vue')['default']
     KlineChart: typeof import('./src/components/KlineChart/index.vue')['default']
+    MarketSentiment: typeof import('./src/components/MarketSentiment/index.vue')['default']
+    MonitorConfig: typeof import('./src/components/MonitorConfig/index.vue')['default']
+    MultiAgentPanel: typeof import('./src/components/MultiAgentPanel/index.vue')['default']
+    ProfitChart: typeof import('./src/components/ProfitChart/index.vue')['default']
     ProgressTable: typeof import('./src/components/ProgressTable/index.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    SectorHeatmap: typeof import('./src/components/SectorHeatmap/index.vue')['default']
+    SentimentTrend: typeof import('./src/components/SentimentTrend/index.vue')['default']
     StockSearch: typeof import('./src/components/StockSearch/index.vue')['default']
   }
   export interface GlobalDirectives {

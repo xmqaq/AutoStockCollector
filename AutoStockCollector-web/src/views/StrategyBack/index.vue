@@ -214,7 +214,7 @@
             </el-descriptions>
           </el-card>
 
-          <el-card v-if="result.sample_trades?.length > 0" shadow="never" class="section-card" style="margin-top:12px">
+          <el-card v-if="(result.sample_trades?.length || 0) > 0" shadow="never" class="section-card" style="margin-top:12px">
             <template #header><span>交易明细 (前20笔)</span></template>
             <el-table :data="result.sample_trades" stripe size="small">
               <el-table-column prop="date" label="日期" width="110" />
@@ -282,12 +282,31 @@ use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomCompon
 const loading = ref(false)
 const strategiesLoading = ref(false)
 const strategies = ref<StrategyItem[]>([])
-const result = ref<Record<string, unknown> | null>(null)
+const result = ref<BacktestReport | null>(null)
 const codesInput = ref('SH600000, SZ000001')
 const dateRange = ref<[string, string]>([
   dayjs().subtract(1, 'year').format('YYYY-MM-DD'),
   dayjs().format('YYYY-MM-DD'),
 ])
+
+interface BacktestReport {
+  total_return?: number
+  annual_return?: number
+  max_drawdown?: number
+  win_rate?: number
+  sharpe_ratio?: number
+  final_value?: number
+  equity_curve?: { date: string; value: number }[]
+  sample_trades?: {
+    date: string
+    code: string
+    type: string
+    price: number
+    amount: number
+    pnl?: number
+  }[]
+  [key: string]: unknown
+}
 
 const form = ref({
   strategy: '',

@@ -121,6 +121,10 @@
         </el-card>
 
         <el-card shadow="never" class="section-card" style="margin-top: 12px">
+          <ProfitChart :data="profitHistory" title="盈亏曲线" chart-height="280px" />
+        </el-card>
+
+        <el-card shadow="never" class="section-card" style="margin-top: 12px">
           <template #header><span>仓位预警</span></template>
           <div class="alert-list">
             <div
@@ -193,17 +197,18 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { positionApi } from '@/api/position'
+import ProfitChart from '@/components/ProfitChart/index.vue'
 
 interface Position {
   code: string
-  name: string
+  name?: string
   shares: number
   avg_cost: number
-  current_price: number
-  market_value: number
-  pnl: number
-  pnl_percent: number
-  position_ratio: number
+  current_price?: number
+  market_value?: number
+  pnl?: number
+  pnl_percent?: number
+  position_ratio?: number
   stop_loss: number
   target_price: number
   created_at?: string
@@ -225,9 +230,16 @@ interface IncomeStat {
   annualizedReturn: number
 }
 
+interface ProfitRecord {
+  date: string
+  value: number
+  cost?: number
+}
+
 const loading = ref(false)
 const showAddDialog = ref(false)
 const positions = ref<Position[]>([])
+const profitHistory = ref<ProfitRecord[]>([])
 const form = ref({
   code: '',
   shares: 0,
@@ -293,37 +305,42 @@ const alerts = computed<Alert[]>(() => {
   const list: Alert[] = []
   
   for (const pos of positions.value) {
-    if (pos.pnl_percent <= -10) {
+    const pnlPercent = pos.pnl_percent ?? 0
+    const positionRatio = pos.position_ratio ?? 0
+    const currentPrice = pos.current_price ?? 0
+    const posName = pos.name || pos.code
+    
+    if (pnlPercent <= -10) {
       list.push({
         code: pos.code,
         label: '止损预警',
         type: 'danger',
-        message: `${pos.name} 亏损已达 ${Math.abs(pos.pnl_percent).toFixed(2)}%，建议关注`
+        message: `${posName} 亏损已达 ${Math.abs(pnlPercent).toFixed(2)}%，建议关注`
       })
-    } else if (pos.pnl_percent <= -5) {
+    } else if (pnlPercent <= -5) {
       list.push({
         code: pos.code,
         label: '亏损预警',
         type: 'warning',
-        message: `${pos.name} 亏损 ${Math.abs(pos.pnl_percent).toFixed(2)}%`
+        message: `${posName} 亏损 ${Math.abs(pnlPercent).toFixed(2)}%`
       })
     }
     
-    if (pos.position_ratio > 30) {
+    if (positionRatio > 30) {
       list.push({
         code: pos.code,
         label: '仓位过重',
         type: 'warning',
-        message: `${pos.name} 仓位占比 ${pos.position_ratio.toFixed(1)}%，建议分散风险`
+        message: `${posName} 仓位占比 ${positionRatio.toFixed(1)}%，建议分散风险`
       })
     }
     
-    if (pos.current_price <= pos.stop_loss && pos.stop_loss > 0) {
+    if (currentPrice <= pos.stop_loss && pos.stop_loss > 0) {
       list.push({
         code: pos.code,
         label: '触发止损',
         type: 'danger',
-        message: `${pos.name} 当前价已跌破止损位 ${pos.stop_loss.toFixed(2)}`
+        message: `${posName} 当前价已跌破止损位 ${pos.stop_loss.toFixed(2)}`
       })
     }
   }
@@ -345,7 +362,7 @@ const distributionData = computed(() => {
   return positions.value
     .map(p => ({
       code: p.code,
-      percent: (p.market_value / totalMarketValue.value) * 100
+      percent: ((p.market_value || 0) / totalMarketValue.value) * 100
     }))
     .sort((a, b) => b.percent - a.percent)
 })
@@ -373,11 +390,37 @@ async function loadPositions() {
   loading.value = true
   try {
     await positionApi.loadPositions()
+    generateMockProfitHistory()
   } catch {
     positions.value = []
+    profitHistory.value = []
   } finally {
     loading.value = false
   }
+}
+
+function generateMockProfitHistory() {
+  const history: ProfitRecord[] = []
+  const now = new Date()
+  let cost = 100000
+  let value = 100000
+  
+  for (let i = 90; i >= 0; i--) {
+    const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000)
+    const dateStr = date.toISOString().split('T')[0]
+    
+    const change = (Math.random() - 0.45) * 2000
+    value += change
+    cost += Math.random() * 100
+    
+    history.push({
+      date: dateStr,
+      value: Math.round(value * 100) / 100,
+      cost: Math.round(cost * 100) / 100,
+    })
+  }
+  
+  profitHistory.value = history
 }
 
 async function savePosition() {

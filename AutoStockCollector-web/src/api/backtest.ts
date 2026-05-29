@@ -6,6 +6,8 @@ export interface BacktestParams {
   start_date: string
   end_date: string
   initial_cash: number
+  stop_loss?: number
+  take_profit?: number
 }
 
 export const backtestApi = {

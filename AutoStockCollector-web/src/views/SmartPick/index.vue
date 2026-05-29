@@ -208,14 +208,14 @@ function scoreTagType(score: number): '' | 'success' | 'warning' | 'danger' | 'i
   return 'danger'
 }
 
-function recommendTagType(rec: string): '' | 'success' | 'warning' | 'danger' {
+function recommendTagType(rec: string): string {
   if (rec.includes('推荐') || rec.includes('买入')) return 'success'
   if (rec.includes('谨慎')) return 'warning'
   if (rec.includes('回避')) return 'danger'
   return 'info'
 }
 
-function riskTagType(risk: string): '' | 'success' | 'warning' | 'danger' {
+function riskTagType(risk: string): string {
   if (risk === '低') return 'success'
   if (risk === '中') return 'warning'
   return 'danger'

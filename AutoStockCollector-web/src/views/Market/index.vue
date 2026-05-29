@@ -318,8 +318,21 @@ const newsCodeFilter = ref('')
 // AI Analysis tab
 const aiLoading = ref(false)
 const aiCode = ref('')
-const aiResult = ref<Record<string, unknown> | null>(null)
+const aiResult = ref<MarketAIResult | null>(null)
 const watchlistForAI = ref<WatchlistItem[]>([])
+
+interface MarketAIResult {
+  name?: string
+  code: string
+  signal?: string
+  composite_score?: number
+  recommendation?: string
+  stop_loss?: number
+  target_price?: number
+  reasons?: string[]
+  risk_factors?: string[]
+  [key: string]: unknown
+}
 
 // Signal detection tab
 const signalLoading = ref(false)
@@ -392,7 +405,7 @@ async function loadNews() {
 async function analyzeNews(row: NewsRecord) {
   try {
     ElMessage.info('正在分析新闻...')
-    const res = await aiApi.analyzeNews({ news: row })
+    const res = await aiApi.analyzeNews({ news: row as unknown as Record<string, unknown> })
     if (res.data?.data) {
       const analysis = res.data.data
       ElMessage({

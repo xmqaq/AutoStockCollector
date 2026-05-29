@@ -89,7 +89,14 @@
             </div>
           </div>
         </template>
-        <KlineChart v-if="klineData.length > 0" :data="klineData" chart-height="400px" />
+        <KlineChart 
+          v-if="klineData.length > 0" 
+          :data="klineData" 
+          :annotations="aiAnnotations"
+          :support-levels="aiSupportLevels"
+          :resistance-levels="aiResistanceLevels"
+          chart-height="450px" 
+        />
         <el-empty v-else-if="!klineLoading" :description="emptyKlineHint" :image-size="60" />
       </el-card>
 
@@ -147,8 +154,9 @@ import { klineApi } from '@/api/kline'
 import { financialApi } from '@/api/financial'
 import { newsApi } from '@/api/news'
 import { watchlistApi } from '@/api/watchlist'
+import { aiApi } from '@/api/ai'
 import { fmtAmount, fmtDateTime, fmtNumber } from '@/utils/format'
-import type { StockInfo, KlineRecord, FinancialRecord, NewsRecord, WatchlistItem } from '@/types'
+import type { StockInfo, KlineRecord, FinancialRecord, NewsRecord, WatchlistItem, AIAnnotation, PriceLevel } from '@/types'
 import dayjs from 'dayjs'
 
 const currentCode = ref('')
@@ -168,6 +176,11 @@ const klineDateRange = ref<[string, string]>([
   dayjs().subtract(1, 'year').format('YYYY-MM-DD'),
   dayjs().format('YYYY-MM-DD'),
 ])
+
+const aiAnnotations = ref<AIAnnotation[]>([])
+const aiSupportLevels = ref<PriceLevel[]>([])
+const aiResistanceLevels = ref<PriceLevel[]>([])
+const aiLoading = ref(false)
 
 const klineDataRange = ref<{ from: string | null; to: string | null }>({ from: null, to: null })
 
@@ -209,11 +222,15 @@ async function loadStock(code: string) {
   if (!code) return
   currentCode.value = code
   searchCode.value = ''
+  aiAnnotations.value = []
+  aiSupportLevels.value = []
+  aiResistanceLevels.value = []
   await Promise.all([
     loadInfo(),
     loadKline(),
     loadFinancial(),
     loadNews(),
+    loadAIAnnotations(),
   ])
 }
 
@@ -293,6 +310,31 @@ async function loadNews() {
     newsList.value = []
   } finally {
     newsLoading.value = false
+  }
+}
+
+async function loadAIAnnotations() {
+  aiLoading.value = true
+  try {
+    const res = await aiApi.analyzeStock({ code: currentCode.value })
+    const data = res.data?.data || res.data
+    if (data) {
+      if (data.annotations) {
+        aiAnnotations.value = data.annotations
+      }
+      if (data.support_levels) {
+        aiSupportLevels.value = data.support_levels.map((p: number) => ({ price: p, type: 'support' as const }))
+      }
+      if (data.resistance_levels) {
+        aiResistanceLevels.value = data.resistance_levels.map((p: number) => ({ price: p, type: 'resistance' as const }))
+      }
+    }
+  } catch {
+    aiAnnotations.value = []
+    aiSupportLevels.value = []
+    aiResistanceLevels.value = []
+  } finally {
+    aiLoading.value = false
   }
 }
 

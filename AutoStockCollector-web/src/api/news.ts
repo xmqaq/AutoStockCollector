@@ -6,6 +6,6 @@ export const newsApi = {
   },
 
   latest(params?: { code?: string; limit?: number }) {
-    return client.get('/api/v1/news/latest', { params })
+    return client.get('/api/v1/news', { params })
   },
 }

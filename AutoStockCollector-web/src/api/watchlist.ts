@@ -14,6 +14,6 @@ export const watchlistApi = {
   },
 
   list() {
-    return client.get('/api/v1/watchlist/list')
+    return client.get('/api/v1/watchlist', { params: { user_id: 'default' } })
   },
 }

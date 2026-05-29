@@ -6,6 +6,10 @@
         <el-checkbox-button label="MA10" value="MA10" />
         <el-checkbox-button label="MA20" value="MA20" />
       </el-checkbox-group>
+      <el-divider direction="vertical" />
+      <el-checkbox v-model="showAnnotations" size="small">AI标注</el-checkbox>
+      <el-checkbox v-model="showLevels" size="small">支撑压力位</el-checkbox>
+      <el-checkbox v-model="showVolume" size="small">成交量</el-checkbox>
     </div>
     <v-chart
       ref="chartRef"
@@ -13,6 +17,12 @@
       :style="{ height: chartHeight }"
       autoresize
     />
+    <div v-if="annotations.length > 0 && showAnnotations" class="annotation-legend">
+      <span class="legend-item buy">● 买入信号</span>
+      <span class="legend-item sell">● 卖出信号</span>
+      <span class="legend-item hold">● 持有</span>
+      <span class="legend-item alert">● 告警</span>
+    </div>
   </div>
 </template>
 
@@ -34,7 +44,7 @@ import {
   MarkLineComponent,
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
-import type { KlineRecord } from '@/types'
+import type { KlineRecord, AIAnnotation, PriceLevel } from '@/types'
 import { RISE_COLOR, FALL_COLOR } from '@/utils/format'
 
 use([
@@ -53,14 +63,23 @@ use([
 interface Props {
   data: KlineRecord[]
   chartHeight?: string
+  annotations?: AIAnnotation[]
+  supportLevels?: PriceLevel[]
+  resistanceLevels?: PriceLevel[]
 }
 
 const props = withDefaults(defineProps<Props>(), {
   chartHeight: '500px',
+  annotations: () => [],
+  supportLevels: () => [],
+  resistanceLevels: () => [],
 })
 
 const chartRef = ref<InstanceType<typeof VChart> | null>(null)
 const selectedMAs = ref<string[]>(['MA5', 'MA10', 'MA20'])
+const showAnnotations = ref(true)
+const showLevels = ref(true)
+const showVolume = ref(true)
 
 onMounted(() => {
   nextTick(() => {
@@ -84,6 +103,15 @@ function calcMA(data: KlineRecord[], period: number): (number | string)[] {
     result.push(+(sum / period).toFixed(2))
   }
   return result
+}
+
+function findDateIndex(dates: string[], targetDate: string): number {
+  const idx = dates.indexOf(targetDate)
+  if (idx !== -1) return idx
+  for (let i = 0; i < dates.length; i++) {
+    if (dates[i] >= targetDate) return i
+  }
+  return dates.length - 1
 }
 
 const chartOption = computed(() => {
@@ -135,16 +163,116 @@ const chartOption = computed(() => {
     })
   }
 
+  const markLineData: { yAxis?: number; label?: { formatter?: string; color?: string }; lineStyle?: { color?: string } }[] = []
+
+  if (showLevels.value) {
+    props.supportLevels.forEach(level => {
+      markLineData.push({
+        yAxis: level.price,
+        label: {
+          formatter: `支撑 ${level.price.toFixed(2)}`,
+          color: '#26a69a',
+        },
+        lineStyle: { color: '#26a69a' },
+      })
+    })
+    props.resistanceLevels.forEach(level => {
+      markLineData.push({
+        yAxis: level.price,
+        label: {
+          formatter: `压力 ${level.price.toFixed(2)}`,
+          color: '#ef5350',
+        },
+        lineStyle: { color: '#ef5350' },
+      })
+    })
+  }
+
+  const annotationSeries = showAnnotations.value && props.annotations.length > 0
+    ? [{
+        name: 'AI标注',
+        type: 'scatter',
+        data: props.annotations.map(a => {
+          const idx = findDateIndex(dates, a.date)
+          return { value: [idx, a.price], itemStyle: getAnnotationStyle(a.type), label: { show: true, formatter: getAnnotationLabel(a.type), color: getAnnotationColor(a.type), fontSize: 10 } }
+        }),
+        symbol: 'circle',
+        symbolSize: 12,
+        xAxisIndex: 0,
+        yAxisIndex: 0,
+      }]
+    : []
+
+  const volumeSeries = showVolume.value
+    ? [{
+        name: '成交量',
+        type: 'bar',
+        data: kdata.map(d => ({
+          value: d.volume,
+          itemStyle: { color: d.change_rate >= 0 ? RISE_COLOR : FALL_COLOR },
+        })),
+        xAxisIndex: 0,
+        yAxisIndex: 1,
+      }]
+    : []
+
+  const klineSeries = {
+    name: 'K线',
+    type: 'candlestick',
+    data: ohlc,
+    itemStyle: {
+      color: RISE_COLOR,
+      color0: FALL_COLOR,
+      borderColor: RISE_COLOR,
+      borderColor0: FALL_COLOR,
+    },
+    xAxisIndex: 0,
+    yAxisIndex: 0,
+  }
+
+  if (markLineData.length > 0) {
+    ;(klineSeries as Record<string, unknown>).markLine = {
+      silent: true,
+      symbol: ['none', 'none'],
+      data: markLineData,
+    }
+  }
+
+  const grids = showVolume.value
+    ? [
+        { left: 60, right: 20, top: 40, bottom: showVolume.value ? '28%' : 60 },
+        { left: 60, right: 20, top: showVolume.value ? '75%' : 40, bottom: 60 },
+      ]
+    : [
+        { left: 60, right: 20, top: 40, bottom: 60 },
+      ]
+
+  const yAxis = showVolume.value
+    ? [
+        { scale: true, splitArea: { show: false }, axisLine: { lineStyle: { color: '#444' } }, splitLine: { lineStyle: { color: '#2c2c2c' } }, axisLabel: { color: '#909399', fontSize: 11 }, gridIndex: 0 },
+        { scale: true, splitArea: { show: false }, axisLine: { lineStyle: { color: '#444' } }, splitLine: { lineStyle: { color: '#2c2c2c' } }, axisLabel: { color: '#909399', fontSize: 11, formatter: (v: number) => (v / 100 / 1e4).toFixed(0) + '万' }, gridIndex: 1 },
+      ]
+    : [
+        { scale: true, splitArea: { show: false }, axisLine: { lineStyle: { color: '#444' } }, splitLine: { lineStyle: { color: '#2c2c2c' } }, axisLabel: { color: '#909399', fontSize: 11 } },
+      ]
+
+  const xAxis = showVolume.value
+    ? [
+        { type: 'category', data: dates, scale: true, boundaryGap: false, axisLine: { lineStyle: { color: '#444' } }, splitLine: { show: false }, axisLabel: { color: '#909399', fontSize: 11 }, min: 'dataMin', max: 'dataMax', gridIndex: 0 },
+        { type: 'category', data: dates, scale: true, boundaryGap: false, axisLine: { lineStyle: { color: '#444' } }, splitLine: { show: false }, axisLabel: { show: false }, min: 'dataMin', max: 'dataMax', gridIndex: 1 },
+      ]
+    : [
+        { type: 'category', data: dates, scale: true, boundaryGap: false, axisLine: { lineStyle: { color: '#444' } }, splitLine: { show: false }, axisLabel: { color: '#909399', fontSize: 11 }, min: 'dataMin', max: 'dataMax' },
+      ]
+
+  const allSeries: unknown[] = [klineSeries, ...maSeries, ...annotationSeries, ...volumeSeries]
+
   return {
     backgroundColor: '#1f1f1f',
     animation: false,
-    legend: {
-      top: 4,
-      left: 'center',
-      textStyle: { color: '#909399' },
-      data: ['K线', ...selectedMAs.value],
-    },
-    // 顶层 axisPointer.link 让两个 grid 的 X 轴联动 —— 鼠标移到下半的成交量区也能触发 tooltip
+    legend: showVolume.value
+      ? { top: 4, left: 'center', textStyle: { color: '#909399' }, data: ['K线', ...selectedMAs.value, ...(showAnnotations.value && props.annotations.length > 0 ? ['AI标注'] : []), '成交量'] }
+      : { top: 4, left: 'center', textStyle: { color: '#909399' }, data: ['K线', ...selectedMAs.value] },
     axisPointer: {
       link: [{ xAxisIndex: 'all' }],
       label: { backgroundColor: '#555' },
@@ -158,16 +286,13 @@ const chartOption = computed(() => {
       backgroundColor: '#2c2c2c',
       borderColor: '#444',
       textStyle: { color: '#e5eaf3', fontSize: 12 },
-      // 任意 series 触发都展示同一份完整 OHLC + 量 + 涨跌
       formatter(params: unknown[]) {
         const arr = params as Array<{ seriesName: string; dataIndex: number }>
         if (!arr || !arr.length) return ''
-        // 取任意一个 series 的 dataIndex（K线 / 成交量 / MAx 都来自同一 X 轴）
         const idx = arr[0]?.dataIndex
         if (idx === undefined || idx < 0) return ''
         const rec = kdata[idx]
         if (!rec) return ''
-        // 直接从源数据读，避开 ECharts 蜡烛 params.data 形如 [dataIndex, o, c, l, h] 带索引前缀的坑
         const date = rec.date
         const o = Number(rec.open)
         const h = Number(rec.high)
@@ -186,6 +311,15 @@ const chartOption = computed(() => {
         const chgStr = Number.isFinite(chg) ? `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%` : '--'
         const row = (k: string, v: string, color = '#e5eaf3') =>
           `<div style="display:flex;justify-content:space-between;gap:18px;line-height:1.6"><span style="color:#909399">${k}</span><span style="color:${color};font-weight:500">${v}</span></div>`
+        const annotInfo = props.annotations.find(a => findDateIndex(dates, a.date) === idx)
+        let annotHtml = ''
+        if (annotInfo) {
+          const annotColor = getAnnotationColor(annotInfo.type)
+          annotHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #444;color:${annotColor}">AI信号: ${annotInfo.type === 'buy' ? '买入' : annotInfo.type === 'sell' ? '卖出' : annotInfo.type === 'hold' ? '持有' : '告警'}</div>`
+          if (annotInfo.label) {
+            annotHtml += `<div style="color:#909399;font-size:11px">${annotInfo.label}</div>`
+          }
+        }
         return `
           <div style="padding:6px 10px;min-width:170px">
             <div style="font-weight:bold;margin-bottom:6px;color:#e5eaf3">${date}</div>
@@ -197,46 +331,24 @@ const chartOption = computed(() => {
             ${row('成交量', volStr)}
             ${row('成交额', amtStr)}
             ${row('换手率', Number.isFinite(trn) ? `${trn.toFixed(2)}%` : '--')}
+            ${annotHtml}
           </div>
         `
       },
     },
-    // 单个 grid，K 线吃满，量价信息走 tooltip
-    grid: [
-      { left: 60, right: 20, top: 40, bottom: 60 },
-    ],
-    xAxis: [
-      {
-        type: 'category',
-        data: dates,
-        scale: true,
-        boundaryGap: false,
-        axisLine: { lineStyle: { color: '#444' } },
-        splitLine: { show: false },
-        axisLabel: { color: '#909399', fontSize: 11 },
-        min: 'dataMin',
-        max: 'dataMax',
-      },
-    ],
-    yAxis: [
-      {
-        scale: true,
-        splitArea: { show: false },
-        axisLine: { lineStyle: { color: '#444' } },
-        splitLine: { lineStyle: { color: '#2c2c2c' } },
-        axisLabel: { color: '#909399', fontSize: 11 },
-      },
-    ],
+    grid: grids,
+    xAxis: xAxis,
+    yAxis: yAxis,
     dataZoom: [
       {
         type: 'inside',
-        xAxisIndex: 0,
+        xAxisIndex: showVolume.value ? [0, 1] : 0,
         start: Math.max(0, 100 - (80 / kdata.length) * 100),
         end: 100,
       },
       {
         type: 'slider',
-        xAxisIndex: 0,
+        xAxisIndex: showVolume.value ? [0, 1] : 0,
         bottom: 8,
         height: 20,
         start: Math.max(0, 100 - (80 / kdata.length) * 100),
@@ -247,22 +359,36 @@ const chartOption = computed(() => {
         handleStyle: { color: '#409eff' },
       },
     ],
-    series: [
-      {
-        name: 'K线',
-        type: 'candlestick',
-        data: ohlc,
-        itemStyle: {
-          color: RISE_COLOR,
-          color0: FALL_COLOR,
-          borderColor: RISE_COLOR,
-          borderColor0: FALL_COLOR,
-        },
-      },
-      ...maSeries,
-    ],
+    series: allSeries,
   }
 })
+
+function getAnnotationStyle(type: AIAnnotation['type']): { color: string; borderColor: string } {
+  switch (type) {
+    case 'buy': return { color: '#67c23a', borderColor: '#67c23a' }
+    case 'sell': return { color: '#f56c6c', borderColor: '#f56c6c' }
+    case 'hold': return { color: '#409eff', borderColor: '#409eff' }
+    case 'alert': return { color: '#e6a23c', borderColor: '#e6a23c' }
+  }
+}
+
+function getAnnotationColor(type: AIAnnotation['type']): string {
+  switch (type) {
+    case 'buy': return '#67c23a'
+    case 'sell': return '#f56c6c'
+    case 'hold': return '#409eff'
+    case 'alert': return '#e6a23c'
+  }
+}
+
+function getAnnotationLabel(type: AIAnnotation['type']): string {
+  switch (type) {
+    case 'buy': return '买'
+    case 'sell': return '卖'
+    case 'hold': return '持'
+    case 'alert': return '!'
+  }
+}
 
 watch(() => props.data, () => {
   nextTick(() => {
@@ -284,4 +410,22 @@ watch(() => props.data, () => {
   gap: 8px;
   align-items: center;
 }
+
+.annotation-legend {
+  display: flex;
+  gap: 16px;
+  padding: 8px 0;
+  font-size: 12px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend-item.buy { color: #67c23a; }
+.legend-item.sell { color: #f56c6c; }
+.legend-item.hold { color: #409eff; }
+.legend-item.alert { color: #e6a23c; }
 </style>

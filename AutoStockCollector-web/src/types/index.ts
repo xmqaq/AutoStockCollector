@@ -176,3 +176,17 @@ export interface ApiResponse<T = unknown> {
   message?: string
   error?: string
 }
+
+export interface AIAnnotation {
+  date: string
+  type: 'buy' | 'sell' | 'hold' | 'alert'
+  price: number
+  label?: string
+  description?: string
+}
+
+export interface PriceLevel {
+  price: number
+  type: 'support' | 'resistance'
+  label?: string
+}

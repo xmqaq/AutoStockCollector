@@ -114,7 +114,20 @@ def _fetch_kline_with_volume(full_code: str) -> Dict[str, Dict]:
 
 
 def register_routes(app):
+    from api.routes.ai_advanced import ai_advanced_bp
+    from api.routes.monitor import monitor_bp
+    from api.routes.sentiment import sentiment_bp
+    from api.routes.backtest_enhanced import backtest_enhanced_bp
+    from api.routes.position import position_bp
+    from api.routes.market import market_bp
+    
     app.register_blueprint(api_bp)
+    app.register_blueprint(ai_advanced_bp)
+    app.register_blueprint(monitor_bp)
+    app.register_blueprint(sentiment_bp)
+    app.register_blueprint(backtest_enhanced_bp)
+    app.register_blueprint(position_bp)
+    app.register_blueprint(market_bp)
 
     @app.route("/health", methods=["GET"])
     def health_check():
@@ -622,8 +635,21 @@ def run_backtest():
             codes=data.get("codes", []),
             start_date=data.get("start_date"),
             end_date=data.get("end_date"),
-            initial_cash=data.get("initial_cash", 1000000)
+            initial_cash=data.get("initial_cash", 1000000),
+            stop_loss=data.get("stop_loss", 0.05),
+            take_profit=data.get("take_profit", 0.10)
         )
+        
+        report["annualized_return"] = report.get("annual_return", report.get("annualized_return", 0))
+        report["final_value"] = report.get("final_value", report.get("initial_cash", 1000000))
+        report["winning_trades"] = report.get("winning_trades", 0)
+        report["losing_trades"] = report.get("losing_trades", 0)
+        report["avg_holding_days"] = report.get("avg_holding_days", 0)
+        report["total_return"] = report.get("total_return", 0)
+        report["max_drawdown"] = report.get("max_drawdown", 0)
+        report["win_rate"] = report.get("win_rate", 0)
+        report["sharpe_ratio"] = report.get("sharpe_ratio", 0)
+        
         return jsonify({
             "success": True,
             "report": report

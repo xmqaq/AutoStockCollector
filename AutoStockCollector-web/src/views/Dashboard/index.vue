@@ -55,7 +55,7 @@
 
     <!-- Main content -->
     <el-row :gutter="16" class="main-content-row">
-      <!-- Progress table -->
+      <!-- Left column: Progress table + Market sentiment -->
       <el-col :span="16">
         <el-card shadow="never" class="section-card">
           <template #header>
@@ -68,10 +68,16 @@
           </template>
           <ProgressTable :data="collectStore.progressList" :loading="loading" show-freshness />
         </el-card>
+        <el-card shadow="never" class="section-card sentiment-card">
+          <MarketSentiment />
+        </el-card>
       </el-col>
 
-      <!-- News list -->
+      <!-- Right column: Sector heatmap + News list -->
       <el-col :span="8">
+        <el-card shadow="never" class="section-card">
+          <SectorHeatmap @select="handleSectorSelect" />
+        </el-card>
         <el-card shadow="never" class="section-card">
           <template #header>
             <span>最新资讯</span>
@@ -102,9 +108,12 @@ import { useRouter } from 'vue-router'
 import { useCollectStore } from '@/stores/collectStore'
 import { newsApi } from '@/api/news'
 import { fmtAmount, fmtDateTime } from '@/utils/format'
-import type { NewsRecord } from '@/types'
+import type { NewsRecord, SectorRecord } from '@/types'
 import ProgressTable from '@/components/ProgressTable/index.vue'
+import MarketSentiment from '@/components/MarketSentiment/index.vue'
+import SectorHeatmap from '@/components/SectorHeatmap/index.vue'
 import { Monitor, DataAnalysis, TrendCharts, ChatDotRound, Refresh } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 
 const router = useRouter()
 const collectStore = useCollectStore()
@@ -118,6 +127,11 @@ function goToNews(news: NewsRecord) {
   } else {
     router.push('/news')
   }
+}
+
+function handleSectorSelect(sector: SectorRecord) {
+  ElMessage.info(`跳转至板块: ${sector.name}`)
+  router.push({ path: '/sector-flow', query: { name: sector.name } })
 }
 
 async function refreshData() {
@@ -265,5 +279,9 @@ onMounted(() => {
 
 .empty-state {
   padding: 20px 0;
+}
+
+.sentiment-card {
+  margin-top: 16px;
 }
 </style>

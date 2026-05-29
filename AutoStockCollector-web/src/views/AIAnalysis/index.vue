@@ -93,16 +93,16 @@
             <div class="score-card fundamental">
               <div class="score-card-header">基本面</div>
               <div class="score-card-value">
-                {{ ((result.fundamental?.valuation_score + result.fundamental?.growth_score) / 2 || 0).toFixed(1) }}
+                {{ (((result.fundamental?.valuation_score || 0) + (result.fundamental?.growth_score || 0)) / 2).toFixed(1) }}
               </div>
               <div class="score-card-label">
                 PE: {{ result.fundamental?.pe || '--' }} | ROE: {{ result.fundamental?.roe || '--' }}%
               </div>
               <el-progress
-                :percentage="(result.fundamental?.valuation_score + result.fundamental?.growth_score) / 2 || 0"
+                :percentage="((result.fundamental?.valuation_score || 0) + (result.fundamental?.growth_score || 0)) / 2"
                 :stroke-width="8"
                 :show-text="false"
-                :color="scoreColor((result.fundamental?.valuation_score + result.fundamental?.growth_score) / 2)"
+                :color="scoreColor(((result.fundamental?.valuation_score || 0) + (result.fundamental?.growth_score || 0)) / 2)"
               />
             </div>
           </el-col>
@@ -175,11 +175,11 @@
         </el-descriptions>
       </el-card>
 
-      <el-card shadow="never" class="section-card" v-if="result.sentiment?.key_events?.length > 0">
+      <el-card shadow="never" class="section-card" v-if="(result.sentiment?.key_events?.length || 0) > 0">
         <template #header><span>舆情事件</span></template>
         <div class="events-list">
           <div
-            v-for="(event, idx) in result.sentiment.key_events"
+            v-for="(event, idx) in (result.sentiment?.key_events || [])"
             :key="idx"
             class="event-item"
           >
@@ -228,10 +228,10 @@
           class="history-item"
           @click="selectHistory(item)"
         >
-          <span class="history-code">{{ (item as { code: string }).code }}</span>
-          <el-tag size="small" type="info">{{ analysisTypeLabel((item as { analysis_type: string }).analysis_type) }}</el-tag>
-          <span v-if="(item as { composite_score?: number }).composite_score !== undefined" class="history-score">
-            评分: {{ ((item as { composite_score: number }).composite_score).toFixed(1) }}
+          <span class="history-code">{{ item.code }}</span>
+          <el-tag size="small" type="info">{{ analysisTypeLabel(item.analysis_type || '') }}</el-tag>
+          <span v-if="item.composite_score !== undefined" class="history-score">
+            评分: {{ item.composite_score?.toFixed(1) }}
           </span>
         </div>
       </div>
@@ -250,10 +250,51 @@ import type { WatchlistItem } from '@/types'
 
 const aiStore = useAIStore()
 const loading = ref(false)
-const result = ref<Record<string, unknown> | null>(null)
+const result = ref<AIModelResult | null>(null)
 const showRaw = ref(false)
-const history = ref<unknown[]>([])
+const history = ref<AIModelResult[]>([])
 const watchlist = ref<WatchlistItem[]>([])
+
+interface AIModelResult {
+  name?: string
+  code: string
+  composite_score?: number
+  recommendation?: string
+  risk_level?: string
+  stop_loss?: number
+  target_price?: number
+  support_levels?: number[]
+  resistance_levels?: number[]
+  analysis_type?: string
+  technical?: {
+    trend_strength?: number
+    trend?: string
+    current_price?: number
+    ma5?: number
+    ma20?: number
+    change_pct?: number
+    rsi?: number
+    volume_ratio?: number
+  }
+  fundamental?: {
+    valuation_score?: number
+    growth_score?: number
+    pe?: number
+    roe?: number
+  }
+  sentiment?: {
+    score?: number
+    sentiment?: string
+    key_events?: string[]
+  }
+  fund_flow?: {
+    score?: number
+    main_net_inflow?: number
+  }
+  reasons?: string[]
+  risk_factors?: string[]
+  [key: string]: unknown
+}
 
 const currentCode = ref('')
 const searchCode = ref('')
@@ -282,14 +323,14 @@ function analysisTypeLabel(type: string): string {
   return typeLabels[type] || type
 }
 
-function scoreType(score: number | undefined): '' | 'success' | 'warning' | 'danger' | 'info' {
-  const s = score || 0
+function scoreType(score: number | string | undefined): '' | 'success' | 'warning' | 'danger' | 'info' {
+  const s = Number(score) || 0
   if (s >= 70) return 'success'
   if (s >= 50) return 'warning'
   return 'danger'
 }
 
-function recommendTagType(rec: string | undefined): '' | 'success' | 'warning' | 'danger' {
+function recommendTagType(rec: string | undefined): string {
   if (!rec) return 'info'
   if (rec.includes('推荐') || rec.includes('买入')) return 'success'
   if (rec.includes('谨慎')) return 'warning'
@@ -297,7 +338,7 @@ function recommendTagType(rec: string | undefined): '' | 'success' | 'warning' |
   return 'info'
 }
 
-function riskTagType(risk: string | undefined): '' | 'success' | 'warning' | 'danger' {
+function riskTagType(risk: string | undefined): string {
   if (risk === '低') return 'success'
   if (risk === '中') return 'warning'
   return 'danger'
@@ -372,8 +413,8 @@ async function handleAnalyze() {
   }
 }
 
-function selectHistory(item: unknown) {
-  result.value = item as Record<string, unknown>
+function selectHistory(item: AIModelResult) {
+  result.value = item
 }
 
 onMounted(() => {

@@ -48,6 +48,18 @@ const router = createRouter({
           meta: { title: '智能选股' },
         },
         {
+          path: 'batch-pick',
+          name: 'BatchPick',
+          component: () => import('@/views/BatchPick/index.vue'),
+          meta: { title: '批量分析' },
+        },
+        {
+          path: 'monitor',
+          name: 'Monitor',
+          component: () => import('@/views/Monitor/index.vue'),
+          meta: { title: 'AI盯盘' },
+        },
+        {
           path: 'ai-keys',
           name: 'AIKeys',
           component: () => import('@/views/AIKey/index.vue'),
@@ -100,6 +112,12 @@ const router = createRouter({
           name: 'Position',
           component: () => import('@/views/Position/index.vue'),
           meta: { title: '仓位管理' },
+        },
+        {
+          path: 'multi-agent',
+          name: 'MultiAgent',
+          component: () => import('@/views/MultiAgent/index.vue'),
+          meta: { title: '多Agent分析' },
         },
       ],
     },

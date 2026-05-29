@@ -70,6 +70,8 @@ import {
   Search,
   Key,
   Wallet,
+  Bell,
+  Operation,
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -83,7 +85,10 @@ const menuItems = [
   { path: '/market', label: '实时行情', icon: Odometer },
   { path: '/ai-analysis', label: 'AI分析', icon: MagicStick },
   { path: '/smart-pick', label: '智能选股', icon: Search },
+  { path: '/batch-pick', label: '批量分析', icon: Lightning },
+  { path: '/multi-agent', label: '多Agent', icon: Operation },
   { path: '/position', label: '仓位管理', icon: Wallet },
+  { path: '/monitor', label: 'AI盯盘', icon: Bell },
   { path: '/ai-keys', label: 'AI Key管理', icon: Key },
   { path: '/strategy-back', label: '策略回测', icon: Histogram },
   { path: '/strategy-config', label: '策略管理', icon: Setting },
