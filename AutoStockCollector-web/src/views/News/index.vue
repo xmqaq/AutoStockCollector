@@ -130,7 +130,9 @@ watch(newsList, () => { currentPage.value = 1 })
 async function loadNews() {
   loading.value = true
   try {
-    const params: Record<string, any> = { limit: 500 }
+    // 用 stats.total 作为动态 limit，保证拉取全量数据；无统计时兜底 2000
+    const limit = stats.value?.total || 2000
+    const params: Record<string, any> = { limit }
     if (codeFilter.value) {
       params.code = normalizeCode(codeFilter.value)
     }
@@ -167,7 +169,8 @@ async function loadStats() {
 
 onMounted(async () => {
   await loadCategories()
-  await Promise.all([loadNews(), loadStats()])
+  await loadStats()   // 先拿总数
+  await loadNews()    // 再用总数作为 limit 全量拉取
 })
 </script>
 
