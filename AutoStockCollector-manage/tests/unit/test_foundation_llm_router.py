@@ -1,0 +1,82 @@
+"""LLMRouter 测试：注入假 caller，验证降级链 / 缓存 / schema 注入，不发真实请求。"""
+import unittest
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from modules.ai.foundation.llm_router import LLMRouter, LLMResult
+
+
+class TestLLMRouter(unittest.TestCase):
+    def test_uses_first_provider_in_priority_order(self):
+        calls = []
+
+        def caller(provider, prompt):
+            calls.append(provider)
+            return '{"ok": true}'
+
+        router = LLMRouter(providers=["qwen", "openai"], caller=caller)
+        result = router.chat("hi", use_cache=False)
+        self.assertEqual(calls, ["qwen"])
+        self.assertTrue(result.success)
+        self.assertEqual(result.provider, "qwen")
+        self.assertEqual(result.data, {"ok": True})
+
+    def test_falls_back_to_next_provider_on_failure(self):
+        def caller(provider, prompt):
+            if provider == "qwen":
+                raise RuntimeError("rate limited")
+            return '{"ok": true}'
+
+        router = LLMRouter(providers=["qwen", "openai"], caller=caller)
+        result = router.chat("hi", use_cache=False)
+        self.assertTrue(result.success)
+        self.assertEqual(result.provider, "openai")
+
+    def test_all_providers_fail_returns_unsuccessful(self):
+        def caller(provider, prompt):
+            raise RuntimeError("down")
+
+        router = LLMRouter(providers=["qwen", "openai"], caller=caller)
+        result = router.chat("hi", use_cache=False)
+        self.assertFalse(result.success)
+        self.assertIsNone(result.data)
+
+    def test_cache_hit_skips_caller(self):
+        calls = []
+
+        def caller(provider, prompt):
+            calls.append(provider)
+            return '{"n": 1}'
+
+        router = LLMRouter(providers=["qwen"], caller=caller)
+        r1 = router.chat("same prompt", use_cache=True)
+        r2 = router.chat("same prompt", use_cache=True)
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(r2.from_cache)
+        self.assertEqual(r1.data, r2.data)
+
+    def test_schema_injected_into_prompt(self):
+        seen = {}
+
+        def caller(provider, prompt):
+            seen["prompt"] = prompt
+            return '{"score": 80}'
+
+        router = LLMRouter(providers=["qwen"], caller=caller)
+        router.chat("分析", schema={"score": "int"}, use_cache=False)
+        self.assertIn("score", seen["prompt"])
+        self.assertIn("JSON", seen["prompt"])
+
+    def test_non_json_response_marked_unsuccessful(self):
+        def caller(provider, prompt):
+            return "这不是 JSON"
+
+        router = LLMRouter(providers=["qwen"], caller=caller)
+        result = router.chat("hi", use_cache=False)
+        self.assertFalse(result.success)
+
+
+if __name__ == "__main__":
+    unittest.main()
