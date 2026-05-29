@@ -36,8 +36,8 @@ class AdviceEngine:
             advice = {
                 "action": sanitize_text(str(d.get("action", "")))[0],
                 "reason": sanitize_text(str(d.get("reason", "")))[0],
-                "buy_zone": str(d.get("buy_zone", "")),
-                "stop_loss": str(d.get("stop_loss", "")),
+                "buy_zone": sanitize_text(str(d.get("buy_zone", "")))[0],
+                "stop_loss": sanitize_text(str(d.get("stop_loss", "")))[0],
                 "position_advice": sanitize_text(str(d.get("position_advice", "")))[0],
             }
             source = "llm"

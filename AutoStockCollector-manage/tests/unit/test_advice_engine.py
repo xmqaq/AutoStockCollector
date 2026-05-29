@@ -64,6 +64,22 @@ class TestAdviceEngine(unittest.TestCase):
         result = engine.advise("SH600519")
         self.assertIn("参考", result["disclaimer"])
 
+    def test_buy_zone_and_stop_loss_sanitized(self):
+        from unittest.mock import MagicMock
+        from modules.ai.foundation.llm_router import LLMResult
+        analysis = MagicMock()
+        analysis.analyze.return_value = self._analysis_result()
+        router = MagicMock()
+        router.chat.return_value = LLMResult(
+            success=True, provider="deepseek",
+            data={"action": "关注", "reason": "稳健", "buy_zone": "必涨区间18-19",
+                  "stop_loss": "保证收益16.5", "position_advice": "轻仓"},
+        )
+        engine = AdviceEngine(analysis_engine=analysis, router=router)
+        result = engine.advise("SH600519")
+        self.assertNotIn("必涨", result["advice"]["buy_zone"])
+        self.assertNotIn("保证收益", result["advice"]["stop_loss"])
+
 
 if __name__ == "__main__":
     unittest.main()
