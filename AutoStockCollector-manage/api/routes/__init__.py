@@ -433,13 +433,69 @@ def get_financial(code):
 
 @api_bp.route("/news", methods=["GET"])
 def get_news():
-    from core.storage.mongo_storage import NewsStorage
+    from modules.news import NewsManager
 
-    storage = NewsStorage()
-    code = request.args.get("code")
+    manager = NewsManager()
+    news_type = request.args.get("type")
+    channel_name = request.args.get("channel")
+    is_breaking = request.args.get("breaking")
     limit = int(request.args.get("limit", 100))
 
-    records = storage.get_latest_news(code=code, limit=limit)
+    breaking_filter = None
+    if is_breaking is not None:
+        breaking_filter = is_breaking.lower() in ("true", "1", "yes")
+
+    records = manager.get_news(
+        news_type=news_type,
+        channel_name=channel_name,
+        is_breaking=breaking_filter,
+        limit=limit
+    )
+    manager.close()
+
+    return jsonify({
+        "success": True,
+        "count": len(records),
+        "data": records
+    })
+
+
+@api_bp.route("/news/stats", methods=["GET"])
+def get_news_stats():
+    from modules.news import NewsManager
+
+    manager = NewsManager()
+    stats = manager.get_stats()
+    manager.close()
+
+    return jsonify({
+        "success": True,
+        "data": stats
+    })
+
+
+@api_bp.route("/news/categories", methods=["GET"])
+def get_news_categories():
+    from modules.news import NewsManager
+
+    manager = NewsManager()
+    categories = manager.get_categories()
+    manager.close()
+
+    return jsonify({
+        "success": True,
+        "data": categories
+    })
+
+
+@api_bp.route("/news/breaking", methods=["GET"])
+def get_breaking_news():
+    from modules.news import NewsManager
+
+    manager = NewsManager()
+    limit = int(request.args.get("limit", 20))
+    records = manager.get_breaking(limit=limit)
+    manager.close()
 
     return jsonify({
         "success": True,
@@ -803,34 +859,32 @@ def get_stock_indices(stock_code):
 
 @api_bp.route("/collect/news", methods=["POST"])
 def collect_news():
-    from core.collector.news_collector import NewsCollector
-    from core.storage.mongo_storage import NewsStorage
+    from modules.news import NewsManager
 
     data = request.get_json() or {}
-    codes = data.get("codes")
-    limit = data.get("limit", 50)
+    channels = data.get("channels")
+    max_pages = data.get("max_pages", 100)
+    with_content = data.get("with_content", True)
 
-    collector = NewsCollector()
-    storage = NewsStorage()
-
+    manager = NewsManager()
     start_time = datetime.now()
-    if codes:
-        all_records = []
-        for code in codes[:5]:
-            records = collector.collect_single(code)
-            if records:
-                all_records.extend(records if isinstance(records, list) else [records])
-    else:
-        all_records = collector.collect_recent_news(limit=limit)
 
-    if all_records:
-        storage.save_news_batch(all_records)
+    results = manager.collect(
+        channels=channels,
+        max_pages=max_pages,
+        with_content=with_content
+    )
 
+    total_collected = sum(results.values())
     elapsed = (datetime.now() - start_time).total_seconds()
+    manager.close()
+    
     return jsonify({
         "success": True,
-        "collected_count": len(all_records),
-        "elapsed_seconds": round(elapsed, 2)
+        "collected_count": total_collected,
+        "channel_results": results,
+        "elapsed_seconds": round(elapsed, 2),
+        "collector": "sina_news"
     })
 
 
@@ -1625,6 +1679,42 @@ def test_ai_key(provider):
         return jsonify({"success": False, "valid": False, "message": "未找到 API Key，请先配置"}), 400
     result = ai_key_manager.test_key(provider, api_key, base_url or "")
     return jsonify({"success": True, "valid": result["valid"], "message": result["message"]})
+
+
+@api_bp.route("/pick/smart-advanced", methods=["POST"])
+def smart_pick_advanced():
+    from modules.ai.smart_picker import SmartPicker
+    from modules.strategies.strategy_config_manager import strategy_config_manager
+
+    data = request.get_json() or {}
+    strategy_name = data.get("strategy", "综合评分策略")
+    top_n = data.get("top_n", 20)
+    min_score = data.get("min_score", 60)
+
+    strategy = strategy_config_manager.get_strategy(strategy_name)
+    if strategy:
+        params = strategy.get("params", {})
+        factors = params.get("factors", ["trend", "volume", "value", "fund_flow"])
+    else:
+        factors = ["trend", "volume", "value", "fund_flow"]
+
+    picker = SmartPicker()
+    results = picker.pick(top_n=top_n * 2, factors=factors)
+
+    for r in results:
+        r["score"] = r.pop("total", 60)
+        r["technical_score"] = r.get("scores", {}).get("trend", 60)
+        r["fundamental_score"] = r.get("scores", {}).get("value", 60)
+        r["sentiment_score"] = 65
+        r["fund_flow_score"] = r.get("scores", {}).get("fund_flow", 60)
+        r["recommendation"] = "买入" if r["score"] >= 70 else "观望" if r["score"] >= 50 else "回避"
+        r["risk_level"] = "低" if r["score"] >= 70 else "中" if r["score"] >= 50 else "高"
+        r["stop_loss"] = 0
+        r["target_price"] = 0
+
+    results = [r for r in results if r.get("score", 0) >= min_score][:top_n]
+
+    return jsonify({"success": True, "count": len(results), "results": results, "strategy": strategy_name})
 
 
 @api_bp.route("/pick/smart", methods=["POST"])

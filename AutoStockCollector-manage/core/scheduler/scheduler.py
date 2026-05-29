@@ -213,7 +213,6 @@ class TaskScheduler:
         from core.collector.kline_collector import KlineCollector
         from core.collector.stock_info_collector import StockInfoCollector
         from core.collector.financial_collector import FinancialCollector
-        from core.collector.news_collector import NewsCollector
         from core.collector.fund_flow_collector import (
             FundFlowCollector, DragonTigerCollector,
         )
@@ -228,7 +227,7 @@ class TaskScheduler:
             TaskType.BACKFILL_COLLECTION.value: KlineCollector,
             TaskType.STOCK_INFO_COLLECTION.value: StockInfoCollector,
             TaskType.FINANCIAL_COLLECTION.value: FinancialCollector,
-            TaskType.NEWS_COLLECTION.value: NewsCollector,
+            TaskType.NEWS_COLLECTION.value: None,
             TaskType.FUND_FLOW_COLLECTION.value: FundFlowCollector,
             TaskType.DRAGON_TIGER_COLLECTION.value: DragonTigerCollector,
             TaskType.INDEX_COLLECTION.value: IndexCollector,
@@ -676,20 +675,28 @@ class TaskScheduler:
     # ------------------------------------------------------------------ #
 
     def _execute_news_task(self, task: Task):
-        limit = task.params.get("limit", 100)
-        collector = self._get_collector(TaskType.NEWS_COLLECTION.value)
-
-        from core.storage.mongo_storage import NewsStorage
-        storage = NewsStorage()
-
-        task.update_progress(0, 1, 0, 0)
+        from modules.news import NewsManager
+        
+        task.start()
+        
+        channels = task.params.get("channels")
+        max_pages = task.params.get("max_pages", 100)
+        with_content = task.params.get("with_content", True)
+        
+        manager = NewsManager()
+        
         try:
-            records = collector.collect(limit=limit)
-            if records:
-                storage.save_news_batch(records)
-            task.complete(len(records), 0)
+            results = manager.collect(
+                channels=channels,
+                max_pages=max_pages,
+                with_content=with_content
+            )
+            total_collected = sum(results.values())
+            task.complete(total_collected, 0)
         except Exception as e:
             task.fail(str(e))
+        finally:
+            manager.close()
 
     # ------------------------------------------------------------------ #
     # 资金流向                                                              #

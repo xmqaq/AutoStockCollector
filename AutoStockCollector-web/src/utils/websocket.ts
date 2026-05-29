@@ -18,8 +18,8 @@ export interface WSOptions {
 
 class WebSocketClient {
   private ws: WebSocket | null = null
+  public options: WSOptions = {}
   private url: string = ''
-  private options: WSOptions = {}
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null
   private isManualClose = false
@@ -183,13 +183,17 @@ export function useWebSocket() {
   function flushMessageQueue() {
     while (messageQueue.value.length > 0) {
       const msg = messageQueue.value.shift()
-      lastMessage.value = msg
+      if (msg) {
+        lastMessage.value = msg
+      }
     }
   }
 
   function subscribe(type: string, callback: (data: unknown) => void) {
-    const originalHandler = wsClient.value?.options.onMessage
-    wsClient.value!.options.onMessage = (msg) => {
+    if (!wsClient.value) return
+    const client = wsClient.value as WebSocketClient
+    const originalHandler = client.options?.onMessage
+    client.options.onMessage = (msg: WSMessage) => {
       if (msg.type === type) {
         callback(msg.data)
       }

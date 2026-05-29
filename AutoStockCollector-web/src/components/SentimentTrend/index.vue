@@ -138,7 +138,7 @@ const sentimentOption = computed(() => {
       borderColor: '#444',
       textStyle: { color: '#e5eaf3' },
       formatter: (params: unknown[]) => {
-        const p = params[0]
+        const p = params[0] as { axisValue: string; value: number }
         const score = p.value
         const color = score >= 60 ? '#67c23a' : score >= 40 ? '#e6a23c' : '#f56c6c'
         return `<div style="padding:8px">

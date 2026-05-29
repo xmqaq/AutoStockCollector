@@ -3,16 +3,54 @@
     <!-- Filter -->
     <el-card shadow="never" class="section-card">
       <div class="filter-bar">
+        <el-select
+          v-model="typeFilter"
+          placeholder="新闻类型"
+          size="small"
+          style="width:140px"
+          clearable
+        >
+          <el-option
+            v-for="cat in categories"
+            :key="cat.id"
+            :label="cat.name"
+            :value="cat.id"
+          />
+        </el-select>
         <el-input
           v-model="codeFilter"
-          placeholder="股票代码（可选，留空查全部）"
+          placeholder="股票代码（可选）"
           size="small"
-          style="width:260px"
+          style="width:160px"
           clearable
         />
         <el-button type="primary" size="small" @click="loadNews">
           <el-icon><Search /></el-icon> 查询
         </el-button>
+        <el-button size="small" @click="loadStats" :loading="statsLoading">
+          统计
+        </el-button>
+        <el-button type="warning" size="small" @click="triggerCollect" :loading="collectLoading">
+          采集
+        </el-button>
+      </div>
+    </el-card>
+
+    <!-- Stats -->
+    <el-card v-if="stats" shadow="never" class="section-card stats-card">
+      <div class="stats-grid">
+        <div class="stat-item">
+          <span class="stat-label">总数</span>
+          <span class="stat-value">{{ stats.total }}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">突发</span>
+          <span class="stat-value breaking">{{ stats.breaking_count }}</span>
+        </div>
+        <div v-for="(count, type) in stats.by_type" :key="type" class="stat-item">
+          <span class="stat-label">{{ type }}</span>
+          <span class="stat-value">{{ count }}</span>
+        </div>
       </div>
     </el-card>
 
@@ -34,9 +72,16 @@
                 <span class="news-headline">{{ news.title }}</span>
                 <div class="news-meta">
                   <span class="news-time">{{ fmtDateTime(news.publish_date || news.datetime || news.date) }}</span>
+                  <el-tag v-if="(news as any).channel_name" size="small" type="info" class="news-source">
+                    {{ (news as any).channel_name }}
+                  </el-tag>
+                  <el-tag v-else-if="(news as any).news_type" size="small" type="info" class="news-source">
+                    {{ (news as any).news_type }}
+                  </el-tag>
                   <el-tag v-if="news.source" size="small" type="info" class="news-source">
                     {{ news.source }}
                   </el-tag>
+                  <el-tag v-if="(news as any).is_breaking" size="small" type="danger">突发</el-tag>
                 </div>
               </div>
             </template>
@@ -67,17 +112,25 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
 import { newsApi } from '@/api/news'
 import { fmtDateTime } from '@/utils/format'
 import { normalizeCode } from '@/utils/stockCode'
 import type { NewsRecord } from '@/types'
+import type { NewsCategory, NewsStats } from '@/api/news'
 import { Search } from '@element-plus/icons-vue'
 
 const loading = ref(false)
 const newsList = ref<NewsRecord[]>([])
 const codeFilter = ref('')
+const typeFilter = ref('')
+const categories = ref<NewsCategory[]>([])
+const stats = ref<NewsStats | null>(null)
+const statsLoading = ref(false)
+const collectLoading = ref(false)
 const currentPage = ref(1)
 const pageSize = ref(20)
+
 const paginatedNews = computed(() =>
   newsList.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value)
 )
@@ -86,9 +139,12 @@ watch(newsList, () => { currentPage.value = 1 })
 async function loadNews() {
   loading.value = true
   try {
-    const params: { code?: string; limit?: number } = { limit: 50 }
+    const params: Record<string, any> = { limit: 50 }
     if (codeFilter.value) {
       params.code = normalizeCode(codeFilter.value)
+    }
+    if (typeFilter.value) {
+      params.type = typeFilter.value
     }
     const res = await newsApi.getNews(params)
     const data = res.data?.data || res.data || []
@@ -100,8 +156,45 @@ async function loadNews() {
   }
 }
 
-onMounted(() => {
-  loadNews()
+async function loadCategories() {
+  try {
+    const res = await newsApi.getCategories()
+    categories.value = res.data?.data || []
+  } catch {
+    categories.value = []
+  }
+}
+
+async function loadStats() {
+  statsLoading.value = true
+  try {
+    const res = await newsApi.getStats()
+    stats.value = res.data?.data || null
+  } catch {
+    stats.value = null
+  } finally {
+    statsLoading.value = false
+  }
+}
+
+async function triggerCollect() {
+  collectLoading.value = true
+  try {
+    const res = await newsApi.collect({ use_sina: true, limit: 100 })
+    ElMessage.success(`采集完成: ${res.data?.collected_count || 0} 条`)
+    await loadNews()
+    await loadStats()
+  } catch (e: any) {
+    ElMessage.error(`采集失败: ${e.message}`)
+  } finally {
+    collectLoading.value = false
+  }
+}
+
+onMounted(async () => {
+  await loadCategories()
+  await loadNews()
+  await loadStats()
 })
 </script>
 
@@ -222,5 +315,41 @@ onMounted(() => {
 .table-pagination :deep(.el-pagination__total),
 .table-pagination :deep(.el-pagination__sizes .el-select .el-input__wrapper) {
   color: #909399;
+}
+
+.stats-card {
+  background: #1a1a1a;
+}
+
+.stats-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 60px;
+  padding: 8px 12px;
+  background: #252525;
+  border-radius: 6px;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: #7a8089;
+  text-transform: capitalize;
+}
+
+.stat-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: #409eff;
+}
+
+.stat-value.breaking {
+  color: #f56c6c;
 }
 </style>

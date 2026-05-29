@@ -125,7 +125,7 @@
         </el-table-column>
         <el-table-column label="基本面" width="80">
           <template #default="{ row }">
-            {{ ((row.fundamental?.valuation_score + row.fundamental?.growth_score) / 2 || 0).toFixed(0) }}
+            {{ (((row.fundamental?.valuation_score || 0) + (row.fundamental?.growth_score || 0)) / 2 || 0).toFixed(0) }}
           </template>
         </el-table-column>
         <el-table-column label="舆情" width="80">
@@ -353,7 +353,7 @@ function handleError(msg: string) {
 
 async function addToWatchlist(code: string) {
   try {
-    await watchlistApi.add({ code })
+    await watchlistApi.addWatchlist({ code })
     ElMessage.success('已加入自选')
   } catch {
     ElMessage.error('加入自选失败')
@@ -363,9 +363,8 @@ async function addToWatchlist(code: string) {
 async function addAllToWatchlist() {
   for (const r of results.value.slice(0, 10)) {
     try {
-      await watchlistApi.add({ code: r.code })
+      await watchlistApi.addWatchlist({ code: r.code })
     } catch {
-      // ignore
     }
   }
   ElMessage.success('已添加前10只到自选')
@@ -376,7 +375,7 @@ function exportResults() {
     '代码,名称,评分,建议,技术面,基本面,舆情,止损位,目标价',
     ...results.value.map(r => 
       `${r.code},${r.name || ''},${r.score || 0},${r.recommendation || ''},` +
-      `${r.technical?.trend_strength || 0},${((r.fundamental?.valuation_score + r.fundamental?.growth_score) / 2 || 0).toFixed(0)},` +
+      `${r.technical?.trend_strength || 0},${(((r.fundamental?.valuation_score || 0) + (r.fundamental?.growth_score || 0)) / 2 || 0).toFixed(0)},` +
       `${r.sentiment?.score || 0},${r.stop_loss || ''},${r.target_price || ''}`
     )
   ].join('\n')

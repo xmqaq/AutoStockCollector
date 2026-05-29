@@ -449,13 +449,32 @@ class FinancialStorage(MongoStorage):
 class NewsStorage(MongoStorage):
     def __init__(self):
         super().__init__("news")
+        self._ensure_indexes()
+
+    def _ensure_indexes(self):
+        self.create_index([("news_type", 1)])
+        self.create_index([("channel_name", 1)])
+        self.create_index([("is_breaking", 1)])
+        self.create_index([("source", 1)])
 
     def get_latest_news(
         self,
         code: Optional[str] = None,
+        news_type: Optional[str] = None,
+        channel_name: Optional[str] = None,
+        is_breaking: Optional[bool] = None,
         limit: int = 100
     ) -> List[Dict[str, Any]]:
-        filter_doc = {"code": code} if code else {}
+        filter_doc: Dict[str, Any] = {}
+        if code:
+            filter_doc["code"] = code
+        if news_type:
+            filter_doc["news_type"] = news_type
+        if channel_name:
+            filter_doc["channel_name"] = channel_name
+        if is_breaking is not None:
+            filter_doc["is_breaking"] = is_breaking
+
         records = self.find_many(
             filter_doc,
             sort=[("publish_date", -1)],
@@ -464,9 +483,25 @@ class NewsStorage(MongoStorage):
         for record in records:
             record.pop("_id", None)
             record.pop("_updated_at", None)
+            record.pop("_collect_at", None)
         return records
 
+    def get_news_by_category(
+        self,
+        category: str,
+        limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        return self.get_latest_news(news_type=category, limit=limit)
+
+    def get_breaking_news(self, limit: int = 20) -> List[Dict[str, Any]]:
+        return self.get_latest_news(is_breaking=True, limit=limit)
+
     def save_news(self, news: Dict[str, Any]) -> str:
+        if "title" in news and "url" in news:
+            return self.upsert_one(
+                {"title": news["title"], "url": news["url"]},
+                news
+            )
         if "title" in news and "publish_date" in news:
             return self.upsert_one(
                 {"title": news["title"], "publish_date": news["publish_date"]},
@@ -475,11 +510,41 @@ class NewsStorage(MongoStorage):
         return self.insert_one(news)
 
     def save_news_batch(self, records: List[Dict[str, Any]]) -> Tuple[int, int]:
-        # 以 title+publish_date 为唯一键 upsert，避免重复采集时产生重复文档
-        valid = [r for r in records if r.get("title") and r.get("publish_date")]
+        valid = [r for r in records if r.get("title")]
         if not valid:
             return (0, 0)
-        return self.upsert_many(valid, ["title", "publish_date"])
+
+        for record in valid:
+            if "url" in record and "title" in record:
+                record["_uid"] = f"{record['title']}_{record['url'][:50]}"
+
+        return self.upsert_many(valid, ["_uid"])
+
+    def get_news_stats(self) -> Dict[str, Any]:
+        stats = {
+            "total": self.count_documents({}),
+            "by_type": {},
+            "by_channel": {},
+            "breaking_count": self.count_documents({"is_breaking": True})
+        }
+
+        pipeline = [
+            {"$group": {"_id": "$news_type", "count": {"$sum": 1}}},
+            {"$sort": {"count": -1}}
+        ]
+        type_stats = self.aggregate(pipeline)
+        for item in type_stats:
+            stats["by_type"][item["_id"] or "general"] = item["count"]
+
+        pipeline = [
+            {"$group": {"_id": "$channel_name", "count": {"$sum": 1}}},
+            {"$sort": {"count": -1}}
+        ]
+        channel_stats = self.aggregate(pipeline)
+        for item in channel_stats:
+            stats["by_channel"][item["_id"] or "unknown"] = item["count"]
+
+        return stats
 
 
 class FundFlowStorage(MongoStorage):
