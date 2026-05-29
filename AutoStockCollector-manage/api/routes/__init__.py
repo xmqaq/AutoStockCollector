@@ -792,8 +792,8 @@ def collect_news():
 
     data = request.get_json() or {}
     channels = data.get("channels")
-    max_pages = data.get("max_pages", 100)
-    with_content = data.get("with_content", True)
+    max_pages = data.get("max_pages", 5)
+    with_content = data.get("with_content", False)
 
     manager = NewsManager()
     start_time = datetime.now()
@@ -1055,20 +1055,22 @@ def _get_effective_end_date(today: str) -> str:
     return today
 
 
-def _compute_update_latest_tasks(stats: dict, task_types=None, today: str = None):
+def _compute_update_latest_tasks(stats: dict, task_types=None, today: str = None,
+                                  already_collected: set = None):
     """根据各类数据当前覆盖情况，计算"更新到最新"应提交的任务。
 
     stats: _get_collection_stats(db) 的返回，形如
            {type: {"record_count": int, "date_from": str|None, "date_to": str|None}}
+    already_collected: 今日已采集的快照类型集合，直接跳过
     返回: (tasks, skipped)
           tasks  = [{"task_type": str, "params": dict}, ...]
-          skipped = [type, ...]  # 区间类已是最新而跳过
+          skipped = [type, ...]
     """
     from datetime import datetime, timedelta
 
+    already_collected = already_collected or set()
     if today is None:
         today = datetime.now().strftime("%Y-%m-%d")
-    # 区间类数据的实际可用上界（17:00前用昨天，避免请求未发布的当日数据）
     effective_end = _get_effective_end_date(today)
 
     all_types = RANGE_TYPES + SNAPSHOT_TYPES + CATALOG_TYPES
@@ -1092,6 +1094,10 @@ def _compute_update_latest_tasks(stats: dict, task_types=None, today: str = None
                 params["report_type"] = "annual"
             tasks.append({"task_type": t, "params": params})
         elif t in SNAPSHOT_TYPES:
+            # 今日已采集则跳过，避免重复拉取相同快照数据
+            if t in already_collected:
+                skipped.append(t)
+                continue
             params = {"limit": 500} if t == "news" else {}
             tasks.append({"task_type": t, "params": params})
         elif t in CATALOG_TYPES:
@@ -1114,7 +1120,19 @@ def start_update_latest():
 
     db = DatabaseConfig.get_database()
     stats = _get_collection_stats(db)
-    tasks, skipped = _compute_update_latest_tasks(stats, task_types)
+
+    # 快照类型：若今日已采集则跳过，避免重复请求相同数据
+    from datetime import date as _date
+    today_start = datetime.combine(_date.today(), datetime.min.time())
+    _snap_collections = {"news": "news", "fund_flow": "fund_flow", "sector": "block"}
+    already_collected = set()
+    for snap_type, coll_name in _snap_collections.items():
+        if task_types and snap_type not in task_types:
+            continue
+        if db[coll_name].find_one({"_updated_at": {"$gte": today_start}}):
+            already_collected.add(snap_type)
+
+    tasks, skipped = _compute_update_latest_tasks(stats, task_types, already_collected=already_collected)
 
     started, failed = {}, {}
     for task_cfg in tasks:
@@ -1163,7 +1181,7 @@ def _get_collection_stats(db) -> dict:
         "kline":        ("kline",        "date",       ASCENDING),
         "stock_info":   ("stock_info",   None,         None),
         "financial":    ("financial",    "report_date",ASCENDING),
-        "news":         ("news",         "datetime",   ASCENDING),
+        "news":         ("news",         "publish_date", ASCENDING),
         "fund_flow":    ("fund_flow",    None,         None),
         "dragon_tiger": ("dragon_tiger", "上榜日",      ASCENDING),
         "sector":       ("block",        None,         None),
@@ -1199,11 +1217,13 @@ def progress_all():
     target_types = ["kline", "stock_info", "financial", "news",
                     "fund_flow", "dragon_tiger", "sector", "margin"]
 
-    # 每种类型只取 task_id 时间戳最大（最新）的那条，忽略状态优先级
+    # 每种类型只取最新的非取消任务；若全被取消则不计入
     latest_by_type: dict = {}
     for task in all_tasks:
         ttype = task.get("task_type")
         if ttype not in target_types:
+            continue
+        if task.get("status") == "cancelled":
             continue
         tid = task.get("task_id", "")
         existing = latest_by_type.get(ttype)
@@ -1234,10 +1254,18 @@ def progress_all():
         total = task.get("total", 0)
         status = task.get("status", "unknown")
         percent = round(progress / total * 100, 1) if total > 0 else (100.0 if status == "completed" else 0.0)
-        success = task.get("success", 0)
         failed_cnt = task.get("failed", 0)
 
         stats = coll_stats.get(ttype, {})
+        record_count = stats.get("record_count", 0)
+
+        # 快照类型（news/fund_flow/sector）用 DB 实际条数代替任务 success：
+        # 快照每次全量 upsert，任务 success 是当次采集量而非库存量，用 record_count 更准确。
+        if ttype in ("news", "fund_flow", "sector"):
+            success = record_count
+        else:
+            success = task.get("success", 0)
+
         summary[ttype] = {
             "type": ttype,
             "task_type": ttype,
@@ -1249,12 +1277,14 @@ def progress_all():
             "failed": failed_cnt,
             "task_id": task.get("task_id"),
             "elapsed_time": round(task.get("elapsed_time", 0), 1),
-            "record_count": stats.get("record_count", 0),
+            "record_count": record_count,
             "date_from": stats.get("date_from"),
             "date_to": stats.get("date_to"),
         }
 
         if status == "completed":
+            completed_count += 1
+        elif status == "not_started" and record_count > 0:
             completed_count += 1
         if total > 0:
             total_progress += progress

@@ -28,7 +28,6 @@ ROLL_CHANNELS = [
     {"cid": "56592", "name": "财经滚动", "type": NewsChannel.GENERAL},
     {"cid": "56978", "name": "机构评论", "type": NewsChannel.RESEARCH},
     {"cid": "56988", "name": "期市要闻", "type": NewsChannel.FUTURES},
-    {"cid": "57082", "name": "黄金基础", "type": NewsChannel.NMETAL},
     {"cid": "57085", "name": "黄金分析", "type": NewsChannel.NMETAL},
     {"cid": "57088", "name": "白银分析", "type": NewsChannel.NMETAL},
 ]
