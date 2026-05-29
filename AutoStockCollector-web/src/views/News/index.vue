@@ -27,12 +27,6 @@
         <el-button type="primary" size="small" @click="loadNews">
           <el-icon><Search /></el-icon> 查询
         </el-button>
-        <el-button size="small" @click="loadStats" :loading="statsLoading">
-          统计
-        </el-button>
-        <el-button type="warning" size="small" @click="triggerCollect" :loading="collectLoading">
-          采集
-        </el-button>
       </div>
     </el-card>
 
@@ -57,7 +51,7 @@
     <!-- News list -->
     <el-card shadow="never" class="section-card" v-loading="loading">
       <template #header>
-        <span>新闻舆情（共 {{ newsList.length }} 条）</span>
+        <span>新闻舆情（共 {{ stats?.total ?? newsList.length }} 条）</span>
       </template>
       <el-empty v-if="newsList.length === 0 && !loading" description="暂无新闻数据" />
       <div v-else class="news-list">
@@ -112,7 +106,6 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
 import { newsApi } from '@/api/news'
 import { fmtDateTime } from '@/utils/format'
 import { normalizeCode } from '@/utils/stockCode'
@@ -126,8 +119,6 @@ const codeFilter = ref('')
 const typeFilter = ref('')
 const categories = ref<NewsCategory[]>([])
 const stats = ref<NewsStats | null>(null)
-const statsLoading = ref(false)
-const collectLoading = ref(false)
 const currentPage = ref(1)
 const pageSize = ref(20)
 
@@ -139,7 +130,7 @@ watch(newsList, () => { currentPage.value = 1 })
 async function loadNews() {
   loading.value = true
   try {
-    const params: Record<string, any> = { limit: 50 }
+    const params: Record<string, any> = { limit: 500 }
     if (codeFilter.value) {
       params.code = normalizeCode(codeFilter.value)
     }
@@ -166,35 +157,17 @@ async function loadCategories() {
 }
 
 async function loadStats() {
-  statsLoading.value = true
   try {
     const res = await newsApi.getStats()
     stats.value = res.data?.data || null
   } catch {
     stats.value = null
-  } finally {
-    statsLoading.value = false
-  }
-}
-
-async function triggerCollect() {
-  collectLoading.value = true
-  try {
-    const res = await newsApi.collect({ use_sina: true, limit: 100 })
-    ElMessage.success(`采集完成: ${res.data?.collected_count || 0} 条`)
-    await loadNews()
-    await loadStats()
-  } catch (e: any) {
-    ElMessage.error(`采集失败: ${e.message}`)
-  } finally {
-    collectLoading.value = false
   }
 }
 
 onMounted(async () => {
   await loadCategories()
-  await loadNews()
-  await loadStats()
+  await Promise.all([loadNews(), loadStats()])
 })
 </script>
 
