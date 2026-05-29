@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 import time
 import threading
 from utils.logger import get_logger
+from modules.ai.engines.analysis import AnalysisEngine
 
 logger = get_logger(__name__)
 
@@ -669,6 +670,20 @@ def analyze_stock():
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@api_bp.route("/ai/stock/<code>/analysis", methods=["GET"])
+def ai_stock_analysis(code):
+    """个股深度分析（底座层引擎）。"""
+    normalized = _normalize_code(code)
+    if not normalized:
+        return jsonify({"success": False, "error": "invalid code"}), 400
+    try:
+        result = AnalysisEngine().analyze(normalized)
+        return jsonify({"success": True, "data": result})
+    except Exception as e:
+        logger.error(f"AI stock analysis failed for {code}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @api_bp.route("/scheduler/stats", methods=["GET"])
