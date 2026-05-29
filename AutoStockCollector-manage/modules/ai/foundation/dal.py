@@ -22,6 +22,18 @@ class StockDataBundle:
     margin: List[Dict[str, Any]] = field(default_factory=list)
 
 
+@dataclass
+class FactorInputs:
+    """选股打分所需的轻量数据（不含 news/龙虎/两融/财报）。"""
+    code: str
+    closes: List[float] = field(default_factory=list)
+    volumes: List[float] = field(default_factory=list)
+    pe: Optional[float] = None
+    pb: Optional[float] = None
+    ps: Optional[float] = None
+    main_net_inflow: Optional[float] = None
+
+
 class StockDAL:
     """股票数据访问层。storage 依赖注入，便于测试。"""
 
@@ -84,4 +96,28 @@ class StockDAL:
             news=news,
             dragon_tiger=dragon,
             margin=margin,
+        )
+
+    def list_universe(self) -> List[str]:
+        """全市场可交易代码（kline 集合 distinct code）。"""
+        codes = self.kline_storage.distinct("code") or []
+        return [c for c in codes if c]
+
+    def get_factor_inputs(self, code: str, kline_limit: int = 30) -> FactorInputs:
+        """轻量取数：仅打分必需字段。"""
+        klines = self.kline_storage.find_many(
+            {"code": code}, sort=[("date", -1)], limit=kline_limit
+        ) or []
+        closes = [float(k.get("close", 0)) for k in klines]
+        volumes = [float(k.get("volume", 0)) for k in klines]
+        info = self.info_storage.get_by_code(code) or {}
+        fund = self.fund_flow_storage.get_latest_flow(code) or {}
+        return FactorInputs(
+            code=code,
+            closes=closes,
+            volumes=volumes,
+            pe=info.get("pe"),
+            pb=info.get("pb"),
+            ps=info.get("ps"),
+            main_net_inflow=fund.get("main_net_inflow"),
         )
