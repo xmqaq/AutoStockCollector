@@ -218,6 +218,31 @@ def retry_task(task_id):
     return jsonify({"success": True, "message": "Task retry initiated"})
 
 
+@api_bp.route("/task/<task_id>", methods=["DELETE"])
+def delete_task(task_id):
+    """删除单个历史任务。运行中/等待中的任务需先取消。"""
+    from core.scheduler.scheduler import scheduler
+
+    if not task_id:
+        return jsonify({"error": "task_id is required"}), 400
+
+    task = scheduler.get_task(task_id)
+    if task and task.get("status") in ("running", "pending"):
+        return jsonify({"error": "任务运行中，请先取消再删除"}), 400
+
+    ok = scheduler.delete_task(task_id)
+    return jsonify({"success": ok})
+
+
+@api_bp.route("/tasks/clear", methods=["POST"])
+def clear_finished_tasks():
+    """清空所有终态任务（completed/failed/cancelled），保留运行中/等待中。"""
+    from core.scheduler.scheduler import scheduler
+
+    deleted = scheduler.clear_finished_tasks()
+    return jsonify({"success": True, "deleted": deleted})
+
+
 @api_bp.route("/tasks", methods=["GET"])
 def list_tasks():
     from core.scheduler.scheduler import scheduler

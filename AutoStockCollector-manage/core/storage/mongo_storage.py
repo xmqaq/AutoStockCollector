@@ -550,6 +550,12 @@ class TaskStorage(MongoStorage):
     def get_running_tasks(self) -> List[Dict[str, Any]]:
         return self.find_many({"status": "running"})
 
+    def delete_task(self, task_id: str) -> bool:
+        return self.delete_one({"task_id": task_id})
+
+    def delete_finished(self) -> int:
+        return self.delete_many({"status": {"$in": ["completed", "failed", "cancelled"]}})
+
 
 class WatchlistStorage(MongoStorage):
     def __init__(self):
