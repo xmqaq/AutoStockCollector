@@ -45,6 +45,11 @@
         </span>
       </template>
     </el-table-column>
+    <el-table-column v-if="showFreshness" label="新鲜度" width="100" align="center">
+      <template #default="{ row }">
+        <span :class="freshness(row.date_to).cls">{{ freshness(row.date_to).text }}</span>
+      </template>
+    </el-table-column>
   </el-table>
 </template>
 
@@ -54,9 +59,18 @@ import type { CollectProgress } from '@/types'
 interface Props {
   data: CollectProgress[]
   loading?: boolean
+  showFreshness?: boolean
 }
 
 defineProps<Props>()
+
+function freshness(dateTo?: string): { text: string; cls: string } {
+  if (!dateTo) return { text: '—', cls: 'fresh-none' }
+  const diff = Math.floor((Date.now() - new Date(dateTo).getTime()) / 86400000)
+  if (diff <= 1) return { text: '最新', cls: 'fresh-ok' }
+  if (diff <= 7) return { text: `${diff} 天前`, cls: 'fresh-mid' }
+  return { text: `${diff} 天前`, cls: 'fresh-stale' }
+}
 
 const TASK_TYPE_LABELS: Record<string, string> = {
   kline: 'K线数据',
@@ -129,6 +143,10 @@ function badgeLabel(row: CollectProgress): string {
 .date-range {
   font-size: 11px;
 }
+.fresh-ok { color: #67c23a; }
+.fresh-mid { color: #909399; }
+.fresh-stale { color: #e6a23c; }
+.fresh-none { color: #606266; }
 
 .status-tag {
   display: inline-flex;

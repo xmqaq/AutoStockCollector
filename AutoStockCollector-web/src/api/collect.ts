@@ -23,6 +23,18 @@ export const collectApi = {
     return client.post('/api/v1/collect/history', params)
   },
 
+  updateLatest(params: { task_types?: string[] } = {}) {
+    return client.post('/api/v1/collect/update_latest', params)
+  },
+
+  createTask(task_type: string, params: Record<string, unknown>) {
+    return client.post('/api/v1/tasks', { task_type, params })
+  },
+
+  startTask(id: string) {
+    return client.post(`/api/v1/task/${id}/start`)
+  },
+
   clearDb(params: ClearDbParams = {}) {
     return client.post('/api/v1/db/clear', params)
   },

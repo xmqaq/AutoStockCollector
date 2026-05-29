@@ -60,13 +60,13 @@
         <el-card shadow="never" class="section-card">
           <template #header>
             <div class="card-header">
-              <span>采集状态总览</span>
+              <span>数据覆盖总览</span>
               <el-button size="small" @click="refreshData" :loading="loading">
                 <el-icon><Refresh /></el-icon> 刷新
               </el-button>
             </div>
           </template>
-          <ProgressTable :data="collectStore.progressList" :loading="loading" />
+          <ProgressTable :data="collectStore.progressList" :loading="loading" show-freshness />
         </el-card>
       </el-col>
 

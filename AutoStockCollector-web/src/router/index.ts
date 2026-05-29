@@ -21,7 +21,7 @@ const router = createRouter({
           path: 'data-monitor',
           name: 'DataMonitor',
           component: () => import('@/views/DataMonitor/index.vue'),
-          meta: { title: '采集监控' },
+          meta: { title: '采集中心' },
         },
         {
           path: 'stock-detail',
