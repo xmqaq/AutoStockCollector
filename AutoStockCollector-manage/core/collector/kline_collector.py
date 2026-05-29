@@ -142,9 +142,8 @@ class KlineCollector(BaseCollector):
     ):
         data_sources = [
             ("stock_zh_a_hist_tx", "腾讯财经"),
-            ("stock_zh_a_hist", "新浪财经"),
-            ("stock_zh_a_daily", "东方财富"),
-            ("stock_zh_a_hist_pre_min_em", "东方财富分钟数据"),
+            ("stock_zh_a_hist", "东方财富"),
+            ("stock_zh_a_daily", "新浪财经"),
         ]
 
         last_error = None
@@ -176,15 +175,15 @@ class KlineCollector(BaseCollector):
                         symbol=symbol,
                         adjust=adjust
                     )
-                    if not df.empty:
-                        df = df[(df["日期"] >= start_date) & (df["日期"] <= end_date)]
-                elif source_name == "stock_zh_a_hist_pre_min_em":
-                    df = ak.stock_zh_a_hist_pre_min_em(
-                        symbol=symbol,
-                        start_date=start_date,
-                        end_date=end_date,
-                        adjust=adjust
-                    )
+                    # 该接口返回英文列名 date（YYYY-MM-DD），与入参 start/end（YYYYMMDD）
+                    # 格式不同，需统一为 YYYYMMDD 再比较，否则筛选恒为空甚至抛 KeyError
+                    if df is not None and not df.empty:
+                        date_col = "date" if "date" in df.columns else (
+                            "日期" if "日期" in df.columns else None
+                        )
+                        if date_col is not None:
+                            d = df[date_col].astype(str).str.replace("-", "", regex=False)
+                            df = df[(d >= start_date) & (d <= end_date)]
                 else:
                     continue
 

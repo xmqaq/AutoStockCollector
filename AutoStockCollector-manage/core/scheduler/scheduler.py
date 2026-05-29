@@ -284,8 +284,10 @@ class TaskScheduler:
         return None
 
     def list_tasks(self, status: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
-        # 先从内存中拿运行中的任务
+        # 先从内存中拿任务（同样要受 status 过滤，否则刚跑完仍在内存的任务会无视筛选冒出来）
         in_memory = [t.get_stats() for t in self._tasks.values()]
+        if status:
+            in_memory = [t for t in in_memory if t.get("status") == status]
 
         # 再从 DB 拿历史任务
         query = {"status": status} if status else {}
@@ -315,6 +317,20 @@ class TaskScheduler:
         db_ids = {t["task_id"] for t in db_list}
         merged = in_memory + [t for t in db_list if t["task_id"] not in {x["task_id"] for x in in_memory}]
         return merged[:limit]
+
+    def delete_task(self, task_id: str) -> bool:
+        """删除单个任务（内存 + DB）。调用方应保证任务非运行中。"""
+        with self._lock:
+            self._tasks.pop(task_id, None)
+        return self.task_storage.delete_task(task_id)
+
+    def clear_finished_tasks(self) -> int:
+        """清空所有终态任务（completed/failed/cancelled），保留 running/pending。"""
+        terminal = {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}
+        with self._lock:
+            for tid in [tid for tid, t in self._tasks.items() if t.status in terminal]:
+                self._tasks.pop(tid, None)
+        return self.task_storage.delete_finished()
 
     def start_task(self, task_id: str) -> bool:
         task = self._tasks.get(task_id)

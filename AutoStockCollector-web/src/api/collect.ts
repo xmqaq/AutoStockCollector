@@ -50,4 +50,12 @@ export const collectApi = {
   retryTask(id: string) {
     return client.post(`/api/v1/task/${id}/retry`)
   },
+
+  deleteTask(id: string) {
+    return client.delete(`/api/v1/task/${id}`)
+  },
+
+  clearFinishedTasks() {
+    return client.post('/api/v1/tasks/clear')
+  },
 }

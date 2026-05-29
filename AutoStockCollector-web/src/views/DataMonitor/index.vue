@@ -9,6 +9,9 @@
         <el-button type="success" @click="openUpdateModal">
           <el-icon><Refresh /></el-icon> 更新到最新
         </el-button>
+        <el-button @click="handleClearTasks">
+          <el-icon><Delete /></el-icon> 清空已完成任务
+        </el-button>
         <el-button type="danger" @click="handleClearDb">
           <el-icon><Delete /></el-icon> 清空数据库
         </el-button>
@@ -21,7 +24,7 @@
 
     <!-- Gauge: running tasks overall progress -->
     <el-card shadow="never" class="section-card">
-      <template #header><span>运行中任务进度</span></template>
+      <template #header><span>整体采集进度</span></template>
       <v-chart :option="gaugeOption" style="height:200px" autoresize />
     </el-card>
 
@@ -52,9 +55,14 @@
             <el-tag :type="statusType(row.status)" size="small">{{ row.status }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="进度" width="120">
+        <el-table-column label="进度" min-width="170">
           <template #default="{ row }">
-            <span>{{ row.success || 0 }}/{{ row.total || 0 }}</span>
+            <div class="prog-cell">
+              <span class="prog-main">{{ row.progress || 0 }}/{{ row.total || 0 }}</span>
+              <span class="prog-sub">
+                成功 {{ row.success || 0 }}<template v-if="row.failed"> · <span class="prog-fail">失败 {{ row.failed }}</span></template>
+              </span>
+            </div>
           </template>
         </el-table-column>
         <el-table-column prop="create_time" label="创建时间" width="160">
@@ -67,7 +75,7 @@
             <span v-else>快照</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="180">
+        <el-table-column label="操作" width="200">
           <template #default="{ row }">
             <el-button
               v-if="row.status === 'running' || row.status === 'pending'"
@@ -75,12 +83,10 @@
               type="warning"
               @click="handleCancel(row.task_id)"
             >取消</el-button>
-            <el-button
-              v-else
-              size="small"
-              type="primary"
-              @click="handleRerun(row)"
-            >重跑</el-button>
+            <template v-else>
+              <el-button size="small" type="primary" @click="handleRerun(row)">重跑</el-button>
+              <el-button size="small" type="danger" plain @click="handleDelete(row.task_id)">删除</el-button>
+            </template>
           </template>
         </el-table-column>
       </el-table>
@@ -372,6 +378,34 @@ async function handleCancel(id: string) {
   await loadTasks()
 }
 
+async function handleDelete(id: string) {
+  try {
+    await ElMessageBox.confirm('确定删除这条任务记录吗？', '删除任务', {
+      confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning',
+    })
+    await collectApi.deleteTask(id)
+    ElMessage.success('已删除')
+    await loadTasks()
+  } catch {
+    // 用户取消
+  }
+}
+
+async function handleClearTasks() {
+  try {
+    await ElMessageBox.confirm(
+      '将删除所有已完成/失败/已取消的任务记录（运行中的保留）。确定吗？',
+      '清空已完成任务',
+      { confirmButtonText: '清空', cancelButtonText: '取消', type: 'warning' }
+    )
+    const res = await collectApi.clearFinishedTasks()
+    ElMessage.success(`已清理 ${res.data?.deleted ?? 0} 条`)
+    await loadTasks()
+  } catch {
+    // 用户取消
+  }
+}
+
 let timer: ReturnType<typeof setInterval>
 
 onMounted(() => {
@@ -430,6 +464,15 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
 }
+
+.prog-cell {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+.prog-main { color: #e5eaf3; font-size: 13px; }
+.prog-sub { color: #909399; font-size: 11px; }
+.prog-fail { color: #f56c6c; }
 
 .table-pagination {
   margin-top: 12px;
