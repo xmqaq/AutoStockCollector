@@ -1430,9 +1430,10 @@ def update_ai_key():
     enabled = data.get("enabled", False)
     priority = data.get("priority", 99)
     api_key = data.get("api_key")
+    base_url = data.get("base_url")
     if not provider:
         return jsonify({"error": "provider is required"}), 400
-    ai_key_manager.update_key(provider, name, enabled, priority, api_key)
+    ai_key_manager.update_key(provider, name, enabled, priority, api_key, base_url)
     return jsonify({"success": True, "message": "Key updated"})
 
 
@@ -1441,6 +1442,46 @@ def delete_ai_key(provider):
     from modules.ai.ai_key_manager import ai_key_manager
     ai_key_manager.delete_key(provider)
     return jsonify({"success": True, "message": "Key deleted"})
+
+
+@api_bp.route("/ai-keys/reorder", methods=["PUT"])
+def reorder_ai_keys():
+    from config.database import DatabaseConfig
+    data = request.get_json() or {}
+    priorities = data.get("priorities", [])
+    if not priorities:
+        return jsonify({"error": "priorities is required"}), 400
+    db = DatabaseConfig.get_database()
+    for item in priorities:
+        provider = item.get("provider")
+        priority = item.get("priority")
+        if provider and priority is not None:
+            db["ai_keys"].update_one(
+                {"provider": provider},
+                {"$set": {"priority": priority, "updated_at": datetime.now().isoformat()}}
+            )
+    return jsonify({"success": True, "updated": len(priorities)})
+
+
+@api_bp.route("/ai-keys/<provider>/test", methods=["POST"])
+def test_ai_key(provider):
+    from modules.ai.ai_key_manager import ai_key_manager
+    from config.database import DatabaseConfig
+    data = request.get_json() or {}
+    api_key = data.get("api_key")
+    base_url = data.get("base_url", "")
+
+    db = DatabaseConfig.get_database()
+    doc = db["ai_keys"].find_one({"provider": provider})
+    if not api_key and doc:
+        api_key = doc.get("api_key")
+    if not base_url and doc:
+        base_url = doc.get("base_url", "")
+
+    if not api_key:
+        return jsonify({"success": False, "valid": False, "message": "未找到 API Key，请先配置"}), 400
+    result = ai_key_manager.test_key(provider, api_key, base_url or "")
+    return jsonify({"success": True, "valid": result["valid"], "message": result["message"]})
 
 
 @api_bp.route("/pick/smart", methods=["POST"])

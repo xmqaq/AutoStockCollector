@@ -51,6 +51,13 @@ def init_app():
     except Exception as e:
         logger.warning(f"Stale task cleanup warning: {e}")
 
+    try:
+        from modules.ai.ai_key_manager import ai_key_manager
+        ai_key_manager.restore_keys_from_db()
+        logger.info("AI keys restored from database")
+    except Exception as e:
+        logger.warning(f"AI key restore warning: {e}")
+
     logger.info("AutoStockCollector initialized successfully")
 
 
