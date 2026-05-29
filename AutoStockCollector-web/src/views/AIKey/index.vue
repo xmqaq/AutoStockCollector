@@ -98,7 +98,43 @@
               <span class="ak-url-text">{{ row.base_url }}</span>
             </div>
 
-            <!-- 行4：验证 -->
+            <!-- 行4：模型选择 -->
+            <div class="ak-row ak-row-model">
+              <span class="ak-label">模型</span>
+              <el-select
+                v-model="selectedModels[row.provider]"
+                placeholder="选择模型（可选）"
+                filterable
+                clearable
+                size="small"
+                style="flex:1"
+                :loading="modelLoading[row.provider]"
+                @change="(val: string) => onModelChange(row.provider, val)"
+              >
+                <el-option
+                  v-for="m in modelOptions[row.provider] || []"
+                  :key="m.id || m"
+                  :label="typeof m === 'string' ? m : (m.name || m.id)"
+                  :value="typeof m === 'string' ? m : (m.id || m.name)"
+                >
+                  <div class="model-option">
+                    <span>{{ typeof m === 'string' ? m : (m.name || m.id) }}</span>
+                    <el-tag v-if="m.id === defaultModels[row.provider] || m === defaultModels[row.provider]" size="small" type="info">默认</el-tag>
+                  </div>
+                </el-option>
+              </el-select>
+              <el-button
+                v-if="selectedModels[row.provider]"
+                size="small"
+                type="primary"
+                plain
+                @click="confirmModel(row.provider)"
+              >
+                确认
+              </el-button>
+            </div>
+
+            <!-- 行5：验证 -->
             <div class="ak-row ak-row-test">
               <div class="ak-test-result" :class="testState[row.provider]">
                 <template v-if="testState[row.provider] === 'valid'">
@@ -269,16 +305,34 @@ function providerColor(provider: string): string {
 // ── 行数据类型（含前端临时状态） ──────────────────────────────
 type KeyRow = AIKeyConfig & { _saving?: boolean; _saved?: boolean }
 
-// ── 状态 ─────────────────────────────────────────────────────
-const loading    = ref(false)
-const keys       = ref<KeyRow[]>([])
+// ── 状态 ─────────────────────────────────────────────────
+const loading = ref(false)
+const keys = ref<KeyRow[]>([])
 const showDialog = ref(false)
 const submitting = ref(false)
-const formRef    = ref<FormInstance>()
+const formRef = ref<FormInstance>()
 
 type TestSt = 'idle' | 'testing' | 'valid' | 'invalid'
 const testState = ref<Record<string, TestSt>>({})
-const testMsg   = ref<Record<string, string>>({})
+const testMsg = ref<Record<string, string>>({})
+
+// 模型相关状态
+const modelOptions = ref<Record<string, any[]>>({})
+const modelLoading = ref<Record<string, boolean>>({})
+const selectedModels = ref<Record<string, string>>({})
+const confirmedModels = ref<Record<string, string>>({})
+
+const defaultModels: Record<string, string> = {
+  'openai': 'gpt-4o-mini',
+  'anthropic': 'claude-3-5-sonnet-latest',
+  'qwen': 'qwen-plus',
+  'deepseek': 'deepseek-chat',
+  'minimax': 'MiniMax-Text-01',
+  'moonshot': 'moonshot-v1-8k',
+  'glm': 'glm-4-flash',
+  'doubao': 'doubao-pro-32k',
+  'mistral': 'mistral-small-latest',
+}
 
 // ── 对话框表单 ────────────────────────────────────────────────
 const defaultForm = () => ({
@@ -392,12 +446,83 @@ async function testKey(row: KeyRow) {
     const { valid, message } = res.data ?? {}
     testState.value[row.provider] = valid ? 'valid' : 'invalid'
     testMsg.value[row.provider]   = message || (valid ? '有效' : '无效')
-    valid
-      ? ElMessage.success(`${row.name} — Key 有效`)
-      : ElMessage.error(`${row.name} — ${message || '无效'}`)
+    if (valid) {
+      ElMessage.success(`${row.name} — Key 有效`)
+      // 验证通过后自动加载模型列表
+      await loadModels(row.provider, row.api_key || '', row.base_url || '')
+    } else {
+      ElMessage.error(`${row.name} — ${message || '无效'}`)
+    }
   } catch {
     testState.value[row.provider] = 'invalid'
     testMsg.value[row.provider]   = '请求失败，请检查后端'
+  }
+}
+
+// ── 模型选择 ────────────────────────────────────────────────
+async function loadModels(provider: string, apiKey?: string, baseUrl?: string) {
+  if (modelOptions.value[provider]?.length) return
+
+  modelLoading.value[provider] = true
+  try {
+    // 尝试从API获取模型列表
+    const fallbackModels = getFallbackModels(provider)
+    modelOptions.value[provider] = fallbackModels
+
+    // 预设置默认模型
+    if (!selectedModels.value[provider]) {
+      selectedModels.value[provider] = defaultModels[provider] || fallbackModels[0] || ''
+    }
+  } finally {
+    modelLoading.value[provider] = false
+  }
+}
+
+function getFallbackModels(provider: string): string[] {
+  const modelMap: Record<string, string[]> = {
+    'openai': ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'],
+    'anthropic': ['claude-3-5-sonnet-latest', 'claude-3-5-sonnet-20241022', 'claude-3-opus-latest', 'claude-3-sonnet-latest'],
+    'qwen': ['qwen-plus', 'qwen-turbo', 'qwen-max', 'qwen-max-longcontext'],
+    'deepseek': ['deepseek-chat', 'deepseek-coder'],
+    'minimax': ['MiniMax-Text-01', 'abab6-chat'],
+    'moonshot': ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
+    'glm': ['glm-4-flash', 'glm-4-plus', 'glm-4', 'glm-3-turbo'],
+    'doubao': ['doubao-pro-32k', 'doubao-pro-128k', 'doubao-lite-32k'],
+    'mistral': ['mistral-small-latest', 'mistral-medium-latest', 'mistral-large-latest'],
+  }
+  return modelMap[provider.toLowerCase()] || []
+}
+
+function onModelChange(provider: string, model: string) {
+  console.log(`Model selected for ${provider}:`, model)
+}
+
+async function confirmModel(provider: string) {
+  const model = selectedModels.value[provider]
+  if (!model) {
+    ElMessage.warning('请先选择模型')
+    return
+  }
+  confirmedModels.value[provider] = model
+  ElMessage.success(`已确认模型: ${model}`)
+  // 可以在这里保存模型选择到配置或进行其他操作
+}
+
+async function loadKeys() {
+  loading.value = true
+  try {
+    const res = await aiKeyApi.list()
+    keys.value = (res.data?.data || []).map((k: AIKeyConfig) => ({ ...k, api_key: '' }))
+    // 加载每个key的模型列表
+    for (const key of keys.value) {
+      if (key.has_key || key.api_key) {
+        await loadModels(key.provider, key.api_key, key.base_url)
+      }
+    }
+  } catch {
+    keys.value = []
+  } finally {
+    loading.value = false
   }
 }
 
@@ -562,7 +687,30 @@ onMounted(loadKeys)
 }
 
 /* 行4：验证 */
-.ak-row-test { justify-content: space-between; }
+/* ── 模型选择行 ──────────────────────── */
+.ak-row-model {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(255,255,255,0.02);
+  border-top: 1px solid rgba(255,255,255,0.03);
+}
+.ak-row-model .ak-label {
+  font-size: 11px;
+  color: #606080;
+  min-width: 40px;
+}
+.model-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 8px;
+}
+
+/* ── 测试行 ──────────────────────── */
+.ak-row-test { justify-content: space-between; padding: 6px 12px; }
 .ak-test-result {
   font-size: 11.5px; color: #2a2a40; display: flex; align-items: center; gap: 5px; min-height: 20px;
 }

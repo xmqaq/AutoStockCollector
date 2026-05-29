@@ -60,12 +60,6 @@ const router = createRouter({
           meta: { title: 'AI Key管理' },
         },
         {
-          path: 'strategy-back',
-          name: 'StrategyBack',
-          component: () => import('@/views/StrategyBack/index.vue'),
-          meta: { title: '策略回测' },
-        },
-        {
           path: 'dragon-tiger',
           name: 'DragonTiger',
           component: () => import('@/views/DragonTiger/index.vue'),
@@ -94,12 +88,6 @@ const router = createRouter({
           name: 'Watchlist',
           component: () => import('@/views/Watchlist/index.vue'),
           meta: { title: '自选股' },
-        },
-        {
-          path: 'strategy-config',
-          name: 'StrategyConfig',
-          component: () => import('@/views/StrategyConfig/index.vue'),
-          meta: { title: '策略管理' },
         },
         {
           path: 'position',

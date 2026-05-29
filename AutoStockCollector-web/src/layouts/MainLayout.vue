@@ -86,8 +86,6 @@ const menuItems = [
   { path: '/position', label: '仓位管理', icon: Wallet },
   { path: '/monitor', label: 'AI盯盘', icon: Bell },
   { path: '/ai-keys', label: 'AI Key管理', icon: Key },
-  { path: '/strategy-back', label: '策略回测', icon: Histogram },
-  { path: '/strategy-config', label: '策略管理', icon: Setting },
   { path: '/dragon-tiger', label: '龙虎榜', icon: Lightning },
   { path: '/margin-trading', label: '融资融券', icon: Connection },
   { path: '/sector-flow', label: '板块流向', icon: Promotion },

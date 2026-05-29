@@ -120,7 +120,6 @@ def register_routes(app):
     from api.routes.ai_advanced import ai_advanced_bp
     from api.routes.monitor import monitor_bp
     from api.routes.sentiment import sentiment_bp
-    from api.routes.backtest_enhanced import backtest_enhanced_bp
     from api.routes.position import position_bp
     from api.routes.market import market_bp
     
@@ -128,7 +127,6 @@ def register_routes(app):
     app.register_blueprint(ai_advanced_bp)
     app.register_blueprint(monitor_bp)
     app.register_blueprint(sentiment_bp)
-    app.register_blueprint(backtest_enhanced_bp)
     app.register_blueprint(position_bp)
     app.register_blueprint(market_bp)
 
@@ -646,75 +644,6 @@ def remove_from_watchlist(code):
         "success": success,
         "message": "Removed from watchlist" if success else "Failed to remove"
     })
-
-
-@api_bp.route("/strategy/list", methods=["GET"])
-def list_strategies():
-    from modules.strategies.strategy_manager import StrategyManager
-
-    manager = StrategyManager()
-    strategies = manager.list_strategies()
-
-    return jsonify({
-        "success": True,
-        "strategies": strategies
-    })
-
-
-@api_bp.route("/strategy/<strategy_name>/run", methods=["POST"])
-def run_strategy(strategy_name):
-    from modules.strategies.strategy_manager import StrategyManager
-
-    data = request.get_json() or {}
-    codes = data.get("codes", [])
-
-    manager = StrategyManager()
-    try:
-        results = manager.run_strategy(strategy_name, codes)
-        return jsonify({
-            "success": True,
-            "results": results
-        })
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
-
-
-@api_bp.route("/backtest", methods=["POST"])
-def run_backtest():
-    from modules.backtest.backtest_engine import BacktestEngine
-
-    data = request.get_json()
-    if not data:
-        return jsonify({"error": "No data provided"}), 400
-
-    engine = BacktestEngine()
-    try:
-        report = engine.run(
-            strategy=data.get("strategy"),
-            codes=data.get("codes", []),
-            start_date=data.get("start_date"),
-            end_date=data.get("end_date"),
-            initial_cash=data.get("initial_cash", 1000000),
-            stop_loss=data.get("stop_loss", 0.05),
-            take_profit=data.get("take_profit", 0.10)
-        )
-        
-        report["annualized_return"] = report.get("annual_return", report.get("annualized_return", 0))
-        report["final_value"] = report.get("final_value", report.get("initial_cash", 1000000))
-        report["winning_trades"] = report.get("winning_trades", 0)
-        report["losing_trades"] = report.get("losing_trades", 0)
-        report["avg_holding_days"] = report.get("avg_holding_days", 0)
-        report["total_return"] = report.get("total_return", 0)
-        report["max_drawdown"] = report.get("max_drawdown", 0)
-        report["win_rate"] = report.get("win_rate", 0)
-        report["sharpe_ratio"] = report.get("sharpe_ratio", 0)
-        
-        return jsonify({
-            "success": True,
-            "report": report
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 
 @api_bp.route("/ai/analyze", methods=["POST"])
@@ -1684,19 +1613,11 @@ def test_ai_key(provider):
 @api_bp.route("/pick/smart-advanced", methods=["POST"])
 def smart_pick_advanced():
     from modules.ai.smart_picker import SmartPicker
-    from modules.strategies.strategy_config_manager import strategy_config_manager
 
     data = request.get_json() or {}
-    strategy_name = data.get("strategy", "综合评分策略")
     top_n = data.get("top_n", 20)
     min_score = data.get("min_score", 60)
-
-    strategy = strategy_config_manager.get_strategy(strategy_name)
-    if strategy:
-        params = strategy.get("params", {})
-        factors = params.get("factors", ["trend", "volume", "value", "fund_flow"])
-    else:
-        factors = ["trend", "volume", "value", "fund_flow"]
+    factors = data.get("factors", ["trend", "volume", "value", "fund_flow"])
 
     picker = SmartPicker()
     results = picker.pick(top_n=top_n * 2, factors=factors)
@@ -1714,7 +1635,7 @@ def smart_pick_advanced():
 
     results = [r for r in results if r.get("score", 0) >= min_score][:top_n]
 
-    return jsonify({"success": True, "count": len(results), "results": results, "strategy": strategy_name})
+    return jsonify({"success": True, "count": len(results), "results": results})
 
 
 @api_bp.route("/pick/smart", methods=["POST"])
@@ -1725,120 +1646,6 @@ def smart_pick():
     factors = data.get("factors", ["trend", "volume", "value", "fund_flow"])
     results = smart_picker.pick(top_n=top_n, factors=factors)
     return jsonify({"success": True, "count": len(results), "data": results})
-
-
-@api_bp.route("/strategy-configs", methods=["GET"])
-def get_strategy_configs():
-    from modules.strategies.strategy_config_manager import strategy_config_manager
-
-    enabled_only = request.args.get("enabled_only", "false").lower() == "true"
-    strategies = strategy_config_manager.list_strategies(enabled_only=enabled_only)
-
-    return jsonify({
-        "success": True,
-        "count": len(strategies),
-        "data": strategies
-    })
-
-
-@api_bp.route("/strategy-configs/<name>", methods=["GET"])
-def get_strategy_config(name):
-    from modules.strategies.strategy_config_manager import strategy_config_manager
-
-    strategy = strategy_config_manager.get_strategy(name)
-
-    if not strategy:
-        return jsonify({"error": "Strategy not found"}), 404
-
-    return jsonify({
-        "success": True,
-        "data": strategy
-    })
-
-
-@api_bp.route("/strategy-configs", methods=["POST"])
-def create_or_update_strategy_config():
-    from modules.strategies.strategy_config_manager import strategy_config_manager
-
-    data = request.get_json()
-    if not data:
-        return jsonify({"error": "No data provided"}), 400
-
-    name = data.get("name")
-    strategy_type = data.get("strategy_type")
-    description = data.get("description", "")
-    params = data.get("params", {})
-    enabled = data.get("enabled", True)
-
-    if not name or not strategy_type:
-        return jsonify({"error": "name and strategy_type are required"}), 400
-
-    success = strategy_config_manager.create_or_update_strategy(
-        name=name,
-        strategy_type=strategy_type,
-        description=description,
-        params=params,
-        enabled=enabled
-    )
-
-    return jsonify({
-        "success": success,
-        "message": "Strategy saved successfully"
-    })
-
-
-@api_bp.route("/strategy-configs/<name>", methods=["PUT"])
-def update_strategy_config(name):
-    from modules.strategies.strategy_config_manager import strategy_config_manager
-
-    data = request.get_json()
-    if not data:
-        return jsonify({"error": "No data provided"}), 400
-
-    params = data.get("params", {})
-    success = strategy_config_manager.update_strategy_params(name, params)
-
-    if not success:
-        return jsonify({"error": "Strategy not found"}), 404
-
-    return jsonify({
-        "success": True,
-        "message": "Strategy params updated"
-    })
-
-
-@api_bp.route("/strategy-configs/<name>/toggle", methods=["POST"])
-def toggle_strategy_config(name):
-    from modules.strategies.strategy_config_manager import strategy_config_manager
-
-    data = request.get_json() or {}
-    enabled = data.get("enabled", True)
-
-    success = strategy_config_manager.toggle_strategy(name, enabled)
-
-    if not success:
-        return jsonify({"error": "Strategy not found"}), 404
-
-    status_text = "enabled" if enabled else "disabled"
-    return jsonify({
-        "success": True,
-        "message": f"Strategy {status_text}"
-    })
-
-
-@api_bp.route("/strategy-configs/<name>", methods=["DELETE"])
-def delete_strategy_config(name):
-    from modules.strategies.strategy_config_manager import strategy_config_manager
-
-    success = strategy_config_manager.delete_strategy(name)
-
-    if not success:
-        return jsonify({"error": "Strategy not found"}), 404
-
-    return jsonify({
-        "success": True,
-        "message": "Strategy deleted"
-    })
 
 
 @api_bp.route("/sector", methods=["GET"])
