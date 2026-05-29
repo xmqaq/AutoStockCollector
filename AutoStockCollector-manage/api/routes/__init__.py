@@ -1433,52 +1433,103 @@ MARKET_INDEX_CODES = [
 
 @api_bp.route("/market/indices", methods=["GET"])
 def get_market_indices():
-    import akshare as ak
+    import re
+    import requests
     from datetime import datetime
 
-    def _extract_indices(df, full_code_key):
-        """Parse index rows from a DataFrame; full_code_key=True means 代码 has sh/sz prefix."""
-        indices = []
+    NO_PROXY = {"http": "", "https": ""}
+    SINA_HEADERS = {"Referer": "https://finance.sina.com.cn", "User-Agent": "Mozilla/5.0"}
+
+    def _fetch_sina():
+        codes = ",".join(
+            ("s_" + idx["code"]) for idx in MARKET_INDEX_CODES
+        )
+        r = requests.get(
+            f"http://hq.sinajs.cn/list={codes}",
+            headers=SINA_HEADERS,
+            proxies=NO_PROXY,
+            timeout=8,
+        )
+        r.raise_for_status()
+        result = []
         for idx in MARKET_INDEX_CODES:
-            lookup = idx["code"] if full_code_key else idx["code"][2:]
-            row = df[df["代码"] == lookup]
-            if not row.empty:
-                r = row.iloc[0]
-                indices.append({
-                    "code": idx["code"].upper(),
-                    "name": idx["name"],
-                    "price": float(r["最新价"]),
-                    "change": float(r["涨跌幅"]),
-                    "change_amount": float(r["涨跌额"]),
-                    "volume": float(r["成交量"]),
-                    "amount": float(r["成交额"]),
-                    "amplitude": float(r["振幅"]) if "振幅" in df.columns else 0,
-                    "high": float(r["最高"]) if "最高" in df.columns else None,
-                    "low": float(r["最低"]) if "最低" in df.columns else None,
-                    "open": float(r["今开"]) if "今开" in df.columns else None,
-                    "prev_close": float(r["昨收"]) if "昨收" in df.columns else None,
-                })
-        return indices
+            m = re.search(rf'hq_str_s_{idx["code"]}="([^"]+)"', r.text)
+            if not m:
+                continue
+            parts = m.group(1).split(",")
+            if len(parts) < 6:
+                continue
+            result.append({
+                "code": idx["code"].upper(),
+                "name": idx["name"],
+                "price": float(parts[1]),
+                "change": float(parts[3]),
+                "change_amount": float(parts[2]),
+                "volume": float(parts[4]),
+                "amount": float(parts[5]) * 10000,  # 万元 → 元
+                "amplitude": 0,
+                "high": None,
+                "low": None,
+                "open": None,
+                "prev_close": None,
+            })
+        return result
 
-    try:
-        # Sina Finance — avoids proxy-blocked EastMoney push2 host
-        df = ak.stock_zh_index_spot_sina()
-        indices = _extract_indices(df, full_code_key=True)
-    except Exception as e_sina:
-        logger.warning(f"Sina index API failed ({e_sina}), falling back to EastMoney")
+    def _fetch_tencent():
+        codes = ",".join(idx["code"] for idx in MARKET_INDEX_CODES)
+        r = requests.get(
+            f"https://qt.gtimg.cn/q={codes}",
+            proxies=NO_PROXY,
+            timeout=8,
+        )
+        r.raise_for_status()
+        result = []
+        for idx in MARKET_INDEX_CODES:
+            m = re.search(rf'v_{idx["code"]}="([^"]+)"', r.text)
+            if not m:
+                continue
+            p = m.group(1).split("~")
+            if len(p) < 36:
+                continue
+            def _f(v):
+                try:
+                    return float(v) if v else None
+                except (ValueError, TypeError):
+                    return None
+            result.append({
+                "code": idx["code"].upper(),
+                "name": idx["name"],
+                "price": _f(p[3]) or 0,
+                "change": _f(p[33]) or 0,
+                "change_amount": _f(p[32]) or 0,
+                "volume": _f(p[6]) or 0,
+                "amount": 0,
+                "amplitude": 0,
+                "high": _f(p[34]),
+                "low": _f(p[35]),
+                "open": _f(p[5]),
+                "prev_close": _f(p[4]),
+            })
+        return result
+
+    errors = []
+    for source, fetch_fn in [("sina_hq", _fetch_sina), ("tencent", _fetch_tencent)]:
         try:
-            df = ak.stock_zh_index_spot_em()
-            indices = _extract_indices(df, full_code_key=False)
-        except Exception as e_em:
-            logger.error(f"Both index sources failed: sina={e_sina}, em={e_em}")
-            return jsonify({"error": str(e_em)}), 500
+            indices = fetch_fn()
+            if indices:
+                return jsonify({
+                    "success": True,
+                    "count": len(indices),
+                    "data": indices,
+                    "timestamp": datetime.now().isoformat(),
+                    "source": source,
+                })
+        except Exception as e:
+            errors.append(f"{source}: {e}")
+            logger.warning(f"Index source {source} failed: {e}")
 
-    return jsonify({
-        "success": True,
-        "count": len(indices),
-        "data": indices,
-        "timestamp": datetime.now().isoformat()
-    })
+    logger.error(f"All index sources failed: {errors}")
+    return jsonify({"error": "; ".join(errors)}), 500
 
 
 @api_bp.route("/market/realtime-quotes", methods=["POST"])

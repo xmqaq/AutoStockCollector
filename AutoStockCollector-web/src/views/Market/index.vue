@@ -21,7 +21,7 @@
             <el-icon><Refresh /></el-icon> 刷新
           </el-button>
           <span class="update-time">更新时间: {{ updateTime }}</span>
-          <span class="auto-tip">每3秒自动刷新</span>
+          <span class="auto-tip">每1分钟自动刷新</span>
         </div>
       </el-tab-pane>
 
@@ -582,7 +582,7 @@ onMounted(() => {
   refreshTimer = setInterval(() => {
     if (activeTab.value === 'indices') loadIndices()
     else if (watchlistCodes.value.length > 0) loadQuotes()
-  }, 3000)
+  }, 60000)
 })
 
 onUnmounted(() => clearInterval(refreshTimer))
