@@ -154,37 +154,7 @@ class AIKeyManager:
                     f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}",
                     timeout=timeout,
                 )
-            elif p == "minimax" and not base_url:
-                resp = req.get(
-                    "https://api.minimax.io/v1/models",
-                    headers={"Authorization": f"Bearer {api_key}"},
-                    timeout=timeout,
-                )
-            elif p == "minimax" and "anthropic" in base_url.lower():
-                resp = req.get(
-                    "https://api.minimax.io/anthropic/v1/models",
-                    headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"},
-                    timeout=timeout,
-                )
-            elif p == "minimax" and ("token" in base_url.lower() or "chat" in base_url.lower()):
-                resp = req.post(
-                    "https://api.minimax.io/v1/text/chatcompletion_v2",
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": "MiniMax-Text-01",
-                        "messages": [{"role": "user", "content": "hi"}],
-                        "max_tokens": 5
-                    },
-                    timeout=timeout,
-                )
-            elif p == "minimax" and "group" in base_url.lower():
-                group_id_match = base_url.lower().split("group=")[-1] if "group=" in base_url.lower() else ""
-                group_id = group_id_match.split("&")[0] if group_id_match else ""
-                if not group_id and api_key.startswith("ey"):
-                    group_id = api_key.split("-")[0].replace("ey", "")
+            elif p == "minimax":
                 resp = req.post(
                     "https://api.minimax.io/v1/text/chatcompletion_v2",
                     headers={
