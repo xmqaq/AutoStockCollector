@@ -1060,6 +1060,18 @@ def start_history_collection():
     })
 
 
+def _get_effective_end_date(today: str) -> str:
+    """A股日线数据通常在收市后17:00前后由各平台推送完成。
+    若当前北京时间未到17:00，则使用昨天作为上界，避免请求尚未发布的当日数据。
+    """
+    from datetime import datetime, timedelta, timezone
+    beijing_now = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=8)
+    if beijing_now.hour < 17:
+        yesterday = (datetime.strptime(today, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+        return yesterday
+    return today
+
+
 def _compute_update_latest_tasks(stats: dict, task_types=None, today: str = None):
     """根据各类数据当前覆盖情况，计算"更新到最新"应提交的任务。
 
@@ -1073,6 +1085,9 @@ def _compute_update_latest_tasks(stats: dict, task_types=None, today: str = None
 
     if today is None:
         today = datetime.now().strftime("%Y-%m-%d")
+    # 区间类数据的实际可用上界（17:00前用昨天，避免请求未发布的当日数据）
+    effective_end = _get_effective_end_date(today)
+
     all_types = RANGE_TYPES + SNAPSHOT_TYPES + CATALOG_TYPES
     selected = task_types if task_types else all_types
 
@@ -1080,14 +1095,14 @@ def _compute_update_latest_tasks(stats: dict, task_types=None, today: str = None
     for t in selected:
         if t in RANGE_TYPES:
             date_to = (stats.get(t) or {}).get("date_to")
-            if date_to and date_to >= today:
+            if date_to and date_to >= effective_end:
                 skipped.append(t)
                 continue
             if date_to:
                 start = (datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
             else:
-                start = (datetime.strptime(today, "%Y-%m-%d") - timedelta(days=365)).strftime("%Y-%m-%d")
-            params = {"start_date": start, "end_date": today}
+                start = (datetime.strptime(effective_end, "%Y-%m-%d") - timedelta(days=365)).strftime("%Y-%m-%d")
+            params = {"start_date": start, "end_date": effective_end}
             if t == "kline":
                 params["adjust"] = "qfq"
             elif t == "financial":

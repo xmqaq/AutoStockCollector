@@ -142,8 +142,8 @@ class KlineCollector(BaseCollector):
     ):
         data_sources = [
             ("stock_zh_a_hist_tx", "腾讯财经"),
-            ("stock_zh_a_hist", "东方财富"),
             ("stock_zh_a_daily", "新浪财经"),
+            ("stock_zh_a_hist", "东方财富"),   # 东财代理不稳定，放最后兜底
         ]
 
         last_error = None

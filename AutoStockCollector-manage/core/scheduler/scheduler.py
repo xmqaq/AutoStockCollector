@@ -456,15 +456,22 @@ class TaskScheduler:
             if task.status == TaskStatus.CANCELLED:
                 return
             saved = False
+            errored = False
             try:
                 result = collect_fn(code)
                 if result:
                     save_fn(result)   # MongoDB 写入在锁外，pymongo 连接池线程安全
                     saved = True
+                # result 为 None/空 时不算 failed，只是"暂无新数据"，不计入 failed
             except Exception as e:
                 logger.error(f"collect {code} failed: {e}")
+                errored = True
             with lock:
-                cnt["success" if saved else "failed"] += 1
+                if saved:
+                    cnt["success"] += 1
+                elif errored:
+                    cnt["failed"] += 1
+                # 无数据（result 为空）既不计 success 也不计 failed
                 cnt["done"] += 1
                 if cnt["done"] % progress_every == 0 or cnt["done"] == total:
                     task.update_progress(cnt["done"], total, cnt["success"], cnt["failed"])
