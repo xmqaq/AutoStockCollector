@@ -1423,37 +1423,49 @@ def get_market_indices():
     import akshare as ak
     from datetime import datetime
 
-    try:
-        df = ak.stock_zh_index_spot_em()
+    def _extract_indices(df, full_code_key):
+        """Parse index rows from a DataFrame; full_code_key=True means 代码 has sh/sz prefix."""
         indices = []
         for idx in MARKET_INDEX_CODES:
-            code = idx["code"][2:]
-            row = df[df["代码"] == code]
+            lookup = idx["code"] if full_code_key else idx["code"][2:]
+            row = df[df["代码"] == lookup]
             if not row.empty:
+                r = row.iloc[0]
                 indices.append({
                     "code": idx["code"].upper(),
                     "name": idx["name"],
-                    "price": float(row.iloc[0]["最新价"]),
-                    "change": float(row.iloc[0]["涨跌幅"]),
-                    "change_amount": float(row.iloc[0]["涨跌额"]),
-                    "volume": float(row.iloc[0]["成交量"]),
-                    "amount": float(row.iloc[0]["成交额"]),
-                    "amplitude": float(row.iloc[0]["振幅"]) if "振幅" in row.columns else 0,
-                    "high": float(row.iloc[0]["最高"]) if "最高" in row.columns else None,
-                    "low": float(row.iloc[0]["最低"]) if "最低" in row.columns else None,
-                    "open": float(row.iloc[0]["今开"]) if "今开" in row.columns else None,
-                    "prev_close": float(row.iloc[0]["昨收"]) if "昨收" in row.columns else None,
+                    "price": float(r["最新价"]),
+                    "change": float(r["涨跌幅"]),
+                    "change_amount": float(r["涨跌额"]),
+                    "volume": float(r["成交量"]),
+                    "amount": float(r["成交额"]),
+                    "amplitude": float(r["振幅"]) if "振幅" in df.columns else 0,
+                    "high": float(r["最高"]) if "最高" in df.columns else None,
+                    "low": float(r["最低"]) if "最低" in df.columns else None,
+                    "open": float(r["今开"]) if "今开" in df.columns else None,
+                    "prev_close": float(r["昨收"]) if "昨收" in df.columns else None,
                 })
+        return indices
 
-        return jsonify({
-            "success": True,
-            "count": len(indices),
-            "data": indices,
-            "timestamp": datetime.now().isoformat()
-        })
-    except Exception as e:
-        logger.error(f"Failed to get market indices: {e}")
-        return jsonify({"error": str(e)}), 500
+    try:
+        # Sina Finance — avoids proxy-blocked EastMoney push2 host
+        df = ak.stock_zh_index_spot_sina()
+        indices = _extract_indices(df, full_code_key=True)
+    except Exception as e_sina:
+        logger.warning(f"Sina index API failed ({e_sina}), falling back to EastMoney")
+        try:
+            df = ak.stock_zh_index_spot_em()
+            indices = _extract_indices(df, full_code_key=False)
+        except Exception as e_em:
+            logger.error(f"Both index sources failed: sina={e_sina}, em={e_em}")
+            return jsonify({"error": str(e_em)}), 500
+
+    return jsonify({
+        "success": True,
+        "count": len(indices),
+        "data": indices,
+        "timestamp": datetime.now().isoformat()
+    })
 
 
 @api_bp.route("/market/realtime-quotes", methods=["POST"])
