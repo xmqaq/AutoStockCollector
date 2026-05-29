@@ -78,5 +78,17 @@ class TestLLMRouter(unittest.TestCase):
         self.assertFalse(result.success)
 
 
+class TestDefaultCallerWiring(unittest.TestCase):
+    def test_default_caller_delegates_to_provider_caller(self):
+        from unittest.mock import patch
+        router = LLMRouter(providers=["deepseek"])
+        with patch("modules.ai.foundation.llm_caller.ProviderCaller") as MockPC:
+            instance = MockPC.return_value
+            instance.return_value = '{"ok": true}'
+            result = router.chat("hi", use_cache=False)
+        self.assertTrue(result.success)
+        self.assertEqual(result.data, {"ok": True})
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -43,9 +43,11 @@ class LLMRouter:
             return []
 
     def _default_caller(self, provider: str, prompt: str) -> str:
-        """接入 model_manager 适配器。能力层期会替换为真实实现。"""
-        from modules.ai.model_manager import ModelManager
-        return ModelManager().call_model(provider, prompt)
+        """读 ai_keys 配置，经 ProviderCaller 调用对应厂商。"""
+        from modules.ai.foundation.llm_caller import ProviderCaller
+        if not hasattr(self, "_provider_caller"):
+            self._provider_caller = ProviderCaller()
+        return self._provider_caller(provider, prompt)
 
     def _build_prompt(self, prompt: str, schema: Optional[Dict[str, Any]]) -> str:
         if not schema:
