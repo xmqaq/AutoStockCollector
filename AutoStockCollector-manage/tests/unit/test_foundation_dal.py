@@ -26,7 +26,7 @@ class TestStockDAL(unittest.TestCase):
         news = MagicMock()
         news.get_latest_news.return_value = [{"title": "利好消息", "publish_date": "2026-05-28"}]
         financial = MagicMock()
-        financial.get_by_code_and_period.return_value = {"revenue_growth": 0.2, "roe": 0.18}
+        financial.find_one.return_value = {"revenue_growth": 0.2, "roe": 0.18}
         dragon = MagicMock()
         dragon.find_many.return_value = []
         margin = MagicMock()
@@ -48,6 +48,7 @@ class TestStockDAL(unittest.TestCase):
         self.assertEqual(bundle.pe, 15.0)
         self.assertEqual(bundle.main_net_inflow, 1e7)
         self.assertEqual(len(bundle.news), 1)
+        self.assertEqual(bundle.financial.get("roe"), 0.18)
 
     def test_missing_info_yields_safe_defaults(self):
         dal = self._make_dal()

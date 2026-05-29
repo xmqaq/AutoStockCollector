@@ -65,10 +65,9 @@ class StockDAL:
         info = self.info_storage.get_by_code(code) or {}
         fund = self.fund_flow_storage.get_latest_flow(code) or {}
         news = self.news_storage.get_latest_news(code=code, limit=news_limit) or []
-        try:
-            financial = self.financial_storage.get_by_code_and_period(code) or {}
-        except TypeError:
-            financial = {}
+        financial = self.financial_storage.find_one(
+            {"code": code}, sort=[("report_date", -1)]
+        ) or {}
         dragon = self.dragon_tiger_storage.find_many({"code": code}, limit=10) or []
         margin = self.margin_storage.find_many({"code": code}, sort=[("date", -1)], limit=10) or []
 
