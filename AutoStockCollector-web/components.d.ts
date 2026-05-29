@@ -67,6 +67,7 @@ declare module 'vue' {
     KlineChart: typeof import('./src/components/KlineChart/index.vue')['default']
     LLMDialoguePanel: typeof import('./src/components/LLMDialoguePanel/index.vue')['default']
     MarketSentiment: typeof import('./src/components/MarketSentiment/index.vue')['default']
+    ModelSelector: typeof import('./src/components/ModelSelector/index.vue')['default']
     MonitorConfig: typeof import('./src/components/MonitorConfig/index.vue')['default']
     MultiAgentPanel: typeof import('./src/components/MultiAgentPanel/index.vue')['default']
     ProfitChart: typeof import('./src/components/ProfitChart/index.vue')['default']

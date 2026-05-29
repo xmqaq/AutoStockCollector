@@ -21,7 +21,7 @@ _BUILTIN: Dict[str, Dict] = {
     "glm":       {"name": "智谱 AI (GLM)",        "base_url": "https://open.bigmodel.cn/api/paas/v4",               "priority": 7},
     "doubao":    {"name": "字节豆包",             "base_url": "https://ark.cn-beijing.volces.com/api/v3",            "priority": 8},
     "mistral":   {"name": "Mistral AI",          "base_url": "https://api.mistral.ai/v1",                           "priority": 9},
-    "minimax":   {"name": "MiniMax",             "base_url": "https://api.minimax.io/v1",                           "priority": 10},
+    "minimax":   {"name": "MiniMax",             "base_url": "https://api.minimax.io/v1/text/chatcompletion_v2", "priority": 10},
 }
 
 
@@ -166,6 +166,38 @@ class AIKeyManager:
                     headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"},
                     timeout=timeout,
                 )
+            elif p == "minimax" and ("token" in base_url.lower() or "chat" in base_url.lower()):
+                resp = req.post(
+                    "https://api.minimax.io/v1/text/chatcompletion_v2",
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "MiniMax-Text-01",
+                        "messages": [{"role": "user", "content": "hi"}],
+                        "max_tokens": 5
+                    },
+                    timeout=timeout,
+                )
+            elif p == "minimax" and "group" in base_url.lower():
+                group_id_match = base_url.lower().split("group=")[-1] if "group=" in base_url.lower() else ""
+                group_id = group_id_match.split("&")[0] if group_id_match else ""
+                if not group_id and api_key.startswith("ey"):
+                    group_id = api_key.split("-")[0].replace("ey", "")
+                resp = req.post(
+                    "https://api.minimax.io/v1/text/chatcompletion_v2",
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "MiniMax-Text-01",
+                        "messages": [{"role": "user", "content": "hi"}],
+                        "max_tokens": 5
+                    },
+                    timeout=timeout,
+                )
             elif effective_url:
                 url = effective_url.rstrip("/") + "/models"
                 resp = req.get(url, headers={"Authorization": f"Bearer {api_key}"}, timeout=timeout)
@@ -175,11 +207,25 @@ class AIKeyManager:
             if resp.status_code == 200:
                 return {"valid": True, "message": "API Key 有效"}
             elif resp.status_code in (401, 403):
-                return {"valid": False, "message": "API Key 无效或已过期"}
+                error_msg = "API Key 无效或已过期"
+                try:
+                    err_data = resp.json()
+                    if err_data.get("base_resp", {}).get("status_msg"):
+                        error_msg = f"API Key 无效: {err_data['base_resp']['status_msg']}"
+                    elif err_data.get("error", {}).get("message"):
+                        error_msg = f"API Key 无效: {err_data['error']['message']}"
+                except:
+                    pass
+                return {"valid": False, "message": error_msg}
             elif resp.status_code == 429:
                 return {"valid": True, "message": "Key 有效（触发速率限制）"}
             else:
-                return {"valid": False, "message": f"HTTP {resp.status_code}: {resp.text[:100].strip()}"}
+                try:
+                    err_data = resp.json()
+                    err_msg = err_data.get("base_resp", {}).get("status_msg") or err_data.get("error", {}).get("message") or resp.text[:100].strip()
+                    return {"valid": False, "message": f"HTTP {resp.status_code}: {err_msg}"}
+                except:
+                    return {"valid": False, "message": f"HTTP {resp.status_code}: {resp.text[:100].strip()}"}
 
         except req.exceptions.Timeout:
             return {"valid": False, "message": "连接超时，请检查网络或 VPN"}

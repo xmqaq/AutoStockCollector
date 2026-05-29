@@ -32,6 +32,15 @@
           <el-option label="基本面分析" value="fundamental" />
           <el-option label="舆情分析" value="sentiment" />
         </el-select>
+        <span class="divider">|</span>
+        <ModelSelector
+          v-model="form.model"
+          :provider="activeProvider"
+          :defaultModel="form.model || undefined"
+          :showHint="true"
+          @change="handleModelChange"
+          style="width:200px"
+        />
         <el-button
           type="primary"
           @click="handleAnalyze"
@@ -392,13 +401,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { Search } from '@element-plus/icons-vue'
-import { aiApi, pickerApi } from '@/api/ai'
+import { aiApi, pickerApi, aiKeyApi } from '@/api/ai'
 import { watchlistApi } from '@/api/watchlist'
 import { strategyApi } from '@/api/strategy'
 import StockSearch from '@/components/StockSearch/index.vue'
 import AnalysisProgressPanel from '@/components/AnalysisProgressPanel/index.vue'
 import LLMDialoguePanel, { type DialogueMessage } from '@/components/LLMDialoguePanel/index.vue'
 import BatchPick from '@/components/BatchPick/index.vue'
+import ModelSelector from '@/components/ModelSelector/index.vue'
 import { ElMessage } from 'element-plus'
 import type { WatchlistItem, StrategyItem } from '@/types'
 
@@ -418,7 +428,10 @@ const form = ref({
   code: '',
   type: 'comprehensive',
   analysisMode: 'single' as 'single' | 'picker' | 'batch',
+  model: '',
 })
+
+const activeProvider = ref('')
 
 const showAnalysisProgress = ref(false)
 const currentSteps = ref<AnalysisStep[]>([])
@@ -622,6 +635,26 @@ async function loadWatchlist() {
   }
 }
 
+async function loadProvider() {
+  try {
+    const res = await aiKeyApi.list()
+    const keys = res.data?.data || res.data || []
+    const enabledKey = keys.find((k: any) => k.enabled)
+    if (enabledKey) {
+      activeProvider.value = enabledKey.provider
+    } else if (keys.length > 0) {
+      activeProvider.value = keys[0].provider
+    }
+  } catch {
+    activeProvider.value = ''
+  }
+}
+
+function handleModelChange(model: string) {
+  form.value.model = model
+  console.log('Selected model:', model)
+}
+
 async function loadStrategies() {
   try {
     const res = await strategyApi.getStrategyList()
@@ -771,6 +804,7 @@ watch(() => form.value.analysisMode, (mode) => {
 onMounted(() => {
   loadWatchlist()
   loadStrategies()
+  loadProvider()
 })
 </script>
 
