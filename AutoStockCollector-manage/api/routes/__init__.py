@@ -9,6 +9,11 @@ import threading
 
 api_bp = Blueprint("api", __name__, url_prefix="/api/v1")
 
+# 8 类数据按时间语义分组（采集规划唯一事实来源）
+RANGE_TYPES = ["kline", "financial", "dragon_tiger", "margin"]   # 按日期区间
+SNAPSHOT_TYPES = ["news", "fund_flow", "sector"]                 # 仅当前快照
+CATALOG_TYPES = ["stock_info"]                                   # 全量名录
+
 
 def _normalize_code(code: str) -> str:
     """统一股票代码格式，支持多种输入格式"""
@@ -939,44 +944,23 @@ def clear_collections():
 
 
 def _build_history_tasks(start_date: str, end_date: str, task_types=None) -> list:
-    """根据日期范围构建8类数据任务配置"""
-    all_tasks = [
-        {
-            "task_type": "kline",
-            "params": {"start_date": start_date, "end_date": end_date, "adjust": "qfq"}
-        },
-        {
-            "task_type": "stock_info",
-            "params": {"mode": "full"}
-        },
-        {
-            "task_type": "financial",
-            "params": {"report_type": "annual", "start_date": start_date, "end_date": end_date}
-        },
-        {
-            "task_type": "news",
-            "params": {"limit": 500, "start_date": start_date, "end_date": end_date}
-        },
-        {
-            "task_type": "fund_flow",
-            "params": {"start_date": start_date, "end_date": end_date}
-        },
-        {
-            "task_type": "dragon_tiger",
-            "params": {"start_date": start_date, "end_date": end_date}
-        },
-        {
-            "task_type": "sector",
-            "params": {}
-        },
-        {
-            "task_type": "margin",
-            "params": {"start_date": start_date, "end_date": end_date}
-        },
+    """构建历史采集任务（仅区间历史类：kline/financial/dragon_tiger/margin）。
+
+    快照类（news/fund_flow/sector）与名录类（stock_info）无历史区间概念，
+    不在历史采集中构建，避免产生"选了日期不生效"的假任务。
+    """
+    range_tasks = {
+        "kline": {"start_date": start_date, "end_date": end_date, "adjust": "qfq"},
+        "financial": {"report_type": "annual", "start_date": start_date, "end_date": end_date},
+        "dragon_tiger": {"start_date": start_date, "end_date": end_date},
+        "margin": {"start_date": start_date, "end_date": end_date},
+    }
+    selected = task_types if task_types else RANGE_TYPES
+    return [
+        {"task_type": t, "params": range_tasks[t]}
+        for t in RANGE_TYPES
+        if t in selected
     ]
-    if task_types:
-        return [t for t in all_tasks if t["task_type"] in task_types]
-    return all_tasks
 
 
 @api_bp.route("/collect/history", methods=["POST"])
@@ -1016,6 +1000,84 @@ def start_history_collection():
         "start_date": start_date,
         "end_date": end_date,
         "started": started,
+        "failed": failed,
+        "total_started": len(started),
+        "timestamp": datetime.now().isoformat()
+    })
+
+
+def _compute_update_latest_tasks(stats: dict, task_types=None, today: str = None):
+    """根据各类数据当前覆盖情况，计算"更新到最新"应提交的任务。
+
+    stats: _get_collection_stats(db) 的返回，形如
+           {type: {"record_count": int, "date_from": str|None, "date_to": str|None}}
+    返回: (tasks, skipped)
+          tasks  = [{"task_type": str, "params": dict}, ...]
+          skipped = [type, ...]  # 区间类已是最新而跳过
+    """
+    from datetime import datetime, timedelta
+
+    if today is None:
+        today = datetime.now().strftime("%Y-%m-%d")
+    all_types = RANGE_TYPES + SNAPSHOT_TYPES + CATALOG_TYPES
+    selected = task_types if task_types else all_types
+
+    tasks, skipped = [], []
+    for t in selected:
+        if t in RANGE_TYPES:
+            date_to = (stats.get(t) or {}).get("date_to")
+            if date_to and date_to >= today:
+                skipped.append(t)
+                continue
+            if date_to:
+                start = (datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+            else:
+                start = (datetime.strptime(today, "%Y-%m-%d") - timedelta(days=365)).strftime("%Y-%m-%d")
+            params = {"start_date": start, "end_date": today}
+            if t == "kline":
+                params["adjust"] = "qfq"
+            elif t == "financial":
+                params["report_type"] = "annual"
+            tasks.append({"task_type": t, "params": params})
+        elif t in SNAPSHOT_TYPES:
+            params = {"limit": 500} if t == "news" else {}
+            tasks.append({"task_type": t, "params": params})
+        elif t in CATALOG_TYPES:
+            tasks.append({"task_type": t, "params": {"mode": "incremental"}})
+    return tasks, skipped
+
+
+@api_bp.route("/collect/update_latest", methods=["POST"])
+def start_update_latest():
+    """一键更新到最新：区间类从 DB 最新日期补到今天，快照类抓最新，名录类增量补新。
+
+    Body 参数:
+      task_types (可选) 指定只更新哪几类，默认全部 8 类
+    """
+    from core.scheduler.scheduler import scheduler
+    from config.database import DatabaseConfig
+
+    data = request.get_json() or {}
+    task_types = data.get("task_types")
+
+    db = DatabaseConfig.get_database()
+    stats = _get_collection_stats(db)
+    tasks, skipped = _compute_update_latest_tasks(stats, task_types)
+
+    started, failed = {}, {}
+    for task_cfg in tasks:
+        ttype = task_cfg["task_type"]
+        try:
+            task_id = scheduler.create_task(ttype, task_cfg["params"])
+            scheduler.start_task(task_id)
+            started[ttype] = task_id
+        except Exception as e:
+            failed[ttype] = str(e)
+
+    return jsonify({
+        "success": True,
+        "started": started,
+        "skipped": skipped,
         "failed": failed,
         "total_started": len(started),
         "timestamp": datetime.now().isoformat()
