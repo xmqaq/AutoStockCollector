@@ -37,7 +37,7 @@ class TestProviderCaller(unittest.TestCase):
         def poster(method, url, headers=None, json=None, timeout=None):
             captured["url"] = url
             captured["headers"] = headers
-            return {"content": [{"text": "claude 回复"}]}
+            return {"content": [{"type": "text", "text": "claude 回复"}]}
 
         caller = ProviderCaller(
             key_loader=self._key_loader({"api_key": "sk-ant", "base_url": "https://api.anthropic.com", "model": "claude-sonnet-4-5"}),
@@ -90,6 +90,26 @@ class TestProviderCaller(unittest.TestCase):
         )
         caller("deepseek", "x")
         self.assertEqual(captured["json"]["model"], "deepseek-chat")
+
+    def test_anthropic_skips_non_text_blocks(self):
+        def poster(method, url, headers=None, json=None, timeout=None):
+            return {"content": [
+                {"type": "thinking", "thinking": "略"},
+                {"type": "text", "text": "真正回复"},
+            ]}
+        caller = ProviderCaller(
+            key_loader=self._key_loader({"api_key": "sk-ant", "base_url": "https://api.anthropic.com", "model": "claude-sonnet-4-5"}),
+            poster=poster,
+        )
+        self.assertEqual(caller("anthropic", "x"), "真正回复")
+
+    def test_no_base_url_raises(self):
+        caller = ProviderCaller(
+            key_loader=self._key_loader({"api_key": "sk-x", "base_url": "", "model": "deepseek-chat"}),
+            poster=lambda *a, **k: {},
+        )
+        with self.assertRaises(ValueError):
+            caller("deepseek", "x")
 
 
 if __name__ == "__main__":

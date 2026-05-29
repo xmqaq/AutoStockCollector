@@ -54,6 +54,8 @@ class ProviderCaller:
         if not api_key:
             raise ValueError(f"provider {provider} 未配置 API Key")
         base_url = (doc.get("base_url") or "").rstrip("/")
+        if not base_url:
+            raise ValueError(f"provider {provider} 未配置 Base URL")
         model = doc.get("model") or _DEFAULT_MODELS.get(provider.lower(), "")
         p = provider.lower()
 
@@ -65,7 +67,8 @@ class ProviderCaller:
                 timeout=_TIMEOUT,
             )
             blocks = data.get("content", [])
-            return blocks[0].get("text", "") if blocks else ""
+            texts = [b.get("text", "") for b in blocks if b.get("type") == "text"]
+            return texts[0] if texts else ""
 
         if p == "gemini":
             data = self.poster(
