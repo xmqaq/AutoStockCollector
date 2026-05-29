@@ -6,7 +6,7 @@
           v-model="currentCode"
           placeholder="选择自选股"
           filterable
-          size="large"
+          size="default"
           style="width:220px"
           @change="handleSelectChange"
         >
@@ -24,8 +24,7 @@
           <el-option label="综合分析" value="comprehensive" />
           <el-option label="技术分析" value="technical" />
           <el-option label="基本面分析" value="fundamental" />
-          <el-option label="情绪分析" value="sentiment" />
-          <el-option label="风险评估" value="risk" />
+          <el-option label="舆情分析" value="sentiment" />
         </el-select>
         <el-button
           type="primary"
@@ -38,47 +37,169 @@
       </div>
     </el-card>
 
-    <el-alert
-      v-if="cacheHit"
-      title="当前结果来自本地缓存"
-      type="info"
-      show-icon
-      closable
-      style="margin-bottom:0"
-    />
+    <template v-if="result">
+      <el-card shadow="never" class="section-card result-header-card">
+        <template #header>
+          <div class="result-header">
+            <div class="header-left">
+              <span class="stock-name">{{ result.name || result.code }}</span>
+              <el-tag :type="scoreType(result.composite_score)" size="large" effect="dark">
+                综合评分: {{ result.composite_score?.toFixed(1) || '--' }}
+              </el-tag>
+            </div>
+            <div class="header-tags">
+              <el-tag :type="recommendTagType(result.recommendation)" size="small">
+                {{ result.recommendation }}
+              </el-tag>
+              <el-tag :type="riskTagType(result.risk_level)" size="small">
+                风险: {{ result.risk_level }}
+              </el-tag>
+            </div>
+          </div>
+        </template>
+        <el-descriptions :column="4" border size="small">
+          <el-descriptions-item label="止损位">
+            <span class="price-text stop-loss">{{ formatPrice(result.stop_loss) }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="目标价">
+            <span class="price-text target-price">{{ formatPrice(result.target_price) }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="支撑位">
+            {{ (result.support_levels || []).slice(0, 2).join(', ') || '--' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="压力位">
+            {{ (result.resistance_levels || []).slice(0, 2).join(', ') || '--' }}
+          </el-descriptions-item>
+        </el-descriptions>
+      </el-card>
 
-    <el-card v-if="result" shadow="never" class="section-card result-card">
-      <template #header>
-        <div class="result-header">
-          <span>分析结果：{{ result.code }} - {{ analysisTypeLabel(result.type as string) }}</span>
-          <el-tag v-if="result.score !== undefined" :type="scoreType(result.score as number)" size="large">
-            评分：{{ result.score }}
-          </el-tag>
+      <el-card shadow="never" class="section-card score-cards">
+        <template #header><span>四维评分</span></template>
+        <el-row :gutter="12">
+          <el-col :span="6">
+            <div class="score-card technical">
+              <div class="score-card-header">技术面</div>
+              <div class="score-card-value">{{ (result.technical?.trend_strength || 0).toFixed(1) }}</div>
+              <div class="score-card-label">{{ result.technical?.trend || '--' }}</div>
+              <el-progress
+                :percentage="result.technical?.trend_strength || 0"
+                :stroke-width="8"
+                :show-text="false"
+                :color="scoreColor(result.technical?.trend_strength)"
+              />
+            </div>
+          </el-col>
+          <el-col :span="6">
+            <div class="score-card fundamental">
+              <div class="score-card-header">基本面</div>
+              <div class="score-card-value">
+                {{ ((result.fundamental?.valuation_score + result.fundamental?.growth_score) / 2 || 0).toFixed(1) }}
+              </div>
+              <div class="score-card-label">
+                PE: {{ result.fundamental?.pe || '--' }} | ROE: {{ result.fundamental?.roe || '--' }}%
+              </div>
+              <el-progress
+                :percentage="(result.fundamental?.valuation_score + result.fundamental?.growth_score) / 2 || 0"
+                :stroke-width="8"
+                :show-text="false"
+                :color="scoreColor((result.fundamental?.valuation_score + result.fundamental?.growth_score) / 2)"
+              />
+            </div>
+          </el-col>
+          <el-col :span="6">
+            <div class="score-card sentiment">
+              <div class="score-card-header">舆情</div>
+              <div class="score-card-value">{{ (result.sentiment?.score || 0).toFixed(1) }}</div>
+              <div class="score-card-label">{{ result.sentiment?.sentiment || '--' }}</div>
+              <el-progress
+                :percentage="result.sentiment?.score || 0"
+                :stroke-width="8"
+                :show-text="false"
+                :color="scoreColor(result.sentiment?.score)"
+              />
+            </div>
+          </el-col>
+          <el-col :span="6">
+            <div class="score-card flow">
+              <div class="score-card-header">资金流</div>
+              <div class="score-card-value">{{ (result.fund_flow?.score || 50).toFixed(1) }}</div>
+              <div class="score-card-label">{{ formatMoney(result.fund_flow?.main_net_inflow || 0) }}</div>
+              <el-progress
+                :percentage="result.fund_flow?.score || 50"
+                :stroke-width="8"
+                :show-text="false"
+                :color="scoreColor(result.fund_flow?.score)"
+              />
+            </div>
+          </el-col>
+        </el-row>
+      </el-card>
+
+      <el-card shadow="never" class="section-card">
+        <template #header><span>分析详情</span></template>
+        <el-row :gutter="12">
+          <el-col :span="12">
+            <div class="detail-section">
+              <div class="detail-title">推荐理由</div>
+              <ul class="reason-list">
+                <li v-for="(reason, idx) in (result.reasons || [])" :key="idx" class="reason-item">
+                  {{ reason }}
+                </li>
+              </ul>
+            </div>
+          </el-col>
+          <el-col :span="12">
+            <div class="detail-section">
+              <div class="detail-title risk-title">风险因素</div>
+              <ul class="risk-list">
+                <li v-for="(risk, idx) in (result.risk_factors || [])" :key="idx" class="risk-item">
+                  {{ risk }}
+                </li>
+              </ul>
+            </div>
+          </el-col>
+        </el-row>
+      </el-card>
+
+      <el-card shadow="never" class="section-card">
+        <template #header>
+          <span>技术指标详情</span>
+        </template>
+        <el-descriptions :column="3" border size="small">
+          <el-descriptions-item label="当前价">{{ result.technical?.current_price || '--' }}</el-descriptions-item>
+          <el-descriptions-item label="MA5">{{ result.technical?.ma5?.toFixed(2) || '--' }}</el-descriptions-item>
+          <el-descriptions-item label="MA20">{{ result.technical?.ma20?.toFixed(2) || '--' }}</el-descriptions-item>
+          <el-descriptions-item label="涨跌幅">{{ (result.technical?.change_pct || 0).toFixed(2) }}%</el-descriptions-item>
+          <el-descriptions-item label="RSI">{{ (result.technical?.rsi || 50).toFixed(1) }}</el-descriptions-item>
+          <el-descriptions-item label="成交量比">{{ (result.technical?.volume_ratio || 1).toFixed(2) }}倍</el-descriptions-item>
+        </el-descriptions>
+      </el-card>
+
+      <el-card shadow="never" class="section-card" v-if="result.sentiment?.key_events?.length > 0">
+        <template #header><span>舆情事件</span></template>
+        <div class="events-list">
+          <div
+            v-for="(event, idx) in result.sentiment.key_events"
+            :key="idx"
+            class="event-item"
+          >
+            <span class="event-text">{{ event }}</span>
+          </div>
         </div>
-      </template>
+      </el-card>
 
-      <el-descriptions :column="1" border size="small">
-        <el-descriptions-item label="分析结论" v-if="result.conclusion">
-          <div class="result-text">{{ result.conclusion }}</div>
-        </el-descriptions-item>
-        <el-descriptions-item label="分析逻辑" v-if="result.logic">
-          <div class="result-text">{{ result.logic }}</div>
-        </el-descriptions-item>
-        <el-descriptions-item label="风险提示" v-if="result.risks">
-          <div class="result-text risk-text">{{ result.risks }}</div>
-        </el-descriptions-item>
-        <el-descriptions-item label="分析时间" v-if="result.timestamp">
-          {{ fmtDateTime(result.timestamp as string) }}
-        </el-descriptions-item>
-      </el-descriptions>
-
-      <div
-        v-if="!result.conclusion && !result.logic && rawResult"
-        class="raw-result"
-      >
-        <pre>{{ JSON.stringify(rawResult, null, 2) }}</pre>
-      </div>
-    </el-card>
+      <el-card shadow="never" class="section-card">
+        <template #header>
+          <span>原始数据</span>
+          <el-button size="small" @click="showRaw = !showRaw">
+            {{ showRaw ? '隐藏' : '显示' }}
+          </el-button>
+        </template>
+        <div v-if="showRaw" class="raw-result">
+          <pre>{{ JSON.stringify(result, null, 2) }}</pre>
+        </div>
+      </el-card>
+    </template>
 
     <!-- Intro panel (shown only before first analysis) -->
     <el-card v-if="!result && !loading" shadow="never" class="section-card intro-card">
@@ -108,9 +229,9 @@
           @click="selectHistory(item)"
         >
           <span class="history-code">{{ (item as { code: string }).code }}</span>
-          <el-tag size="small" type="info">{{ analysisTypeLabel((item as { type: string }).type) }}</el-tag>
-          <span v-if="(item as { score?: number }).score !== undefined" class="history-score">
-            评分: {{ (item as { score: number }).score }}
+          <el-tag size="small" type="info">{{ analysisTypeLabel((item as { analysis_type: string }).analysis_type) }}</el-tag>
+          <span v-if="(item as { composite_score?: number }).composite_score !== undefined" class="history-score">
+            评分: {{ ((item as { composite_score: number }).composite_score).toFixed(1) }}
           </span>
         </div>
       </div>
@@ -122,7 +243,6 @@
 import { ref, onMounted } from 'vue'
 import { aiApi } from '@/api/ai'
 import { watchlistApi } from '@/api/watchlist'
-import { fmtDateTime } from '@/utils/format'
 import { useAIStore } from '@/stores/collectStore'
 import StockSearch from '@/components/StockSearch/index.vue'
 import { ElMessage } from 'element-plus'
@@ -130,9 +250,8 @@ import type { WatchlistItem } from '@/types'
 
 const aiStore = useAIStore()
 const loading = ref(false)
-const cacheHit = ref(false)
 const result = ref<Record<string, unknown> | null>(null)
-const rawResult = ref<unknown>(null)
+const showRaw = ref(false)
 const history = ref<unknown[]>([])
 const watchlist = ref<WatchlistItem[]>([])
 
@@ -148,8 +267,7 @@ const typeLabels: Record<string, string> = {
   comprehensive: '综合分析',
   technical: '技术分析',
   fundamental: '基本面分析',
-  sentiment: '情绪分析',
-  risk: '风险评估',
+  sentiment: '舆情分析',
 }
 
 const analysisTypes = [
@@ -164,10 +282,47 @@ function analysisTypeLabel(type: string): string {
   return typeLabels[type] || type
 }
 
-function scoreType(score: number): 'success' | 'warning' | 'danger' | 'info' {
-  if (score >= 70) return 'success'
-  if (score >= 50) return 'warning'
+function scoreType(score: number | undefined): '' | 'success' | 'warning' | 'danger' | 'info' {
+  const s = score || 0
+  if (s >= 70) return 'success'
+  if (s >= 50) return 'warning'
   return 'danger'
+}
+
+function recommendTagType(rec: string | undefined): '' | 'success' | 'warning' | 'danger' {
+  if (!rec) return 'info'
+  if (rec.includes('推荐') || rec.includes('买入')) return 'success'
+  if (rec.includes('谨慎')) return 'warning'
+  if (rec.includes('回避')) return 'danger'
+  return 'info'
+}
+
+function riskTagType(risk: string | undefined): '' | 'success' | 'warning' | 'danger' {
+  if (risk === '低') return 'success'
+  if (risk === '中') return 'warning'
+  return 'danger'
+}
+
+function scoreColor(score: number | undefined): string {
+  const s = score || 0
+  if (s >= 75) return '#67c23a'
+  if (s >= 60) return '#409eff'
+  if (s >= 50) return '#e6a23c'
+  return '#f56c6c'
+}
+
+function formatPrice(price: number | undefined): string {
+  if (!price || price <= 0) return '--'
+  return price.toFixed(2)
+}
+
+function formatMoney(amount: number): string {
+  if (Math.abs(amount) >= 1e8) {
+    return (amount / 1e8).toFixed(2) + '亿'
+  } else if (Math.abs(amount) >= 1e4) {
+    return (amount / 1e4).toFixed(2) + '万'
+  }
+  return amount.toFixed(0)
 }
 
 function handleSelectChange(code: string) {
@@ -203,23 +358,11 @@ async function handleAnalyze() {
     return
   }
 
-  const cacheKey = `${form.value.code}_${form.value.type}`
-  const cached = aiStore.getCached(cacheKey)
-  if (cached) {
-    result.value = cached as Record<string, unknown>
-    rawResult.value = cached
-    cacheHit.value = true
-    return
-  }
-
   loading.value = true
-  cacheHit.value = false
   try {
     const res = await aiApi.analyze({ code: form.value.code, type: form.value.type })
     const data = res.data?.result || res.data?.data || res.data
     result.value = data || {}
-    rawResult.value = data
-    aiStore.setCache(cacheKey, data)
     history.value.unshift(data)
     if (history.value.length > 10) history.value.pop()
   } catch {
@@ -231,11 +374,6 @@ async function handleAnalyze() {
 
 function selectHistory(item: unknown) {
   result.value = item as Record<string, unknown>
-  rawResult.value = item
-  const data = item as { code?: string; type?: string }
-  if (data.code) form.value.code = data.code
-  if (data.type) form.value.type = data.type
-  cacheHit.value = true
 }
 
 onMounted(() => {
@@ -277,34 +415,119 @@ onMounted(() => {
 
 .result-header {
   display: flex;
-  align-items: center;
   justify-content: space-between;
+  align-items: center;
 }
 
-.result-card :deep(.el-descriptions__label) {
-  color: #909399;
-  width: 100px;
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
-.result-card :deep(.el-descriptions__content) {
+.stock-name {
+  font-size: 18px;
+  font-weight: 600;
   color: #e5eaf3;
 }
 
-.result-text {
-  line-height: 1.6;
-  font-size: 13px;
-  white-space: pre-wrap;
+.header-tags {
+  display: flex;
+  gap: 8px;
 }
 
-.risk-text {
+.price-text {
+  font-weight: 600;
+}
+
+.stop-loss {
   color: #f56c6c;
+}
+
+.target-price {
+  color: #67c23a;
+}
+
+.score-cards {
+  padding: 16px;
+}
+
+.score-card {
+  background: #2c2c2c;
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+}
+
+.score-card-header {
+  font-size: 13px;
+  color: #909399;
+  margin-bottom: 8px;
+}
+
+.score-card-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: #e5eaf3;
+  margin-bottom: 4px;
+}
+
+.score-card-label {
+  font-size: 11px;
+  color: #606266;
+  margin-bottom: 8px;
+}
+
+.detail-section {
+  padding: 8px 0;
+}
+
+.detail-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #67c23a;
+  margin-bottom: 8px;
+}
+
+.risk-title {
+  color: #f56c6c;
+}
+
+.reason-list, .risk-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.reason-item, .risk-item {
+  font-size: 13px;
+  color: #e5eaf3;
+  padding: 4px 0;
+  border-bottom: 1px solid #2c2c2c;
+}
+
+.risk-item {
+  color: #f56c6c;
+}
+
+.events-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.event-item {
+  padding: 8px 12px;
+  background: #2c2c2c;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #e5eaf3;
 }
 
 .raw-result {
   background: #141414;
   border-radius: 4px;
   padding: 12px;
-  margin-top: 8px;
   max-height: 400px;
   overflow-y: auto;
 }

@@ -48,4 +48,10 @@ export const aiApi = {
   list() {
     return client.get('/api/v1/ai-keys')
   },
+  analyzeStock(params: { code: string }) {
+    return client.post('/api/v1/ai/analyze-stock', params)
+  },
+  analyzeNews(params: { news: Record<string, unknown> }) {
+    return client.post('/api/v1/ai/analyze-news', params)
+  },
 }

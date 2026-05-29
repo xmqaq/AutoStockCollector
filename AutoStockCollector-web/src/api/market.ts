@@ -36,6 +36,16 @@ export interface MinuteBar {
   volume: number
 }
 
+export interface SignalItem {
+  code: string
+  name?: string
+  type: 'buy' | 'sell' | 'neutral'
+  strength?: string
+  price?: number
+  time?: string
+  reasons: string[]
+}
+
 export const marketApi = {
   getIndices() {
     return client.get('/api/v1/market/indices')
@@ -47,5 +57,13 @@ export const marketApi = {
 
   getMinuteKline(code: string) {
     return client.get(`/api/v1/market/minute-kline/${encodeURIComponent(code)}`)
+  },
+
+  detectSignals(code: string) {
+    return client.get(`/api/v1/market/signals/${encodeURIComponent(code)}`)
+  },
+
+  getSignalHistory(code?: string) {
+    return client.get('/api/v1/market/signal-history', { params: { code } })
   },
 }

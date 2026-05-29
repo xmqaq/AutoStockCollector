@@ -12,4 +12,8 @@ export const watchlistApi = {
   removeWatchlist(code: string) {
     return client.delete(`/api/v1/watchlist/${code}`)
   },
+
+  list() {
+    return client.get('/api/v1/watchlist/list')
+  },
 }

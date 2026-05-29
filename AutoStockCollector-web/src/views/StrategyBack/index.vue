@@ -1,7 +1,6 @@
 <template>
   <div class="strategy-back">
     <el-row :gutter="16">
-      <!-- Config panel -->
       <el-col :span="8">
         <el-card shadow="never" class="section-card">
           <template #header><span>回测配置</span></template>
@@ -44,6 +43,30 @@
                 style="width:100%"
               />
             </el-form-item>
+            <el-form-item label="风控配置">
+              <el-row :gutter="8">
+                <el-col :span="12">
+                  <el-input-number
+                    v-model="form.stop_loss"
+                    :min="1"
+                    :max="50"
+                    :step="1"
+                    controls-position="right"
+                    placeholder="止损%"
+                  />
+                </el-col>
+                <el-col :span="12">
+                  <el-input-number
+                    v-model="form.take_profit"
+                    :min="1"
+                    :max="100"
+                    :step="1"
+                    controls-position="right"
+                    placeholder="止盈%"
+                  />
+                </el-col>
+              </el-row>
+            </el-form-item>
             <el-form-item>
               <el-button
                 type="primary"
@@ -56,9 +79,21 @@
             </el-form-item>
           </el-form>
         </el-card>
+
+        <el-card v-if="result" shadow="never" class="section-card config-summary">
+          <template #header><span>配置摘要</span></template>
+          <el-descriptions :column="1" border size="small">
+            <el-descriptions-item label="策略">{{ form.strategy }}</el-descriptions-item>
+            <el-descriptions-item label="日期范围">
+              {{ dateRange ? `${dateRange[0]} ~ ${dateRange[1]}` : '--' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="止损/止盈">
+              {{ form.stop_loss }}% / {{ form.take_profit }}%
+            </el-descriptions-item>
+          </el-descriptions>
+        </el-card>
       </el-col>
 
-      <!-- Results panel -->
       <el-col :span="16">
         <el-card v-if="!result && !loading" shadow="never" class="section-card empty-hint-card">
           <div class="empty-hint-inner">
@@ -75,7 +110,6 @@
         </el-card>
 
         <template v-if="result">
-          <!-- Metric cards -->
           <el-row :gutter="12" class="result-metrics">
             <el-col :span="6">
               <el-card class="metric-card" shadow="never">
@@ -85,6 +119,33 @@
                 </div>
               </el-card>
             </el-col>
+            <el-col :span="6">
+              <el-card class="metric-card" shadow="never">
+                <div class="metric-label">年化收益率</div>
+                <div :class="['metric-value', (result.annualized_return as number) >= 0 ? 'text-rise' : 'text-fall']">
+                  {{ fmtChange((result.annualized_return as number) || 0) }}
+                </div>
+              </el-card>
+            </el-col>
+            <el-col :span="6">
+              <el-card class="metric-card" shadow="never">
+                <div class="metric-label">夏普比率</div>
+                <div class="metric-value text-primary">
+                  {{ fmtNumber((result.sharpe_ratio as number) || 0) }}
+                </div>
+              </el-card>
+            </el-col>
+            <el-col :span="6">
+              <el-card class="metric-card" shadow="never">
+                <div class="metric-label">索提诺比率</div>
+                <div class="metric-value text-primary">
+                  {{ fmtNumber((result.sortino_ratio as number) || 0) }}
+                </div>
+              </el-card>
+            </el-col>
+          </el-row>
+
+          <el-row :gutter="12" class="result-metrics" style="margin-top:12px">
             <el-col :span="6">
               <el-card class="metric-card" shadow="never">
                 <div class="metric-label">最大回撤</div>
@@ -103,15 +164,22 @@
             </el-col>
             <el-col :span="6">
               <el-card class="metric-card" shadow="never">
-                <div class="metric-label">夏普比率</div>
-                <div class="metric-value text-primary">
-                  {{ fmtNumber((result.sharpe_ratio as number) || 0) }}
+                <div class="metric-label">盈亏比</div>
+                <div class="metric-value">
+                  {{ ((result.profit_loss_ratio as number) || 0).toFixed(2) }}
+                </div>
+              </el-card>
+            </el-col>
+            <el-col :span="6">
+              <el-card class="metric-card" shadow="never">
+                <div class="metric-label">总交易次数</div>
+                <div class="metric-value">
+                  {{ result.total_trades || 0 }}
                 </div>
               </el-card>
             </el-col>
           </el-row>
 
-          <!-- Equity curve chart -->
           <el-card shadow="never" class="section-card" style="margin-top:12px" v-loading="loading">
             <template #header><span>收益曲线</span></template>
             <div v-if="equityCurve.length > 0">
@@ -120,21 +188,73 @@
             <el-empty v-else description="暂无收益曲线数据" :image-size="60" />
           </el-card>
 
-          <!-- Additional stats -->
           <el-card shadow="never" class="section-card" style="margin-top:12px">
-            <template #header><span>详细统计</span></template>
-            <el-descriptions :column="2" border size="small">
-              <el-descriptions-item label="年化收益率">
-                {{ fmtChange((result.annual_return as number) || 0) }}
+            <template #header><span>交易统计</span></template>
+            <el-descriptions :column="3" border size="small">
+              <el-descriptions-item label="盈利交易">
+                <span class="text-rise">{{ result.winning_trades || 0 }}笔</span>
+              </el-descriptions-item>
+              <el-descriptions-item label="亏损交易">
+                <span class="text-fall">{{ result.losing_trades || 0 }}笔</span>
+              </el-descriptions-item>
+              <el-descriptions-item label="平均持仓天数">
+                {{ ((result.avg_holding_days as number) || 0).toFixed(1) }}天
               </el-descriptions-item>
               <el-descriptions-item label="初始资金">
                 {{ fmtAmount(form.initial_cash) }}
               </el-descriptions-item>
-              <el-descriptions-item label="策略">{{ form.strategy }}</el-descriptions-item>
-              <el-descriptions-item label="日期范围">
-                {{ dateRange ? `${dateRange[0]} ~ ${dateRange[1]}` : '--' }}
+              <el-descriptions-item label="最终资金">
+                {{ fmtAmount((result.final_value as number) || form.initial_cash) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="总盈亏">
+                <span :class="((result.final_value as number || 0) >= form.initial_cash ? 'text-rise' : 'text-fall')">
+                  {{ fmtChange((result.total_return as number) || 0) }}
+                </span>
               </el-descriptions-item>
             </el-descriptions>
+          </el-card>
+
+          <el-card v-if="result.sample_trades?.length > 0" shadow="never" class="section-card" style="margin-top:12px">
+            <template #header><span>交易明细 (前20笔)</span></template>
+            <el-table :data="result.sample_trades" stripe size="small">
+              <el-table-column prop="date" label="日期" width="110" />
+              <el-table-column prop="code" label="代码" width="100">
+                <template #default="{ row }">
+                  <router-link :to="`/stock-detail?code=${row.code}`" class="trade-link">
+                    {{ row.code }}
+                  </router-link>
+                </template>
+              </el-table-column>
+              <el-table-column prop="type" label="方向" width="70">
+                <template #default="{ row }">
+                  <el-tag :type="row.type === 'buy' ? 'success' : 'danger'" size="small">
+                    {{ row.type === 'buy' ? '买入' : '卖出' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="price" label="价格" width="90">
+                <template #default="{ row }">
+                  {{ row.price?.toFixed(2) }}
+                </template>
+              </el-table-column>
+              <el-table-column prop="shares" label="数量" width="80" />
+              <el-table-column prop="pnl" label="盈亏" width="90">
+                <template #default="{ row }">
+                  <span :class="row.pnl >= 0 ? 'text-rise' : 'text-fall'">
+                    {{ (row.pnl || 0).toFixed(2) }}
+                  </span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="pnl_percent" label="收益率" width="80">
+                <template #default="{ row }">
+                  <span :class="row.pnl_percent >= 0 ? 'text-rise' : 'text-fall'">
+                    {{ (row.pnl_percent || 0).toFixed(2) }}%
+                  </span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="reason" label="原因" width="100" show-overflow-tooltip />
+              <el-table-column prop="holding_days" label="持仓天数" width="90" />
+            </el-table>
           </el-card>
         </template>
       </el-col>
@@ -172,6 +292,8 @@ const dateRange = ref<[string, string]>([
 const form = ref({
   strategy: '',
   initial_cash: 1000000,
+  stop_loss: 5,
+  take_profit: 10,
 })
 
 const equityCurve = computed(() => {
@@ -184,6 +306,9 @@ const lineOption = computed(() => {
   if (!curve.length) return {}
   const dates = curve.map(d => d.date)
   const values = curve.map(d => d.value)
+  const startVal = values[0] || 0
+  const colors = values.map(v => v >= startVal ? RISE_COLOR : '#26a69a')
+
   return {
     backgroundColor: '#1f1f1f',
     tooltip: {
@@ -270,6 +395,8 @@ async function runBacktest() {
       start_date: dateRange.value[0],
       end_date: dateRange.value[1],
       initial_cash: form.value.initial_cash,
+      stop_loss: form.value.stop_loss / 100,
+      take_profit: form.value.take_profit / 100,
     })
     result.value = res.data?.report || res.data?.data || res.data || {}
   } catch {
@@ -302,6 +429,10 @@ onMounted(() => {
   color: #e5eaf3;
   font-size: 14px;
   font-weight: 600;
+}
+
+.config-summary {
+  margin-top: 12px;
 }
 
 .result-metrics {
@@ -417,5 +548,14 @@ onMounted(() => {
   border-top: 1px solid #2c2c2c;
   padding-top: 12px;
   width: 100%;
+}
+
+.trade-link {
+  color: #409eff;
+  text-decoration: none;
+}
+
+.trade-link:hover {
+  text-decoration: underline;
 }
 </style>

@@ -95,6 +95,12 @@ const router = createRouter({
           component: () => import('@/views/StrategyConfig/index.vue'),
           meta: { title: '策略管理' },
         },
+        {
+          path: 'position',
+          name: 'Position',
+          component: () => import('@/views/Position/index.vue'),
+          meta: { title: '仓位管理' },
+        },
       ],
     },
   ],
