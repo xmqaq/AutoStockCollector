@@ -7,6 +7,7 @@ from flask import Blueprint, request, jsonify
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 import uuid
+from modules.monitor.monitor_engine import MonitorEngine
 
 monitor_bp = Blueprint("monitor", __name__, url_prefix="/api/v1/monitor")
 
@@ -334,6 +335,17 @@ def create_alert():
         "success": True,
         "alert_id": alert_id
     })
+
+
+@monitor_bp.route("/scan", methods=["POST"])
+def scan_monitor():
+    """主动扫描盯盘股票，触发阈值的股票富化 AI 买卖建议并入库告警。"""
+    user_id = request.args.get("user_id", "default")
+    try:
+        alerts = MonitorEngine().scan(user_id)
+        return jsonify({"success": True, "count": len(alerts), "data": alerts})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @monitor_bp.route("/settings", methods=["GET"])
