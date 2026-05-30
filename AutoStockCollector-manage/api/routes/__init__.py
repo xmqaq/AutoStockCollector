@@ -1167,15 +1167,18 @@ def start_history_collection():
 
 
 def _get_effective_end_date(today: str) -> str:
-    """A股日线数据通常在收市后17:00前后由各平台推送完成。
-    若当前北京时间未到17:00，则使用昨天作为上界，避免请求尚未发布的当日数据。
+    """返回最近的 A 股交易日（跳过周末；公众假日由调用者自行处理）。
+    17:00 前用昨日，之后用今日；再向前滚直到落在周一~周五。
     """
     from datetime import datetime, timedelta, timezone
     beijing_now = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=8)
+    d = datetime.strptime(today, "%Y-%m-%d")
     if beijing_now.hour < 17:
-        yesterday = (datetime.strptime(today, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
-        return yesterday
-    return today
+        d -= timedelta(days=1)
+    # 向前滚到最近的工作日（周六=5，周日=6）
+    while d.weekday() >= 5:
+        d -= timedelta(days=1)
+    return d.strftime("%Y-%m-%d")
 
 
 def _compute_update_latest_tasks(stats: dict, task_types=None, today: str = None,

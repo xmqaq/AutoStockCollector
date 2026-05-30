@@ -719,15 +719,13 @@ class TaskScheduler:
 
     def _execute_news_task(self, task: Task):
         from modules.news import NewsManager
-        
-        task.start()
-        
+
         channels = task.params.get("channels")
         max_pages = task.params.get("max_pages", 100)
         with_content = task.params.get("with_content", True)
-        
+
+        task.update_progress(0, 1, 0, 0)   # total=1 让进度条有意义
         manager = NewsManager()
-        
         try:
             results = manager.collect(
                 channels=channels,
