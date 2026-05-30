@@ -58,6 +58,13 @@ def init_app():
     except Exception as e:
         logger.warning(f"AI key restore warning: {e}")
 
+    try:
+        from core.scheduler.cron import start_daily_jobs
+        start_daily_jobs()
+        logger.info("Daily AI pick scheduler started")
+    except Exception as e:
+        logger.warning(f"Daily scheduler start warning: {e}")
+
     logger.info("AutoStockCollector initialized successfully")
 
 
