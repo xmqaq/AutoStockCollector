@@ -80,10 +80,13 @@ class LLMRouter:
         for provider in self.providers:
             try:
                 raw = self.caller(provider, full_prompt)
-                data = self._parse_json(raw)
-                if data is None:
-                    last_error = "non-json response"
-                    continue
+                if schema:
+                    data = self._parse_json(raw)
+                    if data is None:
+                        last_error = "non-json response"
+                        continue
+                else:
+                    data = {"content": raw}
                 self._log_history(provider, task_type, True)
                 if use_cache:
                     self._cache[key] = {

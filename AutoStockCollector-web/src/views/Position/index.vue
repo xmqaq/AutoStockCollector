@@ -12,47 +12,47 @@
             </div>
           </template>
           <el-table :data="positions" stripe size="small" v-loading="loading">
-            <el-table-column prop="code" label="代码" width="110">
+            <el-table-column prop="code" label="代码" width="100" align="center">
               <template #default="{ row }">
                 <router-link :to="`/stock-detail?code=${row.code}`" class="stock-link">
                   {{ row.code }}
                 </router-link>
               </template>
             </el-table-column>
-            <el-table-column prop="name" label="名称" width="120" show-overflow-tooltip />
-            <el-table-column prop="shares" label="持仓数量" width="100" align="right">
+            <el-table-column prop="name" label="名称" min-width="100" align="center" show-overflow-tooltip />
+            <el-table-column prop="shares" label="持仓数量" width="90" align="center">
               <template #default="{ row }">{{ row.shares || 0 }}</template>
             </el-table-column>
-            <el-table-column prop="avg_cost" label="持仓成本" width="100" align="right">
+            <el-table-column prop="avg_cost" label="持仓成本" width="90" align="center">
               <template #default="{ row }">
                 {{ (row.avg_cost || 0).toFixed(2) }}
               </template>
             </el-table-column>
-            <el-table-column prop="current_price" label="当前价" width="100" align="right">
+            <el-table-column prop="current_price" label="当前价" width="90" align="center">
               <template #default="{ row }">
                 {{ (row.current_price || 0).toFixed(2) }}
               </template>
             </el-table-column>
-            <el-table-column label="持仓市值" width="120" align="right">
+            <el-table-column label="持仓市值" width="100" align="center">
               <template #default="{ row }">
                 {{ formatAmount(row.market_value) }}
               </template>
             </el-table-column>
-            <el-table-column label="盈亏金额" width="110" align="right">
+            <el-table-column label="盈亏金额" width="100" align="center">
               <template #default="{ row }">
                 <span :class="row.pnl >= 0 ? 'text-rise' : 'text-fall'">
                   {{ formatChange(row.pnl) }}
                 </span>
               </template>
             </el-table-column>
-            <el-table-column label="盈亏比例" width="100" align="right">
+            <el-table-column label="盈亏比例" width="90" align="center">
               <template #default="{ row }">
                 <span :class="row.pnl_percent >= 0 ? 'text-rise' : 'text-fall'">
                   {{ formatPercent(row.pnl_percent) }}
                 </span>
               </template>
             </el-table-column>
-            <el-table-column prop="position_ratio" label="仓位占比" width="100">
+            <el-table-column prop="position_ratio" label="仓位占比" width="90" align="center">
               <template #default="{ row }">
                 <el-progress
                   :percentage="row.position_ratio || 0"
@@ -62,24 +62,26 @@
                 />
               </template>
             </el-table-column>
-            <el-table-column label="止损位" width="100" align="right">
+            <el-table-column label="止损位" width="80" align="center">
               <template #default="{ row }">
                 <span class="price-text stop-loss">{{ (row.stop_loss || 0).toFixed(2) }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="目标价" width="100" align="right">
+            <el-table-column label="目标价" width="80" align="center">
               <template #default="{ row }">
                 <span class="price-text target-price">{{ (row.target_price || 0).toFixed(2) }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="120" fixed="right">
+            <el-table-column label="操作" width="100" align="center">
               <template #default="{ row }">
-                <el-button type="primary" size="small" text @click="editPosition(row)">
-                  编辑
-                </el-button>
-                <el-button type="danger" size="small" text @click="removePosition(row.code)">
-                  删除
-                </el-button>
+                <div class="action-buttons">
+                  <el-button type="primary" size="small" text @click="editPosition(row)">
+                    编辑
+                  </el-button>
+                  <el-button type="danger" size="small" text @click="removePosition(row.code)">
+                    删除
+                  </el-button>
+                </div>
               </template>
             </el-table-column>
           </el-table>
@@ -194,7 +196,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { positionApi } from '@/api/position'
 import ProfitChart from '@/components/ProfitChart/index.vue'
@@ -348,14 +350,6 @@ const alerts = computed<Alert[]>(() => {
   return list
 })
 
-const positionStore = positionApi.state
-
-watch(() => positionStore.positions, (newPositions) => {
-  if (newPositions) {
-    positions.value = newPositions
-  }
-}, { immediate: true })
-
 const distributionData = computed(() => {
   if (totalMarketValue.value === 0) return []
   
@@ -389,7 +383,8 @@ function formatPercent(value: number): string {
 async function loadPositions() {
   loading.value = true
   try {
-    await positionApi.loadPositions()
+    const positionsData = await positionApi.list()
+    positions.value = positionsData
     generateMockProfitHistory()
   } catch {
     positions.value = []
@@ -492,7 +487,8 @@ async function removePosition(code: string) {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  await nextTick()
   loadPositions()
 })
 </script>
@@ -636,5 +632,10 @@ onMounted(() => {
   background: #409eff;
   border-radius: 3px;
   transition: width 0.3s ease;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 4px;
 }
 </style>

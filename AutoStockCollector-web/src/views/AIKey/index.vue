@@ -286,34 +286,7 @@ const modelLoading    = ref<Record<string, boolean>>({})
 const selectedModels  = ref<Record<string, string>>({})
 const confirmedModels = ref<Record<string, string>>({})
 
-const defaultModels: Record<string, string> = {
-  openai:    'gpt-4o-mini',
-  anthropic: 'claude-sonnet-4-5',
-  qwen:      'qwen-plus',
-  deepseek:  'deepseek-chat',
-  minimax:   'MiniMax-Text-01',
-  moonshot:  'moonshot-v1-8k',
-  glm:       'glm-4-flash',
-  doubao:    'doubao-pro-32k',
-  mistral:   'mistral-small-latest',
-  gemini:    'gemini-2.0-flash',
-  cohere:    'command-r',
-}
-
-// 兜底模型（后端 API 不可达时前端用）
-const fallbackModels: Record<string, string[]> = {
-  openai:    ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o1', 'o1-mini', 'o3-mini'],
-  anthropic: ['claude-opus-4-5', 'claude-sonnet-4-5', 'claude-haiku-4-5', 'claude-3-5-sonnet-20241022', 'claude-3-opus-20240229'],
-  qwen:      ['qwen-max', 'qwen-plus', 'qwen-turbo', 'qwen2.5-72b-instruct', 'qwen2.5-14b-instruct'],
-  deepseek:  ['deepseek-chat', 'deepseek-reasoner'],
-  gemini:    ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-pro', 'gemini-1.5-flash'],
-  moonshot:  ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
-  glm:       ['glm-4-plus', 'glm-4-flash', 'glm-4', 'glm-4-air', 'glm-3-turbo'],
-  doubao:    ['doubao-pro-256k', 'doubao-pro-128k', 'doubao-pro-32k', 'doubao-lite-32k'],
-  mistral:   ['mistral-large-latest', 'mistral-medium-latest', 'mistral-small-latest', 'codestral-latest'],
-  minimax:   ['MiniMax-Text-01', 'abab6.5s-chat', 'abab5.5s-chat'],
-  cohere:    ['command-r-plus', 'command-r', 'command', 'command-light'],
-}
+const defaultModels: Record<string, string> = {}
 
 const defaultForm = () => ({ preset: '', provider: '', name: '', api_key: '', base_url: '', enabled: false })
 const form = ref(defaultForm())
@@ -341,15 +314,12 @@ async function loadKeys() {
     const res = await aiKeyApi.list()
     keys.value = (res.data?.data || []).map((k: AIKeyConfig) => ({ ...k, api_key: '' }))
     for (const key of keys.value) {
-      const fb = fallbackModels[key.provider] || []
       if (!modelOptions.value[key.provider]?.length) {
-        modelOptions.value[key.provider] = fb
+        modelOptions.value[key.provider] = []
       }
       if (key.model) {
         selectedModels.value[key.provider]  = key.model
         confirmedModels.value[key.provider] = key.model
-      } else if (!selectedModels.value[key.provider]) {
-        selectedModels.value[key.provider] = defaultModels[key.provider] || fb[0] || ''
       }
     }
   } catch {
@@ -377,8 +347,6 @@ async function fetchModelsFromApi(row: KeyRow) {
     }
   } catch {
     ElMessage.error('获取模型失败')
-    const fb = fallbackModels[row.provider] || []
-    if (fb.length) modelOptions.value[row.provider] = fb
   } finally {
     modelLoading.value[row.provider] = false
   }

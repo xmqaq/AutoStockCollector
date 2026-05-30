@@ -206,6 +206,9 @@ export const aiApi = {
   getMultiAgentProgress(taskId: string) {
     return client.get(`/api/v1/ai/multi-agent/${taskId}`)
   },
+  chat(params: { message: string; model?: string; provider?: string }) {
+    return client.post('/api/v1/ai/chat', params)
+  },
 }
 
 export const monitorApi = {
@@ -349,5 +352,43 @@ export const aiServiceApi = {
   },
   pickResults() {
     return client.get('/api/v1/ai/pick/results')
+  },
+}
+
+export interface AIAgent {
+  id: string
+  name: string
+  description: string
+  role: string
+  system_prompt: string
+  temperature: number
+  max_tokens: number
+  enabled: boolean
+  priority: number
+  created_at?: string
+  updated_at?: string
+}
+
+export const aiAgentApi = {
+  list() {
+    return client.get('/api/v1/ai-agents')
+  },
+  get(id: string) {
+    return client.get(`/api/v1/ai-agents/${id}`)
+  },
+  create(data: Partial<AIAgent>) {
+    return client.post('/api/v1/ai-agents', data)
+  },
+  update(id: string, data: Partial<AIAgent>) {
+    return client.put(`/api/v1/ai-agents/${id}`, data)
+  },
+  delete(id: string) {
+    return client.delete(`/api/v1/ai-agents/${id}`)
+  },
+  test(id: string, message?: string, code?: string) {
+    return client.post(`/api/v1/ai-agents/${id}/test`, { message, code })
+  },
+  analyze(id: string, code: string) {
+    return client.post(`/api/v1/ai-agents/${id}/analyze`, { code })
   },
 }

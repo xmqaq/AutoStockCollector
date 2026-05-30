@@ -102,43 +102,13 @@ const placeholderText = computed(() => {
   return '选择AI模型'
 })
 
-const modelMap: Record<string, string[]> = {
-  'openai': ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'],
-  'anthropic': ['claude-3-5-sonnet-20241022', 'claude-3-5-sonnet-latest', 'claude-3-opus-latest', 'claude-3-sonnet-latest', 'claude-3-haiku-latest'],
-  'qwen': ['qwen-max', 'qwen-plus', 'qwen-turbo', 'qwen-max-longcontext'],
-  'deepseek': ['deepseek-chat', 'deepseek-coder'],
-  'gemini': ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-1.0-pro'],
-  'moonshot': ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
-  'glm': ['glm-4', 'glm-4-plus', 'glm-4-air', 'glm-4-flash'],
-  'doubao': ['doubao-pro-32k', 'doubao-pro-128k', 'doubao-lite-32k'],
-  'minimax': ['MiniMax-Text-01', 'abab6-chat'],
-  'mistral': ['mistral-large-latest', 'mistral-medium-latest', 'mistral-small-latest'],
-}
+const modelMap: Record<string, string[]> = {}
 
-const recommendedModels: Record<string, string> = {
-  'openai': 'gpt-4o-mini',
-  'anthropic': 'claude-3-5-sonnet-latest',
-  'qwen': 'qwen-plus',
-  'deepseek': 'deepseek-chat',
-  'gemini': 'gemini-1.5-flash',
-  'moonshot': 'moonshot-v1-8k',
-  'glm': 'glm-4-flash',
-  'doubao': 'doubao-pro-32k',
-  'minimax': 'MiniMax-Text-01',
-  'mistral': 'mistral-small-latest',
-}
+const recommendedModels: Record<string, string> = {}
 
 async function fetchModelsFromProvider(provider: AIKeyConfig): Promise<AIModel[]> {
   const providerLower = provider.provider.toLowerCase()
   
-  if (providerLower === 'minimax') {
-    return modelMap['minimax'].map(id => ({
-      id,
-      name: id,
-      provider: provider.provider
-    }))
-  }
-
   const baseUrl = provider.base_url || ''
   const modelsEndpoint = baseUrl.includes('/v1') 
     ? baseUrl.replace(/\/+$/, '') + '/models'
@@ -166,17 +136,8 @@ async function fetchModelsFromProvider(provider: AIKeyConfig): Promise<AIModel[]
     return []
   } catch (e: any) {
     console.warn(`Failed to fetch models from ${provider.provider}:`, e.message)
-    return getFallbackModels(providerLower)
+    return []
   }
-}
-
-function getFallbackModels(provider: string): AIModel[] {
-  const modelIds = modelMap[provider] || []
-  return modelIds.map(id => ({
-    id,
-    name: id,
-    provider
-  }))
 }
 
 async function loadModels() {
@@ -207,11 +168,11 @@ async function loadModels() {
     try {
       fetchedModels = await fetchModelsFromProvider(providerKey)
     } catch (e) {
-      fetchedModels = getFallbackModels(props.provider.toLowerCase())
+      fetchedModels = []
     }
 
     if (fetchedModels.length === 0) {
-      fetchedModels = getFallbackModels(props.provider.toLowerCase())
+      error.value = '暂无可用模型，请手动输入模型名称'
     }
 
     models.value = fetchedModels
@@ -226,7 +187,7 @@ async function loadModels() {
 
   } catch (e: any) {
     error.value = e.message || '加载模型列表失败'
-    models.value = getFallbackModels(props.provider?.toLowerCase() || '')
+    models.value = []
   } finally {
     loading.value = false
   }

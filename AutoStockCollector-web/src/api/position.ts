@@ -34,8 +34,8 @@ export const positionApi = {
     positionState.loading = true
     positionState.error = null
     try {
-      const res = await request.get<Position[]>('/api/position/list')
-      positionState.positions = res.data || []
+      const res = await request.get<{ data: Position[] }>('/api/position/list')
+      positionState.positions = res.data?.data || []
     } catch (error: any) {
       positionState.error = error.message || '加载失败'
       positionState.positions = []
@@ -45,8 +45,8 @@ export const positionApi = {
   },
 
   async list(): Promise<Position[]> {
-    const res = await request.get<Position[]>('/api/position/list')
-    return res.data || []
+    const res = await request.get<{ data: Position[] }>('/api/position/list')
+    return res.data?.data || []
   },
 
   async addPosition(data: Partial<Position>): Promise<void> {

@@ -139,6 +139,7 @@ def save_position():
         position_doc["pnl_percent"] = round((position_doc["pnl"] / cost_basis * 100), 2)
 
     db["positions"].insert_one(position_doc)
+    position_doc.pop("_id", None)
 
     return jsonify({
         "success": True,

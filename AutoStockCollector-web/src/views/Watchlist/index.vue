@@ -81,6 +81,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { watchlistApi } from '@/api/watchlist'
+import { marketApi } from '@/api/market'
 import { fmtNumber, fmtChange, fmtAmount, RISE_COLOR, FALL_COLOR } from '@/utils/format'
 import type { WatchlistItem } from '@/types'
 import StockSearch from '@/components/StockSearch/index.vue'
@@ -90,7 +91,7 @@ const router = useRouter()
 const loading = ref(false)
 const addLoading = ref(false)
 const showAddModal = ref(false)
-const list = ref<WatchlistItem[]>([])
+const list = ref<(WatchlistItem & { latest_price?: number; change_rate?: number; turnover_rate?: number; volume?: number; turnover?: number })[]>([])
 
 const addForm = ref({ code: '' })
 
@@ -109,7 +110,28 @@ async function loadData() {
   loading.value = true
   try {
     const res = await watchlistApi.getWatchlist()
-    list.value = res.data?.data || res.data || []
+    const watchlist: WatchlistItem[] = res.data?.data || res.data || []
+    
+    if (watchlist.length > 0) {
+      const codes = watchlist.map(s => s.code)
+      const quotesRes = await marketApi.getRealtimeQuotes(codes)
+      const quotes = quotesRes.data?.data || []
+      const quotesMap = new Map(quotes.map(q => [q.code, q]))
+      
+      list.value = watchlist.map(s => {
+        const quote = quotesMap.get(s.code)
+        return {
+          ...s,
+          latest_price: quote?.price,
+          change_rate: quote?.change,
+          turnover_rate: quote?.turnover,
+          volume: quote?.volume,
+          turnover: quote?.amount,
+        }
+      })
+    } else {
+      list.value = []
+    }
   } catch {
     list.value = []
   } finally {

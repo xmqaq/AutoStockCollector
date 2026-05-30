@@ -11,10 +11,12 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AIChatFloat: typeof import('./src/components/AIChatFloat/index.vue')['default']
     AlertNotification: typeof import('./src/components/AlertNotification/index.vue')['default']
     AnalysisProgress: typeof import('./src/components/AnalysisProgress/index.vue')['default']
     AnalysisProgressPanel: typeof import('./src/components/AnalysisProgressPanel/index.vue')['default']
     BatchPick: typeof import('./src/components/BatchPick/index.vue')['default']
+    ElAlert: typeof import('element-plus/es')['ElAlert']
     ElAside: typeof import('element-plus/es')['ElAside']
     ElBadge: typeof import('element-plus/es')['ElBadge']
     ElButton: typeof import('element-plus/es')['ElButton']
@@ -50,6 +52,7 @@ declare module 'vue' {
     ElRadioButton: typeof import('element-plus/es')['ElRadioButton']
     ElRadioGroup: typeof import('element-plus/es')['ElRadioGroup']
     ElRow: typeof import('element-plus/es')['ElRow']
+    ElScrollbar: typeof import('element-plus/es')['ElScrollbar']
     ElSelect: typeof import('element-plus/es')['ElSelect']
     ElSlider: typeof import('element-plus/es')['ElSlider']
     ElSwitch: typeof import('element-plus/es')['ElSwitch']
@@ -68,12 +71,14 @@ declare module 'vue' {
     ModelSelector: typeof import('./src/components/ModelSelector/index.vue')['default']
     MonitorConfig: typeof import('./src/components/MonitorConfig/index.vue')['default']
     MultiAgentPanel: typeof import('./src/components/MultiAgentPanel/index.vue')['default']
+    ProfitChart: typeof import('./src/components/ProfitChart/index.vue')['default']
     ProgressTable: typeof import('./src/components/ProgressTable/index.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SectorHeatmap: typeof import('./src/components/SectorHeatmap/index.vue')['default']
     SentimentTrend: typeof import('./src/components/SentimentTrend/index.vue')['default']
     StockSearch: typeof import('./src/components/StockSearch/index.vue')['default']
+    WorkflowCanvas: typeof import('./src/components/WorkflowCanvas/index.vue')['default']
   }
   export interface GlobalDirectives {
     vLoading: typeof import('element-plus/es')['ElLoadingDirective']

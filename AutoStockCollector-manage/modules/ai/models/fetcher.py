@@ -76,18 +76,7 @@ class ModelListFetcher:
         'doubao': 'https://ark.cn-beijing.volces.com/api/v3/models',
         'mistral': 'https://api.mistral.ai/v1/models',
         'qwen': 'https://dashscope.aliyuncs.com/compatible-mode/v1/models',
-    }
-
-    FALLBACK_MODELS: Dict[str, List[str]] = {
-        'openai': ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'],
-        'anthropic': ['claude-3-5-sonnet-latest', 'claude-3-5-sonnet-20241022', 'claude-3-opus-latest', 'claude-3-sonnet-latest'],
-        'deepseek': ['deepseek-chat', 'deepseek-coder'],
-        'moonshot': ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
-        'glm': ['glm-4-flash', 'glm-4-plus', 'glm-4', 'glm-3-turbo'],
-        'doubao': ['doubao-pro-32k', 'doubao-pro-128k', 'doubao-lite-32k'],
-        'mistral': ['mistral-small-latest', 'mistral-medium-latest', 'mistral-large-latest'],
-        'qwen': ['qwen-plus', 'qwen-turbo', 'qwen-max', 'qwen-max-longcontext'],
-        'minimax': ['MiniMax-Text-01', 'abab6-chat'],
+        'minimax': 'https://api.minimaxi.com/v1/models',
     }
 
     def __init__(self, cache_ttl_seconds: int = 3600, timeout: int = 10):
@@ -126,10 +115,7 @@ class ModelListFetcher:
                 return models
         except Exception as e:
             logger.warning(f"Failed to fetch models from API for {provider}: {e}")
-
-        fallback_models = self._get_fallback_models(provider_lower)
-        logger.info(f"Using fallback models for {provider}: {fallback_models[:3]}")
-        return fallback_models
+            return []
 
     def _fetch_from_api(
         self,
@@ -150,7 +136,7 @@ class ModelListFetcher:
             raise ValueError("API key is required")
 
         headers = self._build_headers(provider, api_key)
-        url = self._build_url(endpoint)
+        url = self._build_url_for_provider(endpoint, provider)
 
         response = requests.get(url, headers=headers, timeout=self._timeout)
 
@@ -174,6 +160,11 @@ class ModelListFetcher:
                 'x-api-key': api_key,
                 'anthropic-version': '2023-06-01'
             }
+        elif provider == 'minimax':
+            return {
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json'
+            }
         else:
             return {
                 'Authorization': f'Bearer {api_key}',
@@ -186,6 +177,12 @@ class ModelListFetcher:
         if not endpoint.endswith('/models'):
             endpoint += '/models'
         return endpoint
+
+    def _build_url_for_provider(self, endpoint: str, provider: str) -> str:
+        """根据提供商构建完整URL"""
+        if provider == 'minimax':
+            return endpoint.rstrip('/')
+        return self._build_url(endpoint)
 
     def _parse_response(self, data: Any, provider: str) -> List[Dict[str, Any]]:
         """解析响应数据"""
@@ -233,28 +230,9 @@ class ModelListFetcher:
 
         return validated_models
 
-    def _get_fallback_models(self, provider: str) -> List[Dict[str, Any]]:
-        """获取备用模型列表"""
-        model_ids = self.FALLBACK_MODELS.get(provider, [])
-        return [
-            {'id': mid, 'name': mid, 'provider': provider, 'type': 'chat'}
-            for mid in model_ids
-        ]
-
     def get_default_model(self, provider: str) -> Optional[str]:
-        """获取默认模型（列表第一个）"""
-        DEFAULT_MODELS = {
-            'openai': 'gpt-4o-mini',
-            'anthropic': 'claude-3-5-sonnet-latest',
-            'deepseek': 'deepseek-chat',
-            'moonshot': 'moonshot-v1-8k',
-            'glm': 'glm-4-flash',
-            'doubao': 'doubao-pro-32k',
-            'mistral': 'mistral-small-latest',
-            'qwen': 'qwen-plus',
-            'minimax': 'MiniMax-Text-01',
-        }
-        return DEFAULT_MODELS.get(provider.lower())
+        """获取默认模型（返回None，需用户手动配置）"""
+        return None
 
     def invalidate_cache(self, provider: Optional[str] = None) -> None:
         """清除缓存"""

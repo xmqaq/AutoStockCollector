@@ -21,7 +21,7 @@ _BUILTIN: Dict[str, Dict] = {
     "glm":       {"name": "智谱 AI (GLM)",        "base_url": "https://open.bigmodel.cn/api/paas/v4",               "priority": 7},
     "doubao":    {"name": "字节豆包",             "base_url": "https://ark.cn-beijing.volces.com/api/v3",            "priority": 8},
     "mistral":   {"name": "Mistral AI",          "base_url": "https://api.mistral.ai/v1",                           "priority": 9},
-    "minimax":   {"name": "MiniMax",             "base_url": "https://api.minimax.io/v1/text/chatcompletion_v2", "priority": 10},
+    "minimax":   {"name": "MiniMax",             "base_url": "https://api.minimaxi.com/v1",                         "priority": 10},
 }
 
 
@@ -160,7 +160,7 @@ class AIKeyManager:
                 )
             elif p == "minimax":
                 resp = req.post(
-                    "https://api.minimax.io/v1/text/chatcompletion_v2",
+                    "https://api.minimaxi.com/v1/chat/completions",
                     headers={
                         "Authorization": f"Bearer {api_key}",
                         "Content-Type": "application/json"
@@ -208,30 +208,12 @@ class AIKeyManager:
         except Exception as e:
             return {"valid": False, "message": f"验证出错: {str(e)[:80]}"}
 
-    # 各厂商兜底模型列表（API 不可达时使用）
-    _FALLBACK_MODELS: Dict[str, List[str]] = {
-        "openai":    ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo", "o1", "o1-mini", "o3-mini"],
-        "anthropic": ["claude-opus-4-5", "claude-sonnet-4-5", "claude-haiku-4-5",
-                      "claude-3-5-sonnet-20241022", "claude-3-opus-20240229", "claude-3-haiku-20240307"],
-        "qwen":      ["qwen-max", "qwen-max-longcontext", "qwen-plus", "qwen-turbo",
-                      "qwen2.5-72b-instruct", "qwen2.5-32b-instruct", "qwen2.5-14b-instruct"],
-        "deepseek":  ["deepseek-chat", "deepseek-reasoner"],
-        "gemini":    ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-pro", "gemini-1.5-flash"],
-        "moonshot":  ["moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"],
-        "glm":       ["glm-4-plus", "glm-4-flash", "glm-4", "glm-4-air", "glm-3-turbo"],
-        "doubao":    ["doubao-pro-256k", "doubao-pro-128k", "doubao-pro-32k", "doubao-lite-128k", "doubao-lite-32k"],
-        "mistral":   ["mistral-large-latest", "mistral-medium-latest", "mistral-small-latest", "codestral-latest"],
-        "minimax":   ["MiniMax-Text-01", "abab6.5s-chat", "abab6.5g-chat", "abab5.5s-chat"],
-        "cohere":    ["command-r-plus", "command-r", "command", "command-light"],
-    }
-
     def fetch_models(self, provider: str, api_key: str, base_url: str = "") -> dict:
-        """从厂商 API 拉取可用模型列表，失败则返回兜底列表。"""
+        """从厂商 API 拉取可用模型列表。"""
         import requests as req
         p = provider.lower()
         timeout = 12
         effective_url = base_url.strip() or (_BUILTIN.get(p, {}).get("base_url", ""))
-        fallback = self._FALLBACK_MODELS.get(p, [])
 
         try:
             if p == "anthropic":
@@ -243,7 +225,7 @@ class AIKeyManager:
                 if resp.status_code == 200:
                     data = resp.json()
                     ids = [m.get("id") for m in data.get("data", []) if m.get("id")]
-                    return {"models": ids or fallback, "source": "api"}
+                    return {"models": ids, "source": "api"}
 
             elif p == "gemini":
                 resp = req.get(
@@ -255,11 +237,21 @@ class AIKeyManager:
                     ids = [m.get("name", "").split("/")[-1]
                            for m in data.get("models", [])
                            if "generateContent" in m.get("supportedGenerationMethods", [])]
-                    return {"models": ids or fallback, "source": "api"}
+                    return {"models": ids, "source": "api"}
 
             elif p == "minimax":
-                # MiniMax 无标准 /models，直接用兜底
-                return {"models": fallback, "source": "fallback"}
+                resp = req.get(
+                    "https://api.minimaxi.com/v1/models",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    timeout=timeout,
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    ids = data.get("data", []) if isinstance(data, dict) else data
+                    if isinstance(ids, list):
+                        model_ids = [m.get("id") or m.get("name") or m for m in ids if isinstance(m, dict) or isinstance(m, str)]
+                        return {"models": model_ids, "source": "api"}
+                    return {"models": [], "source": "fallback"}
 
             elif effective_url:
                 url = effective_url.rstrip("/") + "/models"
@@ -281,7 +273,7 @@ class AIKeyManager:
         except Exception as e:
             logger.warning(f"fetch_models failed for {provider}: {e}")
 
-        return {"models": fallback, "source": "fallback"}
+        return {"models": [], "source": "fallback"}
 
     def get_best_provider(self) -> Optional[str]:
         db = DatabaseConfig.get_database()

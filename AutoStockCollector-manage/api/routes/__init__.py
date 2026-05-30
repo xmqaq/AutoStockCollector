@@ -125,6 +125,8 @@ def register_routes(app):
     from api.routes.sentiment import sentiment_bp
     from api.routes.position import position_bp
     from api.routes.market import market_bp
+    from api.routes.ai_agent import ai_agent_bp
+    from api.routes.workflow import workflow_bp
     
     app.register_blueprint(api_bp)
     app.register_blueprint(ai_advanced_bp)
@@ -132,6 +134,8 @@ def register_routes(app):
     app.register_blueprint(sentiment_bp)
     app.register_blueprint(position_bp)
     app.register_blueprint(market_bp)
+    app.register_blueprint(ai_agent_bp)
+    app.register_blueprint(workflow_bp)
 
     @app.route("/health", methods=["GET"])
     def health_check():
@@ -725,6 +729,43 @@ def ai_pick_run():
         return jsonify({"success": True, "data": result})
     except Exception as e:
         logger.error(f"AI pick run failed: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@api_bp.route("/ai/chat", methods=["POST"])
+def ai_chat():
+    """通用AI对话接口"""
+    from modules.ai.foundation.llm_router import LLMRouter
+
+    data = request.get_json() or {}
+    message = data.get("message", "")
+    provider = data.get("provider")
+    model = data.get("model")
+
+    if not message:
+        return jsonify({"success": False, "error": "message is required"}), 400
+
+    try:
+        router = LLMRouter()
+        if provider:
+            router.providers = [provider]
+
+        result = router.chat(message, use_cache=True)
+        if result.success:
+            return jsonify({
+                "success": True,
+                "data": {
+                    "content": result.raw,
+                    "provider": result.provider,
+                }
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": result.error or "AI服务暂不可用"
+            }), 500
+    except Exception as e:
+        logger.error(f"AI chat failed: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 

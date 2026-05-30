@@ -46,6 +46,9 @@
           免责声明：本系统数据仅供参考，不构成任何投资建议。股市有风险，入市需谨慎。
         </div>
       </el-main>
+
+      <!-- AI Chat Float Button -->
+      <AIChatFloat />
     </el-container>
   </el-container>
 </template>
@@ -54,6 +57,7 @@
 import { computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useCollectStore } from '@/stores/collectStore'
+import AIChatFloat from '@/components/AIChatFloat/index.vue'
 import {
   DataAnalysis,
   Monitor,
@@ -71,6 +75,7 @@ import {
   Wallet,
   Bell,
   Search,
+  Operation,
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -88,6 +93,8 @@ const menuItems = [
   { path: '/position', label: '仓位管理', icon: Wallet },
   { path: '/monitor', label: 'AI盯盘', icon: Bell },
   { path: '/ai-keys', label: 'AI Key管理', icon: Key },
+  { path: '/ai-agents', label: 'AI Agent管理', icon: MagicStick },
+  { path: '/workflow', label: '工作流管理', icon: Operation },
   { path: '/dragon-tiger', label: '龙虎榜', icon: Lightning },
   { path: '/margin-trading', label: '融资融券', icon: Connection },
   { path: '/sector-flow', label: '板块流向', icon: Promotion },
@@ -102,9 +109,10 @@ const activeMenu = computed(() => {
 })
 
 function handleMenuSelect(path: string) {
-  if (route.path !== path) {
-    router.push(path)
-  }
+  console.log('Menu selected:', path, 'Current route:', route.path)
+  router.push(path).catch((err) => {
+    console.error('Navigation failed:', err)
+  })
 }
 
 const currentTitle = computed(() => {

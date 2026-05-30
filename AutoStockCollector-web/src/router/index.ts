@@ -70,6 +70,12 @@ const router = createRouter({
           meta: { title: 'AI Key管理' },
         },
         {
+          path: 'ai-agents',
+          name: 'AIAgents',
+          component: () => import('@/views/AIAgent/index.vue'),
+          meta: { title: 'AI Agent管理' },
+        },
+        {
           path: 'dragon-tiger',
           name: 'DragonTiger',
           component: () => import('@/views/DragonTiger/index.vue'),
@@ -110,6 +116,12 @@ const router = createRouter({
           name: 'MultiAgent',
           component: () => import('@/views/MultiAgent/index.vue'),
           meta: { title: '多Agent分析' },
+        },
+        {
+          path: 'workflow',
+          name: 'Workflow',
+          component: () => import('@/views/Workflow/index.vue'),
+          meta: { title: '工作流管理' },
         },
       ],
     },
