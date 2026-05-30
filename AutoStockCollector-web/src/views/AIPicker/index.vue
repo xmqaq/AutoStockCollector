@@ -79,8 +79,15 @@ async function runPick() {
   try {
     const res = await aiServiceApi.pickRun({ top_n: topN.value, candidate_pool: candidatePool.value })
     if (res.data?.success) {
-      result.value = res.data.data
-      ElMessage.success('选股完成')
+      if (res.data.data?.picks) {
+        // 同步返回（旧模式）
+        result.value = res.data.data
+        ElMessage.success('选股完成')
+      } else {
+        // 异步模式：后台运行，自动轮询结果
+        ElMessage.info(res.data.message || '选股任务已启动，请等待结果…')
+        _pollResults()
+      }
     } else {
       ElMessage.error(res.data?.error || '选股失败')
     }
@@ -88,6 +95,24 @@ async function runPick() {
     ElMessage.error('选股请求失败（耗时较长，请稍后刷新结果）')
   } finally {
     running.value = false
+  }
+}
+
+async function _pollResults(maxWait = 600, interval = 15) {
+  let waited = 0
+  const lastTs = result.value?.timestamp || ''
+  while (waited < maxWait) {
+    await new Promise(r => setTimeout(r, interval * 1000))
+    waited += interval
+    try {
+      const res = await aiServiceApi.pickResults()
+      const newData = res.data?.data
+      if (newData && newData.timestamp !== lastTs) {
+        result.value = newData
+        ElMessage.success('选股结果已更新')
+        return
+      }
+    } catch { /* ignore */ }
   }
 }
 

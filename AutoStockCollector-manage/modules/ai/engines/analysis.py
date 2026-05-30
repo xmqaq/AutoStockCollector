@@ -53,21 +53,23 @@ class AnalysisEngine:
             llm_payload = {"summary": summary, "recommendation": recommendation, "risk_factors": risks}
             source = "llm"
 
+        current_price = bundle.realtime_price or (bundle.closes[0] if bundle.closes else None)
         return {
             "code": bundle.code,
             "name": bundle.name,
             "scores": scores,
-            "current_price": bundle.closes[0] if bundle.closes else None,
+            "current_price": current_price,
             "llm": llm_payload,
             "source": source,
             "disclaimer": RISK_DISCLAIMER,
         }
 
     def _build_prompt(self, bundle, scores: Dict[str, float]) -> str:
+        current_price = bundle.realtime_price or (bundle.closes[0] if bundle.closes else "NA")
         return (
             f"分析股票 {bundle.code}（{bundle.name}）的投资价值。\n"
             f"量化因子得分(0-100)：技术面={scores['technical']}，基本面={scores['fundamental']}，"
             f"资金面={scores['fund_flow']}，综合={scores['composite']}。\n"
-            f"当前价={bundle.closes[0] if bundle.closes else 'NA'}，PE={bundle.pe}，PB={bundle.pb}。\n"
+            f"当前价={current_price}，PE={bundle.pe}，PB={bundle.pb}。\n"
             f"请给出客观、稳健的综合研判，避免任何绝对化或收益承诺表述。"
         )

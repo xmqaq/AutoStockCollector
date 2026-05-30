@@ -91,6 +91,7 @@ export interface TaskRecord {
   task_id?: string
   task_type: string
   status: string
+  params?: Record<string, unknown>
   create_time?: string
   created_at?: string
   update_time?: string

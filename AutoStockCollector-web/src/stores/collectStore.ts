@@ -8,9 +8,14 @@ export const useCollectStore = defineStore('collect', () => {
   const progressList = ref<CollectProgress[]>([])
   const tasks = ref<TaskRecord[]>([])
   const loading = ref(false)
+  const overallPercent = ref(0)
 
+  // 已有数据（含 not_started 但 DB 有记录）都算完成
   const completedCount = computed(() => {
-    return progressList.value.filter(p => p.status === 'completed').length
+    return progressList.value.filter(p =>
+      p.status === 'completed' ||
+      (p.status === 'not_started' && (p.record_count || 0) > 0)
+    ).length
   })
 
   const totalSuccessCount = computed(() => {
@@ -40,6 +45,10 @@ export const useCollectStore = defineStore('collect', () => {
           ...(val as object),
         } as CollectProgress))
       }
+      // 使用后端计算的整体进度（已正确处理 not_started 含数据的情况）
+      if (typeof body?.overall_percent === 'number') {
+        overallPercent.value = Math.round(body.overall_percent)
+      }
     } catch {
       // ignore
     }
@@ -62,6 +71,7 @@ export const useCollectStore = defineStore('collect', () => {
     progressList,
     tasks,
     loading,
+    overallPercent,
     completedCount,
     totalSuccessCount,
     checkHealth,

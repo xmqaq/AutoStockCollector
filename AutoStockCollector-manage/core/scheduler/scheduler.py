@@ -9,7 +9,7 @@
 import time
 import threading
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, Future, as_completed
 from .enums import TaskStatus, TaskType
 from core.storage.mongo_storage import TaskStorage, KlineStorage, StockInfoStorage
@@ -507,10 +507,35 @@ class TaskScheduler:
             except Exception as e:
                 logger.error(f"Watchlist priority error: {e}")
 
+        # 一次聚合查询获取所有股票的最大日期，避免在线程池中对每支股票发单独 DB 查询
+        latest_dates: dict = {}
+        if start_date and end_date:
+            try:
+                pipeline = [
+                    {"$group": {"_id": "$code", "mx": {"$max": "$date"}}}
+                ]
+                for row in self.kline_storage.collection.aggregate(pipeline, allowDiskUse=False):
+                    v = row.get("mx")
+                    if v is not None:
+                        d = v.strftime("%Y-%m-%d") if hasattr(v, "strftime") else str(v)[:10]
+                        latest_dates[row["_id"]] = d
+                logger.info(f"kline: prefetched latest dates for {len(latest_dates)} codes via aggregation")
+            except Exception as e:
+                logger.warning(f"kline bulk date prefetch failed (will skip trimming): {e}")
+
         def collect_fn(code):
+            eff_start = start_date
+            if start_date and end_date:
+                d = latest_dates.get(code)
+                if d is not None:
+                    nxt = (datetime.strptime(d, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+                    if nxt > end_date:
+                        return None  # 该股票已覆盖到 end_date，跳过
+                    if nxt > start_date:
+                        eff_start = nxt
             return collector.execute_with_retry(
                 collector.collect_single, code,
-                start_date=start_date, end_date=end_date, adjust=adjust
+                start_date=eff_start, end_date=end_date, adjust=adjust
             )
 
         self._parallel_collect(
@@ -656,6 +681,23 @@ class TaskScheduler:
             before = len(codes)
             codes = [c for c in codes if c not in existing]
             logger.info(f"financial incremental: {before} total, {len(existing)} in DB, {len(codes)} to fetch")
+        elif start_date and end_date:
+            # full 模式：跳过 DB 中已有该时间段数据的 code（用一次聚合查最大报告期）
+            try:
+                end_year = end_date[:4]
+                pipeline = [
+                    {"$group": {"_id": "$code", "mx": {"$max": "$report_date"}}}
+                ]
+                already_done = set()
+                for row in storage.collection.aggregate(pipeline, allowDiskUse=False):
+                    v = str(row.get("mx") or "")[:7]  # YYYY-MM
+                    if v[:4] >= end_year:
+                        already_done.add(row["_id"])
+                before = len(codes)
+                codes = [c for c in codes if c not in already_done]
+                logger.info(f"financial full: {before} total, {len(already_done)} already covered, {len(codes)} to fetch")
+            except Exception as e:
+                logger.warning(f"financial bulk date prefetch failed: {e}")
 
         def collect_fn(code):
             return collector.execute_with_retry(
@@ -774,6 +816,28 @@ class TaskScheduler:
         end_date = task.params.get("end_date")
         date = task.params.get("date")
         collector = self._get_collector(TaskType.DRAGON_TIGER_COLLECTION.value)
+
+        # 裁剪起始日期：跳过 DB 中已有的日期段
+        if start_date and end_date:
+            try:
+                from core.storage.mongo_storage import DragonTigerStorage
+                dt_storage = DragonTigerStorage()
+                newest = dt_storage.find_one({"上榜日": {"$exists": True}}, sort=[("上榜日", -1)])
+                if newest:
+                    v = newest.get("上榜日")
+                    latest_str = v.strftime("%Y-%m-%d") if hasattr(v, "strftime") else str(v)[:10]
+                    nxt = (datetime.strptime(latest_str, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+                    if nxt > end_date:
+                        logger.info(f"dragon_tiger already up to date (max={latest_str}), skipping")
+                        task.update_progress(0, 0, 0, 0)
+                        task.complete(0, 0)
+                        return
+                    if nxt > start_date:
+                        logger.info(f"dragon_tiger: trimmed start_date {start_date} → {nxt}")
+                        start_date = nxt
+            except Exception as e:
+                logger.warning(f"dragon_tiger date-trim failed, proceeding with original range: {e}")
+
         task.update_progress(0, 1, 0, 0)
         try:
             records = collector.collect(date=date, start_date=start_date, end_date=end_date)
@@ -818,6 +882,24 @@ class TaskScheduler:
         collector = self._get_collector(TaskType.MARGIN_COLLECTION.value)
         from core.storage.mongo_storage import MarginStorage
         storage = MarginStorage()
+
+        # 裁剪起始日期：跳过 DB 中已有的日期段
+        try:
+            newest = storage.find_one({"信用交易日期": {"$exists": True}}, sort=[("信用交易日期", -1)])
+            if newest:
+                latest_8 = str(newest.get("信用交易日期", ""))[:8]
+                if latest_8 and latest_8.isdigit():
+                    nxt = (datetime.strptime(latest_8, "%Y%m%d") + timedelta(days=1)).strftime("%Y%m%d")
+                    if nxt > end_date:
+                        logger.info(f"margin already up to date (max={latest_8}), skipping")
+                        task.update_progress(0, 0, 0, 0)
+                        task.complete(0, 0)
+                        return
+                    if nxt > start_date:
+                        logger.info(f"margin: trimmed start_date {start_date} → {nxt}")
+                        start_date = nxt
+        except Exception as e:
+            logger.warning(f"margin date-trim failed, proceeding with original range: {e}")
 
         task.update_progress(0, 1, 0, 0)
         try:

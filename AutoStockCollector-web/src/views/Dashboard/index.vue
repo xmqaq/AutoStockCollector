@@ -103,7 +103,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useCollectStore } from '@/stores/collectStore'
 import { newsApi } from '@/api/news'
@@ -150,15 +150,23 @@ async function loadNews() {
     if (res.data) {
       const data = res.data.data || res.data || []
       newsList.value = Array.isArray(data) ? data : []
-      newsCount.value = newsList.value.length
+      // 使用接口返回的 count 字段（DB 实际总条数），而非当前加载条数
+      newsCount.value = res.data.count ?? newsList.value.length
     }
   } catch {
     // ignore
   }
 }
 
+let _refreshTimer: ReturnType<typeof setInterval>
+
 onMounted(() => {
   refreshData()
+  _refreshTimer = setInterval(refreshData, 30000)  // 每 30s 自动刷新
+})
+
+onUnmounted(() => {
+  clearInterval(_refreshTimer)
 })
 </script>
 

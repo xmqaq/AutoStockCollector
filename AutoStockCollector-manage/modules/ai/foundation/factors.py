@@ -6,29 +6,54 @@ from typing import Dict, List, Optional
 
 
 def trend_score(closes: List[float]) -> float:
-    """趋势因子。closes 按时间倒序（[最新, ..., 最早]），至少 5 条。"""
+    """趋势因子。closes 按时间倒序（[最新, ..., 最早]），至少 5 条。
+    引入涨跌幅动量使得同处上升趋势的股票也能拉开差距。
+    """
     if len(closes) < 5:
         return 50.0
+    n20 = min(len(closes), 20)
     ma5 = sum(closes[:5]) / 5
-    ma20 = sum(closes[:20]) / min(len(closes), 20)
+    ma20 = sum(closes[:n20]) / n20
     current = closes[0]
+
+    # 基础趋势档位
     if current > ma5 > ma20:
-        return 80.0
-    if current > ma5:
-        return 65.0
-    if current < ma5 < ma20:
-        return 30.0
-    return 50.0
+        base = 75.0
+    elif current > ma5:
+        base = 60.0
+    elif current < ma5 < ma20:
+        base = 25.0
+    else:
+        base = 45.0
+
+    # 动量修正：5 日涨跌幅连续性，最多 ±15 分
+    if len(closes) >= 6:
+        ret5 = (closes[0] - closes[5]) / closes[5] if closes[5] > 0 else 0
+        momentum = max(-15.0, min(15.0, ret5 * 200))  # 7.5% 涨幅 → +15 分
+        base = base + momentum
+
+    # 均线粘合惩罚：ma5 与 ma20 差距小于 0.5% 视为震荡，降 5 分
+    if ma20 > 0 and abs(ma5 - ma20) / ma20 < 0.005:
+        base -= 5.0
+
+    return max(0.0, min(100.0, base))
 
 
 def volume_score(volumes: List[float]) -> float:
-    """量能因子。volumes 按时间倒序，至少 5 条。放量加分。"""
+    """量能因子。volumes 按时间倒序，至少 5 条。放量加分，萎缩扣分。"""
     if len(volumes) < 5:
         return 50.0
     avg_vol = sum(volumes[1:]) / max(len(volumes) - 1, 1)
     current_vol = volumes[0]
-    if avg_vol > 0 and current_vol > avg_vol * 1.5:
-        return min(95.0, 50.0 + (current_vol / avg_vol) * 10.0)
+    if avg_vol <= 0:
+        return 50.0
+    ratio = current_vol / avg_vol
+    if ratio > 2.0:
+        return min(95.0, 50.0 + (ratio - 1) * 15.0)
+    if ratio > 1.5:
+        return min(80.0, 50.0 + (ratio - 1) * 10.0)
+    if ratio < 0.5:
+        return max(20.0, 50.0 - (1 - ratio) * 30.0)
     return 50.0
 
 

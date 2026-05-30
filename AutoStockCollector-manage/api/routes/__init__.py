@@ -716,20 +716,34 @@ def ai_stock_advice(code):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+_pick_running = False  # 简单互斥，防止重复触发
+
 @api_bp.route("/ai/pick/run", methods=["POST"])
 def ai_pick_run():
-    """触发 AI 智能选股（两阶段漏斗）。"""
+    """触发 AI 智能选股（两阶段漏斗）。后台线程执行，立即返回。"""
+    global _pick_running
+    if _pick_running:
+        return jsonify({"success": False, "error": "已有选股任务正在运行，请稍后刷新结果"}), 409
+
     data = request.get_json() or {}
-    try:
-        result = PickerEngine().run(
-            strategy=data.get("strategy", "default"),
-            top_n=data.get("top_n", 10),
-            candidate_pool=data.get("candidate_pool", 50),
-        )
-        return jsonify({"success": True, "data": result})
-    except Exception as e:
-        logger.error(f"AI pick run failed: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
+    strategy = data.get("strategy", "default")
+    top_n = data.get("top_n", 10)
+    candidate_pool = data.get("candidate_pool", 50)
+
+    def _run_async():
+        global _pick_running
+        _pick_running = True
+        try:
+            PickerEngine().run(strategy=strategy, top_n=top_n, candidate_pool=candidate_pool)
+        except Exception as e:
+            logger.error(f"AI pick run failed: {e}")
+        finally:
+            _pick_running = False
+
+    import threading
+    t = threading.Thread(target=_run_async, daemon=True)
+    t.start()
+    return jsonify({"success": True, "message": "选股任务已启动，请 1-3 分钟后刷新结果"})
 
 
 @api_bp.route("/ai/chat", methods=["POST"])
@@ -1228,7 +1242,9 @@ def start_update_latest():
     task_types = data.get("task_types")
 
     db = DatabaseConfig.get_database()
+    # 用缓存统计（避免阻塞路由 30s），点击后会主动失效让下次拿到最新数据
     stats = _get_collection_stats(db)
+    _invalidate_stats_cache()   # 提交任务后让下次 progress_all 刷新
 
     # 快照类型：若今日已采集则跳过，避免重复请求相同数据
     from datetime import date as _date
@@ -1271,46 +1287,75 @@ def _parse_task_ts(task_id: str) -> int:
         return 0
 
 
-def _get_collection_stats(db) -> dict:
-    """查询各集合的记录数和数据时间区间，用于 progress_all 展示"""
-    from pymongo import ASCENDING, DESCENDING
-    from datetime import datetime as _dt
+# ---------- 集合统计缓存（30 秒 TTL，避免每次 progress_all 打 24 次 MongoDB 查询） ----------
+_stats_cache: dict = {}
+_stats_cache_at: float = 0.0
+_stats_cache_lock = threading.Lock()
+_STATS_TTL = 30.0
 
-    def _fmt_dt(v):
-        if v is None:
-            return None
-        if hasattr(v, "strftime"):
-            return v.strftime("%Y-%m-%d")
-        s = str(v)
-        if len(s) == 8 and s.isdigit():
-            return f"{s[:4]}-{s[4:6]}-{s[6:]}"
-        return s[:10] if s else None
+
+def _fmt_dt(v) -> str:
+    """把 datetime / 8位字符串 统一格式化为 YYYY-MM-DD"""
+    if v is None:
+        return None
+    if hasattr(v, "strftime"):
+        return v.strftime("%Y-%m-%d")
+    s = str(v)
+    if len(s) == 8 and s.isdigit():
+        return f"{s[:4]}-{s[4:6]}-{s[6:]}"
+    return s[:10] if s else None
+
+
+def _get_collection_stats(db) -> dict:
+    """查询各集合的记录数和数据时间区间；结果缓存 30s 避免重复打 MongoDB。"""
+    global _stats_cache, _stats_cache_at
+
+    with _stats_cache_lock:
+        if _stats_cache and (time.time() - _stats_cache_at) < _STATS_TTL:
+            return _stats_cache
 
     meta = {
-        "kline":        ("kline",        "date",       ASCENDING),
-        "stock_info":   ("stock_info",   None,         None),
-        "financial":    ("financial",    "report_date",ASCENDING),
-        "news":         ("news",         "publish_date", ASCENDING),
-        "fund_flow":    ("fund_flow",    None,         None),
-        "dragon_tiger": ("dragon_tiger", "上榜日",      ASCENDING),
-        "sector":       ("block",        None,         None),
-        "margin":       ("margin_data",  "信用交易日期", ASCENDING),
+        "kline":        ("kline",        "date"),
+        "stock_info":   ("stock_info",   None),
+        "financial":    ("financial",    "report_date"),
+        "news":         ("news",         "publish_date"),
+        "fund_flow":    ("fund_flow",    None),
+        "dragon_tiger": ("dragon_tiger", "上榜日"),
+        "sector":       ("block",        None),
+        "margin":       ("margin_data",  "信用交易日期"),
     }
     result = {}
-    for task_type, (coll_name, date_field, _) in meta.items():
+    for task_type, (coll_name, date_field) in meta.items():
         coll = db[coll_name]
-        count = coll.count_documents({})
+        count = coll.estimated_document_count()   # 用元数据计数，比 count_documents 快得多
         date_from, date_to = None, None
         if date_field and count > 0:
             try:
-                oldest = coll.find_one({date_field: {"$exists": True}}, sort=[(date_field, ASCENDING)])
-                newest = coll.find_one({date_field: {"$exists": True}}, sort=[(date_field, DESCENDING)])
-                date_from = _fmt_dt(oldest.get(date_field)) if oldest else None
-                date_to   = _fmt_dt(newest.get(date_field)) if newest else None
+                # 一次聚合同时取 min/max，比两次 find_one 快
+                agg = list(coll.aggregate([
+                    {"$match": {date_field: {"$exists": True, "$ne": None}}},
+                    {"$group": {"_id": None,
+                                "mn": {"$min": f"${date_field}"},
+                                "mx": {"$max": f"${date_field}"}}}
+                ], allowDiskUse=False))
+                if agg:
+                    date_from = _fmt_dt(agg[0].get("mn"))
+                    date_to   = _fmt_dt(agg[0].get("mx"))
             except Exception:
                 pass
         result[task_type] = {"record_count": count, "date_from": date_from, "date_to": date_to}
+
+    with _stats_cache_lock:
+        _stats_cache = result
+        _stats_cache_at = time.time()
     return result
+
+
+def _invalidate_stats_cache():
+    """任务完成后主动失效缓存，让下次 progress_all 拿到最新数据"""
+    global _stats_cache_at
+    with _stats_cache_lock:
+        _stats_cache_at = 0.0
 
 
 @api_bp.route("/collect/progress_all", methods=["GET"])
@@ -1395,11 +1440,9 @@ def progress_all():
             completed_count += 1
         elif status == "not_started" and record_count > 0:
             completed_count += 1
-        if total > 0:
-            total_progress += progress
-            total_items += total
 
-    overall_percent = round(total_progress / total_items * 100, 1) if total_items > 0 else 0.0
+    # 整体进度按"已完成类型数/总类型数"计算，避免被 kline 5000 条记录稀释
+    overall_percent = round(completed_count / len(target_types) * 100, 1)
 
     return jsonify({
         "success": True,

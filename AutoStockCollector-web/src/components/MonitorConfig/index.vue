@@ -192,6 +192,7 @@
 import { ref, onMounted } from 'vue'
 import { TrendCharts, Histogram, Money, Bell, Plus } from '@element-plus/icons-vue'
 import { watchlistApi } from '@/api/watchlist'
+import { marketApi } from '@/api/market'
 import { ElMessage } from 'element-plus'
 
 interface MonitorConfig {
@@ -248,15 +249,35 @@ async function loadWatchlist() {
   try {
     const res = await watchlistApi.getWatchlist()
     watchlist.value = res.data?.data || res.data || []
-    monitorStocks.value = watchlist.value.slice(0, 5).map(s => ({
+    const codes = watchlist.value.slice(0, 10).map((s: any) => s.code)
+    const base = watchlist.value.slice(0, 10).map((s: any) => ({
       ...s,
-      price: Math.random() * 100 + 10,
-      change_rate: (Math.random() - 0.5) * 10,
-      high: Math.random() * 100 + 15,
-      low: Math.random() * 100 + 5,
+      price: undefined as number | undefined,
+      change_rate: 0,
+      high: undefined as number | undefined,
+      low: undefined as number | undefined,
       alertType: 'success',
       alertLabel: '正常',
     }))
+    if (codes.length) {
+      try {
+        const qres = await marketApi.getRealtimeQuotes(codes)
+        const quoteMap: Record<string, any> = {}
+        ;(qres.data?.data || []).forEach((q: any) => { quoteMap[q.code] = q })
+        base.forEach(s => {
+          const q = quoteMap[s.code]
+          if (q) {
+            s.price = q.price
+            s.change_rate = q.change ?? 0
+            s.high = q.high
+            s.low = q.low
+          }
+        })
+      } catch {
+        // 行情拉取失败时保留空值，不显示错误数据
+      }
+    }
+    monitorStocks.value = base
   } catch {
     watchlist.value = []
     monitorStocks.value = []
@@ -293,22 +314,33 @@ function resetConfig() {
   ElMessage.info('配置已重置')
 }
 
-function addStock() {
+async function addStock() {
   if (!addForm.value.code) {
     ElMessage.warning('请选择股票')
     return
   }
   const stock = watchlist.value.find(s => s.code === addForm.value.code)
   if (stock && !monitorStocks.value.find(s => s.code === addForm.value.code)) {
-    monitorStocks.value.push({
+    const entry: MonitorStock = {
       ...stock,
-      price: Math.random() * 100 + 10,
-      change_rate: (Math.random() - 0.5) * 10,
-      high: Math.random() * 100 + 15,
-      low: Math.random() * 100 + 5,
+      price: undefined,
+      change_rate: 0,
+      high: undefined,
+      low: undefined,
       alertType: 'success',
       alertLabel: '正常',
-    })
+    }
+    try {
+      const qres = await marketApi.getRealtimeQuotes([stock.code])
+      const q = (qres.data?.data || [])[0]
+      if (q) {
+        entry.price = q.price
+        entry.change_rate = q.change ?? 0
+        entry.high = q.high
+        entry.low = q.low
+      }
+    } catch { /* ignore */ }
+    monitorStocks.value.push(entry)
     ElMessage.success('已添加盯盘')
     showAddDialog.value = false
     addForm.value.code = ''

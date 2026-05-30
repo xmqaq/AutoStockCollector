@@ -274,16 +274,8 @@ async function handleRerun(row: any) {
 }
 
 // ---------------- 仪表盘 ----------------
-const overallPercent = computed(() => {
-  const list = collectStore.progressList
-  if (!list.length) return 0
-  const withData = list.filter(p => p.total > 0)
-  if (!withData.length) return 0
-  const totalItems = withData.reduce((a, p) => a + p.total, 0)
-  const doneItems = withData.reduce((a, p) => a + (p.progress || p.success || 0), 0)
-  if (totalItems === 0) return 0
-  return Math.round((doneItems / totalItems) * 100)
-})
+// 直接使用后端 progress_all 返回的 overall_percent（已正确计入有数据但无任务的类型）
+const overallPercent = computed(() => collectStore.overallPercent)
 
 const gaugeOption = computed(() => ({
   backgroundColor: '#1f1f1f',
@@ -336,6 +328,7 @@ function statusType(status: string) {
   return map[status] || 'info'
 }
 
+// manualRefresh：用户点击按钮时显示 loading；自动轮询用 pollSilently 不触发遮罩
 async function refresh() {
   loading.value = true
   try {
@@ -348,6 +341,17 @@ async function refresh() {
 
 async function loadTasks() {
   await collectStore.fetchTasks(taskStatusFilter.value || undefined, 50)
+}
+
+// 自动轮询：静默更新数据，不触发组件级 loading（不会显示表格遮罩）
+async function pollSilently() {
+  try {
+    // fetchProgress / fetchTasks 只改 store.loading，不影响此组件的 loading 变量
+    await Promise.all([
+      collectStore.fetchProgress(),
+      collectStore.fetchTasks(taskStatusFilter.value || undefined, 50),
+    ])
+  } catch { /* ignore */ }
 }
 
 async function handleClearDb() {
@@ -406,15 +410,27 @@ async function handleClearTasks() {
   }
 }
 
-let timer: ReturnType<typeof setInterval>
+let _pollTimer: ReturnType<typeof setTimeout>
+
+function hasActiveTasks(): boolean {
+  return collectStore.tasks.some(t => t.status === 'running' || t.status === 'pending') ||
+         collectStore.progressList.some(p => p.status === 'running' || p.status === 'pending')
+}
+
+function scheduleNext() {
+  const delay = hasActiveTasks() ? 3000 : 15000
+  _pollTimer = setTimeout(async () => {
+    await pollSilently()
+    scheduleNext()
+  }, delay)
+}
 
 onMounted(() => {
-  refresh()
-  timer = setInterval(refresh, 3000)
+  refresh().then(scheduleNext)
 })
 
 onUnmounted(() => {
-  clearInterval(timer)
+  clearTimeout(_pollTimer)
 })
 </script>
 

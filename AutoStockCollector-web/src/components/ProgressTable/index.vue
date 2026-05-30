@@ -11,7 +11,7 @@
           :percentage="calcPercent(row)"
           :status="progressStatus(row)"
           :stroke-width="8"
-          :format="() => `${row.progress || row.success || 0}/${row.total || 0}`"
+          :format="() => hasDbData(row) ? fmtCount(row.record_count) : `${row.progress || row.success || 0}/${row.total || 0}`"
         />
       </template>
     </el-table-column>
@@ -27,7 +27,7 @@
     </el-table-column>
     <el-table-column label="状态" width="110" align="center">
       <template #default="{ row }">
-        <span class="status-tag" :class="`status-${row.status}`">
+        <span class="status-tag" :class="hasDbData(row) ? 'status-completed' : `status-${row.status}`">
           <span class="status-dot" />
           {{ badgeLabel(row) }}
         </span>
@@ -93,17 +93,22 @@ function fmtCount(n?: number): string {
   return String(n)
 }
 
+function hasDbData(row: CollectProgress): boolean {
+  return row.status === 'not_started' && (row.record_count || 0) > 0
+}
+
 function calcPercent(row: CollectProgress): number {
+  if (hasDbData(row)) return 100
   if (row.percent !== undefined && row.percent > 0) return Math.min(100, Math.round(row.percent))
   if (!row.total || row.total === 0) return 0
   return Math.min(100, Math.round(((row.progress || row.success || 0) / row.total) * 100))
 }
 
 function progressStatus(row: CollectProgress): '' | 'success' | 'exception' | 'warning' {
+  if (hasDbData(row)) return 'success'
   const pct = calcPercent(row)
   if (pct === 100) return 'success'
   if (row.failed > 0 && row.failed > (row.success || 0)) return 'exception'
-  if (pct > 0) return ''
   return ''
 }
 
@@ -116,6 +121,7 @@ function badgeType(row: CollectProgress): 'success' | 'danger' | 'warning' | 'in
 }
 
 function badgeLabel(row: CollectProgress): string {
+  if (hasDbData(row)) return '已有数据'
   const labels: Record<string, string> = {
     completed: '完成', failed: '失败', running: '进行中',
     cancelled: '取消', pending: '等待', not_started: '未开始',

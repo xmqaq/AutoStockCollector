@@ -49,7 +49,7 @@ class PickerEngine:
         screened: List[tuple] = []
         for code in universe:
             try:
-                fi = self.dal.get_factor_inputs(code)
+                fi = self.dal.get_factor_inputs(code, kline_limit=10)
                 screened.append((code, self._screen_score(fi)))
             except Exception:
                 continue
