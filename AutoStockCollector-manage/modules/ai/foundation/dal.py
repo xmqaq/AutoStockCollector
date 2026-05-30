@@ -83,14 +83,22 @@ class StockDAL:
         dragon = self.dragon_tiger_storage.find_many({"code": code}, limit=10) or []
         margin = self.margin_storage.find_many({"code": code}, sort=[("date", -1)], limit=10) or []
 
+        # stock_info 字段名按采集来源不同，可能是 name/A股简称/公司名称
+        name = (info.get("name") or info.get("A股简称") or info.get("公司名称") or "")
+        # PE/PB 在 stock_info 里可能缺失（百度估值接口按需拉，未持久化），
+        # 也可能存为中文字段名，做一次兜底读取
+        pe = info.get("pe") or info.get("市盈率") or info.get("PE")
+        pb = info.get("pb") or info.get("市净率") or info.get("PB")
+        ps = info.get("ps")
+
         return StockDataBundle(
             code=code,
-            name=info.get("name", ""),
+            name=name,
             closes=closes,
             volumes=volumes,
-            pe=info.get("pe"),
-            pb=info.get("pb"),
-            ps=info.get("ps"),
+            pe=float(pe) if pe is not None else None,
+            pb=float(pb) if pb is not None else None,
+            ps=float(ps) if ps is not None else None,
             main_net_inflow=fund.get("main_net_inflow"),
             financial=financial,
             news=news,
@@ -112,12 +120,14 @@ class StockDAL:
         volumes = [float(k.get("volume", 0)) for k in klines]
         info = self.info_storage.get_by_code(code) or {}
         fund = self.fund_flow_storage.get_latest_flow(code) or {}
+        pe = info.get("pe") or info.get("市盈率") or info.get("PE")
+        pb = info.get("pb") or info.get("市净率") or info.get("PB")
         return FactorInputs(
             code=code,
             closes=closes,
             volumes=volumes,
-            pe=info.get("pe"),
-            pb=info.get("pb"),
+            pe=float(pe) if pe is not None else None,
+            pb=float(pb) if pb is not None else None,
             ps=info.get("ps"),
             main_net_inflow=fund.get("main_net_inflow"),
         )

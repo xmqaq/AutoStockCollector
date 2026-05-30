@@ -105,16 +105,32 @@ class LLMRouter:
         if not raw:
             return None
         text = raw.strip()
-        if text.startswith("```"):
-            text = text.strip("`")
-            if text.startswith("json"):
-                text = text[4:]
-            text = text.strip()
+
+        # 剥离 ```json ... ``` 围栏
+        if "```" in text:
+            import re
+            m = re.search(r"```(?:json)?\s*([\s\S]+?)```", text)
+            if m:
+                text = m.group(1).strip()
+
+        # 直接解析
         try:
             parsed = json.loads(text)
             return parsed if isinstance(parsed, dict) else None
         except (ValueError, TypeError):
-            return None
+            pass
+
+        # LLM 在 JSON 前后加了说明文字：提取第一个 {...}
+        import re
+        m = re.search(r"\{[\s\S]+\}", text)
+        if m:
+            try:
+                parsed = json.loads(m.group())
+                return parsed if isinstance(parsed, dict) else None
+            except (ValueError, TypeError):
+                pass
+
+        return None
 
     def _log_history(self, provider: str, task_type: str, success: bool, error: str = ""):
         try:

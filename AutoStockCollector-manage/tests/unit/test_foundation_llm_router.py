@@ -17,11 +17,14 @@ class TestLLMRouter(unittest.TestCase):
             return '{"ok": true}'
 
         router = LLMRouter(providers=["qwen", "openai"], caller=caller)
+        # 无 schema 时 raw 被包裹成 {"content": ...}（新行为：自由文本不强制 JSON）
         result = router.chat("hi", use_cache=False)
         self.assertEqual(calls, ["qwen"])
         self.assertTrue(result.success)
         self.assertEqual(result.provider, "qwen")
-        self.assertEqual(result.data, {"ok": True})
+        # 有 schema 时才要求 JSON 解析
+        result2 = router.chat("hi2", schema={"ok": "bool"}, use_cache=False)
+        self.assertEqual(result2.data, {"ok": True})
 
     def test_falls_back_to_next_provider_on_failure(self):
         def caller(provider, prompt):
@@ -74,8 +77,12 @@ class TestLLMRouter(unittest.TestCase):
             return "这不是 JSON"
 
         router = LLMRouter(providers=["qwen"], caller=caller)
-        result = router.chat("hi", use_cache=False)
-        self.assertFalse(result.success)
+        # 无 schema：非 JSON 也包裹成功
+        result_no_schema = router.chat("hi", use_cache=False)
+        self.assertTrue(result_no_schema.success)
+        # 有 schema：非 JSON 解析失败→降级→全失败
+        result_with_schema = router.chat("hi2", schema={"x": "int"}, use_cache=False)
+        self.assertFalse(result_with_schema.success)
 
 
 class TestDefaultCallerWiring(unittest.TestCase):
@@ -85,7 +92,8 @@ class TestDefaultCallerWiring(unittest.TestCase):
         with patch("modules.ai.foundation.llm_caller.ProviderCaller") as MockPC:
             instance = MockPC.return_value
             instance.return_value = '{"ok": true}'
-            result = router.chat("hi", use_cache=False)
+            # 有 schema 时才解析 JSON
+            result = router.chat("hi", schema={"ok": "bool"}, use_cache=False)
         self.assertTrue(result.success)
         self.assertEqual(result.data, {"ok": True})
 
