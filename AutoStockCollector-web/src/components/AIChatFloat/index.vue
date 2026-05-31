@@ -87,7 +87,6 @@
           placeholder="选择服务商"
           size="small"
           class="provider-select"
-          @change="onProviderChange"
         >
           <el-option
             v-for="key in enabledProviders"

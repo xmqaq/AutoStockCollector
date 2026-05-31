@@ -44,7 +44,8 @@ const chartOption = computed(() => {
 
   const hasCosts = costs.some(c => c !== 0)
 
-  const series = [
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const series: any[] = [
     {
       name: '盈亏金额',
       type: 'line',
@@ -72,8 +73,8 @@ const chartOption = computed(() => {
       data: costs,
       smooth: false,
       showSymbol: false,
-      lineStyle: { width: 1, type: 'dashed', color: '#909399' },
-      areaStyle: undefined,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      lineStyle: { width: 1, type: 'dashed', color: '#909399' } as any,
     })
   }
 
