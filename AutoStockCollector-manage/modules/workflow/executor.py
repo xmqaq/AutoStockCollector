@@ -1,7 +1,7 @@
 """
 选股工作流执行引擎
 """
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable
 from datetime import datetime
 from core.storage.mongo_storage import StockInfoStorage, KlineStorage, FundFlowStorage, NewsStorage
 from modules.ai_selector.strategies.base import SelectionResult, RiskLevel
@@ -11,17 +11,70 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+ProgressCallback = Callable[[str, str, str, float, Optional[Dict[str, Any]]], None]
+
+
+class WorkflowCancelManager:
+    """管理工作流取消状态"""
+    _cancelled_executions: Dict[str, bool] = {}
+
+    @classmethod
+    def cancel(cls, execution_id: str):
+        cls._cancelled_executions[execution_id] = True
+        logger.info(f"Execution {execution_id} marked for cancellation")
+
+    @classmethod
+    def is_cancelled(cls, execution_id: str) -> bool:
+        return cls._cancelled_executions.get(execution_id, False)
+
+    @classmethod
+    def clear(cls, execution_id: str):
+        cls._cancelled_executions.pop(execution_id, None)
+
 
 class WorkflowExecutor:
-    def __init__(self, workflow_id: str):
+    def __init__(self, workflow_id: str, execution_id: str = "", progress_callback: Optional[ProgressCallback] = None):
         self.workflow_id = workflow_id
+        self.execution_id = execution_id
         self.stock_info = StockInfoStorage()
         self.kline = KlineStorage()
         self.fund_flow = FundFlowStorage()
         self.news = NewsStorage()
+        self.financial = None
         self.ai_analyzer = AIAnalyzer()
         self.codes: List[str] = []
         self.results: List[SelectionResult] = []
+        self.progress_callback = progress_callback
+        self._cancelled = False
+
+    def _get_financial_storage(self):
+        if self.financial is None:
+            from core.storage.mongo_storage import FinancialStorage
+            self.financial = FinancialStorage()
+        return self.financial
+
+    def _report_progress(
+        self,
+        node_id: str,
+        node_label: str,
+        step: str,
+        progress: float,
+        detail: Optional[Dict[str, Any]] = None
+    ):
+        if self.progress_callback:
+            try:
+                self.progress_callback(node_id, node_label, step, progress, detail)
+            except Exception as e:
+                logger.warning(f"Progress callback failed: {e}")
+
+    def _is_cancelled(self) -> bool:
+        if self._cancelled:
+            return True
+        if self.execution_id and WorkflowCancelManager.is_cancelled(self.execution_id):
+            self._cancelled = True
+            logger.info(f"Execution {self.execution_id} cancelled via cancel manager")
+            return True
+        return False
 
     def execute(self, nodes: List[Dict], edges: List[Dict], params: Dict[str, Any]) -> Dict[str, Any]:
         logger.info(f"Starting workflow execution: {self.workflow_id}")
@@ -32,7 +85,9 @@ class WorkflowExecutor:
             self._init_codes()
             node_map = {n['id']: n for n in nodes}
             execution_order = self._topological_sort(nodes, edges)
+            total_nodes = len(execution_order)
 
+            self._report_progress("start", "初始化", f"加载 {len(self.codes)} 只有效股票", 5)
             start_log = {
                 "node": "start",
                 "label": "初始化",
@@ -42,11 +97,24 @@ class WorkflowExecutor:
             }
             execution_log.append(start_log)
 
-            for node in execution_order:
-                result = self._execute_node(node, node_map, params)
+            for idx, node in enumerate(execution_order):
+                if self._cancelled or (self.execution_id and WorkflowCancelManager.is_cancelled(self.execution_id)):
+                    logger.info(f"Execution {self.execution_id} cancelled, stopping workflow")
+                    self._cancelled = True
+                    return {
+                        "success": False,
+                        "workflow_id": self.workflow_id,
+                        "error": "Execution cancelled by user",
+                        "cancelled": True,
+                        "execution_time": datetime.now().isoformat(),
+                        "execution_log": execution_log
+                    }
+                base_progress = 10 + (idx / total_nodes) * 85
+                result = self._execute_node(node, node_map, params, base_progress)
                 execution_log.append(result)
 
             duration = (datetime.now() - start_time).total_seconds()
+            self._report_progress("end", "完成", f"执行完成，耗时 {duration:.2f}s", 100)
             return {
                 "success": True,
                 "workflow_id": self.workflow_id,
@@ -105,40 +173,52 @@ class WorkflowExecutor:
 
         return sorted_nodes
 
-    def _execute_node(self, node: Dict, node_map: Dict, params: Dict) -> Dict[str, Any]:
+    def _execute_node(self, node: Dict, node_map: Dict, params: Dict, base_progress: float = 0) -> Dict[str, Any]:
         node_type = node.get('type')
         node_id = node.get('id')
         node_label = node.get('label')
         node_config = node.get('config', {})
         logger.info(f"Executing node: {node_label} ({node_type})")
 
+        self._report_progress(node_id, node_label, f"开始执行 {node_label}", base_progress)
+
         try:
             if node_type == 'start':
-                self._execute_start_node(node_config, params)
+                self._execute_start_node(node_config, params, node_id, node_label, base_progress)
             elif node_type == 'filter':
-                self._execute_filter_node(node_config, params)
+                self._execute_filter_node(node_config, params, node_id, node_label, base_progress)
             elif node_type == 'score':
-                self._execute_score_node(node_config, params)
+                self._execute_score_node(node_config, params, node_id, node_label, base_progress)
             elif node_type == 'ai_agent':
-                self._execute_ai_agent_node(node_config, params)
+                self._execute_ai_agent_node(node_config, params, node_id, node_label, base_progress)
             elif node_type == 'combine':
-                self._execute_combine_node(node_config, params)
+                self._execute_combine_node(node_config, params, node_id, node_label, base_progress)
             elif node_type == 'risk_control':
-                self._execute_risk_control_node(node_config, params)
+                self._execute_risk_control_node(node_config, params, node_id, node_label, base_progress)
             elif node_type == 'end':
-                self._execute_end_node(node_config, params)
+                self._execute_end_node(node_config, params, node_id, node_label, base_progress)
             elif node_type == 'data_fetch':
-                self._execute_data_fetch_node(node_config, params)
+                self._execute_data_fetch_node(node_config, params, node_id, node_label, base_progress)
             elif node_type == 'technical_indicator':
-                self._execute_technical_indicator_node(node_config, params)
+                self._execute_technical_indicator_node(node_config, params, node_id, node_label, base_progress)
             elif node_type == 'fundamental_filter':
-                self._execute_fundamental_filter_node(node_config, params)
+                self._execute_fundamental_filter_node(node_config, params, node_id, node_label, base_progress)
             elif node_type == 'market_sentiment':
-                self._execute_market_sentiment_node(node_config, params)
+                self._execute_market_sentiment_node(node_config, params, node_id, node_label, base_progress)
             elif node_type == 'index_components':
-                self._execute_index_components_node(node_config, params)
+                self._execute_index_components_node(node_config, params, node_id, node_label, base_progress)
             elif node_type == 'compare':
-                self._execute_compare_node(node_config, params)
+                self._execute_compare_node(node_config, params, node_id, node_label, base_progress)
+            elif node_type == 'chanlun_zs':  # 缠论中枢识别
+                self._execute_chanlun_zs_node(node_config, params, node_id, node_label, base_progress)
+            elif node_type == 'chanlun_bc':  # 缠论背驰判断
+                self._execute_chanlun_bc_node(node_config, params, node_id, node_label, base_progress)
+            elif node_type == 'chanlun_buy1':  # 缠论一买
+                self._execute_chanlun_buy1_node(node_config, params, node_id, node_label, base_progress)
+            elif node_type == 'chanlun_buy2':  # 缠论二买
+                self._execute_chanlun_buy2_node(node_config, params, node_id, node_label, base_progress)
+            elif node_type == 'chanlun_buy3':  # 缠论三买
+                self._execute_chanlun_buy3_node(node_config, params, node_id, node_label, base_progress)
 
             return {
                 "node": node_id,
@@ -199,7 +279,7 @@ class WorkflowExecutor:
             return f"对比分析 ({ctype})"
         return ""
 
-    def _execute_start_node(self, config: Dict, params: Dict):
+    def _execute_start_node(self, config: Dict, params: Dict, node_id: str, node_label: str, base_progress: float):
         source = config.get('source', 'all')
         if source == 'watchlist':
             from core.storage.mongo_storage import WatchlistStorage
@@ -213,18 +293,37 @@ class WorkflowExecutor:
                 block = BlockStorage()
                 block_stocks = block.get_blocks_by_type('industry')
                 self.codes = [s.get('code') for s in block_stocks if s.get('code') == sector]
+        self._report_progress(node_id, node_label, f"已加载 {len(self.codes)} 只股票", base_progress + 5)
         logger.info(f"Start node: loaded {len(self.codes)} codes from {source}")
 
-    def _execute_filter_node(self, config: Dict, params: Dict):
-        filter_type = config.get('filter_type', 'price_range')
-        filtered_codes = []
+    def _execute_filter_node(self, config: Dict, params: Dict, node_id: str, node_label: str, base_progress: float):
+        if self._is_cancelled():
+            return
 
-        for code in self.codes:
+        filter_type = config.get('filter_type', 'price_range')
+        total = len(self.codes)
+        filtered_codes = []
+        report_interval = max(1, total // 10)
+
+        for i, code in enumerate(self.codes):
+            if self._is_cancelled():
+                self.codes = filtered_codes
+                return
+
             if self._check_filter(code, filter_type, config):
                 filtered_codes.append(code)
+            if (i + 1) % report_interval == 0 or i == total - 1:
+                pct = (i + 1) / total * 100
+                self._report_progress(
+                    node_id, node_label,
+                    f"筛选中 {i + 1}/{total}",
+                    base_progress + pct * 0.4,
+                    {"filtered": len(filtered_codes), "checked": i + 1, "total": total}
+                )
 
-        logger.info(f"Filter node ({filter_type}): {len(self.codes)} -> {len(filtered_codes)}")
         self.codes = filtered_codes
+        self._report_progress(node_id, node_label, f"筛选完成: {total} → {len(self.codes)} 只", base_progress + 50)
+        logger.info(f"Filter node ({filter_type}): {total} -> {len(filtered_codes)}")
 
     def _check_filter(self, code: str, filter_type: str, config: Dict) -> bool:
         if filter_type == 'price_range':
@@ -322,7 +421,10 @@ class WorkflowExecutor:
 
         return True
 
-    def _execute_score_node(self, config: Dict, params: Dict):
+    def _execute_score_node(self, config: Dict, params: Dict, node_id: str, node_label: str, base_progress: float):
+        if self._is_cancelled():
+            return
+
         score_type = config.get('score_type', 'weighted')
         weights = config.get('weights', {
             'technical': 0.25,
@@ -331,8 +433,15 @@ class WorkflowExecutor:
             'fund_flow': 0.25
         })
 
+        total = len(self.codes)
         scored_results = []
-        for code in self.codes:
+        report_interval = max(1, total // 10)
+
+        for i, code in enumerate(self.codes):
+            if self._is_cancelled():
+                self.results = scored_results
+                return
+
             try:
                 factors = self._calculate_factors(code)
                 score = self._calculate_composite_score(factors, score_type, weights)
@@ -340,9 +449,18 @@ class WorkflowExecutor:
                 scored_results.append(result)
             except Exception as e:
                 logger.warning(f"Scoring failed for {code}: {e}")
+            if (i + 1) % report_interval == 0 or i == total - 1:
+                avg_score = sum(r.score for r in scored_results) / max(len(scored_results), 1)
+                self._report_progress(
+                    node_id, node_label,
+                    f"评分中 {i + 1}/{total} (平均 {avg_score:.1f})",
+                    base_progress + (i + 1) / total * 80,
+                    {"scored": len(scored_results), "avg_score": avg_score}
+                )
 
         scored_results.sort(key=lambda x: x.score, reverse=True)
         self.results = scored_results
+        self._report_progress(node_id, node_label, f"评分完成，共 {len(self.results)} 只", base_progress + 85)
         logger.info(f"Score node ({score_type}): scored {len(self.results)} stocks")
 
     def _calculate_factors(self, code: str) -> Dict[str, float]:
@@ -551,7 +669,7 @@ class WorkflowExecutor:
             strategy=self.workflow_id
         )
 
-    def _execute_ai_agent_node(self, config: Dict, params: Dict):
+    def _execute_ai_agent_node(self, config: Dict, params: Dict, node_id: str, node_label: str, base_progress: float):
         agent_id = config.get('agent_id', '')
         if not agent_id:
             logger.warning("AI Agent node: no agent_id specified")
@@ -559,8 +677,9 @@ class WorkflowExecutor:
 
         top_n = config.get('top_n', 20)
         results_to_analyze = self.results[:top_n] if self.results else []
+        total = len(results_to_analyze)
 
-        for result in results_to_analyze:
+        for i, result in enumerate(results_to_analyze):
             try:
                 analysis = self.ai_analyzer.analyze_stock(result.code)
                 if analysis:
@@ -572,14 +691,23 @@ class WorkflowExecutor:
                         result.risk_factors = analysis['llm']['risk_factors']
             except Exception as e:
                 logger.warning(f"AI Agent analysis failed for {result.code}: {e}")
+            if (i + 1) % 5 == 0 or i == total - 1:
+                self._report_progress(
+                    node_id, node_label,
+                    f"AI分析中 {i + 1}/{total}",
+                    base_progress + (i + 1) / total * 80,
+                    {"analyzed": i + 1, "total": total}
+                )
 
         self.results.sort(key=lambda x: x.score, reverse=True)
+        self._report_progress(node_id, node_label, f"AI分析完成: {len(results_to_analyze)} 只", base_progress + 90)
         logger.info(f"AI Agent node: analyzed {len(results_to_analyze)} stocks with agent {agent_id}")
 
-    def _execute_combine_node(self, config: Dict, params: Dict):
+    def _execute_combine_node(self, config: Dict, params: Dict, node_id: str, node_label: str, base_progress: float):
         strategy = config.get('strategy', 'top_n')
         top_n = config.get('top_n', 20)
         min_score = config.get('min_score', 60.0)
+        original_count = len(self.results)
 
         if strategy == 'top_n':
             self.results = self.results[:top_n]
@@ -641,24 +769,32 @@ class WorkflowExecutor:
             self.results.sort(key=lambda x: x.score, reverse=True)
             self.results = self.results[:top_n]
 
+        self._report_progress(
+            node_id, node_label,
+            f"组合完成: {original_count} → {len(self.results)} 只",
+            base_progress + 50
+        )
         logger.info(f"Combine node ({strategy}): {len(self.results)} stocks")
 
-    def _execute_risk_control_node(self, config: Dict, params: Dict):
+    def _execute_risk_control_node(self, config: Dict, params: Dict, node_id: str, node_label: str, base_progress: float):
         max_positions = config.get('max_positions', 10)
         max_position_ratio = config.get('max_position_ratio', 0.1)
         exclude_st = config.get('exclude_st', True)
         exclude_limit_up = config.get('exclude_limit_up', False)
+        original_count = len(self.results)
 
         if exclude_st:
-            original_count = len(self.results)
+            st_count = len([r for r in self.results if r.name.startswith(('*ST', 'ST'))])
             self.results = [r for r in self.results if not r.name.startswith(('*ST', 'ST'))]
-            logger.info(f"Risk control: excluded {original_count - len(self.results)} ST stocks")
+            if st_count > 0:
+                self._report_progress(node_id, node_label, f"排除 {st_count} 只ST股票", base_progress + 10)
 
         if exclude_limit_up:
-            original_count = len(self.results)
             change_pcts = params.get('change_pcts', {})
+            limit_up_count = len([r for r in self.results if abs(change_pcts.get(r.code, 0)) >= 9.9])
             self.results = [r for r in self.results if abs(change_pcts.get(r.code, 0)) < 9.9]
-            logger.info(f"Risk control: excluded {original_count - len(self.results)} limit-up stocks")
+            if limit_up_count > 0:
+                self._report_progress(node_id, node_label, f"排除 {limit_up_count} 只涨停股票", base_progress + 20)
 
         base_ratio = min(max_position_ratio, 1.0 / max(len(self.results), 1))
 
@@ -685,12 +821,19 @@ class WorkflowExecutor:
         if len(self.results) > max_positions:
             self.results = self.results[:max_positions]
 
+        self._report_progress(
+            node_id, node_label,
+            f"风控完成: {original_count} → {len(self.results)} 只",
+            base_progress + 50
+        )
         logger.info(f"Risk control node: {len(self.results)} stocks after risk filtering")
 
-    def _execute_end_node(self, config: Dict, params: Dict):
+    def _execute_end_node(self, config: Dict, params: Dict, node_id: str, node_label: str, base_progress: float):
         output_type = config.get('output', 'list')
         top_n = config.get('top_n', 10)
         include_reasons = config.get('include_reasons', False)
+
+        self._report_progress(node_id, node_label, f"正在生成结果 (Top {top_n})", base_progress + 20)
 
         if output_type == 'list':
             self.results = self.results[:top_n]
@@ -699,6 +842,7 @@ class WorkflowExecutor:
             for result in self.results:
                 result.metadata['reasons'] = self._generate_pick_reason(result)
 
+        self._report_progress(node_id, node_label, f"输出 {len(self.results)} 只股票", base_progress + 40)
         logger.info(f"End node: workflow completed with {len(self.results)} results")
 
     def _generate_pick_reason(self, result) -> List[str]:
@@ -738,14 +882,16 @@ class WorkflowExecutor:
 
         return reasons
 
-    def _execute_data_fetch_node(self, config: Dict, params: Dict):
+    def _execute_data_fetch_node(self, config: Dict, params: Dict, node_id: str, node_label: str, base_progress: float):
         data_type = config.get('data_type', 'kline')
         days = config.get('days', 60)
         limit = config.get('limit', 100)
 
         fetched_data: Dict[str, Any] = {}
+        codes_to_fetch = self.codes[:limit]
+        total = len(codes_to_fetch)
 
-        for code in self.codes[:limit]:
+        for i, code in enumerate(codes_to_fetch):
             if data_type == 'kline':
                 klines = self.kline.find_many({"code": code}, sort=[("date", -1)], limit=days)
                 if klines:
@@ -757,7 +903,7 @@ class WorkflowExecutor:
                 if info:
                     fetched_data[code] = {"info": info}
             elif data_type == 'financial':
-                financials = self.financial.find_many({"code": code}, limit=1)
+                financials = self._get_financial_storage().find_many({"code": code}, limit=1)
                 if financials:
                     fetched_data[code] = {"financial": financials[0]}
             elif data_type == 'fund_flow':
@@ -774,18 +920,27 @@ class WorkflowExecutor:
                 signals = kline.get_signals(code)
                 if signals:
                     fetched_data[code] = {"signals": signals}
+            if (i + 1) % 50 == 0 or i == total - 1:
+                self._report_progress(
+                    node_id, node_label,
+                    f"获取数据 {i + 1}/{total}",
+                    base_progress + (i + 1) / total * 60,
+                    {"fetched": len(fetched_data), "total": total}
+                )
 
         params['fetched_data'] = fetched_data
+        self._report_progress(node_id, node_label, f"获取完成: {len(fetched_data)} 条数据", base_progress + 70)
         logger.info(f"Data fetch node ({data_type}): fetched {len(fetched_data)} records")
 
-    def _execute_technical_indicator_node(self, config: Dict, params: Dict):
+    def _execute_technical_indicator_node(self, config: Dict, params: Dict, node_id: str, node_label: str, base_progress: float):
         indicator_type = config.get('indicator_type', 'ma')
         params_str = config.get('params', '5,20,60')
         params_list = [int(p.strip()) for p in params_str.split(',') if p.strip().isdigit()]
 
         indicator_data: Dict[str, Any] = {}
+        total = len(self.codes)
 
-        for code in self.codes:
+        for i, code in enumerate(self.codes):
             klines = self.kline.find_many({"code": code}, sort=[("date", -1)], limit=60)
             if not klines:
                 continue
@@ -817,8 +972,16 @@ class WorkflowExecutor:
             elif indicator_type == 'boll':
                 boll_data = self._calculate_boll(closes)
                 indicator_data[code] = {"boll": boll_data}
+            if (i + 1) % 100 == 0 or i == total - 1:
+                self._report_progress(
+                    node_id, node_label,
+                    f"计算指标 {i + 1}/{total}",
+                    base_progress + (i + 1) / total * 60,
+                    {"calculated": len(indicator_data), "total": total}
+                )
 
         params['indicator_data'] = indicator_data
+        self._report_progress(node_id, node_label, f"指标计算完成: {len(indicator_data)} 只", base_progress + 70)
         logger.info(f"Technical indicator node ({indicator_type}): calculated {len(indicator_data)} records")
 
     def _calculate_ema(self, data: List[float], period: int) -> float:
@@ -890,15 +1053,16 @@ class WorkflowExecutor:
             "lower": middle - std_dev * std
         }
 
-    def _execute_fundamental_filter_node(self, config: Dict, params: Dict):
+    def _execute_fundamental_filter_node(self, config: Dict, params: Dict, node_id: str, node_label: str, base_progress: float):
         filter_type = config.get('filter_type', 'pe')
         operator = config.get('operator', 'lt')
         value = config.get('value', 0)
         min_value = config.get('min_value', 0)
         max_value = config.get('max_value', 0)
-
+        total = len(self.codes)
         filtered_codes = []
-        for code in self.codes:
+
+        for i, code in enumerate(self.codes):
             info = self.stock_info.get_by_code(code)
             if not info:
                 continue
@@ -913,7 +1077,7 @@ class WorkflowExecutor:
                 if self._check_operator(val, operator, value, min_value, max_value):
                     match = True
             elif filter_type == 'roe':
-                financials = self.financial.find_many({"code": code}, sort=[("report_date", -1)], limit=1)
+                financials = self._get_financial_storage().find_many({"code": code}, sort=[("report_date", -1)], limit=1)
                 if financials:
                     val = financials[0].get('roe', 0)
                     if self._check_operator(val, operator, value, min_value, max_value):
@@ -921,8 +1085,16 @@ class WorkflowExecutor:
 
             if match:
                 filtered_codes.append(code)
+            if (i + 1) % 100 == 0 or i == total - 1:
+                self._report_progress(
+                    node_id, node_label,
+                    f"筛选中 {i + 1}/{total}",
+                    base_progress + (i + 1) / total * 60,
+                    {"passed": len(filtered_codes), "checked": i + 1, "total": total}
+                )
 
         self.codes = filtered_codes
+        self._report_progress(node_id, node_label, f"基本面筛选完成: {total} → {len(self.codes)} 只", base_progress + 70)
         logger.info(f"Fundamental filter node ({filter_type}): {len(self.codes)} stocks passed")
 
     def _check_operator(self, val: float, operator: str, value: float, min_val: float, max_val: float) -> bool:
@@ -934,13 +1106,13 @@ class WorkflowExecutor:
             return min_val <= val <= max_val
         return False
 
-    def _execute_market_sentiment_node(self, config: Dict, params: Dict):
+    def _execute_market_sentiment_node(self, config: Dict, params: Dict, node_id: str, node_label: str, base_progress: float):
         analysis_type = config.get('analysis_type', 'overall')
         threshold = config.get('threshold', 50)
-
         sentiment_scores: Dict[str, float] = {}
+        total = len(self.codes)
 
-        for code in self.codes:
+        for i, code in enumerate(self.codes):
             if analysis_type == 'overall':
                 sentiment = self.news.get_sentiment_trend(code, 7)
                 if sentiment:
@@ -953,16 +1125,26 @@ class WorkflowExecutor:
                 sentiment = self.news.get_sentiment_trend(code, 3)
                 if sentiment:
                     sentiment_scores[code] = sentiment.get('current_score', 50)
+            if (i + 1) % 50 == 0 or i == total - 1:
+                self._report_progress(
+                    node_id, node_label,
+                    f"分析情绪 {i + 1}/{total}",
+                    base_progress + (i + 1) / total * 60,
+                    {"analyzed": len(sentiment_scores), "total": total}
+                )
 
         hot_codes = [code for code, score in sentiment_scores.items() if score >= threshold]
         if len(hot_codes) < len(self.codes):
             self.codes = hot_codes
 
         params['sentiment_scores'] = sentiment_scores
+        self._report_progress(node_id, node_label, f"情绪分析完成: {len(hot_codes)} 只热点股", base_progress + 70)
         logger.info(f"Market sentiment node ({analysis_type}): {len(self.codes)} hot stocks identified")
 
-    def _execute_index_components_node(self, config: Dict, params: Dict):
+    def _execute_index_components_node(self, config: Dict, params: Dict, node_id: str, node_label: str, base_progress: float):
         index_code = config.get('index_code', '000300.sh')
+
+        self._report_progress(node_id, node_label, f"获取 {index_code} 成分股", base_progress + 10)
 
         from core.storage.mongo_storage import IndexComponentStorage
         index_storage = IndexComponentStorage()
@@ -971,17 +1153,18 @@ class WorkflowExecutor:
         if components:
             codes = [c.get('code') for c in components if c.get('code')]
             params['index_components'] = {index_code: codes}
+            self._report_progress(node_id, node_label, f"加载 {len(codes)} 只成分股", base_progress + 50)
             logger.info(f"Index components node ({index_code}): {len(codes)} stocks loaded")
         else:
             logger.warning(f"Index components node ({index_code}): no components found")
 
-    def _execute_compare_node(self, config: Dict, params: Dict):
+    def _execute_compare_node(self, config: Dict, params: Dict, node_id: str, node_label: str, base_progress: float):
         compare_type = config.get('compare_type', 'performance')
         ranking = config.get('ranking', 'desc')
-
         comparison_data: List[Dict[str, Any]] = []
+        total = len(self.codes)
 
-        for code in self.codes:
+        for i, code in enumerate(self.codes):
             info = self.stock_info.get_by_code(code)
             if not info:
                 continue
@@ -1009,8 +1192,379 @@ class WorkflowExecutor:
 
             if "value" in item:
                 comparison_data.append(item)
+            if (i + 1) % 50 == 0 or i == total - 1:
+                self._report_progress(
+                    node_id, node_label,
+                    f"对比分析 {i + 1}/{total}",
+                    base_progress + (i + 1) / total * 60,
+                    {"compared": len(comparison_data), "total": total}
+                )
 
         comparison_data.sort(key=lambda x: x.get('value', 0), reverse=(ranking == 'desc'))
 
         params['comparison_data'] = comparison_data
+        self._report_progress(node_id, node_label, f"对比完成: {len(comparison_data)} 只股票", base_progress + 70)
         logger.info(f"Compare node ({compare_type}): compared {len(comparison_data)} stocks")
+
+    def _execute_chanlun_zs_node(self, config: Dict, params: Dict, node_id: str, node_label: str, base_progress: float):
+        """缠论中枢识别节点"""
+        level = config.get('level', '60min')  # 级别: 1min, 5min, 15min, 30min, 60min, 日线
+        min_bars = config.get('min_bars', 3)  # 中枢区间最少K线数
+
+        zs_data: Dict[str, Any] = {}
+        total = len(self.codes)
+
+        for i, code in enumerate(self.codes):
+            klines = self.kline.find_many({"code": code}, sort=[("date", -1)], limit=120)
+            if not klines or len(klines) < 30:
+                continue
+
+            closes = [k.get('close', 0) for k in klines]
+            highs = [k.get('high', 0) for k in klines]
+            lows = [k.get('low', 0) for k in klines]
+
+            zs_result = self._find_zhongshu(closes, highs, lows, min_bars)
+            if zs_result:
+                zs_data[code] = zs_result
+
+            if (i + 1) % 50 == 0 or i == total - 1:
+                self._report_progress(
+                    node_id, node_label,
+                    f"识别中枢 {i + 1}/{total}",
+                    base_progress + (i + 1) / total * 60,
+                    {"found_zs": len(zs_data), "total": total}
+                )
+
+        params['zs_data'] = zs_data
+        self._report_progress(node_id, node_label, f"中枢识别完成: {len(zs_data)} 只股票", base_progress + 70)
+        logger.info(f"Chanlun ZS node (level={level}): identified {len(zs_data)} stocks with zhongshu")
+
+    def _find_zhongshu(self, closes: List[float], highs: List[float], lows: List[float], min_bars: int) -> Optional[Dict]:
+        """寻找缠论中枢"""
+        if len(closes) < min_bars * 3:
+            return None
+
+        highs_reversed = list(reversed(highs))
+        lows_reversed = list(reversed(lows))
+        closes_reversed = list(reversed(closes))
+
+        peak_idx = self._find_peaks(highs_reversed, 3)
+        trough_idx = self._find_troughs(lows_reversed, 3)
+
+        if len(peak_idx) < 2 or len(trough_idx) < 2:
+            return None
+
+        zhongshu = None
+        for i in range(len(peak_idx) - 1):
+            for j in range(len(trough_idx) - 1):
+                p1, p2 = peak_idx[i], peak_idx[i + 1]
+                t1, t2 = trough_idx[j], trough_idx[j + 1]
+
+                if p1 < t1 < p2 < t2:
+                    zg = max(highs_reversed[p1:p2+1])
+                    zd = min(lows_reversed[t1:t2+1])
+                    zg = min(zg, zd)
+                    zd = max(zg, zd)
+
+                    if zg > zd:
+                        zhongshu = {
+                            "zg": round(zg, 2),
+                            "zd": round(zd, 2),
+                            "zz": round((zg + zd) / 2, 2),
+                            "gg": round(max(highs_reversed[p1:p2+1]), 2),
+                            "dd": round(min(lows_reversed[t1:t2+1]), 2),
+                            "start_idx": len(closes) - p2 - 1,
+                            "bars": p2 - p1 + 1
+                        }
+                        break
+            if zhongshu:
+                break
+
+        return zhongshu
+
+    def _find_peaks(self, data: List[float], window: int) -> List[int]:
+        """寻找峰值"""
+        peaks = []
+        for i in range(window, len(data) - window):
+            if all(data[i] >= data[i - j] for j in range(1, window + 1)) and \
+               all(data[i] >= data[i + j] for j in range(1, window + 1)):
+                peaks.append(i)
+        return peaks
+
+    def _find_troughs(self, data: List[float], window: int) -> List[int]:
+        """寻找谷值"""
+        troughs = []
+        for i in range(window, len(data) - window):
+            if all(data[i] <= data[i - j] for j in range(1, window + 1)) and \
+               all(data[i] <= data[i + j] for j in range(1, window + 1)):
+                troughs.append(i)
+        return troughs
+
+    def _execute_chanlun_bc_node(self, config: Dict, params: Dict, node_id: str, node_label: str, base_progress: float):
+        """缠论背驰判断节点"""
+        bc_type = config.get('bc_type', 'divergence')  # divergence: 背驰,新高新低: new_high_low
+        threshold = config.get('threshold', 0.1)
+
+        bc_data: Dict[str, Any] = {}
+        total = len(self.codes)
+
+        for i, code in enumerate(self.codes):
+            klines = self.kline.find_many({"code": code}, sort=[("date", -1)], limit=120)
+            if not klines or len(klines) < 60:
+                continue
+
+            closes = [k.get('close', 0) for k in klines]
+            volumes = [k.get('volume', 0) for k in klines]
+
+            if bc_type == 'divergence':
+                macd_result = self._calculate_macd(closes)
+                dif = macd_result.get('dif', 0)
+                dea = macd_result.get('dea', 0)
+
+                prev_difs = []
+                prev_deas = []
+                for j in range(5, min(20, len(closes))):
+                    temp_closes = closes[j:]
+                    if len(temp_closes) >= 26:
+                        macd_temp = self._calculate_macd(temp_closes)
+                        prev_difs.append(macd_temp.get('dif', 0))
+                        prev_deas.append(macd_temp.get('dea', 0))
+
+                divergence = False
+                if prev_difs and prev_deas:
+                    if dif < 0 and all(d < 0 for d in prev_difs):
+                        if all(abs(dif) > abs(d) + threshold for d in prev_difs[:-1]):
+                            divergence = True
+                    elif dif > 0 and all(d > 0 for d in prev_difs):
+                        if all(abs(dif) > abs(d) + threshold for d in prev_difs[:-1]):
+                            divergence = True
+
+                bc_data[code] = {
+                    "divergence": divergence,
+                    "dif": round(dif, 4),
+                    "dea": round(dea, 0),
+                    "type": "bottom" if divergence and dif < 0 else "top" if divergence and dif > 0 else "none"
+                }
+
+            if (i + 1) % 50 == 0 or i == total - 1:
+                self._report_progress(
+                    node_id, node_label,
+                    f"判断背驰 {i + 1}/{total}",
+                    base_progress + (i + 1) / total * 60,
+                    {"bc_found": len([c for c, d in bc_data.items() if d.get('divergence')]), "total": total}
+                )
+
+        params['bc_data'] = bc_data
+        bc_count = len([d for d in bc_data.values() if d.get('divergence')])
+        self._report_progress(node_id, node_label, f"背驰识别完成: {bc_count} 只股票", base_progress + 70)
+        logger.info(f"Chanlun BC node (type={bc_type}): found {bc_count} divergences")
+
+    def _execute_chanlun_buy1_node(self, config: Dict, params: Dict, node_id: str, node_label: str, base_progress: float):
+        """缠论第一类买点识别"""
+        min_price = config.get('min_price', 2)
+        max_price = config.get('max_price', 100)
+        rsi_oversold = config.get('rsi_oversold', 30)
+        kdj_oversold = config.get('kdj_oversold', 20)
+
+        buy1_data: Dict[str, Any] = {}
+        total = len(self.codes)
+
+        for i, code in enumerate(self.codes):
+            klines = self.kline.find_many({"code": code}, sort=[("date", -1)], limit=120)
+            if not klines or len(klines) < 60:
+                continue
+
+            closes = [k.get('close', 0) for k in klines]
+            current_price = closes[0]
+
+            if not (min_price <= current_price <= max_price):
+                continue
+
+            macd_data = self._calculate_macd(closes)
+            kdj_data = self._calculate_kdj(closes)
+            rsi_data = self._calculate_rsi(closes)
+
+            is_buy1 = False
+            reasons = []
+
+            if macd_data['dif'] < 0 and macd_data['macd'] > macd_data['dif']:
+                is_buy1 = True
+                reasons.append("MACD底背驰")
+
+            if kdj_data['j'] < kdj_oversold:
+                is_buy1 = True
+                reasons.append(f"KDJ超卖(J={kdj_data['j']:.1f})")
+
+            if rsi_data < rsi_oversold:
+                is_buy1 = True
+                reasons.append(f"RSI超卖({rsi_data:.1f})")
+
+            if is_buy1:
+                buy1_data[code] = {
+                    "price": round(current_price, 2),
+                    "macd": macd_data,
+                    "kdj": kdj_data,
+                    "rsi": round(rsi_data, 2),
+                    "reasons": reasons,
+                    "strength": len(reasons)
+                }
+
+            if (i + 1) % 50 == 0 or i == total - 1:
+                self._report_progress(
+                    node_id, node_label,
+                    f"识别一买 {i + 1}/{total}",
+                    base_progress + (i + 1) / total * 60,
+                    {"buy1_found": len(buy1_data), "total": total}
+                )
+
+        if buy1_data:
+            buy1_data = dict(sorted(buy1_data.items(), key=lambda x: x[1]['strength'], reverse=True))
+
+        params['buy1_data'] = buy1_data
+        self._report_progress(node_id, node_label, f"一买识别完成: {len(buy1_data)} 只股票", base_progress + 70)
+        logger.info(f"Chanlun Buy1 node: found {len(buy1_data)} first-type buy points")
+
+    def _execute_chanlun_buy2_node(self, config: Dict, params: Dict, node_id: str, node_label: str, base_progress: float):
+        """缠论第二类买点识别"""
+        buy1_data = params.get('buy1_data', {})
+
+        buy2_data: Dict[str, Any] = {}
+        total = len(self.codes)
+
+        for i, code in enumerate(self.codes):
+            klines = self.kline.find_many({"code": code}, sort=[("date", -1)], limit=120)
+            if not klines or len(klines) < 60:
+                continue
+
+            closes = [k.get('close', 0) for k in klines]
+            current_price = closes[0]
+
+            macd_data = self._calculate_macd(closes)
+            kdj_data = self._calculate_kdj(closes)
+            ma5 = sum(closes[:5]) / 5
+            ma20 = sum(closes[:20]) / 20
+
+            is_buy2 = False
+            reasons = []
+
+            if macd_data['dif'] > 0 and macd_data['dea'] > 0:
+                is_buy2 = True
+                reasons.append("MACD多头排列")
+
+            if ma5 > ma20:
+                is_buy2 = True
+                reasons.append("均线多头排列")
+
+            if buy1_data.get(code):
+                buy1_price = buy1_data[code].get('price', 0)
+                if buy1_price > 0 and current_price >= buy1_price * 0.95:
+                    is_buy2 = True
+                    reasons.append(f"回调不破一买({buy1_price})")
+
+            if kdj_data['k'] > kdj_data['d'] and kdj_data['j'] < 80:
+                is_buy2 = True
+                reasons.append("KDJ金叉")
+
+            if is_buy2:
+                buy2_data[code] = {
+                    "price": round(current_price, 2),
+                    "macd": macd_data,
+                    "kdj": kdj_data,
+                    "ma5": round(ma5, 2),
+                    "ma20": round(ma20, 2),
+                    "reasons": reasons,
+                    "strength": len(reasons)
+                }
+
+            if (i + 1) % 50 == 0 or i == total - 1:
+                self._report_progress(
+                    node_id, node_label,
+                    f"识别二买 {i + 1}/{total}",
+                    base_progress + (i + 1) / total * 60,
+                    {"buy2_found": len(buy2_data), "total": total}
+                )
+
+        if buy2_data:
+            buy2_data = dict(sorted(buy2_data.items(), key=lambda x: x[1]['strength'], reverse=True))
+
+        params['buy2_data'] = buy2_data
+        self._report_progress(node_id, node_label, f"二买识别完成: {len(buy2_data)} 只股票", base_progress + 70)
+        logger.info(f"Chanlun Buy2 node: found {len(buy2_data)} second-type buy points")
+
+    def _execute_chanlun_buy3_node(self, config: Dict, params: Dict, node_id: str, node_label: str, base_progress: float):
+        """缠论第三类买点识别"""
+        zs_data = params.get('zs_data', {})
+        min_price = config.get('min_price', 5)
+        max_price = config.get('max_price', 100)
+        vol_threshold = config.get('vol_threshold', 1.5)
+
+        buy3_data: Dict[str, Any] = {}
+        total = len(self.codes)
+
+        for i, code in enumerate(self.codes):
+            klines = self.kline.find_many({"code": code}, sort=[("date", -1)], limit=120)
+            if not klines or len(klines) < 60:
+                continue
+
+            closes = [k.get('close', 0) for k in klines]
+            volumes = [k.get('volume', 0) for k in klines]
+            current_price = closes[0]
+
+            if not (min_price <= current_price <= max_price):
+                continue
+
+            macd_data = self._calculate_macd(closes)
+            boll_data = self._calculate_boll(closes)
+
+            current_vol = volumes[0]
+            avg_vol = sum(volumes[:5]) / 5
+            vol_ratio = current_vol / avg_vol if avg_vol > 0 else 1
+
+            zs = zs_data.get(code)
+            is_breakout = False
+
+            if zs:
+                upper = zs.get('zg', current_price * 1.1)
+                if current_price > upper:
+                    is_breakout = True
+                    reasons = [f"突破中枢上沿({upper})"]
+                else:
+                    reasons = []
+            else:
+                reasons = []
+
+            if boll_data.get('upper', 0) > 0 and current_price > boll_data['upper']:
+                is_breakout = True
+                reasons.append("突破布林上轨")
+
+            if macd_data['dif'] > 0 and macd_data['dea'] > 0:
+                reasons.append("MACD多头")
+
+            if vol_ratio >= vol_threshold:
+                reasons.append(f"放量({vol_ratio:.1f}倍)")
+
+            if len(reasons) >= 2:
+                buy3_data[code] = {
+                    "price": round(current_price, 2),
+                    "macd": macd_data,
+                    "boll": boll_data,
+                    "vol_ratio": round(vol_ratio, 2),
+                    "zs": zs,
+                    "reasons": reasons,
+                    "strength": len(reasons)
+                }
+
+            if (i + 1) % 50 == 0 or i == total - 1:
+                self._report_progress(
+                    node_id, node_label,
+                    f"识别三买 {i + 1}/{total}",
+                    base_progress + (i + 1) / total * 60,
+                    {"buy3_found": len(buy3_data), "total": total}
+                )
+
+        if buy3_data:
+            buy3_data = dict(sorted(buy3_data.items(), key=lambda x: x[1]['strength'], reverse=True))
+
+        params['buy3_data'] = buy3_data
+        self._report_progress(node_id, node_label, f"三买识别完成: {len(buy3_data)} 只股票", base_progress + 70)
+        logger.info(f"Chanlun Buy3 node: found {len(buy3_data)} third-type buy points")

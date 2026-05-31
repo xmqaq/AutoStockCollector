@@ -44,6 +44,41 @@ export interface WorkflowResult {
   error?: string
 }
 
+export interface WorkflowExecution {
+  id: string
+  workflow_id: string
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+  progress: number
+  current_node: string
+  current_step: string
+  steps: ExecutionStep[]
+  result?: WorkflowResult
+  error?: string
+  started_at: string
+  finished_at?: string
+}
+
+export interface ExecutionStep {
+  node_id: string
+  node_label: string
+  step: string
+  progress: number
+  detail?: Record<string, any>
+  timestamp: string
+}
+
+export interface RunResponse {
+  success: boolean
+  execution_id: string
+  message?: string
+  error?: string
+}
+
+export interface ProgressResponse {
+  success: boolean
+  data: WorkflowExecution
+}
+
 export interface NodeTypeConfig {
   type: string
   label: string
@@ -77,8 +112,17 @@ export const workflowApi = {
   delete(id: string) {
     return client.delete(`/api/v1/workflow/${id}`)
   },
-  run(id: string, params?: Record<string, any>) {
+  run(id: string, params?: Record<string, any>): Promise<{ data: RunResponse }> {
     return client.post(`/api/v1/workflow/${id}/run`, params || {})
+  },
+  getExecutionProgress(workflowId: string, executionId: string): Promise<{ data: ProgressResponse }> {
+    return client.get(`/api/v1/workflow/${workflowId}/execution/${executionId}/progress`)
+  },
+  cancelExecution(workflowId: string, executionId: string) {
+    return client.post(`/api/v1/workflow/${workflowId}/execution/${executionId}/cancel`)
+  },
+  listExecutions(workflowId: string, limit: number = 20) {
+    return client.get(`/api/v1/workflow/${workflowId}/executions`, { params: { limit } })
   },
   getTemplates() {
     return client.get('/api/v1/workflow/templates')

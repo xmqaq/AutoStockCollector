@@ -4,7 +4,12 @@
 from flask import Blueprint, request, jsonify
 from datetime import datetime
 import uuid
-from modules.workflow import Workflow, WorkflowStorage, WorkflowExecutor, WorkflowNode, WorkflowEdge
+import threading
+from modules.workflow import (
+    Workflow, WorkflowStorage, WorkflowExecutor, WorkflowNode, WorkflowEdge,
+    WorkflowExecution, WorkflowExecutionStorage, ExecutionStatus,
+    WorkflowTemplate, WorkflowTemplateStorage
+)
 from utils.logger import get_logger
 
 
@@ -12,6 +17,8 @@ logger = get_logger(__name__)
 
 workflow_bp = Blueprint('workflow', __name__, url_prefix='/api/v1/workflow')
 workflow_storage = WorkflowStorage()
+execution_storage = WorkflowExecutionStorage()
+template_storage = WorkflowTemplateStorage()
 
 
 @workflow_bp.route('', methods=['GET'])
@@ -133,7 +140,7 @@ def delete_workflow(workflow_id):
 
 @workflow_bp.route('/<workflow_id>/run', methods=['POST'])
 def run_workflow(workflow_id):
-    """执行工作流"""
+    """异步执行工作流"""
     try:
         workflow = workflow_storage.get_workflow(workflow_id)
         if not workflow:
@@ -142,240 +149,299 @@ def run_workflow(workflow_id):
         if not workflow.enabled:
             return jsonify({'success': False, 'error': 'Workflow is disabled'}), 400
 
-        params = request.get_json() or {}
+        existing = execution_storage.get_running_execution(workflow_id)
+        if existing:
+            return jsonify({
+                'success': False,
+                'error': '工作流正在执行中，请等待完成',
+                'execution_id': existing.id,
+                'status': existing.status
+            }), 409
 
-        executor = WorkflowExecutor(workflow_id)
+        execution_id = str(uuid.uuid4())
+        execution = WorkflowExecution(
+            id=execution_id,
+            workflow_id=workflow_id,
+            status=ExecutionStatus.RUNNING.value,
+            progress=0,
+            current_node='',
+            current_step='准备执行...',
+            steps=[],
+            started_at=datetime.now().isoformat()
+        )
+        execution_storage.create_execution(execution)
+
+        params = request.get_json() or {}
         nodes = [n.to_dict() if hasattr(n, 'to_dict') else n for n in workflow.nodes]
         edges = [e.to_dict() if hasattr(e, 'to_dict') else e for e in workflow.edges]
 
-        result = executor.execute(nodes, edges, params)
+        def make_progress_callback(exec_id: str):
+            def progress_callback(
+                node_id: str,
+                node_label: str,
+                step: str,
+                progress: float,
+                detail: dict = None
+            ):
+                step_data = {
+                    'node_id': node_id,
+                    'node_label': node_label,
+                    'step': step,
+                    'progress': progress,
+                    'detail': detail or {},
+                    'timestamp': datetime.now().isoformat()
+                }
+                execution_storage.update_progress(
+                    exec_id, progress, node_id, step, step_data
+                )
+            return progress_callback
 
-        workflow_storage.update_last_run(workflow_id)
+        def execute_in_background():
+            try:
+                executor = WorkflowExecutor(workflow_id, execution_id, make_progress_callback(execution_id))
+                result = executor.execute(nodes, edges, params)
+                if result.get('success'):
+                    execution_storage.complete_execution(execution_id, result)
+                elif result.get('cancelled'):
+                    execution_storage.cancel_execution(execution_id)
+                else:
+                    execution_storage.fail_execution(execution_id, result.get('error', 'Unknown error'))
+                workflow_storage.update_last_run(workflow_id)
+            except Exception as e:
+                logger.error(f"Background execution failed: {e}")
+                execution_storage.fail_execution(execution_id, str(e))
+
+        thread = threading.Thread(target=execute_in_background, daemon=True)
+        thread.start()
 
         return jsonify({
             'success': True,
-            'data': result
-        })
+            'execution_id': execution_id,
+            'message': '工作流已启动，请通过 /execution/{id}/progress 查询进度'
+        }), 202
 
     except Exception as e:
         logger.error(f"Run workflow failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@workflow_bp.route('/<workflow_id>/execution/<execution_id>/progress', methods=['GET'])
+def get_execution_progress(workflow_id, execution_id):
+    """获取执行进度"""
+    try:
+        execution = execution_storage.get_execution(execution_id)
+        if not execution or execution.workflow_id != workflow_id:
+            return jsonify({'success': False, 'error': 'Execution not found'}), 404
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'execution_id': execution.id,
+                'workflow_id': execution.workflow_id,
+                'status': execution.status,
+                'progress': execution.progress,
+                'current_node': execution.current_node,
+                'current_step': execution.current_step,
+                'steps': execution.steps,
+                'result': execution.result,
+                'error': execution.error,
+                'started_at': execution.started_at,
+                'finished_at': execution.finished_at
+            }
+        })
+    except Exception as e:
+        logger.error(f"Get execution progress failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@workflow_bp.route('/<workflow_id>/execution/<execution_id>/cancel', methods=['POST'])
+def cancel_execution(workflow_id, execution_id):
+    """取消执行中的工作流"""
+    try:
+        execution = execution_storage.get_execution(execution_id)
+        if not execution or execution.workflow_id != workflow_id:
+            return jsonify({'success': False, 'error': 'Execution not found'}), 404
+
+        if execution.status not in [ExecutionStatus.PENDING.value, ExecutionStatus.RUNNING.value]:
+            return jsonify({'success': False, 'error': 'Execution is not running'}), 400
+
+        from modules.workflow.executor import WorkflowCancelManager
+        WorkflowCancelManager.cancel(execution_id)
+
+        execution_storage.cancel_execution(execution_id)
+        return jsonify({'success': True, 'message': 'Cancel requested'})
+    except Exception as e:
+        logger.error(f"Cancel execution failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@workflow_bp.route('/<workflow_id>/executions', methods=['GET'])
+def list_executions(workflow_id):
+    """获取工作流的执行历史"""
+    try:
+        limit = request.args.get('limit', 20, type=int)
+        executions = execution_storage.list_executions(workflow_id, limit=limit)
+        return jsonify({
+            'success': True,
+            'data': [e.to_dict() for e in executions]
+        })
+    except Exception as e:
+        logger.error(f"List executions failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @workflow_bp.route('/templates', methods=['GET'])
 def get_templates():
     """获取工作流模板"""
-    templates = [
-        {
-            'id': 'template_value',
-            'name': '价值投资策略',
-            'description': '基于基本面筛选低估值的优质股票',
-            'tags': ['价值', '基本面'],
-            'nodes': [
-                {
-                    'id': 'start_1',
-                    'type': 'start',
-                    'label': '起始',
-                    'x': 100,
-                    'y': 200,
-                    'config': {'source': 'all'}
-                },
-                {
-                    'id': 'filter_pe',
-                    'type': 'filter',
-                    'label': 'PE筛选',
-                    'x': 300,
-                    'y': 200,
-                    'config': {
-                        'filter_type': 'pe_range',
-                        'min_pe': 0,
-                        'max_pe': 25
-                    }
-                },
-                {
-                    'id': 'filter_pb',
-                    'type': 'filter',
-                    'label': 'PB筛选',
-                    'x': 500,
-                    'y': 200,
-                    'config': {
-                        'filter_type': 'pb_range',
-                        'min_pb': 0,
-                        'max_pb': 3
-                    }
-                },
-                {
-                    'id': 'score_1',
-                    'type': 'score',
-                    'label': '基本面评分',
-                    'x': 700,
-                    'y': 200,
-                    'config': {
-                        'score_type': 'fundamental'
-                    }
-                },
-                {
-                    'id': 'end_1',
-                    'type': 'end',
-                    'label': '输出',
-                    'x': 900,
-                    'y': 200,
-                    'config': {
-                        'output': 'list',
-                        'top_n': 20
-                    }
-                }
-            ],
-            'edges': [
-                {'id': 'e1', 'source': 'start_1', 'target': 'filter_pe'},
-                {'id': 'e2', 'source': 'filter_pe', 'target': 'filter_pb'},
-                {'id': 'e3', 'source': 'filter_pb', 'target': 'score_1'},
-                {'id': 'e4', 'source': 'score_1', 'target': 'end_1'}
-            ]
-        },
-        {
-            'id': 'template_momentum',
-            'name': '动量策略',
-            'description': '基于技术面筛选强势股票',
-            'tags': ['动量', '技术面'],
-            'nodes': [
-                {
-                    'id': 'start_1',
-                    'type': 'start',
-                    'label': '起始',
-                    'x': 100,
-                    'y': 200,
-                    'config': {'source': 'all'}
-                },
-                {
-                    'id': 'filter_trend',
-                    'type': 'filter',
-                    'label': '趋势筛选',
-                    'x': 300,
-                    'y': 200,
-                    'config': {
-                        'filter_type': 'trend',
-                        'trend_type': 'up'
-                    }
-                },
-                {
-                    'id': 'filter_volume',
-                    'type': 'filter',
-                    'label': '成交量筛选',
-                    'x': 500,
-                    'y': 200,
-                    'config': {
-                        'filter_type': 'volume_ratio',
-                        'threshold': 1.5
-                    }
-                },
-                {
-                    'id': 'score_1',
-                    'type': 'score',
-                    'label': '技术面评分',
-                    'x': 700,
-                    'y': 200,
-                    'config': {
-                        'score_type': 'technical'
-                    }
-                },
-                {
-                    'id': 'end_1',
-                    'type': 'end',
-                    'label': '输出',
-                    'x': 900,
-                    'y': 200,
-                    'config': {
-                        'output': 'list',
-                        'top_n': 20
-                    }
-                }
-            ],
-            'edges': [
-                {'id': 'e1', 'source': 'start_1', 'target': 'filter_trend'},
-                {'id': 'e2', 'source': 'filter_trend', 'target': 'filter_volume'},
-                {'id': 'e3', 'source': 'filter_volume', 'target': 'score_1'},
-                {'id': 'e4', 'source': 'score_1', 'target': 'end_1'}
-            ]
-        },
-        {
-            'id': 'template_ai',
-            'name': 'AI智能选股',
-            'description': '结合AI Agent进行智能分析',
-            'tags': ['AI', '智能'],
-            'nodes': [
-                {
-                    'id': 'start_1',
-                    'type': 'start',
-                    'label': '起始',
-                    'x': 100,
-                    'y': 200,
-                    'config': {'source': 'all'}
-                },
-                {
-                    'id': 'filter_1',
-                    'type': 'filter',
-                    'label': '基础筛选',
-                    'x': 300,
-                    'y': 200,
-                    'config': {
-                        'filter_type': 'price_range',
-                        'min_price': 5,
-                        'max_price': 100
-                    }
-                },
-                {
-                    'id': 'score_1',
-                    'type': 'score',
-                    'label': '综合评分',
-                    'x': 500,
-                    'y': 200,
-                    'config': {
-                        'score_type': 'weighted',
-                        'weights': {
-                            'technical': 0.3,
-                            'fundamental': 0.3,
-                            'sentiment': 0.2,
-                            'fund_flow': 0.2
-                        }
-                    }
-                },
-                {
-                    'id': 'ai_1',
-                    'type': 'ai_agent',
-                    'label': 'AI深度分析',
-                    'x': 700,
-                    'y': 200,
-                    'config': {
-                        'agent_id': '',
-                        'top_n': 30
-                    }
-                },
-                {
-                    'id': 'end_1',
-                    'type': 'end',
-                    'label': '输出',
-                    'x': 900,
-                    'y': 200,
-                    'config': {
-                        'output': 'list',
-                        'top_n': 15
-                    }
-                }
-            ],
-            'edges': [
-                {'id': 'e1', 'source': 'start_1', 'target': 'filter_1'},
-                {'id': 'e2', 'source': 'filter_1', 'target': 'score_1'},
-                {'id': 'e3', 'source': 'score_1', 'target': 'ai_1'},
-                {'id': 'e4', 'source': 'ai_1', 'target': 'end_1'}
-            ]
-        }
-    ]
+    try:
+        owner_id = request.args.get('owner_id')
+        category = request.args.get('category')
+        tags = request.args.getlist('tags')
 
-    return jsonify({
-        'success': True,
-        'data': templates
-    })
+        templates = template_storage.list_templates(
+            owner_id=owner_id,
+            category=category,
+            tags=tags if tags else None,
+            include_public=True
+        )
+
+        return jsonify({
+            'success': True,
+            'data': [t.to_dict() for t in templates]
+        })
+    except Exception as e:
+        logger.error(f"Get templates failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@workflow_bp.route('/templates/<template_id>', methods=['GET'])
+def get_template(template_id):
+    """获取单个模板"""
+    try:
+        template = template_storage.get_template(template_id)
+        if not template:
+            return jsonify({'success': False, 'error': 'Template not found'}), 404
+
+        return jsonify({
+            'success': True,
+            'data': template.to_dict()
+        })
+    except Exception as e:
+        logger.error(f"Get template failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@workflow_bp.route('/templates', methods=['POST'])
+def create_template():
+    """创建工作流模板"""
+    try:
+        data = request.get_json()
+        template_id = data.get('id') or str(uuid.uuid4())
+
+        template = WorkflowTemplate(
+            id=template_id,
+            name=data.get('name', 'New Template'),
+            description=data.get('description', ''),
+            tags=data.get('tags', []),
+            nodes=[WorkflowNode.from_dict(n) if isinstance(n, dict) else n for n in data.get('nodes', [])],
+            edges=[WorkflowEdge.from_dict(e) if isinstance(e, dict) else e for e in data.get('edges', [])],
+            is_public=data.get('is_public', True),
+            owner_id=data.get('owner_id'),
+            category=data.get('category', 'custom'),
+            created_at=datetime.now().isoformat(),
+            updated_at=datetime.now().isoformat()
+        )
+
+        if template_storage.save_template(template):
+            return jsonify({
+                'success': True,
+                'data': template.to_dict()
+            }), 201
+        else:
+            return jsonify({'success': False, 'error': 'Failed to save template'}), 500
+    except Exception as e:
+        logger.error(f"Create template failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@workflow_bp.route('/templates/<template_id>', methods=['PUT'])
+def update_template(template_id):
+    """更新工作流模板"""
+    try:
+        data = request.get_json()
+        template = template_storage.get_template(template_id)
+
+        if not template:
+            return jsonify({'success': False, 'error': 'Template not found'}), 404
+
+        if 'name' in data:
+            template.name = data['name']
+        if 'description' in data:
+            template.description = data['description']
+        if 'tags' in data:
+            template.tags = data['tags']
+        if 'nodes' in data:
+            template.nodes = [WorkflowNode.from_dict(n) if isinstance(n, dict) else n for n in data['nodes']]
+        if 'edges' in data:
+            template.edges = [WorkflowEdge.from_dict(e) if isinstance(e, dict) else e for e in data['edges']]
+        if 'is_public' in data:
+            template.is_public = data['is_public']
+        if 'category' in data:
+            template.category = data['category']
+
+        template.updated_at = datetime.now().isoformat()
+
+        if template_storage.save_template(template):
+            return jsonify({
+                'success': True,
+                'data': template.to_dict()
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Failed to save template'}), 500
+    except Exception as e:
+        logger.error(f"Update template failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@workflow_bp.route('/templates/<template_id>', methods=['DELETE'])
+def delete_template(template_id):
+    """删除工作流模板"""
+    try:
+        if template_storage.delete_template(template_id):
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': 'Template not found'}), 404
+    except Exception as e:
+        logger.error(f"Delete template failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@workflow_bp.route('/templates/categories', methods=['GET'])
+def get_template_categories():
+    """获取模板分类"""
+    try:
+        categories = template_storage.list_categories()
+        return jsonify({
+            'success': True,
+            'data': categories
+        })
+    except Exception as e:
+        logger.error(f"Get categories failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@workflow_bp.route('/templates/tags', methods=['GET'])
+def get_template_tags():
+    """获取所有模板标签"""
+    try:
+        tags = template_storage.list_all_tags()
+        return jsonify({
+            'success': True,
+            'data': tags
+        })
+    except Exception as e:
+        logger.error(f"Get tags failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @workflow_bp.route('/node-types', methods=['GET'])

@@ -236,7 +236,12 @@ const nodeTypes = [
   { type: 'fundamental_filter', label: '基本面筛选', icon: 'reading', description: '财务指标筛选' },
   { type: 'market_sentiment', label: '市场情绪', icon: 'chat', description: '市场情绪分析' },
   { type: 'index_components', label: '指数成分', icon: 'collection', description: '获取指数成分股' },
-  { type: 'compare', label: '对比分析', icon: 'analysis', description: '多股对比分析' }
+  { type: 'compare', label: '对比分析', icon: 'analysis', description: '多股对比分析' },
+  { type: 'chanlun_zs', label: '中枢识别', icon: 'circle', description: '缠论中枢识别' },
+  { type: 'chanlun_bc', label: '背驰判断', icon: 'trend', description: '缠论背驰判断' },
+  { type: 'chanlun_buy1', label: '缠论一买', icon: 'first', description: '第一类买点' },
+  { type: 'chanlun_buy2', label: '缠论二买', icon: 'second', description: '第二类买点' },
+  { type: 'chanlun_buy3', label: '缠论三买', icon: 'third', description: '第三类买点' }
 ]
 
 const nodeConfigSchemas: Record<string, any> = {
@@ -474,12 +479,21 @@ function generateId() {
 
 function addNode(type: string) {
   const nodeType = nodeTypes.find(n => n.type === type)
+  const nodeWidth = 200
+  const nodeHeight = 100
+  const horizontalGap = 280
+  const verticalGap = 140
+  const existingCount = nodes.value.length
+  const baseX = 100
+  const baseY = 100
+  const col = existingCount % 5
+  const row = Math.floor(existingCount / 5)
   const newNode: WorkflowNode = {
     id: generateId(),
     type,
     label: nodeType?.label || type,
-    x: 200 + nodes.value.length * 50,
-    y: 200 + nodes.value.length * 30,
+    x: baseX + col * horizontalGap,
+    y: baseY + row * verticalGap,
     config: getDefaultConfig(type),
     inputs: ['input'],
     outputs: ['output']
@@ -487,12 +501,42 @@ function addNode(type: string) {
 
   if (type === 'start') {
     newNode.inputs = []
+    newNode.outputs = ['stocks']
   } else if (type === 'end') {
+    newNode.inputs = ['result']
     newNode.outputs = []
+  } else if (type === 'index_components') {
+    newNode.inputs = []
+    newNode.outputs = ['stocks']
+  } else {
+    const ioConfig = getNodeIOConfig(type)
+    newNode.inputs = ioConfig.inputs
+    newNode.outputs = ioConfig.outputs
   }
 
   nodes.value.push(newNode)
   selectedNode.value = newNode
+}
+
+function getNodeIOConfig(type: string): { inputs: string[], outputs: string[] } {
+  const ioConfigs: Record<string, { inputs: string[], outputs: string[] }> = {
+    filter: { inputs: ['stocks'], outputs: ['filtered_stocks'] },
+    data_fetch: { inputs: ['stocks'], outputs: ['stock_data'] },
+    technical_indicator: { inputs: ['stock_data'], outputs: ['indicators'] },
+    score: { inputs: ['indicators', 'fund_data'], outputs: ['scores'] },
+    ai_agent: { inputs: ['stocks'], outputs: ['analysis'] },
+    combine: { inputs: ['scores', 'analysis'], outputs: ['combined'] },
+    risk_control: { inputs: ['candidates'], outputs: ['risk_checked'] },
+    fundamental_filter: { inputs: ['stocks'], outputs: ['filtered_stocks'] },
+    market_sentiment: { inputs: ['market_data'], outputs: ['sentiment'] },
+    compare: { inputs: ['stocks'], outputs: ['comparison'] },
+    chanlun_zs: { inputs: ['kline_data'], outputs: ['zs_data'] },
+    chanlun_bc: { inputs: ['kline_data', 'zs_data'], outputs: ['bc_data'] },
+    chanlun_buy1: { inputs: ['kline_data'], outputs: ['buy1_data'] },
+    chanlun_buy2: { inputs: ['kline_data', 'buy1_data'], outputs: ['buy2_data'] },
+    chanlun_buy3: { inputs: ['kline_data', 'zs_data'], outputs: ['buy3_data'] }
+  }
+  return ioConfigs[type] || { inputs: ['input'], outputs: ['output'] }
 }
 
 function getDefaultConfig(type: string): Record<string, any> {
@@ -503,7 +547,12 @@ function getDefaultConfig(type: string): Record<string, any> {
     ai_agent: { agent_id: '', top_n: 20 },
     combine: { strategy: 'top_n', top_n: 20 },
     risk_control: { max_positions: 10, max_position_ratio: 0.1, exclude_st: true },
-    end: { output: 'list', top_n: 10 }
+    end: { output: 'list', top_n: 10 },
+    chanlun_zs: { level: '60min', min_bars: 3 },
+    chanlun_bc: { bc_type: 'divergence', threshold: 0.1 },
+    chanlun_buy1: { min_price: 2, max_price: 100, rsi_oversold: 30, kdj_oversold: 20 },
+    chanlun_buy2: {},
+    chanlun_buy3: { min_price: 5, max_price: 100, vol_threshold: 1.5 }
   }
   return defaults[type] || {}
 }
@@ -600,10 +649,36 @@ function onDrop(event: DragEvent) {
   const rect = canvasRef.value?.getBoundingClientRect()
   if (!rect) return
 
-  const x = event.clientX - rect.left
-  const y = event.clientY - rect.top
+  const existingCount = nodes.value.length
+  const baseX = 100
+  const baseY = 100
+  const col = existingCount % 5
+  const row = Math.floor(existingCount / 5)
+  const horizontalGap = 280
+  const verticalGap = 140
+
+  const x = baseX + col * horizontalGap
+  const y = baseY + row * verticalGap
 
   const nodeType = nodeTypes.find(n => n.type === draggedNodeType)
+  let nodeInputs: string[] = []
+  let nodeOutputs: string[] = []
+
+  if (draggedNodeType === 'start') {
+    nodeInputs = []
+    nodeOutputs = ['stocks']
+  } else if (draggedNodeType === 'end') {
+    nodeInputs = ['result']
+    nodeOutputs = []
+  } else if (draggedNodeType === 'index_components') {
+    nodeInputs = []
+    nodeOutputs = ['stocks']
+  } else {
+    const ioConfig = getNodeIOConfig(draggedNodeType)
+    nodeInputs = ioConfig.inputs
+    nodeOutputs = ioConfig.outputs
+  }
+
   const newNode: WorkflowNode = {
     id: generateId(),
     type: draggedNodeType,
@@ -611,8 +686,8 @@ function onDrop(event: DragEvent) {
     x,
     y,
     config: getDefaultConfig(draggedNodeType),
-    inputs: draggedNodeType === 'start' ? [] : ['input'],
-    outputs: draggedNodeType === 'end' ? [] : ['output']
+    inputs: nodeInputs,
+    outputs: nodeOutputs
   }
 
   nodes.value.push(newNode)

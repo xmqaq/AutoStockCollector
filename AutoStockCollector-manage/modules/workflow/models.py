@@ -141,6 +141,124 @@ class Workflow:
         )
 
 
+class ExecutionStatus(Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+@dataclass
+class ExecutionStep:
+    node_id: str
+    node_label: str
+    node_type: str
+    status: str
+    step: str = ""
+    detail: str = ""
+    stocks_count: int = 0
+    progress: float = 0
+    timestamp: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ExecutionStep':
+        return cls(
+            node_id=data.get('node_id', ''),
+            node_label=data.get('node_label', ''),
+            node_type=data.get('node_type', ''),
+            status=data.get('status', 'pending'),
+            step=data.get('step', ''),
+            detail=data.get('detail', ''),
+            stocks_count=data.get('stocks_count', 0),
+            progress=data.get('progress', 0),
+            timestamp=data.get('timestamp', '')
+        )
+
+
+@dataclass
+class WorkflowExecution:
+    id: str
+    workflow_id: str
+    status: str
+    progress: float = 0
+    current_node: str = ""
+    current_step: str = ""
+    steps: List[Dict[str, Any]] = field(default_factory=list)
+    result: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+    started_at: str = ""
+    finished_at: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'WorkflowExecution':
+        return cls(
+            id=data.get('id', ''),
+            workflow_id=data.get('workflow_id', ''),
+            status=data.get('status', ExecutionStatus.PENDING.value),
+            progress=data.get('progress', 0),
+            current_node=data.get('current_node', ''),
+            current_step=data.get('current_step', ''),
+            steps=data.get('steps', []),
+            result=data.get('result'),
+            error=data.get('error'),
+            started_at=data.get('started_at', ''),
+            finished_at=data.get('finished_at')
+        )
+
+
+@dataclass
+class WorkflowTemplate:
+    id: str
+    name: str
+    description: str = ""
+    tags: List[str] = field(default_factory=list)
+    nodes: List[WorkflowNode] = field(default_factory=list)
+    edges: List[WorkflowEdge] = field(default_factory=list)
+    is_public: bool = True
+    owner_id: Optional[str] = None
+    category: str = "custom"
+    created_at: str = ""
+    updated_at: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "tags": self.tags,
+            "nodes": [n.to_dict() for n in self.nodes],
+            "edges": [e.to_dict() for e in self.edges],
+            "is_public": self.is_public,
+            "owner_id": self.owner_id,
+            "category": self.category,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'WorkflowTemplate':
+        return cls(
+            id=data.get('id', ''),
+            name=data.get('name', ''),
+            description=data.get('description', ''),
+            tags=data.get('tags', []),
+            nodes=[WorkflowNode.from_dict(n) for n in data.get('nodes', [])],
+            edges=[WorkflowEdge.from_dict(e) for e in data.get('edges', [])],
+            is_public=data.get('is_public', True),
+            owner_id=data.get('owner_id'),
+            category=data.get('category', 'custom'),
+            created_at=data.get('created_at', ''),
+            updated_at=data.get('updated_at', '')
+        )
+
+
 class WorkflowStorage(MongoStorage):
     def __init__(self):
         super().__init__("workflow")
@@ -178,7 +296,177 @@ class WorkflowStorage(MongoStorage):
         return self.update_one(
             {"id": workflow_id},
             {
-                "last_run_at": datetime.now().isoformat(),
+                "$set": {"last_run_at": datetime.now().isoformat()},
                 "$inc": {"run_count": 1}
             }
         ) > 0
+
+
+class WorkflowExecutionStorage(MongoStorage):
+    def __init__(self):
+        super().__init__("workflow_execution")
+
+    def create_execution(self, execution: WorkflowExecution) -> bool:
+        return self.upsert_one({"id": execution.id}, execution.to_dict())
+
+    def get_execution(self, execution_id: str) -> Optional[WorkflowExecution]:
+        doc = self.find_one({"id": execution_id})
+        if doc:
+            doc.pop("_id", None)
+            doc.pop("_updated_at", None)
+            return WorkflowExecution.from_dict(doc)
+        return None
+
+    def get_running_execution(self, workflow_id: str) -> Optional[WorkflowExecution]:
+        docs = self.find_many(
+            {"workflow_id": workflow_id, "status": {"$in": [ExecutionStatus.PENDING.value, ExecutionStatus.RUNNING.value]}},
+            sort=[("started_at", -1)],
+            limit=1
+        )
+        if docs:
+            doc = docs[0]
+            doc.pop("_id", None)
+            doc.pop("_updated_at", None)
+            return WorkflowExecution.from_dict(doc)
+        return None
+
+    def update_progress(
+        self,
+        execution_id: str,
+        progress: float,
+        current_node: str,
+        current_step: str,
+        step: Optional[Dict[str, Any]] = None
+    ) -> bool:
+        update_doc: Dict[str, Any] = {
+            "$set": {
+                "progress": progress,
+                "current_node": current_node,
+                "current_step": current_step,
+                "status": ExecutionStatus.RUNNING.value
+            }
+        }
+        if step:
+            update_doc["$push"] = {"steps": step}
+        return self.update_one({"id": execution_id}, update_doc) > 0
+
+    def complete_execution(self, execution_id: str, result: Dict[str, Any]) -> bool:
+        return self.update_one(
+            {"id": execution_id},
+            {
+                "$set": {
+                    "status": ExecutionStatus.COMPLETED.value,
+                    "progress": 100,
+                    "result": result,
+                    "finished_at": datetime.now().isoformat()
+                }
+            }
+        ) > 0
+
+    def fail_execution(self, execution_id: str, error: str) -> bool:
+        return self.update_one(
+            {"id": execution_id},
+            {
+                "$set": {
+                    "status": ExecutionStatus.FAILED.value,
+                    "error": error,
+                    "finished_at": datetime.now().isoformat()
+                }
+            }
+        ) > 0
+
+    def cancel_execution(self, execution_id: str) -> bool:
+        return self.update_one(
+            {"id": execution_id},
+            {
+                "$set": {
+                    "status": ExecutionStatus.CANCELLED.value,
+                    "finished_at": datetime.now().isoformat()
+                }
+            }
+        ) > 0
+
+    def list_executions(self, workflow_id: str, limit: int = 20) -> List[WorkflowExecution]:
+        docs = self.find_many(
+            {"workflow_id": workflow_id},
+            sort=[("started_at", -1)],
+            limit=limit
+        )
+        executions = []
+        for doc in docs:
+            doc.pop("_id", None)
+            doc.pop("_updated_at", None)
+            executions.append(WorkflowExecution.from_dict(doc))
+        return executions
+
+    def delete_executions(self, workflow_id: str) -> bool:
+        return self.delete_many({"workflow_id": workflow_id})
+
+
+class WorkflowTemplateStorage(MongoStorage):
+    def __init__(self):
+        super().__init__("workflow_template")
+
+    def save_template(self, template: WorkflowTemplate) -> bool:
+        template.updated_at = datetime.now().isoformat()
+        if not template.created_at:
+            template.created_at = template.updated_at
+        return self.upsert_one({"id": template.id}, template.to_dict())
+
+    def get_template(self, template_id: str) -> Optional[WorkflowTemplate]:
+        doc = self.find_one({"id": template_id})
+        if doc:
+            doc.pop("_id", None)
+            doc.pop("_updated_at", None)
+            return WorkflowTemplate.from_dict(doc)
+        return None
+
+    def list_templates(
+        self,
+        owner_id: Optional[str] = None,
+        category: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        include_public: bool = True
+    ) -> List[WorkflowTemplate]:
+        filter_doc: Dict[str, Any] = {}
+        or_conditions: List[Dict[str, Any]] = []
+
+        if include_public:
+            or_conditions.append({"is_public": True})
+
+        if owner_id:
+            or_conditions.append({"owner_id": owner_id})
+
+        if or_conditions:
+            filter_doc["$or"] = or_conditions
+        elif not include_public:
+            return []
+
+        if category:
+            filter_doc["category"] = category
+
+        if tags:
+            filter_doc["tags"] = {"$all": tags}
+
+        docs = self.find_many(filter_doc, sort=[("created_at", -1)])
+        templates = []
+        for doc in docs:
+            doc.pop("_id", None)
+            doc.pop("_updated_at", None)
+            templates.append(WorkflowTemplate.from_dict(doc))
+        return templates
+
+    def delete_template(self, template_id: str) -> bool:
+        return self.delete_one({"id": template_id})
+
+    def list_categories(self) -> List[str]:
+        docs = self.distinct("category")
+        return [c for c in docs if c]
+
+    def list_all_tags(self) -> List[str]:
+        tags = set()
+        docs = self.find_many({})
+        for doc in docs:
+            for tag in doc.get("tags", []):
+                tags.add(tag)
+        return list(tags)

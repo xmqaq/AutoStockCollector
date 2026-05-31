@@ -15,69 +15,152 @@
       </div>
     </div>
 
-    <el-card shadow="never" class="workflow-list-card">
-      <template #header>
-        <div class="card-header">
-          <span>工作流列表</span>
-          <div class="filter-actions">
-            <el-select v-model="filterEnabled" placeholder="筛选状态" clearable size="small" style="width: 120px">
-              <el-option label="全部" :value="null" />
-              <el-option label="已启用" :value="true" />
-              <el-option label="已禁用" :value="false" />
-            </el-select>
-          </div>
-        </div>
-      </template>
+    <el-tabs v-model="activeTab" class="workflow-tabs">
+      <el-tab-pane label="工作流列表" name="list">
+        <el-card shadow="never" class="workflow-list-card">
+          <template #header>
+            <div class="card-header">
+              <span>工作流列表</span>
+              <div class="filter-actions">
+                <el-select v-model="filterEnabled" placeholder="筛选状态" clearable size="small" style="width: 120px">
+                  <el-option label="全部" :value="null" />
+                  <el-option label="已启用" :value="true" />
+                  <el-option label="已禁用" :value="false" />
+                </el-select>
+              </div>
+            </div>
+          </template>
 
-      <div v-if="loading" class="loading-container">
-        <el-icon class="is-loading"><Loading /></el-icon>
-        <span>加载中...</span>
-      </div>
+          <div v-if="loading" class="loading-container">
+            <el-icon class="is-loading"><Loading /></el-icon>
+            <span>加载中...</span>
+          </div>
 
-      <div v-else-if="workflows.length === 0" class="empty-state">
-        <el-icon :size="48"><Files /></el-icon>
-        <p>暂无工作流</p>
-        <el-button type="primary" @click="createNewWorkflow">创建第一个工作流</el-button>
-        <el-button @click="loadWorkflows">刷新列表</el-button>
-      </div>
+          <div v-else-if="workflows.length === 0" class="empty-state">
+            <el-icon :size="48"><Files /></el-icon>
+            <p>暂无工作流</p>
+            <el-button type="primary" @click="createNewWorkflow">创建第一个工作流</el-button>
+            <el-button @click="loadWorkflows">刷新列表</el-button>
+          </div>
 
-      <div v-else class="workflow-grid">
-        <div
-          v-for="workflow in filteredWorkflows"
-          :key="workflow.id"
-          class="workflow-card"
-          @click="openWorkflow(workflow)"
-        >
-          <div class="workflow-card-header">
-            <h3>{{ workflow.name }}</h3>
-            <el-tag :type="workflow.enabled ? 'success' : 'info'" size="small">
-              {{ workflow.enabled ? '启用' : '禁用' }}
-            </el-tag>
+          <div v-else class="workflow-grid">
+            <div
+              v-for="workflow in filteredWorkflows"
+              :key="workflow.id"
+              class="workflow-card"
+              @click="openWorkflow(workflow)"
+            >
+              <div class="workflow-card-header">
+                <h3>{{ workflow.name }}</h3>
+                <el-tag :type="workflow.enabled ? 'success' : 'info'" size="small">
+                  {{ workflow.enabled ? '启用' : '禁用' }}
+                </el-tag>
+              </div>
+              <p class="workflow-description">{{ workflow.description || '暂无描述' }}</p>
+              <div class="workflow-meta">
+                <span><el-icon><Clock /></el-icon> 运行 {{ workflow.run_count }} 次</span>
+                <span v-if="workflow.last_run_at">
+                  <el-icon><Timer /></el-icon> {{ formatDate(workflow.last_run_at) }}
+                </span>
+              </div>
+              <div class="workflow-tags" v-if="workflow.tags.length">
+                <el-tag v-for="tag in workflow.tags" :key="tag" size="small">{{ tag }}</el-tag>
+              </div>
+              <div class="workflow-actions" @click.stop>
+                <el-button type="primary" size="small" text @click="editWorkflow(workflow)">
+                  <el-icon><Edit /></el-icon> 编辑
+                </el-button>
+                <el-button type="success" size="small" text @click="runWorkflow(workflow)">
+                  <el-icon><VideoPlay /></el-icon> 运行
+                </el-button>
+                <el-button type="danger" size="small" text @click="deleteWorkflow(workflow)">
+                  <el-icon><Delete /></el-icon> 删除
+                </el-button>
+              </div>
+            </div>
           </div>
-          <p class="workflow-description">{{ workflow.description || '暂无描述' }}</p>
-          <div class="workflow-meta">
-            <span><el-icon><Clock /></el-icon> 运行 {{ workflow.run_count }} 次</span>
-            <span v-if="workflow.last_run_at">
-              <el-icon><Timer /></el-icon> {{ formatDate(workflow.last_run_at) }}
-            </span>
+        </el-card>
+      </el-tab-pane>
+
+      <el-tab-pane name="executions">
+        <template #label>
+          <span>执行历史</span>
+          <el-badge v-if="runningCount > 0" :value="runningCount" type="danger" class="execution-badge" />
+        </template>
+        <el-card shadow="never" class="execution-list-card">
+          <template #header>
+            <div class="card-header">
+              <span>执行历史</span>
+              <el-button size="small" @click="loadExecutionHistory" :loading="loadingExecutions">
+                <el-icon><Refresh /></el-icon> 刷新
+              </el-button>
+            </div>
+          </template>
+
+          <div v-if="loadingExecutions" class="loading-container">
+            <el-icon class="is-loading"><Loading /></el-icon>
+            <span>加载中...</span>
           </div>
-          <div class="workflow-tags" v-if="workflow.tags.length">
-            <el-tag v-for="tag in workflow.tags" :key="tag" size="small">{{ tag }}</el-tag>
+
+          <div v-else-if="allExecutions.length === 0" class="empty-state">
+            <el-icon :size="48"><Timer /></el-icon>
+            <p>暂无执行记录</p>
+            <el-button @click="loadExecutionHistory">刷新列表</el-button>
           </div>
-          <div class="workflow-actions" @click.stop>
-            <el-button type="primary" size="small" text @click="editWorkflow(workflow)">
-              <el-icon><Edit /></el-icon> 编辑
-            </el-button>
-            <el-button type="success" size="small" text @click="runWorkflow(workflow)">
-              <el-icon><VideoPlay /></el-icon> 运行
-            </el-button>
-            <el-button type="danger" size="small" text @click="deleteWorkflow(workflow)">
-              <el-icon><Delete /></el-icon> 删除
-            </el-button>
-          </div>
-        </div>
-      </div>
-    </el-card>
+
+          <el-table v-else :data="allExecutions" stripe class="execution-table">
+            <el-table-column prop="workflow_name" label="工作流" width="180">
+              <template #default="{ row }">
+                <el-tag type="info">{{ row.workflow_name || row.workflow_id }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="status" label="状态" width="100">
+              <template #default="{ row }">
+                <el-tag :type="getStatusType(row.status)" size="small">
+                  {{ getStatusLabel(row.status) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="progress" label="进度" width="150">
+              <template #default="{ row }">
+                <el-progress
+                  :percentage="row.progress || 0"
+                  :status="row.status === 'completed' ? 'success' : row.status === 'failed' ? 'exception' : undefined"
+                  :stroke-width="12"
+                />
+              </template>
+            </el-table-column>
+            <el-table-column prop="current_step" label="当前步骤" min-width="150" show-overflow-tooltip />
+            <el-table-column prop="started_at" label="开始时间" width="160">
+              <template #default="{ row }">
+                {{ formatDateTime(row.started_at) }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="finished_at" label="结束时间" width="160">
+              <template #default="{ row }">
+                {{ row.finished_at ? formatDateTime(row.finished_at) : '-' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="180" fixed="right">
+              <template #default="{ row }">
+                <div class="execution-actions" v-if="row.status === 'running' || row.status === 'pending'">
+                  <el-button type="primary" size="small" text @click="viewExecutionProgress(row)">
+                    <el-icon><View /></el-icon> 进度
+                  </el-button>
+                  <el-button type="warning" size="small" text @click="stopExecution(row)">
+                    <el-icon><SwitchButton /></el-icon> 停止
+                  </el-button>
+                </div>
+                <span v-else-if="row.result" class="result-link" @click="viewExecutionResult(row)">
+                  查看结果
+                </span>
+                <span v-else class="text-muted">-</span>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+      </el-tab-pane>
+    </el-tabs>
 
     <el-dialog
       v-model="showEditorDialog"
@@ -114,7 +197,7 @@
 
     <el-dialog
       v-model="showProgressDialog"
-      title="工作流执行中..."
+      :title="isRunning ? '工作流执行中...' : '工作流执行完成'"
       width="700px"
       :close-on-click-modal="false"
       :close-on-press-escape="false"
@@ -123,15 +206,26 @@
     >
       <div class="progress-container">
         <div class="progress-header">
-          <el-icon class="is-loading" :size="24"><Loading /></el-icon>
-          <span>正在执行智能选股工作流，请稍候...</span>
+          <el-icon class="is-loading" :size="24" v-if="isRunning"><Loading /></el-icon>
+          <el-icon :size="24" v-else :color="currentExecution?.status === 'completed' ? '#67c23a' : '#f56c6c'">
+            <CircleCheck v-if="currentExecution?.status === 'completed'" />
+            <CircleClose v-else-if="currentExecution?.status === 'failed'" />
+            <Warning v-else />
+          </el-icon>
+          <span>{{ isRunning ? '正在执行智能选股工作流，请稍候...' : (currentExecution?.status === 'completed' ? '工作流执行成功' : '工作流执行' + (currentExecution?.status === 'failed' ? '失败' : '已' + (currentExecution?.status === 'cancelled' ? '取消' : '结束'))) }}</span>
+        </div>
+
+        <div class="current-step" v-if="currentExecution?.current_step">
+          <el-tag :type="isRunning ? 'primary' : currentExecution?.status === 'completed' ? 'success' : 'danger'" size="small">
+            正在执行: {{ currentExecution.current_step }}
+          </el-tag>
         </div>
 
         <el-progress
           :percentage="runProgress"
-          :status="runProgress === 100 ? 'success' : undefined"
+          :status="runProgress === 100 ? 'success' : runProgress > 0 && currentExecution?.status === 'failed' ? 'exception' : undefined"
           :stroke-width="20"
-          striped
+          :striped="isRunning"
           striped-flow
         />
 
@@ -146,7 +240,8 @@
                 :class="{
                   'log-success': log.includes('✅') || log.includes('成功'),
                   'log-error': log.includes('❌') || log.includes('失败'),
-                  'log-info': log.includes('⏳') || log.includes('⏱️') || log.includes('📊')
+                  'log-warning': log.includes('⚠️') || log.includes('取消'),
+                  'log-info': log.includes('⏳') || log.includes('⏱️') || log.includes('📊') || log.includes('🚀') || log.includes('正在')
                 }"
               >
                 {{ log }}
@@ -157,6 +252,9 @@
       </div>
 
       <template #footer>
+        <el-button @click="cancelWorkflow" :disabled="!isRunning" v-if="isRunning" type="warning">
+          <el-icon><SwitchButton /></el-icon> 取消执行
+        </el-button>
         <el-button
           v-if="!isRunning"
           type="primary"
@@ -165,10 +263,10 @@
           查看结果
         </el-button>
         <el-button
-          v-else
-          disabled
+          v-if="!isRunning"
+          @click="showProgressDialog = false"
         >
-          <el-icon class="is-loading"><Loading /></el-icon> 执行中...
+          关闭
         </el-button>
       </template>
     </el-dialog>
@@ -280,16 +378,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Plus, Edit, Delete, VideoPlay, Clock, Timer,
-  Files, DocumentCopy, Loading
+  Files, DocumentCopy, Loading, CircleCheck, CircleClose, Warning, SwitchButton, Refresh, View
 } from '@element-plus/icons-vue'
-import { workflowApi, type Workflow, type WorkflowResult, type WorkflowTemplate } from '@/api/workflow'
+import { workflowApi, type Workflow, type WorkflowResult, type WorkflowTemplate, type WorkflowExecution } from '@/api/workflow'
 import WorkflowCanvas from '@/components/WorkflowCanvas/index.vue'
 
 const loading = ref(false)
+const activeTab = ref('list')
 const workflows = ref<Workflow[]>([])
 const filterEnabled = ref<boolean | null>(null)
 const showEditorDialog = ref(false)
@@ -302,6 +401,16 @@ const runResult = ref<WorkflowResult | null>(null)
 const runLogs = ref<string[]>([])
 const runProgress = ref(0)
 const isRunning = ref(false)
+const currentExecutionId = ref('')
+const currentExecution = ref<WorkflowExecution | null>(null)
+let pollingTimer: number | null = null
+
+const loadingExecutions = ref(false)
+const allExecutions = ref<any[]>([])
+
+const runningCount = computed(() => {
+  return allExecutions.value.filter(e => e.status === 'running' || e.status === 'pending').length
+})
 
 const filteredWorkflows = computed(() => {
   if (filterEnabled.value === null) {
@@ -380,58 +489,248 @@ async function deleteWorkflow(workflow: Workflow) {
   }
 }
 
+async function pollExecutionProgress(workflowId: string, executionId: string) {
+  try {
+    const res = await workflowApi.getExecutionProgress(workflowId, executionId)
+    if (res.data?.success) {
+      const execution = res.data.data
+      currentExecution.value = execution
+
+      runProgress.value = execution.progress
+      runLogs.value = execution.steps.map((step: any) => {
+        const status = execution.status === 'completed' ? '✅' : execution.status === 'failed' ? '❌' : '⏳'
+        return `[${new Date(step.timestamp).toLocaleTimeString('zh-CN')}] ${status} ${step.node_label}: ${step.step}`
+      })
+
+      if (execution.status === 'running' || execution.status === 'pending') {
+        pollingTimer = window.setTimeout(() => pollExecutionProgress(workflowId, executionId), 500)
+      } else {
+        isRunning.value = false
+        stopPolling()
+
+        if (execution.status === 'completed' && execution.result) {
+          runResult.value = execution.result
+          runLogs.value.push(`✅ 工作流执行成功`)
+          runLogs.value.push(`📈 筛选出 ${execution.result.result_count || 0} 只符合条件的股票`)
+          runLogs.value.push(`⏱️ 总耗时: ${(execution.result.duration || 0).toFixed(2)} 秒`)
+          showProgressDialog.value = false
+          showRunDialog.value = true
+        } else if (execution.status === 'failed') {
+          runLogs.value.push(`❌ 执行失败: ${execution.error || '未知错误'}`)
+          ElMessage.error(execution.error || '工作流执行失败')
+        } else if (execution.status === 'cancelled') {
+          runLogs.value.push(`⚠️ 执行已取消`)
+          ElMessage.warning('工作流已取消')
+        }
+
+        await loadWorkflows()
+      }
+    }
+  } catch (e: any) {
+    console.error('Poll progress failed:', e)
+  }
+}
+
+function stopPolling() {
+  if (pollingTimer) {
+    clearTimeout(pollingTimer)
+    pollingTimer = null
+  }
+}
+
 async function runWorkflow(workflow: Workflow) {
   runLogs.value = []
   runProgress.value = 0
   isRunning.value = true
+  currentExecutionId.value = ''
+  currentExecution.value = null
   showProgressDialog.value = true
 
   try {
-    addLog(`🚀 开始执行工作流: ${workflow.name}`)
+    addLog(`🚀 正在启动工作流: ${workflow.name}`)
     addLog(`📊 工作流包含 ${workflow.nodes.length} 个节点`)
-    addLog(`📡 正在连接后端API...`)
-    addLog(`⏳ 正在执行工作流，请稍候...`)
-    runProgress.value = 30
 
     const res = await workflowApi.run(workflow.id)
 
-    if (res.data?.data?.success) {
-      const data = res.data.data
-      runResult.value = data
-      const resultCount = data.result_count || 0
-      const duration = data.duration || 0
-      const executionLog = data.execution_log || []
+    if (res.data?.success) {
+      const data = res.data
+      currentExecutionId.value = data.execution_id
+      addLog(`✅ 工作流已启动 (ID: ${data.execution_id})`)
+      addLog(`⏳ 正在执行中，请稍候...`)
 
-      addLog(`✅ 后端开始执行节点...`)
-      for (const log of executionLog) {
-        if (log.status === 'completed') {
-          addLog(`✅ ${log.label}: ${log.message} (${log.stocks_count}只)`)
-        } else {
-          addLog(`❌ ${log.label}: ${log.message}`)
-        }
-      }
-
-      addLog(`✅ 工作流执行成功`)
-      addLog(`📈 筛选出 ${resultCount} 只符合条件的股票`)
-      addLog(`⏱️ 总耗时: ${duration.toFixed(2)} 秒`)
-
-      runProgress.value = 100
-
-      showProgressDialog.value = false
-      showRunDialog.value = true
-
-      await loadWorkflows()
+      pollExecutionProgress(workflow.id, data.execution_id)
     } else {
-      addLog(`❌ 执行失败: ${res.data?.data?.error || '未知错误'}`)
-      ElMessage.error('工作流执行失败')
+      const errorMsg = res.data?.error || '启动失败'
+      addLog(`❌ 启动失败: ${errorMsg}`)
+      ElMessage.error(errorMsg)
+      isRunning.value = false
     }
   } catch (e: any) {
     const errorMsg = e?.response?.data?.error || e.message || '运行失败'
     addLog(`❌ 执行失败: ${errorMsg}`)
     ElMessage.error(errorMsg)
-  } finally {
     isRunning.value = false
   }
+}
+
+async function cancelWorkflow() {
+  if (!currentExecutionId.value) return
+
+  try {
+    await ElMessageBox.confirm('确定要取消当前执行的工作流吗？', '取消确认', {
+      confirmButtonText: '确定取消',
+      cancelButtonText: '继续执行',
+      type: 'warning'
+    })
+
+    const workflow = workflows.value.find(w => w.id === currentExecution.value?.workflow_id)
+    if (workflow) {
+      await workflowApi.cancelExecution(workflow.id, currentExecutionId.value)
+      addLog(`⚠️ 已请求取消执行...`)
+    }
+  } catch {
+    // cancelled or continue
+  }
+}
+
+async function loadExecutionHistory() {
+  loadingExecutions.value = true
+  try {
+    const historyData: any[] = []
+    for (const workflow of workflows.value) {
+      try {
+        const res = await workflowApi.listExecutions(workflow.id, 10)
+        const executions = res.data?.data || []
+        for (const exec of executions) {
+          historyData.push({
+            ...exec,
+            workflow_name: workflow.name
+          })
+        }
+      } catch {
+        // skip errors
+      }
+    }
+    historyData.sort((a, b) => {
+      const timeA = a.started_at || ''
+      const timeB = b.started_at || ''
+      return timeB.localeCompare(timeA)
+    })
+    allExecutions.value = historyData
+  } catch {
+    ElMessage.error('加载执行历史失败')
+  } finally {
+    loadingExecutions.value = false
+  }
+}
+
+async function stopExecution(execution: any) {
+  try {
+    await ElMessageBox.confirm('确定要停止该执行中的工作流吗？', '停止确认', {
+      confirmButtonText: '确定停止',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+
+    await workflowApi.cancelExecution(execution.workflow_id, execution.id)
+    ElMessage.success('已请求停止执行')
+
+    execution.status = 'cancelled'
+    execution.finished_at = new Date().toISOString()
+  } catch {
+    // cancelled
+  }
+}
+
+function viewExecutionResult(execution: any) {
+  if (execution.result) {
+    runResult.value = execution.result
+    showRunDialog.value = true
+  }
+}
+
+async function viewExecutionProgress(execution: any) {
+  runLogs.value = []
+  runProgress.value = execution.progress || 0
+  isRunning.value = true
+  currentExecutionId.value = execution.id
+  currentExecution.value = execution
+  showProgressDialog.value = true
+
+  if (execution.steps && execution.steps.length > 0) {
+    for (const step of execution.steps) {
+      const status = execution.status === 'completed' ? '✅' : execution.status === 'failed' ? '❌' : '⏳'
+      runLogs.value.push(`[${new Date(step.timestamp).toLocaleTimeString('zh-CN')}] ${status} ${step.node_label}: ${step.step}`)
+    }
+  }
+
+  addLog(`⏳ 正在监控工作流执行...`)
+
+  const pollId = window.setInterval(async () => {
+    try {
+      const res = await workflowApi.getExecutionProgress(execution.workflow_id, execution.id)
+      if (res.data?.success) {
+        const latest = res.data.data
+        currentExecution.value = latest
+        runProgress.value = latest.progress
+
+        if (latest.steps && latest.steps.length > runLogs.value.length) {
+          for (let i = runLogs.value.length; i < latest.steps.length; i++) {
+            const step = latest.steps[i]
+            const status = latest.status === 'completed' ? '✅' : latest.status === 'failed' ? '❌' : '⏳'
+            runLogs.value.push(`[${new Date(step.timestamp).toLocaleTimeString('zh-CN')}] ${status} ${step.node_label}: ${step.step}`)
+          }
+        }
+
+        if (latest.status !== 'running' && latest.status !== 'pending') {
+          clearInterval(pollId)
+          isRunning.value = false
+
+          if (latest.status === 'completed' && latest.result) {
+            runResult.value = latest.result
+            runLogs.value.push(`✅ 工作流执行成功`)
+            runLogs.value.push(`📈 筛选出 ${latest.result.result_count || 0} 只符合条件的股票`)
+            showProgressDialog.value = false
+            showRunDialog.value = true
+          } else if (latest.status === 'failed') {
+            runLogs.value.push(`❌ 执行失败: ${latest.error || '未知错误'}`)
+          } else if (latest.status === 'cancelled') {
+            runLogs.value.push(`⚠️ 执行已取消`)
+          }
+        }
+      }
+    } catch {
+      clearInterval(pollId)
+    }
+  }, 1000)
+}
+
+function getStatusType(status: string) {
+  const map: Record<string, string> = {
+    'pending': 'info',
+    'running': 'warning',
+    'completed': 'success',
+    'failed': 'danger',
+    'cancelled': 'info'
+  }
+  return map[status] || 'info'
+}
+
+function getStatusLabel(status: string) {
+  const map: Record<string, string> = {
+    'pending': '等待中',
+    'running': '执行中',
+    'completed': '已完成',
+    'failed': '失败',
+    'cancelled': '已取消'
+  }
+  return map[status] || status
+}
+
+function formatDateTime(dateStr: string) {
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  return date.toLocaleString('zh-CN')
 }
 
 function addLog(message: string) {
@@ -494,9 +793,13 @@ function getAverageScore() {
   return (total / runResult.value.results.length).toFixed(1)
 }
 
-onMounted(() => {
-  loadWorkflows()
-  loadTemplates()
+onMounted(async () => {
+  await loadWorkflows()
+  await Promise.all([loadTemplates(), loadExecutionHistory()])
+})
+
+onUnmounted(() => {
+  stopPolling()
 })
 
 </script>
@@ -506,6 +809,25 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+.workflow-tabs {
+  background: #1f1f1f;
+  border: 1px solid #2c2c2c;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.workflow-tabs :deep(.el-tabs__header) {
+  margin-bottom: 16px;
+}
+
+.workflow-tabs :deep(.el-tabs__nav-wrap::after) {
+  background-color: #3c3c3c;
+}
+
+.execution-badge {
+  margin-left: 4px;
 }
 
 .page-header {
@@ -818,6 +1140,10 @@ onMounted(() => {
   padding: 8px 0;
 }
 
+.current-step {
+  margin-bottom: 8px;
+}
+
 .log-container {
   border: 1px solid #3c3c3c;
   border-radius: 8px;
@@ -869,5 +1195,34 @@ onMounted(() => {
   background: rgba(64, 158, 255, 0.1);
   color: #409eff;
   border-left: 3px solid #409eff;
+}
+
+.log-warning {
+  background: rgba(230, 162, 60, 0.1);
+  color: #e6a23c;
+  border-left: 3px solid #e6a23c;
+}
+
+.execution-table :deep(.el-table__header th) {
+  background: #2c2c2c !important;
+}
+
+.execution-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.result-link {
+  color: #409eff;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.result-link:hover {
+  text-decoration: underline;
+}
+
+.text-muted {
+  color: #909399;
 }
 </style>
