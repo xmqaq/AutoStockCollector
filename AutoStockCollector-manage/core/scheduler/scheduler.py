@@ -24,6 +24,25 @@ logger = get_logger(__name__)
 _TASK_TIMEOUT_SECONDS = 3600
 
 
+def _expected_report_period(as_of: datetime) -> str:
+    """根据 A 股定期报告披露截止日，推算"截至 as_of 应已披露的最新报告期"(YYYY-MM-DD)。
+
+    一季报 4-30 前(报告期 3-31) / 半年报 8-31 前(6-30) /
+    三季报 10-31 前(9-30) / 年报 次年 4-30 前(12-31)。
+    用于财务增量：只跳过"已拥有应披露最新报告期"的股票，
+    而不是"库里有该 code 就整只跳过"——否则半年报/三季报发布后，
+    已有股票永远补不上新季度。
+    """
+    cands = []
+    for yr in (as_of.year, as_of.year - 1):
+        cands.append((datetime(yr, 4, 30), f"{yr - 1}-12-31"))  # 年报
+        cands.append((datetime(yr, 4, 30), f"{yr}-03-31"))      # 一季报
+        cands.append((datetime(yr, 8, 31), f"{yr}-06-30"))      # 半年报
+        cands.append((datetime(yr, 10, 31), f"{yr}-09-30"))     # 三季报
+    disclosed = [p for deadline, p in cands if deadline <= as_of]
+    return max(disclosed) if disclosed else f"{as_of.year - 1}-12-31"
+
+
 class Task:
     def __init__(
         self,
@@ -507,36 +526,75 @@ class TaskScheduler:
             except Exception as e:
                 logger.error(f"Watchlist priority error: {e}")
 
-        # 一次聚合查询获取所有股票的最大日期，避免在线程池中对每支股票发单独 DB 查询
-        latest_dates: dict = {}
+        # 一次聚合查询获取每支股票在库的最早/最新日期，避免在线程池中逐支发 DB 查询。
+        # 同时支持两种增量：
+        #   - 尾部增量（更新到最新）：只补 [库内最新+1, end]
+        #   - 头部补历史（补历史）：当请求 start 早于库内最早日时，补 [start, 库内最早-1]
+        date_ranges: dict = {}
         if start_date and end_date:
             try:
                 pipeline = [
-                    {"$group": {"_id": "$code", "mx": {"$max": "$date"}}}
+                    {"$group": {"_id": "$code",
+                                "mn": {"$min": "$date"},
+                                "mx": {"$max": "$date"}}}
                 ]
+
+                def _fmt(v):
+                    return v.strftime("%Y-%m-%d") if hasattr(v, "strftime") else str(v)[:10]
+
                 for row in self.kline_storage.collection.aggregate(pipeline, allowDiskUse=False):
-                    v = row.get("mx")
-                    if v is not None:
-                        d = v.strftime("%Y-%m-%d") if hasattr(v, "strftime") else str(v)[:10]
-                        latest_dates[row["_id"]] = d
-                logger.info(f"kline: prefetched latest dates for {len(latest_dates)} codes via aggregation")
+                    mn, mx = row.get("mn"), row.get("mx")
+                    date_ranges[row["_id"]] = (
+                        _fmt(mn) if mn is not None else None,
+                        _fmt(mx) if mx is not None else None,
+                    )
+                logger.info(f"kline: prefetched date ranges for {len(date_ranges)} codes via aggregation")
             except Exception as e:
-                logger.warning(f"kline bulk date prefetch failed (will skip trimming): {e}")
+                logger.warning(f"kline bulk date prefetch failed (will fetch full range): {e}")
+
+        def _next_day(d):
+            return (datetime.strptime(d, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+
+        def _prev_day(d):
+            return (datetime.strptime(d, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
 
         def collect_fn(code):
-            eff_start = start_date
-            if start_date and end_date:
-                d = latest_dates.get(code)
-                if d is not None:
-                    nxt = (datetime.strptime(d, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
-                    if nxt > end_date:
-                        return None  # 该股票已覆盖到 end_date，跳过
-                    if nxt > start_date:
-                        eff_start = nxt
-            return collector.execute_with_retry(
-                collector.collect_single, code,
-                start_date=eff_start, end_date=end_date, adjust=adjust
-            )
+            # 无区间约束时整段取（update/history 均带区间，这里只是兜底）
+            if not (start_date and end_date):
+                return collector.execute_with_retry(
+                    collector.collect_single, code,
+                    start_date=start_date, end_date=end_date, adjust=adjust
+                )
+
+            earliest, latest = date_ranges.get(code, (None, None))
+            # 库内无该股票数据：抓取整个请求区间
+            if not earliest or not latest:
+                return collector.execute_with_retry(
+                    collector.collect_single, code,
+                    start_date=start_date, end_date=end_date, adjust=adjust
+                )
+
+            # 仅抓取缺口段：头段 [start, earliest-1] + 尾段 [latest+1, end]
+            # （中间空洞极少见，不在此处理，避免逐日重拉全市场）
+            segments = []
+            if start_date < earliest:
+                segments.append((start_date, _prev_day(earliest)))
+            if end_date > latest:
+                segments.append((_next_day(latest), end_date))
+            if not segments:
+                return None  # 区间已被覆盖，跳过
+
+            merged = []
+            for seg_start, seg_end in segments:
+                if seg_start > seg_end:
+                    continue
+                recs = collector.execute_with_retry(
+                    collector.collect_single, code,
+                    start_date=seg_start, end_date=seg_end, adjust=adjust
+                )
+                if recs:
+                    merged.extend(recs)
+            return merged or None
 
         self._parallel_collect(
             task, codes,
@@ -676,28 +734,38 @@ class TaskScheduler:
         from core.storage.mongo_storage import FinancialStorage
         storage = FinancialStorage()
 
-        if mode == "incremental":
-            existing = set(storage.distinct("code"))
-            before = len(codes)
-            codes = [c for c in codes if c not in existing]
-            logger.info(f"financial incremental: {before} total, {len(existing)} in DB, {len(codes)} to fetch")
-        elif start_date and end_date:
-            # full 模式：跳过 DB 中已有该时间段数据的 code（用一次聚合查最大报告期）
+        if start_date and end_date:
+            # 按报告期判断：只跳过"已拥有截至 end_date 应披露的最新报告期"的股票。
+            # 这样半年报/三季报/年报发布后，已有股票也会被追加新季度，而非整只跳过。
             try:
-                end_year = end_date[:4]
+                as_of = datetime.strptime(end_date[:10], "%Y-%m-%d")
+            except Exception:
+                as_of = datetime.now()
+            # 不能超过真实今天（end_date 可能被设为今天，但报告期推算以实际时间为准）
+            expected = _expected_report_period(min(as_of, datetime.now()))
+            try:
                 pipeline = [
                     {"$group": {"_id": "$code", "mx": {"$max": "$report_date"}}}
                 ]
                 already_done = set()
                 for row in storage.collection.aggregate(pipeline, allowDiskUse=False):
-                    v = str(row.get("mx") or "")[:7]  # YYYY-MM
-                    if v[:4] >= end_year:
+                    mx = row.get("mx")
+                    mx_s = mx.strftime("%Y-%m-%d") if hasattr(mx, "strftime") else str(mx or "")[:10]
+                    if mx_s and mx_s >= expected:
                         already_done.add(row["_id"])
                 before = len(codes)
                 codes = [c for c in codes if c not in already_done]
-                logger.info(f"financial full: {before} total, {len(already_done)} already covered, {len(codes)} to fetch")
+                logger.info(
+                    f"financial: expected_period={expected}, {before} total, "
+                    f"{len(already_done)} up-to-date, {len(codes)} to fetch"
+                )
             except Exception as e:
-                logger.warning(f"financial bulk date prefetch failed: {e}")
+                logger.warning(f"financial report-period prefetch failed: {e}")
+        elif mode == "incremental":
+            existing = set(storage.distinct("code"))
+            before = len(codes)
+            codes = [c for c in codes if c not in existing]
+            logger.info(f"financial incremental: {before} total, {len(existing)} in DB, {len(codes)} to fetch")
 
         def collect_fn(code):
             return collector.execute_with_retry(

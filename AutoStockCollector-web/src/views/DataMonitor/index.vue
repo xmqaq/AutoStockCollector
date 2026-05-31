@@ -52,7 +52,7 @@
         </el-table-column>
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="statusType(row.status)" size="small">{{ row.status }}</el-tag>
+            <el-tag :type="statusType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="进度" min-width="170">
@@ -326,6 +326,19 @@ function statusType(status: string) {
     cancelled: 'warning',
   }
   return map[status] || 'info'
+}
+
+// 任务状态英文 → 中文
+function statusLabel(status: string): string {
+  const map: Record<string, string> = {
+    completed: '已完成',
+    failed: '失败',
+    running: '运行中',
+    pending: '等待中',
+    cancelled: '已取消',
+    not_started: '未开始',
+  }
+  return map[status] || status || '未知'
 }
 
 // manualRefresh：用户点击按钮时显示 loading；自动轮询用 pollSilently 不触发遮罩

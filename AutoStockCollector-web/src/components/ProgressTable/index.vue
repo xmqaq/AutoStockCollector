@@ -47,7 +47,7 @@
     </el-table-column>
     <el-table-column v-if="showFreshness" label="新鲜度" width="100" align="center">
       <template #default="{ row }">
-        <span :class="freshness(row.date_to).cls">{{ freshness(row.date_to).text }}</span>
+        <span :class="freshness(row.date_to, row.task_type).cls">{{ freshness(row.date_to, row.task_type).text }}</span>
       </template>
     </el-table-column>
   </el-table>
@@ -64,8 +64,26 @@ interface Props {
 
 defineProps<Props>()
 
-function freshness(dateTo?: string): { text: string; cls: string } {
+// 推算"当前应已披露的最新财报报告期"（A股定期报告披露截止日）
+// 一季报 4-30 前(报告期 3-31) / 半年报 8-31 前(6-30) / 三季报 10-31 前(9-30) / 年报 次年 4-30 前(12-31)
+function expectedLatestReportPeriod(now: Date): Date {
+  const cands: Array<[Date, Date]> = []
+  for (const yr of [now.getFullYear(), now.getFullYear() - 1]) {
+    cands.push([new Date(yr, 3, 30), new Date(yr - 1, 11, 31)]) // 年报
+    cands.push([new Date(yr, 3, 30), new Date(yr, 2, 31)])      // 一季报
+    cands.push([new Date(yr, 7, 31), new Date(yr, 5, 30)])      // 半年报
+    cands.push([new Date(yr, 9, 31), new Date(yr, 8, 30)])      // 三季报
+  }
+  return cands.filter(([d]) => d <= now).map(([, p]) => p).reduce((a, b) => (b > a ? b : a))
+}
+
+function freshness(dateTo?: string, type?: string): { text: string; cls: string } {
   if (!dateTo) return { text: '—', cls: 'fresh-none' }
+  // 财务为季度披露：只要已拥有当前应披露的最新报告期即为最新，不按自然天数判断
+  if (type === 'financial') {
+    const ok = new Date(dateTo) >= expectedLatestReportPeriod(new Date())
+    return ok ? { text: '最新', cls: 'fresh-ok' } : { text: '待更新', cls: 'fresh-stale' }
+  }
   const diff = Math.floor((Date.now() - new Date(dateTo).getTime()) / 86400000)
   if (diff <= 1) return { text: '最新', cls: 'fresh-ok' }
   if (diff <= 7) return { text: `${diff} 天前`, cls: 'fresh-mid' }
