@@ -883,31 +883,51 @@ class TaskScheduler:
         date = task.params.get("date")
         collector = self._get_collector(TaskType.DRAGON_TIGER_COLLECTION.value)
 
-        # 裁剪起始日期：跳过 DB 中已有的日期段
-        if start_date and end_date:
+        # 计算缺口段：同时补头部 [start, earliest-1] 与尾部 [latest+1, end]。
+        # 旧逻辑只把 start 往后裁剪，导致 DB 最早日之前的历史（如已有2026年、请求补2025年）永远补不上。
+        segments = []
+        if start_date and end_date and not date:
             try:
                 from core.storage.mongo_storage import DragonTigerStorage
                 dt_storage = DragonTigerStorage()
+                oldest = dt_storage.find_one({"上榜日": {"$exists": True}}, sort=[("上榜日", 1)])
                 newest = dt_storage.find_one({"上榜日": {"$exists": True}}, sort=[("上榜日", -1)])
-                if newest:
-                    v = newest.get("上榜日")
-                    latest_str = v.strftime("%Y-%m-%d") if hasattr(v, "strftime") else str(v)[:10]
-                    nxt = (datetime.strptime(latest_str, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
-                    if nxt > end_date:
-                        logger.info(f"dragon_tiger already up to date (max={latest_str}), skipping")
+
+                def _d(rec):
+                    v = rec.get("上榜日")
+                    return v.strftime("%Y-%m-%d") if hasattr(v, "strftime") else str(v)[:10]
+
+                if oldest and newest:
+                    earliest, latest = _d(oldest), _d(newest)
+                    if start_date < earliest:
+                        prev = (datetime.strptime(earliest, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+                        segments.append((start_date, prev))
+                    if end_date > latest:
+                        nxt = (datetime.strptime(latest, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+                        segments.append((nxt, end_date))
+                    if not segments:
+                        logger.info(f"dragon_tiger 已覆盖 {start_date}~{end_date} (DB {earliest}~{latest})，跳过")
                         task.update_progress(0, 0, 0, 0)
                         task.complete(0, 0)
                         return
-                    if nxt > start_date:
-                        logger.info(f"dragon_tiger: trimmed start_date {start_date} → {nxt}")
-                        start_date = nxt
+                    logger.info(f"dragon_tiger 补缺段: {segments} (DB已有 {earliest}~{latest})")
+                else:
+                    segments = [(start_date, end_date)]
             except Exception as e:
-                logger.warning(f"dragon_tiger date-trim failed, proceeding with original range: {e}")
+                logger.warning(f"dragon_tiger 补缺计算失败，按完整区间采集: {e}")
+                segments = [(start_date, end_date)]
+        else:
+            segments = [(start_date, end_date)]
 
-        task.update_progress(0, 1, 0, 0)
+        task.update_progress(0, len(segments), 0, 0)
+        total, done = 0, 0
         try:
-            records = collector.collect(date=date, start_date=start_date, end_date=end_date)
-            task.complete(len(records), 0)
+            for seg_start, seg_end in segments:
+                records = collector.collect(date=date, start_date=seg_start, end_date=seg_end)
+                total += len(records) if records else 0
+                done += 1
+                task.update_progress(done, len(segments), total, 0)
+            task.complete(total, 0)
         except Exception as e:
             task.fail(str(e))
 
@@ -949,33 +969,52 @@ class TaskScheduler:
         from core.storage.mongo_storage import MarginStorage
         storage = MarginStorage()
 
-        # 裁剪起始日期：跳过 DB 中已有的日期段
-        try:
-            newest = storage.find_one({"信用交易日期": {"$exists": True}}, sort=[("信用交易日期", -1)])
-            if newest:
-                latest_8 = str(newest.get("信用交易日期", ""))[:8]
-                if latest_8 and latest_8.isdigit():
-                    nxt = (datetime.strptime(latest_8, "%Y%m%d") + timedelta(days=1)).strftime("%Y%m%d")
-                    if nxt > end_date:
-                        logger.info(f"margin already up to date (max={latest_8}), skipping")
-                        task.update_progress(0, 0, 0, 0)
-                        task.complete(0, 0)
-                        return
-                    if nxt > start_date:
-                        logger.info(f"margin: trimmed start_date {start_date} → {nxt}")
-                        start_date = nxt
-        except Exception as e:
-            logger.warning(f"margin date-trim failed, proceeding with original range: {e}")
+        # 计算缺口段：同时补头部 + 尾部（8 位 YYYYMMDD）。
+        # DB 中 信用交易日期 为 'YYYYMMDD' 字符串，去横线取前 8 位统一比较。
+        def _norm8(v):
+            s = str(v or "").replace("-", "")[:8]
+            return s if len(s) == 8 and s.isdigit() else None
 
-        task.update_progress(0, 1, 0, 0)
+        segments = []
         try:
-            records = collector.collect_detailed_margin(
-                start_date=start_date,
-                end_date=end_date
-            )
-            if records:
-                storage.save_margin_batch(records)
-            task.complete(len(records), 0)
+            oldest = storage.find_one({"信用交易日期": {"$exists": True}}, sort=[("信用交易日期", 1)])
+            newest = storage.find_one({"信用交易日期": {"$exists": True}}, sort=[("信用交易日期", -1)])
+            earliest = _norm8(oldest.get("信用交易日期")) if oldest else None
+            latest = _norm8(newest.get("信用交易日期")) if newest else None
+
+            if earliest and latest:
+                if start_date < earliest:
+                    prev = (datetime.strptime(earliest, "%Y%m%d") - timedelta(days=1)).strftime("%Y%m%d")
+                    segments.append((start_date, prev))
+                if end_date > latest:
+                    nxt = (datetime.strptime(latest, "%Y%m%d") + timedelta(days=1)).strftime("%Y%m%d")
+                    segments.append((nxt, end_date))
+                if not segments:
+                    logger.info(f"margin 已覆盖 {start_date}~{end_date} (DB {earliest}~{latest})，跳过")
+                    task.update_progress(0, 0, 0, 0)
+                    task.complete(0, 0)
+                    return
+                logger.info(f"margin 补缺段: {segments} (DB已有 {earliest}~{latest})")
+            else:
+                segments = [(start_date, end_date)]
+        except Exception as e:
+            logger.warning(f"margin 补缺计算失败，按完整区间采集: {e}")
+            segments = [(start_date, end_date)]
+
+        task.update_progress(0, len(segments), 0, 0)
+        total, done = 0, 0
+        try:
+            for seg_start, seg_end in segments:
+                records = collector.collect_detailed_margin(
+                    start_date=seg_start,
+                    end_date=seg_end
+                )
+                if records:
+                    storage.save_margin_batch(records)
+                    total += len(records)
+                done += 1
+                task.update_progress(done, len(segments), total, 0)
+            task.complete(total, 0)
         except Exception as e:
             task.fail(str(e))
 
