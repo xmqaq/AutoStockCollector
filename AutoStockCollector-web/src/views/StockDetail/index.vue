@@ -48,8 +48,12 @@
             <span class="info-value">{{ stockInfo.area || '--' }}</span>
           </div>
           <div class="info-item">
-            <span class="info-label">市盈率PE</span>
+            <span class="info-label">市盈率PE(TTM)</span>
             <span class="info-value">{{ fmtNumber(stockInfo.pe) }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">市盈率PE(静)</span>
+            <span class="info-value">{{ fmtNumber(stockInfo.pe_static) || '--' }}</span>
           </div>
           <div class="info-item">
             <span class="info-label">市净率PB</span>

@@ -372,6 +372,8 @@ def get_stock_info(code):
     info["industry"] = info.get("industry") or info.get("所属行业") or ""
     info["list_date"] = info.get("list_date") or info.get("上市日期") or ""
     info["area"] = info.get("area") or info.get("注册地址") or info.get("办公地址") or ""
+    # pe 字段已通过百度 TTM 接口写入；pe_static 为静态PE供对比
+    # 前端可区分展示 pe（TTM）和 pe_static（静态）
 
     if not info or len(info) <= 1:
         return jsonify({"error": "Stock info not found"}), 404

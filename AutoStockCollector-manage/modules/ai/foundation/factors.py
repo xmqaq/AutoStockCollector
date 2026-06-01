@@ -57,22 +57,125 @@ def volume_score(volumes: List[float]) -> float:
     return 50.0
 
 
-def valuation_score(pe: Optional[float], pb: Optional[float], ps: Optional[float]) -> float:
-    """估值因子。合理 PE/PB 加分，高估扣分。"""
-    score = 50.0
-    if pe and 5 < pe < 25:
-        score += 15
-    elif pe and 0 < pe <= 5:
-        score += 10
-    elif pe and 25 <= pe < 40:
-        score += 5
-    elif pe and pe >= 40:
-        score -= 15
+def valuation_score(
+    pe: Optional[float],
+    pb: Optional[float],
+    ps: Optional[float] = None,
+    roe: Optional[float] = None,
+    gross_margin: Optional[float] = None,
+    debt_ratio: Optional[float] = None,
+    revenue_growth: Optional[float] = None,
+    profit_growth: Optional[float] = None,
+) -> float:
+    """综合基本面评分。
 
-    if pb and 0.5 < pb < 3:
-        score += 10
-    elif pb and pb >= 3:
-        score -= 5
+    维度：
+      · TTM PE（相对质量调整后的容忍区间，高 ROE/高毛利公司给予更高容忍）
+      · PB（结合 ROE 判断是否物有所值）
+      · ROE（盈利能力核心指标，权重最高）
+      · 毛利率（商业模式护城河）
+      · 负债率（财务稳健性）
+      · 营收 / 利润增速（成长性）
+    """
+    score = 50.0
+
+    # ── 质量特征：判断是否高 ROE / 高毛利公司（放宽 PE/PB 容忍）──
+    high_quality = bool(
+        (roe is not None and roe >= 20) or
+        (gross_margin is not None and gross_margin >= 50)
+    )
+
+    # ── TTM PE ──
+    if pe is not None and pe > 0:
+        if pe <= 10:
+            score += 12
+        elif pe <= 20:
+            score += 8
+        elif pe <= 30:
+            score += 4
+        elif pe <= 50:
+            # 高质量公司 PE 30-50 不扣分，普通公司小幅扣分
+            score += 0 if high_quality else -3
+        elif pe <= 80:
+            score += -5 if high_quality else -12
+        else:
+            score -= 15
+    elif pe is not None and pe <= 0:
+        score -= 10  # 亏损
+
+    # ── PB ──
+    if pb is not None and pb > 0:
+        # ROE 高时，高 PB 仍合理
+        roe_adj = roe if roe is not None else 0
+        if pb < 1:
+            score += 8
+        elif pb < 3:
+            score += 5
+        elif pb < 6:
+            score += 3 if roe_adj >= 15 else 0
+        elif pb < 10:
+            score += 0 if roe_adj >= 20 else -5
+        else:
+            score -= 8
+
+    # ── ROE（权重最高：±20） ──
+    if roe is not None:
+        if roe >= 25:
+            score += 20
+        elif roe >= 20:
+            score += 15
+        elif roe >= 15:
+            score += 10
+        elif roe >= 10:
+            score += 5
+        elif roe >= 0:
+            score += 0
+        else:
+            score -= 15
+
+    # ── 毛利率（±10） ──
+    if gross_margin is not None:
+        if gross_margin >= 70:
+            score += 10
+        elif gross_margin >= 50:
+            score += 7
+        elif gross_margin >= 30:
+            score += 3
+        elif gross_margin >= 10:
+            score += 0
+        else:
+            score -= 5
+
+    # ── 负债率（±8） ──
+    if debt_ratio is not None:
+        if debt_ratio < 30:
+            score += 8
+        elif debt_ratio < 50:
+            score += 3
+        elif debt_ratio < 70:
+            score -= 3
+        else:
+            score -= 8
+
+    # ── 营收增速（±5） ──
+    if revenue_growth is not None:
+        if revenue_growth >= 20:
+            score += 5
+        elif revenue_growth >= 5:
+            score += 2
+        elif revenue_growth < 0:
+            score -= 5
+
+    # ── 利润增速（±5） ──
+    if profit_growth is not None:
+        if profit_growth >= 20:
+            score += 5
+        elif profit_growth >= 5:
+            score += 2
+        elif profit_growth < -10:
+            score -= 5
+        elif profit_growth < 0:
+            score -= 2
 
     return max(0.0, min(100.0, score))
 

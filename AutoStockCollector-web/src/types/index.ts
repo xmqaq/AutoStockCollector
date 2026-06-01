@@ -45,7 +45,8 @@ export interface StockInfo {
   name: string
   industry?: string
   area?: string
-  pe?: number
+  pe?: number        // TTM市盈率
+  pe_static?: number // 静态市盈率
   pb?: number
   total_mv?: number
   circ_mv?: number
