@@ -568,6 +568,31 @@ class AIAnalyzer:
             negative_keywords=negative_keywords_found[:5]
         )
 
+    @staticmethod
+    def _parse_amount(raw) -> float:
+        """解析金额字符串为元（支持 '6.43亿'、'2549万'、数字等）。"""
+        import re
+        if raw is None:
+            return 0.0
+        if isinstance(raw, (int, float)):
+            return float(raw)
+        s = str(raw).strip().replace(",", "")
+        if not s or s in ("-", "—"):
+            return 0.0
+        try:
+            m = re.match(r"^([+-]?\d+\.?\d*)(亿|万)?$", s)
+            if m:
+                num = float(m.group(1))
+                unit = m.group(2)
+                if unit == "亿":
+                    return num * 1e8
+                if unit == "万":
+                    return num * 1e4
+                return num
+            return float(s)
+        except (ValueError, TypeError):
+            return 0.0
+
     def _calculate_fund_flow_indicators(
         self,
         flow_data: Optional[Dict[str, Any]]
@@ -580,9 +605,10 @@ class AIAnalyzer:
                 "score": 50
             }
 
-        main_inflow = flow_data.get("main_net_inflow", 0)
-        retail_inflow = flow_data.get("retail_net_inflow", 0)
-        net_inflow = flow_data.get("net_inflow", 0)
+        # 兼容旧字段(main_net_inflow数值)和新字段(净额"亿"字符串)
+        main_inflow = self._parse_amount(flow_data.get("main_net_inflow") or flow_data.get("净额"))
+        retail_inflow = self._parse_amount(flow_data.get("retail_net_inflow"))
+        net_inflow = self._parse_amount(flow_data.get("net_inflow") or flow_data.get("净额"))
 
         score = 50.0
         if main_inflow > 1e8:

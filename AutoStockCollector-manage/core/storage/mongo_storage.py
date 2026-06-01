@@ -588,10 +588,15 @@ class FundFlowStorage(MongoStorage):
         super().__init__("fund_flow")
 
     def get_latest_flow(self, code: str) -> Optional[Dict[str, Any]]:
-        record = self.find_one(
-            {"code": code},
-            sort=[("date", -1)]
-        )
+        """支持带 SH/SZ 前缀和不带前缀两种 code 格式。"""
+        # 构建两种候选 code：带前缀 + 裸代码
+        bare = code[2:] if code[:2] in ("SH", "SZ") else code
+        candidates = [code]
+        if code == bare:
+            # 输入是裸代码，补充 SH/SZ 前缀候选
+            prefix = "SH" if bare.startswith(("6", "9")) else "SZ"
+            candidates.append(f"{prefix}{bare}")
+        record = self.find_one({"code": {"$in": candidates}}, sort=[("date", -1)])
         if record:
             record.pop("_id", None)
             record.pop("_updated_at", None)
@@ -767,18 +772,23 @@ class MarginStorage(MongoStorage):
         super().__init__("margin_data")
 
     def save_margin(self, margin: Dict[str, Any]) -> str:
+        # 个股数据用 code + date；旧市场汇总数据兼容 信用交易日期 + market
+        if "code" in margin and "date" in margin:
+            return self.upsert_one({"code": margin["code"], "date": margin["date"]}, margin)
         if "信用交易日期" in margin and "market" in margin:
-            filter_doc = {"信用交易日期": margin["信用交易日期"], "market": margin["market"]}
-            return self.upsert_one(filter_doc, margin)
+            return self.upsert_one({"信用交易日期": margin["信用交易日期"], "market": margin["market"]}, margin)
         return self.insert_one(margin)
 
     def get_latest_margin(self, market: str = "sh") -> Optional[Dict[str, Any]]:
         return self.find_one(
             {"market": market},
-            sort=[("信用交易日期", -1)]
+            sort=[("date", -1)]
         )
 
     def save_margin_batch(self, records: List[Dict[str, Any]]) -> Tuple[int, int]:
         if not records:
             return (0, 0)
+        # 个股数据用 code + date 唯一键
+        if records and "code" in records[0]:
+            return self.upsert_many(records, ["code", "date"])
         return self.upsert_many(records, ["信用交易日期", "market"])

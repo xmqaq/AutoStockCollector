@@ -3,6 +3,35 @@
 """
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
+import re as _re
+
+
+def _parse_amount_yuan(raw) -> Optional[float]:
+    """将各种格式的金额字符串解析为以元为单位的浮点数。
+    支持：数字、"6.43亿"→6.43e8、"2549万"→2549e4、"-6.43亿" 等。
+    返回 None 表示无法解析。
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    s = str(raw).strip().replace(",", "").replace(" ", "")
+    if not s or s in ("-", "—", "--"):
+        return None
+    try:
+        # 匹配形如 "-6.43亿" 或 "25.49万"
+        m = _re.match(r"^([+-]?\d+\.?\d*)(亿|万)?$", s)
+        if m:
+            num = float(m.group(1))
+            unit = m.group(2)
+            if unit == "亿":
+                return num * 1e8
+            if unit == "万":
+                return num * 1e4
+            return num
+        return float(s)
+    except (ValueError, TypeError):
+        return None
 
 
 @dataclass
@@ -252,11 +281,16 @@ class StockDAL:
         name = (info.get("name") or info.get("A股简称") or info.get("公司名称") or "")
         ps = info.get("ps")
 
-        # 实时价优先级：腾讯行情 > fund_flow 成交价 > kline 最新收盘
+        # 实时价优先级：腾讯行情 > fund_flow最新价 > kline 最新收盘
+        # 兼容旧字段(成交价格/当前价)和新字段(最新价)
+        _ff_price = (
+            fund.get("最新价")           # 新格式：stock_fund_flow_individual
+            or fund.get("当前价")         # 旧格式
+            or fund.get("成交价格")       # 旧格式大单明细
+        )
         realtime_price = (
             self._fetch_realtime_price(code)
-            or (float(fund["成交价格"]) if fund.get("成交价格") else None)
-            or (float(fund["当前价"]) if fund.get("当前价") else None)
+            or (float(_ff_price) if _ff_price is not None else None)
             or (closes[0] if closes else None)
         )
         # 若实时价比 kline 最新收盘更新，注入 closes 首位使技术分析反映当天行情
@@ -309,9 +343,8 @@ class StockDAL:
             if p_now and p_prev and p_prev != 0:
                 profit_growth = round((p_now - p_prev) / abs(p_prev) * 100, 2)
 
-        # 净额字段（万元）→ 元；fund_flow_score 以 1亿元为基准刻度
-        raw_flow = fund.get("main_net_inflow") or fund.get("净额")
-        main_net_inflow = float(raw_flow) * 10_000 if raw_flow is not None else None
+        # 主力净流入（元）：兼容旧格式(main_net_inflow,数值)和新格式(净额,"−6.43亿"字符串)
+        main_net_inflow = _parse_amount_yuan(fund.get("main_net_inflow") or fund.get("净额"))
 
         return StockDataBundle(
             code=code,
@@ -355,8 +388,7 @@ class StockDAL:
         pb = info.get("pb") or info.get("市净率") or info.get("PB")
         pe = float(pe) if pe is not None else None
         pb = float(pb) if pb is not None else None
-        raw_flow = fund.get("main_net_inflow") or fund.get("净额")
-        main_net_inflow = float(raw_flow) * 10_000 if raw_flow is not None else None
+        main_net_inflow = _parse_amount_yuan(fund.get("main_net_inflow") or fund.get("净额"))
         return FactorInputs(
             code=code,
             closes=closes,

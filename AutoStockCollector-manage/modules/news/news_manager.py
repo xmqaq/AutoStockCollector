@@ -268,6 +268,9 @@ class NewsManager:
                         record["summary"] = content[:200]
                     if article_date:
                         record["article_date"] = article_date
+                        # 同步到 publish_date，避免 publish_date 为空字符串
+                        if not record.get("publish_date"):
+                            record["publish_date"] = article_date
         
         # 4. 批量保存
         if all_records:

@@ -39,13 +39,15 @@ export const useCollectStore = defineStore('collect', () => {
       const res = await collectApi.getProgressAll()
       const body = res.data
       if (body?.tasks && typeof body.tasks === 'object') {
-        // tasks 是 { kline: {...}, financial: {...}, ... } 对象
-        progressList.value = Object.entries(body.tasks).map(([task_type, val]) => ({
-          task_type,
-          ...(val as object),
-        } as CollectProgress))
+        const entries = Object.entries(body.tasks)
+        // 只有后端返回了有效数据时才更新，防止瞬时空数据覆盖已有正确数据
+        if (entries.length > 0) {
+          progressList.value = entries.map(([task_type, val]) => ({
+            task_type,
+            ...(val as object),
+          } as CollectProgress))
+        }
       }
-      // 使用后端计算的整体进度（已正确处理 not_started 含数据的情况）
       if (typeof body?.overall_percent === 'number') {
         overallPercent.value = Math.round(body.overall_percent)
       }

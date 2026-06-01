@@ -807,6 +807,23 @@ def get_scheduler_stats():
     })
 
 
+@api_bp.route("/collect/cron_status", methods=["GET"])
+def get_cron_status():
+    """返回所有定时任务的下次执行时间、最近执行结果和告警状态。"""
+    try:
+        from core.scheduler.cron import get_cron_status
+        jobs = get_cron_status()
+        has_alert = any(j.get("alert") for j in jobs)
+        return jsonify({
+            "success": True,
+            "jobs": jobs,
+            "has_alert": has_alert,
+            "timestamp": datetime.now().isoformat(),
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e), "jobs": []}), 200
+
+
 @api_bp.route("/collect/kline", methods=["POST"])
 def collect_kline():
     from core.collector.kline_collector import KlineCollector
@@ -1106,22 +1123,30 @@ def clear_collections():
 
 
 def _build_history_tasks(start_date: str, end_date: str, task_types=None) -> list:
-    """构建历史采集任务（仅区间历史类：kline/financial/dragon_tiger/margin）。
+    """构建历史采集任务，支持全部8类数据类型。
 
-    快照类（news/fund_flow/sector）与名录类（stock_info）无历史区间概念，
-    不在历史采集中构建，避免产生"选了日期不生效"的假任务。
+    range 类（kline/financial/dragon_tiger/margin/fund_flow/news）按日期区间采集；
+    snapshot 类（sector）只采最新快照（忽略日期参数）；
+    catalog 类（stock_info）触发全量刷新（忽略日期参数）。
     """
-    range_tasks = {
-        "kline": {"start_date": start_date, "end_date": end_date, "adjust": "qfq"},
-        "financial": {"report_type": "annual", "start_date": start_date, "end_date": end_date},
+    all_tasks_cfg = {
+        # 区间历史类
+        "kline":        {"start_date": start_date, "end_date": end_date, "adjust": "qfq"},
+        "financial":    {"report_type": "annual", "start_date": start_date, "end_date": end_date},
         "dragon_tiger": {"start_date": start_date, "end_date": end_date},
-        "margin": {"start_date": start_date, "end_date": end_date},
+        "margin":       {"start_date": start_date, "end_date": end_date},
+        "fund_flow":    {"start_date": start_date, "end_date": end_date},
+        "news":         {"start_date": start_date, "end_date": end_date, "max_pages": 200, "with_content": True},
+        # 快照类（日期无效，只采最新）
+        "sector":       {},
+        # 名录类（全量刷新）
+        "stock_info":   {"mode": "full"},
     }
-    selected = task_types if task_types else RANGE_TYPES
+    selected = task_types if task_types else (RANGE_TYPES + SNAPSHOT_TYPES + CATALOG_TYPES)
     return [
-        {"task_type": t, "params": range_tasks[t]}
-        for t in RANGE_TYPES
-        if t in selected
+        {"task_type": t, "params": all_tasks_cfg[t]}
+        for t in (RANGE_TYPES + SNAPSHOT_TYPES + CATALOG_TYPES)
+        if t in selected and t in all_tasks_cfg
     ]
 
 
@@ -1323,11 +1348,11 @@ def _get_collection_stats(db) -> dict:
         "kline":        ("kline",        "date"),
         "stock_info":   ("stock_info",   None),
         "financial":    ("financial",    "report_date"),
-        "news":         ("news",         "publish_date"),
-        "fund_flow":    ("fund_flow",    None),
+        "news":         ("news",         "article_date"),   # publish_date 部分为空，用 article_date
+        "fund_flow":    ("fund_flow",    "date"),           # 新格式个股数据有 date 字段
         "dragon_tiger": ("dragon_tiger", "上榜日"),
-        "sector":       ("block",        None),
-        "margin":       ("margin_data",  "信用交易日期"),
+        "sector":       ("block",        "_updated_at"),    # block 无 date，用 _updated_at
+        "margin":       ("margin_data",  "date"),           # 新格式个股数据有 date 字段
     }
     result = {}
     for task_type, (coll_name, date_field) in meta.items():
@@ -1363,20 +1388,95 @@ def _invalidate_stats_cache():
         _stats_cache_at = 0.0
 
 
+def _compute_health(ttype: str, stats: dict, now: datetime) -> dict:
+    """计算单类数据的时效性健康状态。
+    返回 {'health': 'ok'|'stale'|'error', 'days_behind': int, 'latest_date': str|None}
+    """
+    from utils.helpers import get_latest_trading_day
+
+    record_count = stats.get("record_count", 0)
+    date_to = stats.get("date_to")  # YYYY-MM-DD 字符串或 None
+
+    if record_count == 0:
+        return {"health": "error", "days_behind": None, "latest_date": None}
+
+    # 每日更新类：K线/龙虎榜/资金流向/融资融券/板块
+    if ttype in ("kline", "dragon_tiger", "fund_flow", "margin", "sector"):
+        if not date_to:
+            return {"health": "error", "days_behind": None, "latest_date": None}
+        try:
+            latest_td = get_latest_trading_day(now)
+            latest_td_str = latest_td.strftime("%Y-%m-%d")
+            date_to_str = str(date_to)[:10]
+            if date_to_str >= latest_td_str:
+                return {"health": "ok", "days_behind": 0, "latest_date": date_to_str}
+            from datetime import timedelta
+            delta_days = (latest_td - datetime.strptime(date_to_str, "%Y-%m-%d")).days
+            # 板块数据是快照性质，更新1天内算ok
+            if ttype == "sector":
+                status = "ok" if delta_days <= 1 else "stale"
+                return {"health": status, "days_behind": delta_days, "latest_date": date_to_str}
+            return {"health": "stale", "days_behind": delta_days, "latest_date": date_to_str}
+        except Exception:
+            return {"health": "error", "days_behind": None, "latest_date": date_to}
+
+    # 财务数据：有当前季度数据 → ok
+    if ttype == "financial":
+        if not date_to:
+            return {"health": "error", "days_behind": None, "latest_date": None}
+        try:
+            date_to_dt = datetime.strptime(str(date_to)[:10], "%Y-%m-%d")
+            # 当前季度末：Q1=3-31 Q2=6-30 Q3=9-30 Q4=12-31（过了披露截止日才算）
+            quarter_map = {1: "03-31", 2: "06-30", 3: "09-30", 4: "12-31"}
+            q = (now.month - 1) // 3  # 当前季度编号（0-based），取上一季度
+            if q == 0:
+                expected_str = f"{now.year - 1}-12-31"
+            else:
+                expected_str = f"{now.year}-{quarter_map[q]}"
+            if str(date_to)[:10] >= expected_str:
+                return {"health": "ok", "days_behind": 0, "latest_date": str(date_to)[:10]}
+            delta = (now - date_to_dt).days
+            return {"health": "stale", "days_behind": delta, "latest_date": str(date_to)[:10]}
+        except Exception:
+            return {"health": "error", "days_behind": None, "latest_date": date_to}
+
+    # 新闻：最新记录24小时内 → ok
+    if ttype == "news":
+        if not date_to:
+            return {"health": "error", "days_behind": None, "latest_date": None}
+        try:
+            date_to_dt = datetime.strptime(str(date_to)[:10], "%Y-%m-%d")
+            delta = (now - date_to_dt).days
+            if delta <= 1:
+                return {"health": "ok", "days_behind": delta, "latest_date": str(date_to)[:10]}
+            return {"health": "stale", "days_behind": delta, "latest_date": str(date_to)[:10]}
+        except Exception:
+            return {"health": "stale", "days_behind": None, "latest_date": date_to}
+
+    # 股票信息：7天内更新 → ok
+    if ttype == "stock_info":
+        if record_count >= 5000:  # A股股票数参考值
+            return {"health": "ok", "days_behind": 0, "latest_date": None}
+        return {"health": "stale", "days_behind": None, "latest_date": None}
+
+    return {"health": "ok", "days_behind": 0, "latest_date": date_to}
+
+
 @api_bp.route("/collect/progress_all", methods=["GET"])
 def progress_all():
-    """聚合查询所有8类数据任务的最新进度（始终取最新一次任务）"""
+    """聚合查询所有8类数据任务的最新进度和数据时效性健康状态"""
     from core.scheduler.scheduler import scheduler
     from config.database import DatabaseConfig
     db = DatabaseConfig.get_database()
     coll_stats = _get_collection_stats(db)
 
     all_tasks = scheduler.list_tasks(limit=500)
+    now = datetime.now()
 
     target_types = ["kline", "stock_info", "financial", "news",
                     "fund_flow", "dragon_tiger", "sector", "margin"]
 
-    # 每种类型只取最新的非取消任务；若全被取消则不计入
+    # 每种类型只取最新的非取消任务
     latest_by_type: dict = {}
     for task in all_tasks:
         ttype = task.get("task_type")
@@ -1390,43 +1490,29 @@ def progress_all():
             latest_by_type[ttype] = task
 
     summary = {}
-    total_progress = 0
-    total_items = 0
-    completed_count = 0
+    healthy_count = 0  # 健康状态=ok 的类型数
 
     for ttype in target_types:
         task = latest_by_type.get(ttype)
-        if not task:
-            stats = coll_stats.get(ttype, {})
-            summary[ttype] = {
-                "task_type": ttype,
-                "status": "not_started",
-                "progress": 0, "total": 0, "percent": 0.0, "task_id": None,
-                "success": 0, "failed": 0, "elapsed_time": 0,
-                "record_count": stats.get("record_count", 0),
-                "date_from": stats.get("date_from"),
-                "date_to": stats.get("date_to"),
-            }
-            continue
-
-        progress = task.get("progress", 0)
-        total = task.get("total", 0)
-        status = task.get("status", "unknown")
-        percent = round(progress / total * 100, 1) if total > 0 else (100.0 if status == "completed" else 0.0)
-        failed_cnt = task.get("failed", 0)
-
         stats = coll_stats.get(ttype, {})
         record_count = stats.get("record_count", 0)
+        health_info = _compute_health(ttype, stats, now)
 
-        # 快照类型（news/fund_flow/sector）用 DB 实际条数代替任务 success：
-        # 快照每次全量 upsert，任务 success 是当次采集量而非库存量，用 record_count 更准确。
-        if ttype in ("news", "fund_flow", "sector"):
-            success = record_count
+        if task:
+            progress = task.get("progress", 0)
+            total = task.get("total", 0)
+            status = task.get("status", "unknown")
+            percent = round(progress / total * 100, 1) if total > 0 else (100.0 if status == "completed" else 0.0)
+            failed_cnt = task.get("failed", 0)
+            success = record_count if ttype in ("news", "fund_flow", "sector") else task.get("success", 0)
         else:
-            success = task.get("success", 0)
+            progress = total = 0
+            status = "not_started"
+            percent = 0.0
+            failed_cnt = 0
+            success = record_count
 
         summary[ttype] = {
-            "type": ttype,
             "task_type": ttype,
             "status": status,
             "progress": progress,
@@ -1434,29 +1520,32 @@ def progress_all():
             "percent": percent,
             "success": success,
             "failed": failed_cnt,
-            "task_id": task.get("task_id"),
-            "elapsed_time": round(task.get("elapsed_time", 0), 1),
+            "task_id": task.get("task_id") if task else None,
+            "elapsed_time": round(task.get("elapsed_time", 0), 1) if task else 0,
             "record_count": record_count,
             "date_from": stats.get("date_from"),
             "date_to": stats.get("date_to"),
+            # 新增：时效性健康状态
+            "health": health_info["health"],        # ok|stale|error
+            "days_behind": health_info["days_behind"],
+            "latest_date": health_info["latest_date"] or stats.get("date_to"),
         }
 
-        if status == "completed":
-            completed_count += 1
-        elif status == "not_started" and record_count > 0:
-            completed_count += 1
+        # ok 和 stale 都算"有数据"，只有 error 才算无数据
+        if health_info["health"] in ("ok", "stale"):
+            healthy_count += 1
 
-    # 整体进度按"已完成类型数/总类型数"计算，避免被 kline 5000 条记录稀释
-    overall_percent = round(completed_count / len(target_types) * 100, 1)
+    # 整体进度 = 有数据的类型数 / 8（含义：数据覆盖完整度，不是实时性）
+    overall_percent = round(healthy_count / len(target_types) * 100, 1)
 
     return jsonify({
         "success": True,
         "overall_percent": overall_percent,
-        "completed_types": completed_count,
+        "completed_types": healthy_count,
         "total_types": len(target_types),
-        "all_done": completed_count == len(target_types),
+        "all_done": healthy_count == len(target_types),
         "tasks": summary,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": now.isoformat()
     })
 
 

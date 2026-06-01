@@ -58,4 +58,8 @@ export const collectApi = {
   clearFinishedTasks() {
     return client.post('/api/v1/tasks/clear')
   },
+
+  getCronStatus() {
+    return client.get('/api/v1/collect/cron_status')
+  },
 }

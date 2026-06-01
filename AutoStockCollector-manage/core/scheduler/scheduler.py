@@ -143,6 +143,14 @@ class Task:
             create_time = datetime.fromtimestamp(ts_ms / 1000.0).isoformat()
         except Exception:
             create_time = self.start_time.isoformat() if self.start_time else None
+        # ETA：基于当前速率预估剩余时间（仅对 running 状态且有进度的任务）
+        eta_seconds = None
+        if self.status == TaskStatus.RUNNING and self.progress > 0 and self.total > 0 and elapsed > 0:
+            speed = self.progress / elapsed          # 每秒处理多少条
+            remaining = self.total - self.progress
+            if speed > 0:
+                eta_seconds = round(remaining / speed)
+
         return {
             "task_id": self.task_id,
             "task_type": self.task_type,
@@ -154,6 +162,7 @@ class Task:
             "failed": self.failed,
             "progress_percent": (self.progress / self.total * 100) if self.total > 0 else 0,
             "elapsed_time": elapsed,
+            "eta_seconds": eta_seconds,
             "error_message": self.error_message,
             "create_time": create_time,
             "start_time": self.start_time.isoformat() if self.start_time else None,
@@ -736,28 +745,44 @@ class TaskScheduler:
 
         if start_date and end_date:
             # 按报告期判断：只跳过"已拥有截至 end_date 应披露的最新报告期"的股票。
-            # 这样半年报/三季报/年报发布后，已有股票也会被追加新季度，而非整只跳过。
+            # 历史补采时（end_date 比今天早超过180天），需检查股票是否已有 start_date 之前的历史数据；
+            # 若最早的 report_date > start_date，说明历史数据缺失，仍需采集。
             try:
                 as_of = datetime.strptime(end_date[:10], "%Y-%m-%d")
             except Exception:
                 as_of = datetime.now()
-            # 不能超过真实今天（end_date 可能被设为今天，但报告期推算以实际时间为准）
             expected = _expected_report_period(min(as_of, datetime.now()))
+            start_dt = start_date[:10] if start_date else None
+            # 判断是否为历史补采请求（end_date 比今天早超过30天）
+            is_backfill = (datetime.now() - as_of).days > 30
             try:
                 pipeline = [
-                    {"$group": {"_id": "$code", "mx": {"$max": "$report_date"}}}
+                    {"$group": {
+                        "_id": "$code",
+                        "mx": {"$max": "$report_date"},
+                        "mn": {"$min": "$report_date"}
+                    }}
                 ]
                 already_done = set()
                 for row in storage.collection.aggregate(pipeline, allowDiskUse=False):
                     mx = row.get("mx")
+                    mn = row.get("mn")
                     mx_s = mx.strftime("%Y-%m-%d") if hasattr(mx, "strftime") else str(mx or "")[:10]
-                    if mx_s and mx_s >= expected:
-                        already_done.add(row["_id"])
+                    mn_s = mn.strftime("%Y-%m-%d") if hasattr(mn, "strftime") else str(mn or "")[:10]
+                    has_latest = mx_s and mx_s >= expected
+                    has_history = (not start_dt) or (mn_s and mn_s <= start_dt)
+                    if is_backfill:
+                        # 历史补采：只跳过既有最新数据又已有该起始日期之前历史数据的股票
+                        if has_latest and has_history:
+                            already_done.add(row["_id"])
+                    else:
+                        if has_latest:
+                            already_done.add(row["_id"])
                 before = len(codes)
                 codes = [c for c in codes if c not in already_done]
                 logger.info(
-                    f"financial: expected_period={expected}, {before} total, "
-                    f"{len(already_done)} up-to-date, {len(codes)} to fetch"
+                    f"financial: expected_period={expected}, is_backfill={is_backfill}, "
+                    f"{before} total, {len(already_done)} up-to-date, {len(codes)} to fetch"
                 )
             except Exception as e:
                 logger.warning(f"financial report-period prefetch failed: {e}")
@@ -813,51 +838,45 @@ class TaskScheduler:
 
     def _execute_fund_flow_task(self, task: Task):
         """
-        资金流向采集策略（非东财，规避代理拦截）：
-        1. 大单成交明细（stock_fund_flow_big_deal）— 当日全市场大单，约5000条
-        2. 行业资金流（stock_fund_flow_industry "即时"）— 90个行业板块快照
+        资金流向采集：stock_fund_flow_individual(symbol='即时') 全市场个股快照。
+        - date 参数：采集指定日期（单日快照）
+        - start_date/end_date 参数：循环采集日期区间内每个交易日的快照（历史补采）
         """
-        import akshare as ak
-        from core.storage.mongo_storage import FundFlowStorage
-        from datetime import datetime
-        storage = FundFlowStorage()
+        import time as _time
+        from utils.helpers import get_trading_days
 
-        task.update_progress(0, 2, 0, 0)
-        success, failed = 0, 0
-
-        # 1. 大单成交明细（字段映射：股票代码→code, 成交时间取日期部分→date）
-        try:
-            df = ak.stock_fund_flow_big_deal()
-            if df is not None and not df.empty:
-                today = datetime.now().strftime("%Y-%m-%d")
-                df["code"] = df["股票代码"].astype(str) if "股票代码" in df.columns else ""
-                df["date"] = df["成交时间"].astype(str).str[:10] if "成交时间" in df.columns else today
-                df["_updated_at"] = datetime.now()
-                records = df.to_dict("records")
-                storage.save_fund_flow_batch(records)
-                success += len(records)
-                logger.info(f"Fund flow big deal: saved {len(records)} records")
-        except Exception as e:
-            failed += 1
-            logger.warning(f"stock_fund_flow_big_deal failed: {e}")
-
-        task.update_progress(1, 2, success, failed)
-
-        # 2. 行业板块资金流
         collector = self._get_collector(TaskType.FUND_FLOW_COLLECTION.value)
-        try:
-            df = collector.collect_sector_flow()
-            if df is not None and not df.empty:
-                df["_updated_at"] = datetime.now()
-                records = df.to_dict("records")
-                storage.save_fund_flow_batch(records)
-                success += len(records)
-                logger.info(f"Fund flow sector: saved {len(records)} records")
-        except Exception as e:
-            failed += 1
-            logger.warning(f"collect_sector_flow failed: {e}")
+        date = task.params.get("date")
+        start_date = task.params.get("start_date")
+        end_date = task.params.get("end_date")
 
-        task.complete(success, failed)
+        if start_date and end_date:
+            # 历史补采：遍历日期区间
+            trading_days = get_trading_days(start_date, end_date)
+            if not trading_days:
+                task.complete(0, 0)
+                return
+            task.update_progress(0, len(trading_days), 0, 0)
+            total, done, failed_cnt = 0, 0, 0
+            for td in trading_days:
+                try:
+                    records = collector.collect_individual_snapshot(date=td)
+                    total += len(records)
+                except Exception as e:
+                    failed_cnt += 1
+                    logger.warning(f"fund_flow {td} failed: {e}")
+                done += 1
+                task.update_progress(done, len(trading_days), total, failed_cnt)
+                _time.sleep(1.0)  # 防止接口频率限制
+            task.complete(total, failed_cnt)
+        else:
+            # 单日快照
+            task.update_progress(0, 1, 0, 0)
+            try:
+                records = collector.collect_individual_snapshot(date=date)
+                task.complete(len(records), 0)
+            except Exception as e:
+                task.fail(str(e))
 
     # ------------------------------------------------------------------ #
     # 指数成分                                                              #
@@ -959,64 +978,78 @@ class TaskScheduler:
     # ------------------------------------------------------------------ #
 
     def _execute_margin_task(self, task: Task):
+        """融资融券采集：按日期调用沪深两市个股明细接口，覆盖缺失日期段。"""
+        from utils.helpers import get_trading_days
+        from core.storage.mongo_storage import MarginStorage
+        import time
+
         start_date = task.params.get("start_date", "20260101")
         end_date = task.params.get("end_date", datetime.now().strftime("%Y%m%d"))
-        # 转换日期格式：2026-01-01 -> 20260101
         start_date = start_date.replace("-", "")
         end_date = end_date.replace("-", "")
+        start_fmt = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:]}"
+        end_fmt = f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:]}"
 
         collector = self._get_collector(TaskType.MARGIN_COLLECTION.value)
-        from core.storage.mongo_storage import MarginStorage
         storage = MarginStorage()
 
-        # 计算缺口段：同时补头部 + 尾部（8 位 YYYYMMDD）。
-        # DB 中 信用交易日期 为 'YYYYMMDD' 字符串，去横线取前 8 位统一比较。
-        def _norm8(v):
+        # 计算缺口段（基于新的 date 字段，格式 YYYY-MM-DD）
+        def _norm_date(v):
             s = str(v or "").replace("-", "")[:8]
-            return s if len(s) == 8 and s.isdigit() else None
+            if len(s) == 8 and s.isdigit():
+                return f"{s[:4]}-{s[4:6]}-{s[6:]}"
+            return None
+
+        try:
+            oldest = storage.find_one({"date": {"$exists": True}}, sort=[("date", 1)])
+            newest = storage.find_one({"date": {"$exists": True}}, sort=[("date", -1)])
+            earliest = _norm_date(oldest.get("date")) if oldest else None
+            latest = _norm_date(newest.get("date")) if newest else None
+        except Exception:
+            earliest = latest = None
 
         segments = []
-        try:
-            oldest = storage.find_one({"信用交易日期": {"$exists": True}}, sort=[("信用交易日期", 1)])
-            newest = storage.find_one({"信用交易日期": {"$exists": True}}, sort=[("信用交易日期", -1)])
-            earliest = _norm8(oldest.get("信用交易日期")) if oldest else None
-            latest = _norm8(newest.get("信用交易日期")) if newest else None
+        if earliest and latest:
+            if start_fmt < earliest:
+                prev = (datetime.strptime(earliest, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+                segments.append((start_fmt, prev))
+            if end_fmt > latest:
+                nxt = (datetime.strptime(latest, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+                segments.append((nxt, end_fmt))
+            if not segments:
+                logger.info(f"margin 已覆盖 {start_fmt}~{end_fmt}，跳过")
+                task.complete(0, 0)
+                return
+        else:
+            segments = [(start_fmt, end_fmt)]
 
-            if earliest and latest:
-                if start_date < earliest:
-                    prev = (datetime.strptime(earliest, "%Y%m%d") - timedelta(days=1)).strftime("%Y%m%d")
-                    segments.append((start_date, prev))
-                if end_date > latest:
-                    nxt = (datetime.strptime(latest, "%Y%m%d") + timedelta(days=1)).strftime("%Y%m%d")
-                    segments.append((nxt, end_date))
-                if not segments:
-                    logger.info(f"margin 已覆盖 {start_date}~{end_date} (DB {earliest}~{latest})，跳过")
-                    task.update_progress(0, 0, 0, 0)
-                    task.complete(0, 0)
-                    return
-                logger.info(f"margin 补缺段: {segments} (DB已有 {earliest}~{latest})")
-            else:
-                segments = [(start_date, end_date)]
-        except Exception as e:
-            logger.warning(f"margin 补缺计算失败，按完整区间采集: {e}")
-            segments = [(start_date, end_date)]
+        # 收集所有待采日期
+        all_days = []
+        for seg_s, seg_e in segments:
+            all_days.extend(get_trading_days(seg_s, seg_e))
+        all_days = sorted(set(all_days))
 
-        task.update_progress(0, len(segments), 0, 0)
-        total, done = 0, 0
-        try:
-            for seg_start, seg_end in segments:
-                records = collector.collect_detailed_margin(
-                    start_date=seg_start,
-                    end_date=seg_end
-                )
+        if not all_days:
+            task.complete(0, 0)
+            return
+
+        task.update_progress(0, len(all_days), 0, 0)
+        total, done, failed_cnt = 0, 0, 0
+
+        for date in all_days:
+            try:
+                records = collector.collect_daily_margin(date)
                 if records:
                     storage.save_margin_batch(records)
                     total += len(records)
-                done += 1
-                task.update_progress(done, len(segments), total, 0)
-            task.complete(total, 0)
-        except Exception as e:
-            task.fail(str(e))
+            except Exception as e:
+                failed_cnt += 1
+                logger.warning(f"margin {date} failed: {e}")
+            done += 1
+            task.update_progress(done, len(all_days), total, failed_cnt)
+            time.sleep(0.5)
+
+        task.complete(total, failed_cnt)
 
     # ------------------------------------------------------------------ #
     # 板块数据                                                              #

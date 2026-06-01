@@ -114,11 +114,34 @@ class SmartPicker:
             score += 10
         return min(100, score)
 
+    @staticmethod
+    def _parse_amount(raw) -> float:
+        import re
+        if raw is None:
+            return 0.0
+        if isinstance(raw, (int, float)):
+            return float(raw)
+        s = str(raw).strip().replace(",", "")
+        try:
+            m = re.match(r"^([+-]?\d+\.?\d*)(亿|万)?$", s)
+            if m:
+                num = float(m.group(1))
+                unit = m.group(2)
+                if unit == "亿":
+                    return num * 1e8
+                if unit == "万":
+                    return num * 1e4
+                return num
+            return float(s)
+        except (ValueError, TypeError):
+            return 0.0
+
     def _fund_flow_score(self, code: str) -> float:
         flow = self.fund_flow_storage.get_latest_flow(code)
         if not flow:
             return 50
-        main_inflow = flow.get("main_net_inflow", 0)
+        # 兼容旧字段(main_net_inflow)和新字段(净额"亿"字符串)
+        main_inflow = self._parse_amount(flow.get("main_net_inflow") or flow.get("净额"))
         if main_inflow > 1e7:
             return 80
         elif main_inflow > 0:

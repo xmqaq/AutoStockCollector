@@ -18,92 +18,65 @@ class FundFlowCollector(BaseCollector):
         super().__init__()
         self.storage = FundFlowStorage()
 
+    @staticmethod
+    def _bare_to_full_code(bare: str) -> str:
+        """'600519' → 'SH600519', '000001' → 'SZ000001'"""
+        bare = str(bare).strip().zfill(6)
+        return f"SH{bare}" if bare.startswith("6") or bare.startswith("9") else f"SZ{bare}"
+
+    def collect_individual_snapshot(self, date: Optional[str] = None) -> List[Dict[str, Any]]:
+        """用 stock_fund_flow_individual(symbol='即时') 采集全市场当日个股资金流向快照。
+        返回约5000+条，每条含 code(SH/SZ格式)、date、流入资金、流出资金、净额、成交额。
+        """
+        if date is None:
+            date = datetime.now().strftime("%Y-%m-%d")
+
+        try:
+            df = ak.stock_fund_flow_individual(symbol="即时")
+        except Exception as e:
+            logger.error(f"stock_fund_flow_individual failed: {e}")
+            return []
+
+        if df is None or df.empty:
+            logger.warning("stock_fund_flow_individual returned empty")
+            return []
+
+        df = df.copy()
+        df["date"] = date
+        df["_updated_at"] = datetime.now()
+
+        if "股票代码" in df.columns:
+            df["code"] = df["股票代码"].apply(self._bare_to_full_code)
+        else:
+            logger.error("stock_fund_flow_individual返回数据缺少'股票代码'列")
+            return []
+
+        records = df.to_dict("records")
+        if records:
+            self.storage.save_fund_flow_batch(records)
+            logger.info(f"fund_flow snapshot saved: {len(records)} records for {date}")
+        return records
+
     def collect(
         self,
         codes: Optional[List[str]] = None,
-        period: str = "daily"
+        period: str = "daily",
+        date: Optional[str] = None,
+        **kwargs
     ) -> List[Dict[str, Any]]:
-        if codes is None:
-            codes = self.get_all_stock_codes()
-
-        all_records = []
-        tracker = ProgressTracker(len(codes))
-
-        for code in codes:
-            try:
-                records = self.execute_with_retry(
-                    self.collect_single,
-                    code,
-                    period=period
-                )
-                if records:
-                    all_records.extend(records)
-                    tracker.increment(success=True)
-                else:
-                    tracker.increment(success=False)
-            except Exception as e:
-                logger.error(f"Failed to collect fund flow for {code}: {e}")
-                tracker.increment(success=False)
-
-            tracker.log_progress(interval=50)
-
-        if all_records:
-            self.storage.save_fund_flow_batch(all_records)
-
-        return all_records
+        """采集全市场个股资金流向快照（一次调用覆盖全市场）。"""
+        return self.collect_individual_snapshot(date=date)
 
     def collect_single(
         self,
         code: str,
-        period: str = "daily"
+        period: str = "daily",
+        **kwargs
     ) -> Optional[List[Dict[str, Any]]]:
-        symbol = code[2:]
-
-        market = "sh" if code.startswith("SH") else "sz"
-
-        # stock_fund_flow_individual: 全市场即时快照，需按代码过滤（非东财接口）
-        # stock_individual_fund_flow: 个股历史资金流（东财，代理可能阻断）
-        data_sources = [
-            ("stock_fund_flow_individual", {"symbol": "即时"}),
-            ("stock_individual_fund_flow", {"stock": symbol, "market": market}),
-        ]
-
-        last_error = None
-        for source_name, params in data_sources:
-            try:
-                func = getattr(ak, source_name, None)
-                if func is None:
-                    continue
-
-                logger.info(f"Trying {source_name} for fund flow of {code}")
-
-                df = func(**params) if params else func()
-
-                if df is None or df.empty:
-                    continue
-
-                if source_name == "stock_fund_flow_individual":
-                    # 全市场数据，按股票代码过滤
-                    col = "股票代码"
-                    if col in df.columns:
-                        code_data = df[df[col].astype(str) == symbol]
-                        if not code_data.empty:
-                            code_data = code_data.copy()
-                            code_data["code"] = code
-                            code_data["_updated_at"] = datetime.now()
-                            return self.normalize_dataframe(code_data, code)
-                else:
-                    df["code"] = code
-                    df["_updated_at"] = datetime.now()
-                    return self.normalize_dataframe(df, code)
-
-            except Exception as e:
-                last_error = e
-                logger.warning(f"{source_name} failed: {e}")
-                continue
-
-        logger.error(f"All fund flow sources failed for {code}, last error: {last_error}")
-        return None
+        """从全市场快照中过滤出单只股票的数据。"""
+        snapshot = self.collect_individual_snapshot()
+        bare = code[2:] if code[:2] in ("SH", "SZ") else code
+        return [r for r in snapshot if str(r.get("股票代码", "")) == bare] or None
 
     def collect_money_flow(
         self,
@@ -249,41 +222,72 @@ class MarginCollector(BaseCollector):
             logger.error(f"Failed to collect margin summary: {e}")
             return None
 
+    def collect_daily_margin(self, date: str) -> List[Dict[str, Any]]:
+        """采集指定日期沪深两市所有个股融资融券明细。date 格式: YYYY-MM-DD 或 YYYYMMDD"""
+        date_8 = date.replace("-", "")[:8]
+        date_fmt = f"{date_8[:4]}-{date_8[4:6]}-{date_8[6:]}"
+        records: List[Dict[str, Any]] = []
+
+        # 上交所个股明细
+        try:
+            df = ak.stock_margin_detail_sse(date=date_8)
+            if df is not None and not df.empty:
+                df = df.copy()
+                df["market"] = "sh"
+                df["date"] = date_fmt
+                df["_updated_at"] = datetime.now()
+                if "标的证券代码" in df.columns:
+                    df["code"] = df["标的证券代码"].apply(
+                        lambda c: f"SH{str(c).strip().zfill(6)}"
+                    )
+                records.extend(df.to_dict("records"))
+                logger.info(f"SSE margin {date_fmt}: {len(df)} records")
+        except Exception as e:
+            logger.warning(f"SSE margin {date_fmt} failed: {e}")
+
+        # 深交所个股明细
+        try:
+            df = ak.stock_margin_detail_szse(date=date_8)
+            if df is not None and not df.empty:
+                df = df.copy()
+                df["market"] = "sz"
+                df["date"] = date_fmt
+                df["_updated_at"] = datetime.now()
+                if "证券代码" in df.columns:
+                    df["code"] = df["证券代码"].apply(
+                        lambda c: f"SZ{str(c).strip().zfill(6)}"
+                    )
+                records.extend(df.to_dict("records"))
+                logger.info(f"SZSE margin {date_fmt}: {len(df)} records")
+        except Exception as e:
+            logger.warning(f"SZSE margin {date_fmt} failed: {e}")
+
+        return records
+
     def collect_detailed_margin(
         self,
         codes: Optional[List[str]] = None,
         start_date: str = "20260501",
         end_date: str = "20260527"
     ) -> List[Dict[str, Any]]:
-        all_records = []
+        """按日期遍历，采集沪深两市个股融资融券明细（不再使用市场汇总接口）。"""
+        import time
+        from utils.helpers import get_trading_days
 
-        try:
-            df_sh = ak.stock_margin_sse(start_date=start_date, end_date=end_date)
-            if df_sh is not None and not df_sh.empty:
-                df_sh["market"] = "sh"
-                df_sh["_updated_at"] = datetime.now()
-                all_records.extend(df_sh.to_dict("records"))
-                logger.info(f"Collected {len(df_sh)} margin records from SSE")
-        except Exception as e:
-            logger.warning(f"Failed to collect SSE margin: {e}")
+        start_fmt = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:]}" if len(start_date) == 8 else start_date
+        end_fmt = f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:]}" if len(end_date) == 8 else end_date
 
-        try:
-            df_sz = ak.stock_margin_szse(start_date=start_date, end_date=end_date)
-            if df_sz is not None and not df_sz.empty:
-                df_sz["market"] = "sz"
-                df_sz["_updated_at"] = datetime.now()
-                all_records.extend(df_sz.to_dict("records"))
-                logger.info(f"Collected {len(df_sz)} margin records from SZSE")
-        except Exception as e:
-            logger.warning(f"Failed to collect SZSE margin: {e}")
+        trading_days = get_trading_days(start_fmt, end_fmt)
+        all_records: List[Dict[str, Any]] = []
+
+        for date in trading_days:
+            day_records = self.collect_daily_margin(date)
+            if day_records:
+                all_records.extend(day_records)
+            time.sleep(0.5)
 
         if all_records:
-            for record in all_records:
-                try:
-                    self.storage.save_margin(record)
-                except Exception as e:
-                    logger.warning(f"Failed to save margin record: {e}")
-
+            logger.info(f"margin collect_detailed: {len(all_records)} records across {len(trading_days)} days")
         return all_records
 
     def _collect_single_margin(self, code: str) -> List[Dict[str, Any]]:

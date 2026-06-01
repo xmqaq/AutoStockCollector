@@ -28,6 +28,37 @@
       <v-chart :option="gaugeOption" style="height:200px" autoresize />
     </el-card>
 
+    <!-- 定时任务状态 -->
+    <el-card shadow="never" class="section-card">
+      <template #header>
+        <div class="card-header">
+          <span>定时任务状态</span>
+          <el-tag v-if="cronHasAlert" type="danger" size="small">⚠️ 有任务连续失败</el-tag>
+          <el-tag v-else-if="cronJobs.length === 0" type="info" size="small">服务未运行</el-tag>
+          <el-tag v-else type="success" size="small">运行中</el-tag>
+        </div>
+      </template>
+      <el-empty v-if="cronJobs.length === 0" description="定时任务未启动（服务启动后自动加载）" :image-size="40" />
+      <el-table v-else :data="cronJobs" size="small" stripe>
+        <el-table-column prop="label" label="任务名称" min-width="160" />
+        <el-table-column prop="next_run" label="下次执行" width="160">
+          <template #default="{ row }">{{ row.next_run ?? '--' }}</template>
+        </el-table-column>
+        <el-table-column prop="last_run" label="最近执行" width="160">
+          <template #default="{ row }">{{ row.last_run ?? '尚未执行' }}</template>
+        </el-table-column>
+        <el-table-column label="状态" width="100" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.last_run == null" type="info" size="small">待首次</el-tag>
+            <el-tag v-else-if="row.alert" type="danger" size="small">❌ 连续失败</el-tag>
+            <el-tag v-else-if="!row.last_ok" type="warning" size="small">⚠️ 上次失败</el-tag>
+            <el-tag v-else type="success" size="small">✅ 正常</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="last_msg" label="最近信息" min-width="180" show-overflow-tooltip />
+      </el-table>
+    </el-card>
+
     <!-- Task history -->
     <el-card shadow="never" class="section-card" style="margin-top:16px">
       <template #header>
@@ -55,12 +86,26 @@
             <el-tag :type="statusType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="进度" min-width="170">
+        <el-table-column label="进度" min-width="200">
           <template #default="{ row }">
             <div class="prog-cell">
-              <span class="prog-main">{{ row.progress || 0 }}/{{ row.total || 0 }}</span>
+              <span class="prog-main">
+                已完成 {{ row.progress || 0 }}/{{ row.total || 0 }} 只
+                <span v-if="row.total > 0" class="prog-pct">
+                  ({{ Math.round((row.progress || 0) / row.total * 100) }}%)
+                </span>
+              </span>
+              <el-progress
+                v-if="row.status === 'running' && row.total > 0"
+                :percentage="Math.min(100, Math.round((row.progress || 0) / row.total * 100))"
+                :stroke-width="4"
+                style="margin: 2px 0; width: 160px"
+              />
               <span class="prog-sub">
                 成功 {{ row.success || 0 }}<template v-if="row.failed"> · <span class="prog-fail">失败 {{ row.failed }}</span></template>
+                <template v-if="row.eta_seconds != null && row.status === 'running'">
+                  · <span class="prog-eta">剩余约 {{ fmtEta(row.eta_seconds) }}</span>
+                </template>
               </span>
             </div>
           </template>
@@ -102,8 +147,42 @@
       />
     </el-card>
 
+    <!-- 数据健康状态总览表 -->
+    <el-card shadow="never" class="section-card">
+      <template #header><span>数据覆盖状态</span></template>
+      <el-table :data="healthRows" size="small" stripe>
+        <el-table-column prop="label" label="数据类型" width="110" />
+        <el-table-column prop="record_count" label="数据库条数" width="110" align="right">
+          <template #default="{ row }">{{ row.record_count?.toLocaleString() ?? '--' }}</template>
+        </el-table-column>
+        <el-table-column prop="latest_date" label="最新数据日期" width="130">
+          <template #default="{ row }">{{ row.latest_date ?? '--' }}</template>
+        </el-table-column>
+        <el-table-column prop="days_behind" label="距今" width="90" align="center">
+          <template #default="{ row }">
+            <span v-if="row.days_behind != null" :class="row.days_behind > 1 ? 'stale-days' : ''">
+              {{ row.days_behind === 0 ? '最新' : `${row.days_behind}天前` }}
+            </span>
+            <span v-else class="stale-days">--</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="健康状态" width="110" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.health === 'ok'" type="success" size="small">✅ 最新</el-tag>
+            <el-tag v-else-if="row.health === 'stale'" type="warning" size="small">⚠️ 需更新</el-tag>
+            <el-tag v-else type="danger" size="small">❌ 异常</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="100" align="center">
+          <template #default="{ row }">
+            <el-button size="small" type="primary" plain @click="quickUpdate(row.value)">立即更新</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
     <!-- 补历史 dialog -->
-    <el-dialog v-model="showHistoryModal" title="补历史数据" width="520px">
+    <el-dialog v-model="showHistoryModal" title="补历史数据" width="560px">
       <el-form label-width="90px">
         <el-form-item label="快捷范围">
           <el-radio-group v-model="historyPreset" @change="applyPreset">
@@ -111,10 +190,11 @@
             <el-radio-button value="ytd">今年以来</el-radio-button>
             <el-radio-button value="2025">2025全年</el-radio-button>
             <el-radio-button value="2024">2024全年</el-radio-button>
+            <el-radio-button value="5y">近5年</el-radio-button>
             <el-radio-button value="custom">自定义</el-radio-button>
           </el-radio-group>
         </el-form-item>
-        <el-form-item label="日期范围">
+        <el-form-item label="日期范围" v-if="!historyTypes.every(t => ['stock_info','sector'].includes(t))">
           <el-date-picker
             v-model="historyDateRange"
             type="daterange"
@@ -127,9 +207,23 @@
           />
         </el-form-item>
         <el-form-item label="采集类型">
-          <el-checkbox-group v-model="historyTypes">
-            <el-checkbox v-for="t in RANGE_TYPES" :key="t.value" :label="t.label" :value="t.value" />
-          </el-checkbox-group>
+          <div class="history-types-grid">
+            <div v-for="t in COLLECT_TYPES" :key="t.value" class="history-type-item">
+              <el-checkbox
+                :label="t.value"
+                v-model:checked="historyTypesSet[t.value]"
+                @change="(v: boolean) => toggleHistoryType(t.value, v)"
+              >
+                {{ t.label }}
+              </el-checkbox>
+              <div v-if="historyTypesSet[t.value] && t.value === 'stock_info'" class="type-hint">
+                将全量刷新所有A股基本信息，约5200条，预计耗时2分钟
+              </div>
+              <div v-if="historyTypesSet[t.value] && t.value === 'sector'" class="type-hint">
+                板块数据为快照性质，无法补历史，将更新为当前最新数据
+              </div>
+            </div>
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -189,12 +283,58 @@ function typeLabel(type: string): string {
   return TYPE_LABEL[type] || type
 }
 
+function fmtEta(seconds: number): string {
+  if (seconds < 60) return `${seconds}秒`
+  if (seconds < 3600) return `${Math.round(seconds / 60)}分钟`
+  const h = Math.floor(seconds / 3600)
+  const m = Math.round((seconds % 3600) / 60)
+  return m > 0 ? `${h}小时${m}分钟` : `${h}小时`
+}
+
+// ---------------- 数据健康状态总览 ----------------
+const healthRows = computed(() => {
+  // progressList 未加载时返回空，避免渲染 0
+  if (collectStore.progressList.length === 0) return []
+  return COLLECT_TYPES.map(t => {
+    const p = collectStore.progressList.find(p => p.task_type === t.value)
+    if (!p) return null
+    const rc = (p as any).record_count
+    return {
+      value: t.value,
+      label: t.label,
+      record_count: typeof rc === 'number' ? rc : null,
+      latest_date: (p as any).latest_date ?? (p as any).date_to ?? null,
+      days_behind: (p as any).days_behind ?? null,
+      health: (p as any).health ?? (rc > 0 ? 'stale' : 'error'),
+    }
+  }).filter(Boolean)
+})
+
+async function quickUpdate(taskType: string) {
+  try {
+    await collectApi.updateLatest({ task_types: [taskType] })
+    ElMessage.success(`${TYPE_LABEL[taskType]} 更新任务已启动`)
+    await loadTasks()
+  } catch {
+    ElMessage.error('启动失败')
+  }
+}
+
 // ---------------- 补历史 ----------------
 const showHistoryModal = ref(false)
 const historyLoading = ref(false)
 const historyPreset = ref('last1y')
 const historyDateRange = ref<[string, string] | null>(null)
 const historyTypes = ref<string[]>(RANGE_TYPES.map(t => t.value))
+// 用对象追踪每个类型的勾选状态（全部8类）
+const historyTypesSet = ref<Record<string, boolean>>(
+  Object.fromEntries(COLLECT_TYPES.map(t => [t.value, RANGE_TYPES.some(r => r.value === t.value)]))
+)
+
+function toggleHistoryType(val: string, checked: boolean) {
+  historyTypesSet.value[val] = checked
+  historyTypes.value = COLLECT_TYPES.filter(t => historyTypesSet.value[t.value]).map(t => t.value)
+}
 
 function fmt(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -210,19 +350,24 @@ function applyPreset(p: string) {
     historyDateRange.value = ['2025-01-01', '2025-12-31']
   } else if (p === '2024') {
     historyDateRange.value = ['2024-01-01', '2024-12-31']
+  } else if (p === '5y') {
+    const s = new Date(today); s.setFullYear(s.getFullYear() - 5)
+    historyDateRange.value = [fmt(s), fmt(today)]
   }
 }
 applyPreset('last1y')
 
 async function handleHistory() {
-  if (!historyDateRange.value?.[0]) { ElMessage.warning('请选择日期范围'); return }
-  if (!historyTypes.value.length) { ElMessage.warning('请至少选择一类'); return }
+  const types = historyTypes.value
+  if (!types.length) { ElMessage.warning('请至少选择一类'); return }
+  const needDate = types.some(t => !['stock_info', 'sector'].includes(t))
+  if (needDate && !historyDateRange.value?.[0]) { ElMessage.warning('请选择日期范围'); return }
   historyLoading.value = true
   try {
     await collectApi.collectHistory({
-      start_date: historyDateRange.value[0],
-      end_date: historyDateRange.value[1],
-      task_types: historyTypes.value,
+      start_date: historyDateRange.value?.[0] ?? '',
+      end_date: historyDateRange.value?.[1] ?? '',
+      task_types: types,
     })
     ElMessage.success('历史采集任务已启动')
     showHistoryModal.value = false
@@ -341,12 +486,29 @@ function statusLabel(status: string): string {
   return map[status] || status || '未知'
 }
 
+// ── 定时任务状态 ──────────────────────────────────────────────
+const cronJobs = ref<any[]>([])
+const cronHasAlert = ref(false)
+
+async function loadCronStatus() {
+  try {
+    const res = await collectApi.getCronStatus()
+    cronJobs.value = res.data?.jobs ?? []
+    cronHasAlert.value = res.data?.has_alert ?? false
+  } catch {
+    cronJobs.value = []
+  }
+}
+
 // manualRefresh：用户点击按钮时显示 loading；自动轮询用 pollSilently 不触发遮罩
 async function refresh() {
   loading.value = true
   try {
-    await collectStore.fetchProgress()
-    await loadTasks()
+    await Promise.all([
+      collectStore.fetchProgress(),
+      loadTasks(),
+      loadCronStatus(),
+    ])
   } finally {
     loading.value = false
   }
@@ -359,11 +521,12 @@ async function loadTasks() {
 // 自动轮询：静默更新数据，不触发组件级 loading（不会显示表格遮罩）
 async function pollSilently() {
   try {
-    // fetchProgress / fetchTasks 只改 store.loading，不影响此组件的 loading 变量
     await Promise.all([
       collectStore.fetchProgress(),
       collectStore.fetchTasks(taskStatusFilter.value || undefined, 50),
     ])
+    // cron 状态每分钟刷新一次（不必每次都查）
+    if (Date.now() % 60000 < 15000) loadCronStatus()
   } catch { /* ignore */ }
 }
 
@@ -500,8 +663,10 @@ onUnmounted(() => {
   line-height: 1.3;
 }
 .prog-main { color: #e5eaf3; font-size: 13px; }
+.prog-pct { color: #409eff; font-size: 12px; margin-left: 4px; }
 .prog-sub { color: #909399; font-size: 11px; }
 .prog-fail { color: #f56c6c; }
+.prog-eta { color: #e6a23c; }
 
 .table-pagination {
   margin-top: 12px;
@@ -511,5 +676,26 @@ onUnmounted(() => {
 .table-pagination :deep(.el-pagination__total),
 .table-pagination :deep(.el-pagination__sizes .el-select .el-input__wrapper) {
   color: #909399;
+}
+.stale-days {
+  color: #e6a23c;
+  font-weight: 600;
+}
+.history-types-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+.history-type-item {
+  display: flex;
+  flex-direction: column;
+  min-width: 110px;
+}
+.type-hint {
+  font-size: 11px;
+  color: #909399;
+  margin-top: 2px;
+  margin-left: 24px;
+  line-height: 1.4;
 }
 </style>
