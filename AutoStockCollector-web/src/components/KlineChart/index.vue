@@ -343,7 +343,7 @@ const chartOption = computed(() => {
       {
         type: 'inside',
         xAxisIndex: showVolume.value ? [0, 1] : 0,
-        start: Math.max(0, 100 - (80 / kdata.length) * 100),
+        start: 0,
         end: 100,
       },
       {
@@ -351,7 +351,7 @@ const chartOption = computed(() => {
         xAxisIndex: showVolume.value ? [0, 1] : 0,
         bottom: 8,
         height: 20,
-        start: Math.max(0, 100 - (80 / kdata.length) * 100),
+        start: 0,
         end: 100,
         textStyle: { color: '#909399' },
         borderColor: '#444',

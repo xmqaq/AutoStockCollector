@@ -13,7 +13,7 @@
       <v-chart
         v-else-if="sectors.length > 0"
         :option="treemapOption"
-        style="height:500px"
+        :style="{ height: chartHeight }"
         autoresize
         @click="handleSectorClick"
       />
@@ -115,13 +115,20 @@ const drawerVisible = ref(false)
 const selectedSector = ref('')
 const sectorStocks = ref<unknown[]>([])
 
+const chartHeight = computed(() => {
+  // 等权重布局约 8 列，每行高度 65px；最小 400px
+  const rows = Math.ceil(sectors.value.length / 8)
+  return `${Math.max(400, rows * 65)}px`
+})
+
 const treemapOption = computed(() => {
   const data = sectors.value.map(s => ({
     name: s.name,
-    value: Math.abs(s.net_flow || s.change_rate || 1),
+    // 等权重：每个板块占相同面积，避免成交额差异导致小板块成为细条
+    value: 1,
     itemStyle: {
-      color: (s.net_flow || 0) >= 0 ? RISE_COLOR : FALL_COLOR,
-      opacity: Math.min(1, 0.4 + Math.abs(s.change_rate || 0) / 10),
+      color: (s.change_rate || 0) >= 0 ? RISE_COLOR : FALL_COLOR,
+      opacity: Math.min(1, 0.35 + Math.abs(s.change_rate || 0) / 8),
     },
     label: {
       show: true,
@@ -150,8 +157,10 @@ const treemapOption = computed(() => {
       {
         type: 'treemap',
         data,
-        width: '100%',
-        height: '100%',
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
         roam: false,
         nodeClick: false,
         breadcrumb: { show: false },

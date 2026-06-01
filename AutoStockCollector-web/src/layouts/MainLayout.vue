@@ -235,9 +235,11 @@ onUnmounted(() => {
 }
 
 .main-content {
+  flex: 1;
   background: #141414;
   overflow-y: auto;
   padding: 20px;
+  min-height: 0;
 }
 
 .disclaimer {
