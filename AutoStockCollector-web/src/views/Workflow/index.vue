@@ -94,9 +94,25 @@
           <template #header>
             <div class="card-header">
               <span>执行历史</span>
-              <el-button size="small" @click="loadExecutionHistory" :loading="loadingExecutions">
-                <el-icon><Refresh /></el-icon> 刷新
-              </el-button>
+              <div class="header-actions">
+                <el-button size="small" type="warning" @click="cleanupZombies" :loading="cleaningUp">
+                  <el-icon><Warning /></el-icon> 清理僵尸任务
+                </el-button>
+                <el-button
+                  size="small"
+                  type="danger"
+                  :disabled="selectedExecutions.length === 0"
+                  @click="batchDeleteExecutions"
+                >
+                  <el-icon><Delete /></el-icon> 批量删除 {{ selectedExecutions.length > 0 ? `(${selectedExecutions.length})` : '' }}
+                </el-button>
+                <el-button size="small" type="danger" plain @click="clearAllExecutions">
+                  <el-icon><DeleteFilled /></el-icon> 清空全部
+                </el-button>
+                <el-button size="small" @click="loadExecutionHistory" :loading="loadingExecutions">
+                  <el-icon><Refresh /></el-icon> 刷新
+                </el-button>
+              </div>
             </div>
           </template>
 
@@ -135,10 +151,10 @@
             </el-input>
             <el-select v-model="executionStatusFilter" size="small" clearable placeholder="状态筛选" style="width: 120px">
               <el-option label="全部" value="" />
-              <el-option label="进行中" value="running" />
+              <el-option label="执行中" value="running" />
               <el-option label="已完成" value="completed" />
               <el-option label="失败" value="failed" />
-              <el-option label="已停止" value="stopped" />
+              <el-option label="已取消" value="cancelled" />
             </el-select>
             <el-date-picker
               v-model="executionDateRange"
@@ -162,7 +178,15 @@
             <el-button @click="loadExecutionHistory">刷新列表</el-button>
           </div>
 
-          <el-table v-else :data="filteredExecutions" stripe class="execution-table">
+          <el-table
+            v-else
+            :data="filteredExecutions"
+            stripe
+            class="execution-table"
+            @selection-change="handleSelectionChange"
+            :row-class-name="getExecutionRowClass"
+          >
+            <el-table-column type="selection" width="45" />
             <el-table-column prop="workflow_name" label="工作流" width="180">
               <template #default="{ row }">
                 <el-tag type="info">{{ row.workflow_name || row.workflow_id }}</el-tag>
@@ -195,20 +219,35 @@
                 {{ row.finished_at ? formatDateTime(row.finished_at) : '-' }}
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="180" fixed="right">
+            <el-table-column label="操作" width="200" fixed="right">
               <template #default="{ row }">
-                <div class="execution-actions" v-if="row.status === 'running' || row.status === 'pending'">
-                  <el-button type="primary" size="small" text @click="viewExecutionProgress(row)">
-                    <el-icon><View /></el-icon> 进度
-                  </el-button>
-                  <el-button type="warning" size="small" text @click="stopExecution(row)">
-                    <el-icon><SwitchButton /></el-icon> 停止
+                <div class="execution-actions">
+                  <template v-if="row.status === 'running' || row.status === 'pending'">
+                    <el-button type="primary" size="small" text @click="viewExecutionProgress(row)">
+                      <el-icon><View /></el-icon> 进度
+                    </el-button>
+                    <el-button type="warning" size="small" text @click="stopExecution(row)">
+                      <el-icon><SwitchButton /></el-icon> 停止
+                    </el-button>
+                  </template>
+                  <template v-else>
+                    <el-button v-if="row.result" type="primary" size="small" text @click="viewExecutionResult(row)">
+                      <el-icon><View /></el-icon> 结果
+                    </el-button>
+                    <el-button v-if="row.steps && row.steps.length > 0" size="small" text @click="viewExecutionProgress(row)">
+                      详情
+                    </el-button>
+                  </template>
+                  <el-button
+                    type="danger"
+                    size="small"
+                    text
+                    :disabled="row.status === 'running' || row.status === 'pending'"
+                    @click="deleteSingleExecution(row)"
+                  >
+                    <el-icon><Delete /></el-icon>
                   </el-button>
                 </div>
-                <span v-else-if="row.result" class="result-link" @click="viewExecutionResult(row)">
-                  查看结果
-                </span>
-                <span v-else class="text-muted">-</span>
               </template>
             </el-table-column>
           </el-table>
@@ -283,9 +322,34 @@
           striped-flow
         />
 
+        <!-- Step list detail -->
+        <div v-if="currentExecution?.steps && currentExecution.steps.length > 0" class="step-list-container">
+          <div class="step-list-title">步骤详情（{{ currentExecution.steps.length }} 步）</div>
+          <el-scrollbar max-height="180px">
+            <div class="step-list">
+              <div
+                v-for="(step, idx) in currentExecution.steps"
+                :key="idx"
+                class="step-item"
+                :class="{ 'step-current': idx === currentExecution.steps.length - 1 && isRunning }"
+              >
+                <span class="step-index">{{ idx + 1 }}</span>
+                <span class="step-node">{{ step.node_label }}</span>
+                <span class="step-desc">{{ step.step }}</span>
+                <el-progress
+                  :percentage="Math.round(step.progress || 0)"
+                  :stroke-width="6"
+                  style="width: 80px; flex-shrink: 0"
+                />
+                <span class="step-time">{{ formatStepTime(step.timestamp) }}</span>
+              </div>
+            </div>
+          </el-scrollbar>
+        </div>
+
         <div class="log-container">
           <div class="log-title">执行日志</div>
-          <el-scrollbar max-height="300px">
+          <el-scrollbar max-height="200px">
             <div class="log-list">
               <div
                 v-for="(log, index) in runLogs"
@@ -306,20 +370,17 @@
       </div>
 
       <template #footer>
-        <el-button @click="cancelWorkflow" :disabled="!isRunning" v-if="isRunning" type="warning">
+        <el-button @click="cancelWorkflow" v-if="isRunning" type="warning">
           <el-icon><SwitchButton /></el-icon> 取消执行
         </el-button>
         <el-button
-          v-if="!isRunning"
+          v-if="!isRunning && runResult"
           type="primary"
-          @click="showProgressDialog = false"
+          @click="() => { showProgressDialog = false; showRunDialog = true }"
         >
           查看结果
         </el-button>
-        <el-button
-          v-if="!isRunning"
-          @click="showProgressDialog = false"
-        >
+        <el-button @click="forceCloseProgressDialog">
           关闭
         </el-button>
       </template>
@@ -449,7 +510,8 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Plus, Edit, Delete, VideoPlay, Clock, Timer,
-  Files, DocumentCopy, Loading, CircleCheck, CircleClose, Warning, SwitchButton, Refresh, View
+  Files, DocumentCopy, Loading, CircleCheck, CircleClose, Warning, SwitchButton, Refresh, View,
+  DeleteFilled, Search, CopyDocument
 } from '@element-plus/icons-vue'
 import { workflowApi, type Workflow, type WorkflowResult, type WorkflowTemplate, type WorkflowExecution } from '@/api/workflow'
 import WorkflowCanvas from '@/components/WorkflowCanvas/index.vue'
@@ -474,6 +536,8 @@ let pollingTimer: number | null = null
 
 const loadingExecutions = ref(false)
 const allExecutions = ref<any[]>([])
+const selectedExecutions = ref<any[]>([])
+const cleaningUp = ref(false)
 
 const runningCount = computed(() => {
   return allExecutions.value.filter(e => e.status === 'running' || e.status === 'pending').length
@@ -630,7 +694,7 @@ async function pollExecutionProgress(workflowId: string, executionId: string) {
       })
 
       if (execution.status === 'running' || execution.status === 'pending') {
-        pollingTimer = window.setTimeout(() => pollExecutionProgress(workflowId, executionId), 500)
+        pollingTimer = window.setTimeout(() => pollExecutionProgress(workflowId, executionId), 3000)
       } else {
         isRunning.value = false
         stopPolling()
@@ -779,16 +843,28 @@ function viewExecutionResult(execution: any) {
 async function viewExecutionProgress(execution: any) {
   runLogs.value = []
   runProgress.value = execution.progress || 0
-  isRunning.value = true
   currentExecutionId.value = execution.id
   currentExecution.value = execution
   showProgressDialog.value = true
 
+  // Only set isRunning if the task is actually still running
+  const alreadyDone = !['running', 'pending'].includes(execution.status)
+  isRunning.value = !alreadyDone
+
   if (execution.steps && execution.steps.length > 0) {
     for (const step of execution.steps) {
-      const status = execution.status === 'completed' ? '✅' : execution.status === 'failed' ? '❌' : '⏳'
-      runLogs.value.push(`[${new Date(step.timestamp).toLocaleTimeString('zh-CN')}] ${status} ${step.node_label}: ${step.step}`)
+      const icon = execution.status === 'completed' ? '✅' : execution.status === 'failed' ? '❌' : '⏳'
+      runLogs.value.push(`[${new Date(step.timestamp).toLocaleTimeString('zh-CN')}] ${icon} ${step.node_label}: ${step.step}`)
     }
+  }
+
+  if (alreadyDone) {
+    const icon = execution.status === 'completed' ? '✅' : execution.status === 'failed' ? '❌' : '⚠️'
+    addLog(`${icon} 任务已${getStatusLabel(execution.status)}`)
+    if (execution.status === 'completed' && execution.result) {
+      runResult.value = execution.result
+    }
+    return
   }
 
   addLog(`⏳ 正在监控工作流执行...`)
@@ -801,11 +877,13 @@ async function viewExecutionProgress(execution: any) {
         currentExecution.value = latest
         runProgress.value = latest.progress
 
-        if (latest.steps && latest.steps.length > runLogs.value.length) {
-          for (let i = runLogs.value.length; i < latest.steps.length; i++) {
+        const latestStepCount = latest.steps?.length || 0
+        const currentLogCount = runLogs.value.filter(l => l.startsWith('[')).length
+        if (latestStepCount > currentLogCount && latest.steps) {
+          for (let i = currentLogCount; i < latestStepCount; i++) {
             const step = latest.steps[i]
-            const status = latest.status === 'completed' ? '✅' : latest.status === 'failed' ? '❌' : '⏳'
-            runLogs.value.push(`[${new Date(step.timestamp).toLocaleTimeString('zh-CN')}] ${status} ${step.node_label}: ${step.step}`)
+            const icon = latest.status === 'completed' ? '✅' : latest.status === 'failed' ? '❌' : '⏳'
+            runLogs.value.push(`[${new Date(step.timestamp).toLocaleTimeString('zh-CN')}] ${icon} ${step.node_label}: ${step.step}`)
           }
         }
 
@@ -817,8 +895,7 @@ async function viewExecutionProgress(execution: any) {
             runResult.value = latest.result
             runLogs.value.push(`✅ 工作流执行成功`)
             runLogs.value.push(`📈 筛选出 ${latest.result.result_count || 0} 只符合条件的股票`)
-            showProgressDialog.value = false
-            showRunDialog.value = true
+            runLogs.value.push(`⏱️ 总耗时: ${(latest.result.duration || 0).toFixed(2)} 秒`)
           } else if (latest.status === 'failed') {
             runLogs.value.push(`❌ 执行失败: ${latest.error || '未知错误'}`)
           } else if (latest.status === 'cancelled') {
@@ -828,8 +905,9 @@ async function viewExecutionProgress(execution: any) {
       }
     } catch {
       clearInterval(pollId)
+      isRunning.value = false
     }
-  }, 1000)
+  }, 3000)
 }
 
 function getStatusType(status: string) {
@@ -865,9 +943,117 @@ function addLog(message: string) {
   runLogs.value.push(`[${timestamp}] ${message}`)
 }
 
+function forceCloseProgressDialog() {
+  stopPolling()
+  isRunning.value = false
+  showProgressDialog.value = false
+}
+
 function handleProgressClose() {
-  if (isRunning.value) {
-    ElMessage.warning('工作流正在执行中，请稍候')
+  // Always allow closing; if task was running in background it continues
+  stopPolling()
+  isRunning.value = false
+}
+
+function handleSelectionChange(selection: any[]) {
+  selectedExecutions.value = selection
+}
+
+function getExecutionRowClass({ row }: { row: any }) {
+  if (row.status === 'cancelled') return 'row-cancelled'
+  if (row.status === 'failed') return 'row-failed'
+  return ''
+}
+
+async function deleteSingleExecution(execution: any) {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除该执行记录吗？`,
+      '删除确认',
+      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' }
+    )
+    const workflowId = execution.workflow_id
+    await workflowApi.deleteExecution(workflowId, execution.id)
+    ElMessage.success('删除成功')
+    allExecutions.value = allExecutions.value.filter(e => e.id !== execution.id)
+  } catch {
+    // cancelled
+  }
+}
+
+async function batchDeleteExecutions() {
+  if (selectedExecutions.value.length === 0) return
+  try {
+    await ElMessageBox.confirm(
+      `确定删除选中的 ${selectedExecutions.value.length} 条记录吗？`,
+      '批量删除确认',
+      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' }
+    )
+    // Group by workflow_id for batch API calls
+    const byWorkflow: Record<string, string[]> = {}
+    for (const exec of selectedExecutions.value) {
+      const wid = exec.workflow_id
+      if (!byWorkflow[wid]) byWorkflow[wid] = []
+      byWorkflow[wid].push(exec.id)
+    }
+    for (const [wid, ids] of Object.entries(byWorkflow)) {
+      await workflowApi.batchDeleteExecutions(wid, ids)
+    }
+    ElMessage.success(`已删除 ${selectedExecutions.value.length} 条记录`)
+    const deletedIds = new Set(selectedExecutions.value.map((e: any) => e.id))
+    allExecutions.value = allExecutions.value.filter(e => !deletedIds.has(e.id))
+    selectedExecutions.value = []
+  } catch {
+    // cancelled
+  }
+}
+
+async function clearAllExecutions() {
+  if (allExecutions.value.length === 0) {
+    ElMessage.info('没有执行记录')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `确定清空所有 ${allExecutions.value.length} 条执行历史吗？此操作不可恢复！`,
+      '清空确认',
+      { confirmButtonText: '全部清空', cancelButtonText: '取消', type: 'warning' }
+    )
+    // Group by workflow_id and clear all
+    const workflowIds = [...new Set(allExecutions.value.map((e: any) => e.workflow_id))]
+    for (const wid of workflowIds) {
+      try {
+        await workflowApi.clearAllExecutions(wid)
+      } catch { /* skip */ }
+    }
+    ElMessage.success('已清空所有历史记录')
+    allExecutions.value = []
+    selectedExecutions.value = []
+  } catch {
+    // cancelled
+  }
+}
+
+async function cleanupZombies() {
+  cleaningUp.value = true
+  try {
+    const res = await workflowApi.cleanupStaleExecutions(30)
+    const cleaned = res.data?.cleaned || 0
+    ElMessage.success(cleaned > 0 ? `已清理 ${cleaned} 条僵尸任务` : '没有需要清理的僵尸任务')
+    await loadExecutionHistory()
+  } catch (e: any) {
+    ElMessage.error('清理失败: ' + (e?.response?.data?.error || e.message))
+  } finally {
+    cleaningUp.value = false
+  }
+}
+
+function formatStepTime(timestamp: string): string {
+  if (!timestamp) return ''
+  try {
+    return new Date(timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  } catch {
+    return ''
   }
 }
 
@@ -1428,5 +1614,81 @@ onUnmounted(() => {
   color: #303133;
   max-height: 300px;
   overflow-y: auto;
+}
+
+/* Cancelled row style */
+.execution-table :deep(.row-cancelled td) {
+  color: #909399 !important;
+  opacity: 0.7;
+}
+
+.execution-table :deep(.row-failed td) {
+  color: #f56c6c !important;
+}
+
+/* Step list in progress dialog */
+.step-list-container {
+  border: 1px solid #3c3c3c;
+  border-radius: 8px;
+  padding: 12px;
+  background: #1a1a1a;
+  margin-bottom: 8px;
+}
+
+.step-list-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #909399;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #2c2c2c;
+}
+
+.step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.step-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: #252525;
+  font-size: 12px;
+  color: #c0c4cc;
+}
+
+.step-item.step-current {
+  background: rgba(64, 158, 255, 0.1);
+  border-left: 2px solid #409eff;
+}
+
+.step-index {
+  color: #606266;
+  font-size: 11px;
+  min-width: 18px;
+}
+
+.step-node {
+  color: #409eff;
+  font-weight: 500;
+  min-width: 80px;
+  flex-shrink: 0;
+}
+
+.step-desc {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.step-time {
+  color: #606266;
+  font-size: 11px;
+  flex-shrink: 0;
 }
 </style>

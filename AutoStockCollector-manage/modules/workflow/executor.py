@@ -5,7 +5,6 @@ from typing import List, Dict, Any, Optional, Callable
 from datetime import datetime
 from core.storage.mongo_storage import StockInfoStorage, KlineStorage, FundFlowStorage, NewsStorage
 from modules.ai_selector.strategies.base import SelectionResult, RiskLevel
-from modules.ai.ai_analyzer import AIAnalyzer
 from utils.logger import get_logger
 
 
@@ -41,7 +40,6 @@ class WorkflowExecutor:
         self.fund_flow = FundFlowStorage()
         self.news = NewsStorage()
         self.financial = None
-        self.ai_analyzer = AIAnalyzer()
         self.codes: List[str] = []
         self.results: List[SelectionResult] = []
         self.progress_callback = progress_callback
@@ -98,6 +96,9 @@ class WorkflowExecutor:
             }
             execution_log.append(start_log)
 
+            if total_nodes == 0:
+                logger.warning(f"Workflow {self.workflow_id} has no nodes, completing immediately")
+
             for idx, node in enumerate(execution_order):
                 if self._cancelled or (self.execution_id and WorkflowCancelManager.is_cancelled(self.execution_id)):
                     logger.info(f"Execution {self.execution_id} cancelled, stopping workflow")
@@ -110,7 +111,7 @@ class WorkflowExecutor:
                         "execution_time": datetime.now().isoformat(),
                         "execution_log": execution_log
                     }
-                base_progress = 10 + (idx / total_nodes) * 85
+                base_progress = 10 + (idx / max(total_nodes, 1)) * 85
                 result = self._execute_node(node, node_map, params, base_progress)
                 execution_log.append(result)
 
@@ -136,16 +137,21 @@ class WorkflowExecutor:
             }
 
     def _init_codes(self):
-        all_codes = self.stock_info.distinct("code")
+        # Single bulk query replaces O(N) individual get_by_code calls
+        all_infos = self.stock_info.find_many({}, limit=20000)
+        exclude_prefixes = ("*ST", "ST", "PT", "退市")
+        exclude_status = ("退市", "delisted")
         valid_codes = []
-        for code in all_codes:
-            info = self.stock_info.get_by_code(code)
-            if info:
-                name = info.get("name", "")
-                if not any(name.startswith(p) for p in ["*ST", "ST", "PT", "退市"]):
-                    status = info.get("status", "")
-                    if status not in ("退市", "delisted"):
-                        valid_codes.append(code)
+        for info in all_infos:
+            code = info.get("code", "")
+            if not code:
+                continue
+            name = info.get("name", "")
+            if any(name.startswith(p) for p in exclude_prefixes):
+                continue
+            if info.get("status", "") in exclude_status:
+                continue
+            valid_codes.append(code)
         self.codes = valid_codes
         logger.info(f"Initialized {len(self.codes)} valid stock codes")
 

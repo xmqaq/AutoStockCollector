@@ -129,5 +129,19 @@ export const workflowApi = {
   },
   getNodeTypes() {
     return client.get('/api/v1/workflow/node-types')
+  },
+  deleteExecution(workflowId: string, executionId: string) {
+    return client.delete(`/api/v1/workflow/${workflowId}/execution/${executionId}`)
+  },
+  batchDeleteExecutions(workflowId: string, executionIds: string[]) {
+    return client.delete(`/api/v1/workflow/${workflowId}/executions/batch`, {
+      data: { execution_ids: executionIds }
+    })
+  },
+  clearAllExecutions(workflowId: string) {
+    return client.delete(`/api/v1/workflow/${workflowId}/executions/all`)
+  },
+  cleanupStaleExecutions(maxAgeMinutes = 30) {
+    return client.post('/api/v1/workflow/executions/cleanup', { max_age_minutes: maxAgeMinutes })
   }
 }

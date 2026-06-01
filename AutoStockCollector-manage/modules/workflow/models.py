@@ -404,6 +404,32 @@ class WorkflowExecutionStorage(MongoStorage):
     def delete_executions(self, workflow_id: str) -> bool:
         return self.delete_many({"workflow_id": workflow_id})
 
+    def delete_execution(self, execution_id: str) -> bool:
+        return self.delete_one({"id": execution_id})
+
+    def delete_executions_batch(self, execution_ids: List[str]) -> int:
+        if not execution_ids:
+            return 0
+        return self.delete_many({"id": {"$in": execution_ids}})
+
+    def cleanup_stale_executions(self, max_age_minutes: int = 30) -> int:
+        cutoff = (datetime.now() - __import__('datetime').timedelta(minutes=max_age_minutes)).isoformat()
+        try:
+            result = self.collection.update_many(
+                {"status": {"$in": [ExecutionStatus.RUNNING.value, ExecutionStatus.PENDING.value]},
+                 "started_at": {"$lt": cutoff}},
+                {"$set": {
+                    "status": ExecutionStatus.FAILED.value,
+                    "error": f"执行超时（超过{max_age_minutes}分钟），已自动终止",
+                    "current_step": f"执行失败: 超时自动终止",
+                    "finished_at": datetime.now().isoformat()
+                }}
+            )
+            return result.modified_count
+        except Exception as e:
+            logger.error(f"Cleanup stale executions failed: {e}")
+            return 0
+
 
 class WorkflowTemplateStorage(MongoStorage):
     def __init__(self):

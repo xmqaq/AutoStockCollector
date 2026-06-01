@@ -303,6 +303,66 @@ def list_executions(workflow_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@workflow_bp.route('/<workflow_id>/execution/<execution_id>', methods=['DELETE'])
+def delete_execution(workflow_id, execution_id):
+    """删除单条执行历史"""
+    try:
+        execution = execution_storage.get_execution(execution_id)
+        if not execution or execution.workflow_id != workflow_id:
+            return jsonify({'success': False, 'error': 'Execution not found'}), 404
+        if execution.status in [ExecutionStatus.PENDING.value, ExecutionStatus.RUNNING.value]:
+            return jsonify({'success': False, 'error': '任务正在执行中，请先停止再删除'}), 400
+        if execution_storage.delete_execution(execution_id):
+            return jsonify({'success': True})
+        return jsonify({'success': False, 'error': 'Delete failed'}), 500
+    except Exception as e:
+        logger.error(f"Delete execution failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@workflow_bp.route('/<workflow_id>/executions/batch', methods=['DELETE'])
+def batch_delete_executions(workflow_id):
+    """批量删除执行历史"""
+    try:
+        data = request.get_json() or {}
+        execution_ids = data.get('execution_ids', [])
+        if not execution_ids:
+            return jsonify({'success': False, 'error': 'No execution IDs provided'}), 400
+        deleted = execution_storage.delete_executions_batch(execution_ids)
+        return jsonify({'success': True, 'deleted': deleted})
+    except Exception as e:
+        logger.error(f"Batch delete executions failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@workflow_bp.route('/<workflow_id>/executions/all', methods=['DELETE'])
+def clear_all_executions(workflow_id):
+    """清空工作流所有执行历史"""
+    try:
+        workflow = workflow_storage.get_workflow(workflow_id)
+        if not workflow:
+            return jsonify({'success': False, 'error': 'Workflow not found'}), 404
+        execution_storage.delete_executions(workflow_id)
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Clear all executions failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@workflow_bp.route('/executions/cleanup', methods=['POST'])
+def cleanup_stale_executions():
+    """手动清理所有超时僵尸任务"""
+    try:
+        data = request.get_json() or {}
+        max_age = data.get('max_age_minutes', 30)
+        cleaned = execution_storage.cleanup_stale_executions(max_age_minutes=max_age)
+        return jsonify({'success': True, 'cleaned': cleaned,
+                        'message': f'已清理 {cleaned} 条僵尸任务'})
+    except Exception as e:
+        logger.error(f"Cleanup stale executions failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @workflow_bp.route('/templates', methods=['GET'])
 def get_templates():
     """获取工作流模板"""

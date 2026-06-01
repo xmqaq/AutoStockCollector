@@ -51,6 +51,37 @@ def init_app():
     except Exception as e:
         logger.warning(f"Stale task cleanup warning: {e}")
 
+    # 清理 workflow_execution 集合中的僵尸任务（超过30分钟仍为 running/pending）
+    try:
+        from datetime import datetime as _dt2, timedelta as _td
+        db2 = DatabaseConfig.get_database()
+        cutoff = (_dt2.now() - _td(minutes=30)).isoformat()
+        we_result = db2["workflow_execution"].update_many(
+            {"status": {"$in": ["running", "pending"]}, "started_at": {"$lt": cutoff}},
+            {"$set": {
+                "status": "failed",
+                "error": "服务重启时自动终止（超时任务）",
+                "current_step": "执行失败: 服务重启时自动终止",
+                "finished_at": _dt2.now().isoformat()
+            }}
+        )
+        if we_result.modified_count:
+            logger.info(f"Cleaned up {we_result.modified_count} stale workflow executions")
+        # 对于刚启动就还是 running（< 30分钟）的也一并清理，因为进程刚重启无法恢复
+        we_result2 = db2["workflow_execution"].update_many(
+            {"status": {"$in": ["running", "pending"]}},
+            {"$set": {
+                "status": "failed",
+                "error": "服务重启时自动终止",
+                "current_step": "执行失败: 服务重启时自动终止",
+                "finished_at": _dt2.now().isoformat()
+            }}
+        )
+        if we_result2.modified_count:
+            logger.info(f"Cleaned up {we_result2.modified_count} additional stale workflow executions")
+    except Exception as e:
+        logger.warning(f"Workflow execution stale cleanup warning: {e}")
+
     try:
         from modules.ai.ai_key_manager import ai_key_manager
         ai_key_manager.restore_keys_from_db()
