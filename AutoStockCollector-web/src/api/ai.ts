@@ -391,4 +391,28 @@ export const aiAgentApi = {
   analyze(id: string, code: string) {
     return client.post(`/api/v1/ai-agents/${id}/analyze`, { code })
   },
+  analyzeStream(id: string, code: string) {
+    return client.post(`/api/v1/ai-agents/${id}/analyze/stream`, { code })
+  },
+  getHistory(params: { page?: number; page_size?: number; agent_id?: string; code?: string }) {
+    return client.get('/api/v1/ai-agents/history', { params })
+  },
+  saveHistory(data: {
+    agent_id: string
+    stock_code: string
+    stock_name?: string
+    content?: string
+    score?: number
+    recommendation?: string
+    provider?: string
+    duration_ms?: number
+  }) {
+    return client.post('/api/v1/ai-agents/history', data)
+  },
+  compare(codes: string[]) {
+    return client.post('/api/v1/ai-agents/compare', { codes })
+  },
+  batchAnalyze(codes: string[], agentId?: string) {
+    return client.post('/api/v1/ai-agents/batch-analyze', { codes, agent_id: agentId })
+  },
 }

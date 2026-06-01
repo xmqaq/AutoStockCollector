@@ -487,9 +487,10 @@ def get_node_types():
                         {'value': 'pb_range', 'label': 'PB范围'},
                         {'value': 'trend', 'label': '趋势筛选'},
                         {'value': 'fund_flow', 'label': '资金流向'},
-                        {'value': 'sector', 'label': '板块筛选'},
                         {'value': 'market_cap', 'label': '市值筛选'},
-                        {'value': 'news_sentiment', 'label': '舆情筛选'}
+                        {'value': 'exclude_st', 'label': '排除ST股票'},
+                        {'value': 'news_sentiment', 'label': '舆情筛选'},
+                        {'value': 'sector', 'label': '板块筛选'}
                     ],
                     'default': 'price_range'
                 },
@@ -501,7 +502,11 @@ def get_node_types():
                 'max_pe': {'type': 'number', 'label': '最大PE', 'show_if': {'field': 'filter_type', 'value': 'pe_range'}},
                 'min_pb': {'type': 'number', 'label': '最小PB', 'show_if': {'field': 'filter_type', 'value': 'pb_range'}},
                 'max_pb': {'type': 'number', 'label': '最大PB', 'show_if': {'field': 'filter_type', 'value': 'pb_range'}},
-                'trend_type': {'type': 'select', 'label': '趋势类型', 'options': [{'value': 'up', 'label': '上涨'}, {'value': 'down', 'label': '下跌'}], 'show_if': {'field': 'filter_type', 'value': 'trend'}}
+                'trend_type': {'type': 'select', 'label': '趋势类型', 'options': [{'value': 'up', 'label': '上涨'}, {'value': 'down', 'label': '下跌'}], 'show_if': {'field': 'filter_type', 'value': 'trend'}},
+                'min_cap': {'type': 'number', 'label': '最小市值(亿)', 'show_if': {'field': 'filter_type', 'value': 'market_cap'}},
+                'max_cap': {'type': 'number', 'label': '最大市值(亿)', 'show_if': {'field': 'filter_type', 'value': 'market_cap'}},
+                'min_positive_ratio': {'type': 'number', 'label': '最小正面舆情比例', 'show_if': {'field': 'filter_type', 'value': 'news_sentiment'}},
+                'sector': {'type': 'text', 'label': '板块名称', 'show_if': {'field': 'filter_type', 'value': 'sector'}}
             }
         },
         'score': {

@@ -94,3 +94,55 @@ class ProviderCaller:
         if not choices:
             return ""
         return choices[0].get("message", {}).get("content", "")
+
+    def stream_call(self, provider: str, prompt: str):
+        """流式调用，返回生成器"""
+        import json
+        import urllib.request
+        import urllib.error
+
+        doc = self.key_loader(provider)
+        if not doc:
+            raise ValueError(f"未找到 provider 配置: {provider}")
+        api_key = doc.get("api_key")
+        if not api_key:
+            raise ValueError(f"provider {provider} 未配置 API Key")
+        base_url = (doc.get("base_url") or "").rstrip("/")
+        if not base_url:
+            raise ValueError(f"provider {provider} 未配置 Base URL")
+        model = doc.get("model") or _DEFAULT_MODELS.get(provider.lower(), "")
+        p = provider.lower()
+
+        url = f"{base_url}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        data = json.dumps({
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.3,
+            "stream": True
+        }).encode("utf-8")
+
+        try:
+            req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+            with urllib.request.urlopen(req, timeout=120) as response:
+                for line in response:
+                    line = line.decode("utf-8").strip()
+                    if line.startswith("data: "):
+                        content = line[6:]
+                        if content == "[DONE]":
+                            break
+                        try:
+                            chunk_data = json.loads(content)
+                            delta = chunk_data.get("choices", [{}])[0].get("delta", {})
+                            if delta.get("content"):
+                                yield delta["content"]
+                        except json.JSONDecodeError:
+                            continue
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode("utf-8") if e.fp else ""
+            raise Exception(f"HTTP {e.code}: {error_body}")
+        except Exception as e:
+            raise Exception(f"Stream call failed: {str(e)}")

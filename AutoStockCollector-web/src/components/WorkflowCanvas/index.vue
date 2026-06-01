@@ -43,8 +43,28 @@
         <el-button size="small" @click="addNode('technical_indicator')">
           <el-icon><TrendCharts /></el-icon> 技术指标
         </el-button>
+        <el-button size="small" @click="addNode('fundamental_filter')">
+          <el-icon><Reading /></el-icon> 基本面
+        </el-button>
+        <el-button size="small" @click="addNode('market_sentiment')">
+          <el-icon><ChatLineSquare /></el-icon> 市场情绪
+        </el-button>
       </div>
       <div class="toolbar-right">
+        <el-button size="small" @click="undo" :disabled="!canUndo" title="撤销 (Ctrl+Z)">
+          <el-icon><RefreshLeft /></el-icon>
+        </el-button>
+        <el-button size="small" @click="redo" :disabled="!canRedo" title="重做 (Ctrl+Y)">
+          <el-icon><RefreshRight /></el-icon>
+        </el-button>
+        <el-button size="small" @click="exportWorkflow" title="导出工作流">
+          <el-icon><Download /></el-icon> 导出
+        </el-button>
+        <el-button size="small" @click="triggerImport" title="导入工作流">
+          <el-icon><Upload /></el-icon> 导入
+        </el-button>
+        <input type="file" ref="importInput" @change="importWorkflow" accept=".json" style="display: none" />
+        <el-divider direction="vertical" />
         <el-button size="small" @click="handleCancel">取消</el-button>
         <el-button type="primary" size="small" @click="handleSave">保存</el-button>
       </div>
@@ -73,15 +93,19 @@
         @drop="onDrop"
         @dragover.prevent
         @click="onCanvasClick"
+        @keydown="onKeyDown"
+        tabindex="0"
       >
         <div
           v-for="node in nodes"
           :key="node.id"
           class="workflow-node"
-          :class="[`node-type-${node.type}`, { selected: selectedNode?.id === node.id }]"
-          :style="{ left: node.x + 'px', top: node.y + 'px' }"
+          :class="[`node-type-${node.type}`, { selected: selectedNode?.id === node.id, hovering: hoveringNode?.id === node.id }]"
+          :style="{ left: node.x + 'px', top: node.y + 'px', '--node-color': getNodeColor(node.type) }"
           @click.stop="selectNode(node)"
           @mousedown="startDrag($event, node)"
+          @mouseenter="hoveringNode = node"
+          @mouseleave="hoveringNode = null"
         >
           <div class="node-header">
             <el-icon>
@@ -97,7 +121,8 @@
               v-for="input in node.inputs"
               :key="input"
               class="port port-input"
-              @click.stop="startConnect(node, input, 'input')"
+              :class="{ connecting: connecting && connectingType === 'output' }"
+              @click.stop="connecting ? completeConnection(node, input) : startConnect(node, input, 'input')"
             >
               <div class="port-dot"></div>
               <span class="port-label">{{ input }}</span>
@@ -106,7 +131,8 @@
               v-for="output in node.outputs"
               :key="output"
               class="port port-output"
-              @click.stop="startConnect(node, output, 'output')"
+              :class="{ connecting: connecting && connectingType === 'input' }"
+              @click.stop="connecting ? completeConnection(node, output) : startConnect(node, output, 'output')"
             >
               <div class="port-dot"></div>
               <span class="port-label">{{ output }}</span>
@@ -135,9 +161,9 @@
       </div>
     </div>
 
-    <div v-if="selectedNode || connecting" class="properties-panel">
+    <div v-if="selectedNode || connecting || selectedEdge" class="properties-panel">
       <div class="panel-header">
-        <span>{{ selectedNode ? '节点配置' : '连接中...' }}</span>
+        <span>{{ selectedNode ? '节点配置' : selectedEdge ? '连线配置' : '连接中...' }}</span>
         <el-button
           v-if="selectedNode"
           type="danger"
@@ -145,7 +171,16 @@
           text
           @click="deleteSelectedNode"
         >
-          <el-icon><Delete /></el-icon> 删除
+          <el-icon><Delete /></el-icon> 删除节点
+        </el-button>
+        <el-button
+          v-if="selectedEdge"
+          type="danger"
+          size="small"
+          text
+          @click="deleteSelectedEdge"
+        >
+          <el-icon><Delete /></el-icon> 删除连线
         </el-button>
       </div>
       <div v-if="selectedNode" class="panel-body">
@@ -188,16 +223,35 @@
           </el-form-item>
         </el-form>
       </div>
+      <div v-else-if="selectedEdge" class="panel-body">
+        <el-form label-width="80px" size="small">
+          <el-form-item label="连线标签">
+            <el-input v-model="selectedEdge.label" placeholder="可选" />
+          </el-form-item>
+          <el-form-item label="源节点">
+            <span>{{ getNodeLabel(selectedEdge.source) }}</span>
+          </el-form-item>
+          <el-form-item label="目标节点">
+            <span>{{ getNodeLabel(selectedEdge.target) }}</span>
+          </el-form-item>
+        </el-form>
+      </div>
+      <div v-else-if="connecting" class="panel-body connecting-hint">
+        <p>点击另一个节点的端口完成连接</p>
+        <p class="hint-sub">或点击画布取消</p>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, watch } from 'vue'
+import { ElMessage } from 'element-plus'
 import {
   VideoPlay, Filter, Star, User, Collection, CircleCheck, CircleClose,
   Delete, VideoPause, Connection, Operation, Timer, TrendCharts,
-  DataLine, Reading, ChatLineSquare, DataAnalysis, DataBoard
+  DataLine, Reading, ChatLineSquare, DataAnalysis, DataBoard,
+  RefreshLeft, RefreshRight, Download, Upload
 } from '@element-plus/icons-vue'
 import type { Workflow, WorkflowNode, WorkflowEdge, WorkflowTemplate } from '@/api/workflow'
 
@@ -212,6 +266,9 @@ const emit = defineEmits<{
 }>()
 
 const canvasRef = ref<HTMLElement>()
+const importInput = ref<HTMLInputElement>()
+let autoSaveTimer: number | null = null
+const autoSaveInterval = 30000
 const nodes = ref<WorkflowNode[]>([])
 const edges = ref<WorkflowEdge[]>([])
 const workflowName = ref('')
@@ -222,26 +279,73 @@ const connecting = ref(false)
 const connectingNode = ref<WorkflowNode | null>(null)
 const connectingPort = ref('')
 const connectingType = ref<'input' | 'output'>('input')
+const selectedNodes = ref<Set<string>>(new Set())
+
+const undoStack = ref<{ nodes: WorkflowNode[], edges: WorkflowEdge[] }[]>([])
+const redoStack = ref<{ nodes: WorkflowNode[], edges: WorkflowEdge[] }[]>([])
+const maxHistorySize = 50
+
+function saveHistory() {
+  undoStack.value.push({
+    nodes: JSON.parse(JSON.stringify(nodes.value)),
+    edges: JSON.parse(JSON.stringify(edges.value))
+  })
+  if (undoStack.value.length > maxHistorySize) {
+    undoStack.value.shift()
+  }
+  redoStack.value = []
+}
+
+function undo() {
+  if (undoStack.value.length === 0) return
+  redoStack.value.push({
+    nodes: JSON.parse(JSON.stringify(nodes.value)),
+    edges: JSON.parse(JSON.stringify(edges.value))
+  })
+  const state = undoStack.value.pop()!
+  nodes.value = state.nodes
+  edges.value = state.edges
+  selectedNode.value = null
+  selectedEdge.value = null
+  ElMessage.success('已撤销')
+}
+
+function redo() {
+  if (redoStack.value.length === 0) return
+  undoStack.value.push({
+    nodes: JSON.parse(JSON.stringify(nodes.value)),
+    edges: JSON.parse(JSON.stringify(edges.value))
+  })
+  const state = redoStack.value.pop()!
+  nodes.value = state.nodes
+  edges.value = state.edges
+  selectedNode.value = null
+  selectedEdge.value = null
+  ElMessage.success('已重做')
+}
+
+const canUndo = computed(() => undoStack.value.length > 0)
+const canRedo = computed(() => redoStack.value.length > 0)
 
 const nodeTypes = [
-  { type: 'start', label: '起始节点', icon: 'play', description: '定义数据来源' },
-  { type: 'filter', label: '筛选节点', icon: 'filter', description: '按条件过滤' },
-  { type: 'score', label: '评分节点', icon: 'star', description: '多维度评分' },
-  { type: 'ai_agent', label: 'AI节点', icon: 'robot', description: 'AI深度分析' },
-  { type: 'combine', label: '组合节点', icon: 'collection', description: '结果组合' },
-  { type: 'risk_control', label: '风控节点', icon: 'shield', description: '风险控制' },
-  { type: 'end', label: '结束节点', icon: 'stop', description: '输出结果' },
-  { type: 'data_fetch', label: '数据获取', icon: 'database', description: '获取多源数据' },
-  { type: 'technical_indicator', label: '技术指标', icon: 'line-chart', description: '计算技术指标' },
-  { type: 'fundamental_filter', label: '基本面筛选', icon: 'reading', description: '财务指标筛选' },
-  { type: 'market_sentiment', label: '市场情绪', icon: 'chat', description: '市场情绪分析' },
-  { type: 'index_components', label: '指数成分', icon: 'collection', description: '获取指数成分股' },
-  { type: 'compare', label: '对比分析', icon: 'analysis', description: '多股对比分析' },
-  { type: 'chanlun_zs', label: '中枢识别', icon: 'circle', description: '缠论中枢识别' },
-  { type: 'chanlun_bc', label: '背驰判断', icon: 'trend', description: '缠论背驰判断' },
-  { type: 'chanlun_buy1', label: '缠论一买', icon: 'first', description: '第一类买点' },
-  { type: 'chanlun_buy2', label: '缠论二买', icon: 'second', description: '第二类买点' },
-  { type: 'chanlun_buy3', label: '缠论三买', icon: 'third', description: '第三类买点' }
+  { type: 'start', label: '起始节点', icon: 'play', color: '#67c23a', description: '定义数据来源' },
+  { type: 'filter', label: '筛选节点', icon: 'filter', color: '#409eff', description: '按条件过滤' },
+  { type: 'score', label: '评分节点', icon: 'star', color: '#e6a23c', description: '多维度评分' },
+  { type: 'ai_agent', label: 'AI节点', icon: 'robot', color: '#9b59b6', description: 'AI深度分析' },
+  { type: 'combine', label: '组合节点', icon: 'collection', color: '#3498db', description: '结果组合' },
+  { type: 'risk_control', label: '风控节点', icon: 'shield', color: '#e74c3c', description: '风险控制' },
+  { type: 'end', label: '结束节点', icon: 'stop', color: '#95a5a6', description: '输出结果' },
+  { type: 'data_fetch', label: '数据获取', icon: 'database', color: '#1abc9c', description: '获取多源数据' },
+  { type: 'technical_indicator', label: '技术指标', icon: 'line-chart', color: '#2ecc71', description: '计算技术指标' },
+  { type: 'fundamental_filter', label: '基本面筛选', icon: 'reading', color: '#16a085', description: '财务指标筛选' },
+  { type: 'market_sentiment', label: '市场情绪', icon: 'chat', color: '#f39c12', description: '市场情绪分析' },
+  { type: 'index_components', label: '指数成分', icon: 'collection', color: '#8e44ad', description: '获取指数成分股' },
+  { type: 'compare', label: '对比分析', icon: 'analysis', color: '#c0392b', description: '多股对比分析' },
+  { type: 'chanlun_zs', label: '中枢识别', icon: 'circle', color: '#d35400', description: '缠论中枢识别' },
+  { type: 'chanlun_bc', label: '背驰判断', icon: 'trend', color: '#c0392b', description: '缠论背驰判断' },
+  { type: 'chanlun_buy1', label: '缠论一买', icon: 'first', color: '#27ae60', description: '第一类买点' },
+  { type: 'chanlun_buy2', label: '缠论二买', icon: 'second', color: '#2980b9', description: '第二类买点' },
+  { type: 'chanlun_buy3', label: '缠论三买', icon: 'third', color: '#8e44ad', description: '第三类买点' }
 ]
 
 const nodeConfigSchemas: Record<string, any> = {
@@ -267,12 +371,24 @@ const nodeConfigSchemas: Record<string, any> = {
         { value: 'pe_range', label: 'PE范围' },
         { value: 'pb_range', label: 'PB范围' },
         { value: 'trend', label: '趋势筛选' },
-        { value: 'fund_flow', label: '资金流向' }
+        { value: 'fund_flow', label: '资金流向' },
+        { value: 'market_cap', label: '市值筛选' },
+        { value: 'exclude_st', label: '排除ST' },
+        { value: 'news_sentiment', label: '舆情筛选' },
+        { value: 'sector', label: '板块筛选' }
       ]
     },
     min_price: { type: 'number', label: '最低价' },
     max_price: { type: 'number', label: '最高价' },
     threshold: { type: 'number', label: '阈值' },
+    direction: {
+      type: 'select',
+      label: '方向',
+      options: [
+        { value: 'positive', label: '正向' },
+        { value: 'negative', label: '负向' }
+      ]
+    },
     min_pe: { type: 'number', label: '最小PE' },
     max_pe: { type: 'number', label: '最大PE' },
     min_pb: { type: 'number', label: '最小PB' },
@@ -284,7 +400,11 @@ const nodeConfigSchemas: Record<string, any> = {
         { value: 'up', label: '上涨' },
         { value: 'down', label: '下跌' }
       ]
-    }
+    },
+    min_cap: { type: 'number', label: '最小市值(亿)' },
+    max_cap: { type: 'number', label: '最大市值(亿)' },
+    min_positive_ratio: { type: 'number', label: '最小正面舆情比例' },
+    sector: { type: 'text', label: '板块名称' }
   },
   score: {
     score_type: {
@@ -437,6 +557,47 @@ const nodeConfigSchemas: Record<string, any> = {
         { value: 'asc', label: '升序' }
       ]
     }
+  },
+  chanlun_zs: {
+    level: {
+      type: 'select',
+      label: '级别',
+      options: [
+        { value: '1min', label: '1分钟' },
+        { value: '5min', label: '5分钟' },
+        { value: '15min', label: '15分钟' },
+        { value: '30min', label: '30分钟' },
+        { value: '60min', label: '60分钟' },
+        { value: 'daily', label: '日线' }
+      ]
+    },
+    min_bars: { type: 'number', label: '中枢最小K线数' }
+  },
+  chanlun_bc: {
+    bc_type: {
+      type: 'select',
+      label: '背驰类型',
+      options: [
+        { value: 'divergence', label: '背驰判断' },
+        { value: 'new_high_low', label: '新高新低' }
+      ]
+    },
+    threshold: { type: 'number', label: '背驰阈值' }
+  },
+  chanlun_buy1: {
+    min_price: { type: 'number', label: '最低价' },
+    max_price: { type: 'number', label: '最高价' },
+    rsi_oversold: { type: 'number', label: 'RSI超卖值' },
+    kdj_oversold: { type: 'number', label: 'KDJ超卖值' }
+  },
+  chanlun_buy2: {
+    min_price: { type: 'number', label: '最低价' },
+    max_price: { type: 'number', label: '最高价' }
+  },
+  chanlun_buy3: {
+    min_price: { type: 'number', label: '最低价' },
+    max_price: { type: 'number', label: '最高价' },
+    vol_threshold: { type: 'number', label: '放量倍数阈值' }
   }
 }
 
@@ -459,7 +620,11 @@ function getNodeIcon(iconName: string) {
     chat: ChatLineSquare,
     chatLineSquare: ChatLineSquare,
     analysis: DataAnalysis,
-    dataAnalysis: DataAnalysis
+    dataAnalysis: DataAnalysis,
+    circle: Timer,
+    first: Timer,
+    second: Timer,
+    third: Timer
   }
   return icons[iconName] || Operation
 }
@@ -469,8 +634,47 @@ function getNodeTypeLabel(type: string) {
   return node ? node.description : type
 }
 
+function getNodeColor(type: string): string {
+  const node = nodeTypes.find(n => n.type === type)
+  return node?.color || '#409eff'
+}
+
 function getNodeConfigSchema(type: string) {
   return nodeConfigSchemas[type] || {}
+}
+
+const previewNode = ref<WorkflowNode | null>(null)
+const hoveringNode = ref<WorkflowNode | null>(null)
+
+function showNodePreview(node: WorkflowNode) {
+  previewNode.value = node
+  hoveringNode.value = node
+}
+
+function hideNodePreview() {
+  previewNode.value = null
+  hoveringNode.value = null
+}
+
+function getNodeConfigSummary(node: WorkflowNode): Record<string, any> {
+  const schema = getNodeConfigSchema(node.type)
+  const summary: Record<string, any> = {}
+
+  for (const [key, config] of Object.entries(schema)) {
+    if (node.config[key] !== undefined && node.config[key] !== '' && node.config[key] !== null) {
+      const label = (config as any).label || key
+      let value = node.config[key]
+
+      if ((config as any).type === 'select') {
+        const option = (config as any).options?.find((o: any) => o.value === value)
+        value = option?.label || value
+      }
+
+      summary[label] = value
+    }
+  }
+
+  return summary
 }
 
 function generateId() {
@@ -478,6 +682,7 @@ function generateId() {
 }
 
 function addNode(type: string) {
+  saveHistory()
   const nodeType = nodeTypes.find(n => n.type === type)
   const nodeWidth = 200
   const nodeHeight = 100
@@ -548,10 +753,16 @@ function getDefaultConfig(type: string): Record<string, any> {
     combine: { strategy: 'top_n', top_n: 20 },
     risk_control: { max_positions: 10, max_position_ratio: 0.1, exclude_st: true },
     end: { output: 'list', top_n: 10 },
+    data_fetch: { data_type: 'kline', days: 60, limit: 100 },
+    technical_indicator: { indicator_type: 'ma', params: '5,20,60' },
+    fundamental_filter: { filter_type: 'pe', operator: 'lt', value: 25 },
+    market_sentiment: { analysis_type: 'overall', threshold: 50 },
+    index_components: { index_code: '000300.sh' },
+    compare: { compare_type: 'performance', ranking: 'desc' },
     chanlun_zs: { level: '60min', min_bars: 3 },
     chanlun_bc: { bc_type: 'divergence', threshold: 0.1 },
     chanlun_buy1: { min_price: 2, max_price: 100, rsi_oversold: 30, kdj_oversold: 20 },
-    chanlun_buy2: {},
+    chanlun_buy2: { min_price: 2, max_price: 100 },
     chanlun_buy3: { min_price: 5, max_price: 100, vol_threshold: 1.5 }
   }
   return defaults[type] || {}
@@ -574,6 +785,11 @@ function updateNode() {
   }
 }
 
+function getNodeLabel(nodeId: string): string {
+  const node = nodes.value.find(n => n.id === nodeId)
+  return node ? node.label : nodeId
+}
+
 function deleteSelectedNode() {
   if (!selectedNode.value) return
 
@@ -585,6 +801,7 @@ function deleteSelectedNode() {
 }
 
 function startConnect(node: WorkflowNode, port: string, type: 'input' | 'output') {
+  saveHistory()
   connecting.value = true
   connectingNode.value = node
   connectingPort.value = port
@@ -598,6 +815,117 @@ function onCanvasClick() {
   }
   selectedNode.value = null
   selectedEdge.value = null
+  selectedNodes.value.clear()
+}
+
+function onKeyDown(e: KeyboardEvent) {
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    if (selectedNode.value) {
+      deleteSelectedNode()
+    } else if (selectedEdge.value) {
+      deleteSelectedEdge()
+    }
+  } else if (e.key === 'Escape') {
+    if (connecting.value) {
+      connecting.value = false
+      connectingNode.value = null
+    }
+    selectedNode.value = null
+    selectedEdge.value = null
+  } else if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault()
+    saveWorkflow()
+  } else if (e.key === 'z' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+    e.preventDefault()
+    undo()
+  } else if ((e.key === 'y' && (e.ctrlKey || e.metaKey)) || (e.key === 'z' && (e.ctrlKey || e.metaKey) && e.shiftKey)) {
+    e.preventDefault()
+    redo()
+  } else if (e.key === 'c' && !connecting.value) {
+    if (selectedNode.value) {
+      copiedNode.value = { ...selectedNode.value }
+      ElMessage.success('节点已复制，按 Ctrl+V 粘贴')
+    }
+  } else if (e.key === 'v' && (e.ctrlKey || e.metaKey)) {
+    if (copiedNode.value) {
+      pasteNode()
+    }
+  } else if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault()
+    selectAllNodes()
+  }
+}
+
+function selectAllNodes() {
+  selectedNodes.value = new Set(nodes.value.map(n => n.id))
+  ElMessage.info(`已选择 ${nodes.value.length} 个节点`)
+}
+
+const copiedNode = ref<WorkflowNode | null>(null)
+
+function pasteNode() {
+  if (!copiedNode.value) return
+  saveHistory()
+  const newNode: WorkflowNode = {
+    ...JSON.parse(JSON.stringify(copiedNode.value)),
+    id: generateId(),
+    x: copiedNode.value.x + 50,
+    y: copiedNode.value.y + 50
+  }
+  nodes.value.push(newNode)
+  selectNode(newNode)
+  ElMessage.success('节点已粘贴')
+}
+
+function completeConnection(targetNode: WorkflowNode, targetPort: string) {
+  if (!connecting.value || !connectingNode.value) return
+
+  saveHistory()
+  const sourceNode = connectingNode.value
+  const sourcePort = connectingPort.value
+  const sourceType = connectingType.value
+
+  if (sourceType === 'output' && targetNode.inputs.includes(targetPort)) {
+    if (sourceNode.id !== targetNode.id) {
+      const exists = edges.value.some(
+        e => e.source === sourceNode.id && e.target === targetNode.id
+      )
+      if (!exists) {
+        edges.value.push({
+          id: generateId(),
+          source: sourceNode.id,
+          target: targetNode.id,
+          sourceHandle: sourcePort,
+          targetHandle: targetPort
+        })
+      }
+    }
+  } else if (sourceType === 'input' && targetNode.outputs.includes(targetPort)) {
+    if (sourceNode.id !== targetNode.id) {
+      const exists = edges.value.some(
+        e => e.source === targetNode.id && e.target === sourceNode.id
+      )
+      if (!exists) {
+        edges.value.push({
+          id: generateId(),
+          source: targetNode.id,
+          target: sourceNode.id,
+          sourceHandle: targetPort,
+          targetHandle: sourcePort
+        })
+      }
+    }
+  }
+
+  connecting.value = false
+  connectingNode.value = null
+}
+
+function deleteSelectedEdge() {
+  if (!selectedEdge.value) return
+  saveHistory()
+  edges.value = edges.value.filter(e => e.id !== selectedEdge.value?.id)
+  selectedEdge.value = null
 }
 
 let draggingNode = ref<WorkflowNode | null>(null)
@@ -607,6 +935,7 @@ let nodeStartX = 0
 let nodeStartY = 0
 
 function startDrag(event: MouseEvent, node: WorkflowNode) {
+  saveHistory()
   draggingNode.value = node
   dragStartX = event.clientX
   dragStartY = event.clientY
@@ -749,6 +1078,100 @@ function initFromProps() {
 }
 
 watch(() => props.workflow, initFromProps, { immediate: true })
+
+function startAutoSave() {
+  if (autoSaveTimer) clearInterval(autoSaveTimer)
+  autoSaveTimer = window.setInterval(() => {
+    if (nodes.value.length > 0 && workflowName.value.trim()) {
+      localStorage.setItem('workflow_draft', JSON.stringify({
+        name: workflowName.value,
+        description: workflowDescription.value,
+        nodes: nodes.value,
+        edges: edges.value,
+        updatedAt: new Date().toISOString()
+      }))
+    }
+  }, autoSaveInterval)
+}
+
+function loadDraft() {
+  const draft = localStorage.getItem('workflow_draft')
+  if (draft && nodes.value.length === 0) {
+    try {
+      const data = JSON.parse(draft)
+      workflowName.value = data.name || '草稿-' + new Date().toLocaleDateString()
+      workflowDescription.value = data.description || ''
+      nodes.value = data.nodes || []
+      edges.value = data.edges || []
+      ElMessage.info('已恢复上次未保存的编辑')
+    } catch {
+      localStorage.removeItem('workflow_draft')
+    }
+  }
+}
+
+function exportWorkflow() {
+  if (!workflowName.value.trim()) {
+    ElMessage.warning('请先输入工作流名称')
+    return
+  }
+  const workflow: Workflow = {
+    id: props.workflow?.id || '',
+    name: workflowName.value,
+    description: workflowDescription.value,
+    nodes: nodes.value,
+    edges: edges.value,
+    enabled: true,
+    run_count: props.workflow?.run_count || 0,
+    tags: props.workflow?.tags || []
+  }
+  const blob = new Blob([JSON.stringify(workflow, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${workflowName.value}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+  ElMessage.success('导出成功')
+}
+
+function triggerImport() {
+  importInput.value?.click()
+}
+
+function importWorkflow(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target?.result as string)
+      if (data.nodes && data.edges) {
+        saveHistory()
+        workflowName.value = data.name || '导入工作流'
+        workflowDescription.value = data.description || ''
+        nodes.value = data.nodes
+        edges.value = data.edges
+        undoStack.value = []
+        redoStack.value = []
+        ElMessage.success('导入成功')
+      } else {
+        ElMessage.error('文件格式不正确')
+      }
+    } catch {
+      ElMessage.error('文件解析失败')
+    }
+  }
+  reader.readAsText(file)
+  input.value = ''
+}
+
+onMounted(() => {
+  startAutoSave()
+  loadDraft()
+})
 </script>
 
 <style scoped>
@@ -837,20 +1260,25 @@ watch(() => props.workflow, initFromProps, { immediate: true })
   position: absolute;
   width: 200px;
   background: #3c3c3c;
-  border: 2px solid #4c4c4c;
+  border: 2px solid var(--node-color, #4c4c4c);
   border-radius: 8px;
   cursor: move;
   user-select: none;
-  transition: box-shadow 0.2s;
+  transition: box-shadow 0.2s, border-color 0.2s;
 }
 
 .workflow-node:hover {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
+.workflow-node.hovering {
+  z-index: 100;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 0 2px var(--node-color, #409eff);
+}
+
 .workflow-node.selected {
-  border-color: #409eff;
-  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.3);
+  border-color: var(--node-color, #409eff);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--node-color, #409eff) 30%, transparent);
 }
 
 .workflow-node.node-type-start {
@@ -862,7 +1290,7 @@ watch(() => props.workflow, initFromProps, { immediate: true })
 }
 
 .workflow-node.node-type-ai_agent {
-  border-color: #e6a23c;
+  border-color: #9b59b6;
 }
 
 .node-header {
@@ -875,6 +1303,7 @@ watch(() => props.workflow, initFromProps, { immediate: true })
   font-size: 13px;
   font-weight: 600;
   color: #e5eaf3;
+  border-bottom: 3px solid var(--node-color, #409eff);
 }
 
 .node-body {
@@ -913,6 +1342,17 @@ watch(() => props.workflow, initFromProps, { immediate: true })
   background: #409eff;
   border-color: #409eff;
   transform: scale(1.2);
+}
+
+.port.connecting .port-dot {
+  background: #e6a23c;
+  border-color: #e6a23c;
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.3); }
 }
 
 .port-input .port-dot {
@@ -979,5 +1419,75 @@ watch(() => props.workflow, initFromProps, { immediate: true })
 .panel-body :deep(.el-form-item__label) {
   color: #909399;
   font-size: 12px;
+}
+
+.connecting-hint {
+  text-align: center;
+  padding: 32px 16px;
+}
+
+.connecting-hint p {
+  margin: 0 0 8px 0;
+  color: #e6a23c;
+  font-size: 14px;
+}
+
+.connecting-hint .hint-sub {
+  font-size: 12px;
+  color: #909399;
+}
+
+.node-preview {
+  padding: 8px 0;
+}
+
+.preview-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e5eaf3;
+  margin-bottom: 4px;
+}
+
+.preview-type {
+  font-size: 12px;
+  color: #909399;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #3c3c3c;
+}
+
+.preview-config {
+  margin-bottom: 8px;
+}
+
+.preview-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-size: 12px;
+}
+
+.preview-key {
+  color: #909399;
+}
+
+.preview-value {
+  color: #e5eaf3;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-ports {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #3c3c3c;
+}
+
+.preview-port {
+  font-size: 11px;
+  color: #67c23a;
+  padding: 2px 0;
 }
 </style>

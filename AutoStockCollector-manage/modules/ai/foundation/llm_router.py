@@ -143,3 +143,38 @@ class LLMRouter:
             })
         except Exception:
             pass
+
+    def chat_stream(self, prompt: str, schema: Optional[Dict[str, Any]] = None,
+                    use_cache: bool = False, task_type: str = "general"):
+        """流式调用，返回生成器"""
+        from dataclasses import dataclass, field
+
+        @dataclass
+        class StreamResult:
+            success: bool = False
+            provider: str = ""
+            chunks: List[str] = field(default_factory=list)
+            error: str = ""
+
+        full_prompt = self._build_prompt(prompt, schema)
+
+        for provider in self.providers:
+            try:
+                from modules.ai.foundation.llm_caller import ProviderCaller
+                caller = ProviderCaller()
+                chunks = caller.stream_call(provider, full_prompt)
+
+                result = StreamResult(success=True, provider=provider)
+                for chunk in chunks:
+                    if chunk:
+                        result.chunks.append(chunk)
+                        yield chunk
+
+                self._log_history(provider, task_type, True)
+                return
+
+            except Exception as e:
+                self._log_history(provider, task_type, False, str(e))
+                continue
+
+        yield from []

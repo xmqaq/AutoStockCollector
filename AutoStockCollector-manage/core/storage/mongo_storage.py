@@ -411,6 +411,42 @@ class KlineStorage(MongoStorage):
     def save_kline_batch(self, records: List[Dict[str, Any]]) -> Tuple[int, int]:
         return self.upsert_many(records, ["code", "date"])
 
+    def get_signals(self, code: str, days: int = 30) -> Dict[str, Any]:
+        klines = self.find_many({"code": code}, sort=[("date", -1)], limit=days)
+        if len(klines) < 5:
+            return {}
+
+        closes = [k.get('close', 0) for k in klines]
+        volumes = [k.get('volume', 0) for k in klines]
+
+        signals = {
+            "code": code,
+            "ma5": sum(closes[:5]) / 5 if len(closes) >= 5 else 0,
+            "ma10": sum(closes[:10]) / 10 if len(closes) >= 10 else 0,
+            "ma20": sum(closes[:20]) / 20 if len(closes) >= 20 else 0,
+            "volume_ratio": volumes[0] / (sum(volumes[1:6]) / 5) if len(volumes) >= 6 else 1,
+            "trend": "up" if closes[0] > closes[4] else "down"
+        }
+
+        if len(closes) >= 26:
+            ema12 = self._calc_ema(closes[:12], 12)
+            ema26 = self._calc_ema(closes[:26], 26)
+            macd_dif = ema12 - ema26
+            macd_dea = macd_dif * 0.9
+            macd_bar = (macd_dif - macd_dea) * 2
+            signals["macd"] = {"dif": macd_dif, "dea": macd_dea, "bar": macd_bar}
+
+        return signals
+
+    def _calc_ema(self, data: List[float], period: int) -> float:
+        if len(data) < period:
+            return 0
+        multiplier = 2 / (period + 1)
+        ema = sum(data[:period]) / period
+        for price in data[period:]:
+            ema = (price - ema) * multiplier + ema
+        return ema
+
 
 class StockInfoStorage(MongoStorage):
     def __init__(self):
@@ -686,6 +722,19 @@ class BlockStorage(MongoStorage):
 
     def get_blocks_by_type(self, block_type: str) -> List[Dict[str, Any]]:
         return self.find_many({"block_type": block_type})
+
+    def get_stocks_by_block_name(self, block_name: str, block_type: str = "industry") -> List[str]:
+        blocks = self.find_many({"block_name": block_name, "block_type": block_type})
+        return [b.get("code") for b in blocks if b.get("code")]
+
+    def get_block_names_by_type(self, block_type: str = "industry") -> List[str]:
+        blocks = self.find_many({"block_type": block_type}, projection=["block_name"])
+        names = set()
+        for b in blocks:
+            name = b.get("block_name")
+            if name:
+                names.add(name)
+        return list(names)
 
 
 class DragonTigerStorage(MongoStorage):

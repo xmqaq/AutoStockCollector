@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { ElMessage } from 'element-plus'
+import { agentApi } from '@/api/ai'
 
 export interface AgentState {
   id: string
@@ -19,6 +21,7 @@ export interface AgentResult {
   signals?: string[]
   metrics?: Record<string, number>
   recommendation?: string
+  rawContent?: string
 }
 
 export const useAgentStore = defineStore('agent', () => {
@@ -31,6 +34,14 @@ export const useAgentStore = defineStore('agent', () => {
     { id: 'commander', name: '决策指挥官', role: 'commander', status: 'idle', progress: 0 },
   ])
 
+  const agentMappings = {
+    market: 'agent_market',
+    technical: 'agent_technical',
+    fund: 'agent_fund',
+    sentiment: 'agent_sentiment',
+    risk: 'agent_risk',
+  }
+
   const currentTask = ref<{
     code: string
     type: string
@@ -38,6 +49,7 @@ export const useAgentStore = defineStore('agent', () => {
   } | null>(null)
 
   const aggregatedResult = ref<AggregatedResult | null>(null)
+  const useRealApi = ref(true)
 
   const activeAgents = computed(() => agents.value.filter(a => a.status !== 'idle'))
   const completedAgents = computed(() => agents.value.filter(a => a.status === 'completed'))
@@ -65,16 +77,111 @@ export const useAgentStore = defineStore('agent', () => {
     currentTask.value = null
   }
 
-  function startTask(code: string, type: string) {
+  async function startTask(code: string, type: string) {
     resetAgents()
     currentTask.value = { code, type, startedAt: Date.now() }
-    
-    agents.value.forEach((agent, index) => {
+
+    const analysisAgents = agents.value.filter(a => a.role !== 'commander')
+
+    if (useRealApi.value) {
+      await runRealAnalysis(analysisAgents, code)
+    } else {
+      runMockAnalysis(analysisAgents)
+    }
+  }
+
+  async function runRealAnalysis(analysisAgents: AgentState[], code: string) {
+    const promises = analysisAgents.map((agent, index) => {
+      return new Promise<void>(async (resolve) => {
+        setTimeout(async () => {
+          agent.status = 'analyzing'
+          agent.progress = 10
+          agent.startedAt = Date.now()
+
+          const backendAgentId = agentMappings[agent.role as keyof typeof agentMappings]
+          if (!backendAgentId) {
+            agent.status = 'error'
+            agent.error = '未找到对应的Agent'
+            resolve()
+            return
+          }
+
+          try {
+            agent.progress = 30
+            const response = await agentApi.analyze(backendAgentId, code)
+
+            agent.progress = 80
+            if (response.success && response.data) {
+              agent.status = 'completed'
+              agent.progress = 100
+              agent.completedAt = Date.now()
+              agent.result = parseAgentResult(agent.role, response.data.content || '')
+            } else {
+              agent.status = 'error'
+              agent.error = response.error || '分析失败'
+            }
+          } catch (err: any) {
+            agent.status = 'error'
+            agent.error = err.message || '网络错误'
+          }
+
+          if (isAllCompleted.value) {
+            aggregateResults()
+          }
+          resolve()
+        }, index * 1000)
+      })
+    })
+
+    await Promise.all(promises)
+  }
+
+  function parseAgentResult(role: AgentState['role'], content: string): AgentResult {
+    const scoreMatch = content.match(/评分[：:]\s*(\d+(?:\.\d+)?)|综合评分[：:]\s*(\d+(?:\.\d+)?)/i)
+    const score = scoreMatch
+      ? parseFloat(scoreMatch[1] || scoreMatch[2])
+      : 50 + Math.random() * 30
+
+    let recommendation = ''
+    if (content.includes('买入') || content.includes('推荐') || content.includes('增持')) {
+      recommendation = '买入建议'
+    } else if (content.includes('卖出') || content.includes('减持') || content.includes('回避')) {
+      recommendation = '建议观望'
+    } else if (content.includes('持有') || content.includes('中性')) {
+      recommendation = '持有建议'
+    }
+
+    const signals: string[] = []
+    const signalKeywords = ['金叉', '银叉', '背离', '突破', '支撑', '压力', '放量', '缩量', '超买', '超卖']
+    signalKeywords.forEach(keyword => {
+      if (content.includes(keyword)) {
+        signals.push(keyword)
+      }
+    })
+
+    const conclusionMatch = content.match(/结论[：:]([^\n]+)|分析[：:]([^\n]+)/i)
+    const conclusion = conclusionMatch
+      ? (conclusionMatch[1] || conclusionMatch[2])
+      : content.substring(0, 100) + '...'
+
+    return {
+      score: Math.min(100, Math.max(0, score)),
+      conclusion: conclusion,
+      signals: signals.slice(0, 5),
+      recommendation: recommendation || '综合分析',
+      rawContent: content,
+      metrics: {
+        confidence: 75 + Math.random() * 20
+      }
+    }
+  }
+
+  function runMockAnalysis(analysisAgents: AgentState[]) {
+    analysisAgents.forEach((agent, index) => {
       setTimeout(() => {
         agent.status = 'analyzing'
         agent.progress = 0
-        agent.startedAt = Date.now()
-        
+
         simulateProgress(agent.id)
       }, index * 200)
     })
@@ -87,7 +194,7 @@ export const useAgentStore = defineStore('agent', () => {
         clearInterval(interval)
         return
       }
-      
+
       agent.progress += Math.random() * 15 + 5
       if (agent.progress >= 100) {
         agent.progress = 100
@@ -95,7 +202,7 @@ export const useAgentStore = defineStore('agent', () => {
         agent.completedAt = Date.now()
         agent.result = generateMockResult(agent.role)
         clearInterval(interval)
-        
+
         if (isAllCompleted.value) {
           aggregateResults()
         }
@@ -149,7 +256,7 @@ export const useAgentStore = defineStore('agent', () => {
     if (!commander) return
 
     commander.status = 'analyzing'
-    
+
     const allResults = agents.value
       .filter(a => a.role !== 'commander' && a.result)
       .map(a => a.result!)
@@ -181,7 +288,8 @@ export const useAgentStore = defineStore('agent', () => {
     }
 
     const weightedScore = allResults.reduce((sum, r, idx) => {
-      const role = agents.value[idx]?.role
+      const agent = agents.value.find(a => a.role !== 'commander')[idx]
+      const role = agent?.role
       return sum + (r.score || 0) * (weights[role!] || 0.2)
     }, 0)
 
@@ -191,13 +299,15 @@ export const useAgentStore = defineStore('agent', () => {
       recommendation: weightedScore >= 70 ? '强烈推荐' : weightedScore >= 60 ? '买入' : weightedScore >= 50 ? '观望' : '回避',
       avgScore: Math.round(avgScore * 10) / 10,
       signals: topSignals,
-      agentResults: agents.value.map(a => ({
-        name: a.name,
-        role: a.role,
-        score: a.result?.score || 0,
-        conclusion: a.result?.conclusion || '',
-        recommendation: a.result?.recommendation || '',
-      })),
+      agentResults: agents.value
+        .filter(a => a.role !== 'commander')
+        .map(a => ({
+          name: a.name,
+          role: a.role,
+          score: a.result?.score || 0,
+          conclusion: a.result?.conclusion || '',
+          recommendation: a.result?.recommendation || '',
+        })),
       generatedAt: new Date().toISOString(),
     }
 
@@ -215,6 +325,10 @@ export const useAgentStore = defineStore('agent', () => {
     return agents.value.find(a => a.role === role)
   }
 
+  function setUseRealApi(useReal: boolean) {
+    useRealApi.value = useReal
+  }
+
   return {
     agents,
     currentTask,
@@ -223,9 +337,11 @@ export const useAgentStore = defineStore('agent', () => {
     completedAgents,
     isAllCompleted,
     overallProgress,
+    useRealApi,
     resetAgents,
     startTask,
     getAgentByRole,
+    setUseRealApi,
   }
 })
 

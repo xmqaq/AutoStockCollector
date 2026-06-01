@@ -396,12 +396,343 @@ def test_agent(agent_id: str):
         }), 500
 
 
+@ai_agent_bp.route("/compare", methods=["POST"])
+def compare_stocks():
+    """多股对比分析"""
+    data = request.get_json() or {}
+    codes = data.get("codes", [])
+
+    if not codes or len(codes) < 2:
+        return jsonify({"success": False, "error": "至少需要2个股票代码"}), 400
+
+    if len(codes) > 10:
+        return jsonify({"success": False, "error": "最多支持10个股票对比"}), 400
+
+    try:
+        from core.storage.mongo_storage import KlineStorage, StockInfoStorage, FundFlowStorage
+
+        kline_storage = KlineStorage()
+        stock_info_storage = StockInfoStorage()
+        fund_storage = FundFlowStorage()
+
+        comparison = []
+
+        for code in codes:
+            try:
+                klines = list(kline_storage.find_many(
+                    {"code": code},
+                    sort=[("date", -1)],
+                    limit=30
+                ))
+
+                stock_info = stock_info_storage.get_by_code(code) or {}
+                fund_flow = fund_storage.get_latest_flow(code) or {}
+
+                closes = [k.get("close") for k in klines if k.get("close")]
+                volumes = [k.get("volume") for k in klines if k.get("volume")]
+
+                price_change = 0
+                if len(closes) >= 2:
+                    price_change = ((closes[0] - closes[-1]) / closes[-1]) * 100 if closes[-1] else 0
+
+                avg_volume = sum(volumes) / len(volumes) if volumes else 0
+
+                comparison.append({
+                    "code": code,
+                    "name": stock_info.get("name", code),
+                    "price": closes[0] if closes else 0,
+                    "price_change": round(price_change, 2),
+                    "pe": stock_info.get("pe") or stock_info.get("pe_ttm") or None,
+                    "pb": stock_info.get("pb") or None,
+                    "market_cap": stock_info.get("market_cap") or None,
+                    "volume": avg_volume,
+                    "main_net_inflow": fund_flow.get("main_net_inflow") or 0,
+                    "close_prices": closes[:10] if closes else []
+                })
+            except Exception as e:
+                logger.warning(f"Failed to fetch data for {code}: {e}")
+                comparison.append({
+                    "code": code,
+                    "name": code,
+                    "error": str(e)
+                })
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "stocks": comparison,
+                "count": len(comparison)
+            }
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@ai_agent_bp.route("/batch-analyze", methods=["POST"])
+def batch_analyze():
+    """批量分析多个股票"""
+    data = request.get_json() or {}
+    codes = data.get("codes", [])
+    agent_id = data.get("agent_id", "agent_technical")
+
+    if not codes or len(codes) > 20:
+        return jsonify({"success": False, "error": "最多支持20个股票"}), 400
+
+    _ensure_collection()
+    db = _get_db()
+    agent = db["ai_agents"].find_one({"id": agent_id}, {"_id": 0})
+    if not agent:
+        return jsonify({"success": False, "error": "Agent not found"}), 404
+
+    results = []
+    for code in codes:
+        try:
+            from core.storage.mongo_storage import KlineStorage, StockInfoStorage
+            kline_storage = KlineStorage()
+            stock_info_storage = StockInfoStorage()
+
+            klines = list(kline_storage.find_many(
+                {"code": code},
+                sort=[("date", -1)],
+                limit=10
+            ))
+            stock_info = stock_info_storage.get_by_code(code) or {}
+
+            closes = [k.get("close") for k in klines if k.get("close")]
+            stock_name = stock_info.get("name", code)
+
+            price_info = f"""
+【股票数据】
+- 股票代码：{code}
+- 股票名称：{stock_name}
+- 近期收盘价：{closes if closes else '暂无数据'}
+- 市盈率(PE)：{stock_info.get('pe') or '暂无'}
+- 市净率(PB)：{stock_info.get('pb') or '暂无'}
+"""
+            prompt = f"""{agent['system_prompt']}
+
+{price_info}
+
+请给出简短的分析结论（100字以内）。"""
+
+            router = LLMRouter()
+            result = router.chat(prompt, use_cache=False)
+
+            results.append({
+                "code": code,
+                "name": stock_name,
+                "success": result.success,
+                "content": result.raw if result.success else result.error,
+                "provider": result.provider if result.success else None
+            })
+        except Exception as e:
+            results.append({
+                "code": code,
+                "success": False,
+                "error": str(e)
+            })
+
+    return jsonify({
+        "success": True,
+        "data": {
+            "results": results,
+            "total": len(codes),
+            "success_count": sum(1 for r in results if r.get("success"))
+        }
+    })
+
+
+@ai_agent_bp.route("/<agent_id>/analyze/stream", methods=["POST"])
+def analyze_with_agent_stream(agent_id: str):
+    """使用指定 Agent 分析股票，流式响应"""
+    from flask import Response
+    import json
+
+    _ensure_collection()
+    db = _get_db()
+    agent = db["ai_agents"].find_one({"id": agent_id}, {"_id": 0})
+    if not agent:
+        return jsonify({"success": False, "error": "Agent not found"}), 404
+
+    data = request.get_json() or {}
+    stock_code = data.get("code")
+
+    if not stock_code:
+        return jsonify({"success": False, "error": "code is required"}), 400
+
+    def generate():
+        try:
+            router = LLMRouter()
+            kline_data = []
+            fund_flow_data = {}
+            news_data = {}
+            stock_info = {}
+
+            try:
+                from core.storage.mongo_storage import KlineStorage
+                kline_storage = KlineStorage()
+                kline_data = list(kline_storage.find_many(
+                    {"code": stock_code},
+                    sort=[("date", -1)],
+                    limit=30
+                ))
+                yield f"data: {json.dumps({'type': 'progress', 'data': 20})}\n\n"
+            except Exception as e:
+                logger.warning(f"Failed to fetch kline data: {e}")
+
+            try:
+                from core.storage.mongo_storage import FundFlowStorage
+                fund_storage = FundFlowStorage()
+                fund_flow_data = fund_storage.get_latest_flow(stock_code) or {}
+                yield f"data: {json.dumps({'type': 'progress', 'data': 30})}\n\n"
+            except Exception as e:
+                logger.warning(f"Failed to fetch fund flow data: {e}")
+
+            try:
+                from core.storage.mongo_storage import NewsStorage
+                news_storage = NewsStorage()
+                news_data = list(news_storage.find_many(
+                    {"related_codes": stock_code},
+                    sort=[("published_at", -1)],
+                    limit=5
+                ))
+                yield f"data: {json.dumps({'type': 'progress', 'data': 40})}\n\n"
+            except Exception as e:
+                logger.warning(f"Failed to fetch news data: {e}")
+
+            try:
+                from core.storage.mongo_storage import StockInfoStorage
+                stock_info_storage = StockInfoStorage()
+                stock_info = stock_info_storage.get_by_code(stock_code) or {}
+                yield f"data: {json.dumps({'type': 'progress', 'data': 50})}\n\n"
+            except Exception as e:
+                logger.warning(f"Failed to fetch stock info: {e}")
+
+            closes = [k.get("close") for k in kline_data if k.get("close")]
+            volumes = [k.get("volume") for k in kline_data if k.get("volume")]
+            main_net = fund_flow_data.get('main_net_inflow') or fund_flow_data.get('main_net_inflow_5d') or '暂无'
+            stock_name = stock_info.get('name', '未知')
+            pe = stock_info.get('pe') or stock_info.get('pe_ttm') or '暂无'
+            pb = stock_info.get('pb') or '暂无'
+            news_titles = [n.get('title', '') for n in news_data[:3] if isinstance(n, dict)]
+
+            price_info = f"""
+【股票数据】
+- 股票代码：{stock_code}
+- 股票名称：{stock_name}
+- 近期收盘价（最新10日）：{closes[:10] if closes else '暂无数据'}
+- 近期成交量（最新10日）：{volumes[:10] if volumes else '暂无数据'}
+- 市盈率(PE)：{pe}
+- 市净率(PB)：{pb}
+- 主力净流入：{main_net}
+- 最新新闻：{news_titles}
+"""
+            prompt = f"""{agent['system_prompt']}
+
+{price_info}
+
+请结合以上数据给出专业的分析和建议。"""
+
+            yield f"data: {json.dumps({'type': 'progress', 'data': 60, 'message': '开始AI分析...'})}\n\n"
+
+            full_content = ""
+            try:
+                for chunk in router.chat_stream(prompt, use_cache=False):
+                    if chunk:
+                        full_content += chunk
+                        yield f"data: {json.dumps({'type': 'content', 'data': chunk})}\n\n"
+
+                yield f"data: {json.dumps({'type': 'done', 'data': {'content': full_content}})}\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'type': 'error', 'data': str(e)})}\n\n"
+
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'data': str(e)})}\n\n"
+
+    return Response(
+        generate(),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no'
+        }
+    )
+
+
+@ai_agent_bp.route("/history", methods=["GET"])
+def get_agent_history():
+    """获取Agent执行历史记录"""
+    page = request.args.get("page", 1, type=int)
+    page_size = request.args.get("page_size", 20, type=int)
+    agent_id = request.args.get("agent_id", "")
+    stock_code = request.args.get("code", "")
+
+    db = _get_db()
+    query = {}
+    if agent_id:
+        query["agent_id"] = agent_id
+    if stock_code:
+        query["stock_code"] = stock_code
+
+    total = db["ai_analysis_history"].count_documents(query)
+    skip = (page - 1) * page_size
+
+    records = list(
+        db["ai_analysis_history"]
+        .find(query, {"_id": 0})
+        .sort("created_at", -1)
+        .skip(skip)
+        .limit(page_size)
+    )
+
+    return jsonify({
+        "success": True,
+        "data": {
+            "records": records,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "pages": (total + page_size - 1) // page_size
+        }
+    })
+
+
+@ai_agent_bp.route("/history", methods=["POST"])
+def save_agent_history():
+    """保存Agent执行记录"""
+    db = _get_db()
+    data = request.get_json() or {}
+
+    if "agent_id" not in data or "stock_code" not in data:
+        return jsonify({"success": False, "error": "agent_id and stock_code are required"}), 400
+
+    record = {
+        "agent_id": data.get("agent_id"),
+        "stock_code": data.get("stock_code"),
+        "stock_name": data.get("stock_name", ""),
+        "content": data.get("content", ""),
+        "score": data.get("score"),
+        "recommendation": data.get("recommendation"),
+        "provider": data.get("provider", ""),
+        "duration_ms": data.get("duration_ms", 0),
+        "created_at": datetime.now().isoformat()
+    }
+
+    result = db["ai_analysis_history"].insert_one(record)
+
+    return jsonify({
+        "success": True,
+        "data": {"id": str(result.inserted_id)}
+    })
+
+
 @ai_agent_bp.route("/<agent_id>/analyze", methods=["POST"])
 def analyze_with_agent(agent_id: str):
-    """使用指定 Agent 分析股票，通过 HTTP API 获取数据"""
-    import requests
-    from modules.ai.foundation.llm_router import LLMRouter
-
+    """使用指定 Agent 分析股票"""
     _ensure_collection()
     db = _get_db()
     agent = db["ai_agents"].find_one({"id": agent_id}, {"_id": 0})
@@ -416,59 +747,63 @@ def analyze_with_agent(agent_id: str):
 
     try:
         router = LLMRouter()
-        stock_info = {}
         kline_data = []
         fund_flow_data = {}
         news_data = []
 
         try:
-            stock_resp = requests.get(
-                f"http://localhost:5173/api/v1/kline/{stock_code}?limit=10",
-                timeout=5
-            )
-            if stock_resp.status_code == 200:
-                resp_data = stock_resp.json()
-                if isinstance(resp_data, list):
-                    kline_data = resp_data
-                else:
-                    kline_data = resp_data.get("data", [])
-        except:
-            pass
+            from core.storage.mongo_storage import KlineStorage, FundFlowStorage, NewsStorage, StockInfoStorage
+            kline_storage = KlineStorage()
+            kline_data = list(kline_storage.find_many(
+                {"code": stock_code},
+                sort=[("date", -1)],
+                limit=30
+            ))
+        except Exception as e:
+            logger.warning(f"Failed to fetch kline data: {e}")
 
         try:
-            fund_resp = requests.get(
-                f"http://localhost:5173/api/v1/fund-flow/{stock_code}",
-                timeout=5
-            )
-            if fund_resp.status_code == 200:
-                fund_flow_data = fund_resp.json().get("data", {})
-        except Exception:
-            pass
+            from core.storage.mongo_storage import FundFlowStorage
+            fund_storage = FundFlowStorage()
+            fund_flow_data = fund_storage.get_latest_flow(stock_code) or {}
+        except Exception as e:
+            logger.warning(f"Failed to fetch fund flow data: {e}")
 
         try:
-            news_resp = requests.get(
-                f"http://localhost:5173/api/v1/news?code={stock_code}&limit=3",
-                timeout=5
-            )
-            if news_resp.status_code == 200:
-                news_data = news_resp.json().get("data", [])
-        except:
-            pass
+            from core.storage.mongo_storage import NewsStorage
+            news_storage = NewsStorage()
+            news_data = list(news_storage.find_many(
+                {"related_codes": stock_code},
+                sort=[("published_at", -1)],
+                limit=5
+            ))
+        except Exception as e:
+            logger.warning(f"Failed to fetch news data: {e}")
+
+        try:
+            from core.storage.mongo_storage import StockInfoStorage
+            stock_info_storage = StockInfoStorage()
+            stock_info = stock_info_storage.get_by_code(stock_code) or {}
+        except Exception as e:
+            logger.warning(f"Failed to fetch stock info: {e}")
+            stock_info = {}
 
         closes = [k.get("close") for k in kline_data if k.get("close")]
         volumes = [k.get("volume") for k in kline_data if k.get("volume")]
         main_net = fund_flow_data.get('main_net_inflow') or fund_flow_data.get('main_net_inflow_5d') or '暂无'
         stock_name = stock_info.get('name', '未知')
+        pe = stock_info.get('pe') or stock_info.get('pe_ttm') or '暂无'
+        pb = stock_info.get('pb') or '暂无'
         news_titles = [n.get('title', '') for n in news_data[:3] if isinstance(n, dict)]
 
         price_info = f"""
 【股票数据】
 - 股票代码：{stock_code}
 - 股票名称：{stock_name}
-- 近期收盘价（最新10日）：{closes if closes else '暂无数据'}
-- 近期成交量（最新10日）：{volumes if volumes else '暂无数据'}
-- 市盈率(PE)：{stock_info.get('pe') or '暂无'}
-- 市净率(PB)：{stock_info.get('pb') or '暂无'}
+- 近期收盘价（最新10日）：{closes[:10] if closes else '暂无数据'}
+- 近期成交量（最新10日）：{volumes[:10] if volumes else '暂无数据'}
+- 市盈率(PE)：{pe}
+- 市净率(PB)：{pb}
 - 主力净流入：{main_net}
 - 最新新闻：{news_titles}
 """

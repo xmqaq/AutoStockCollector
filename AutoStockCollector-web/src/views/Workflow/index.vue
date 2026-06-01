@@ -70,6 +70,9 @@
                 <el-button type="primary" size="small" text @click="editWorkflow(workflow)">
                   <el-icon><Edit /></el-icon> 编辑
                 </el-button>
+                <el-button type="warning" size="small" text @click="duplicateWorkflow(workflow)">
+                  <el-icon><CopyDocument /></el-icon> 复制
+                </el-button>
                 <el-button type="success" size="small" text @click="runWorkflow(workflow)">
                   <el-icon><VideoPlay /></el-icon> 运行
                 </el-button>
@@ -97,6 +100,57 @@
             </div>
           </template>
 
+          <div class="execution-stats" v-if="allExecutions.length > 0">
+            <div class="stat-card stat-total">
+              <div class="stat-value">{{ allExecutions.length }}</div>
+              <div class="stat-label">总执行</div>
+            </div>
+            <div class="stat-card stat-completed">
+              <div class="stat-value">{{ completedCount }}</div>
+              <div class="stat-label">已完成</div>
+            </div>
+            <div class="stat-card stat-running">
+              <div class="stat-value">{{ runningCount }}</div>
+              <div class="stat-label">进行中</div>
+            </div>
+            <div class="stat-card stat-failed">
+              <div class="stat-value">{{ failedCount }}</div>
+              <div class="stat-label">失败</div>
+            </div>
+            <div class="stat-card stat-success-rate">
+              <div class="stat-value">{{ successRate }}%</div>
+              <div class="stat-label">成功率</div>
+            </div>
+          </div>
+
+          <div class="execution-filters" v-if="allExecutions.length > 0">
+            <el-input
+              v-model="executionFilter"
+              placeholder="搜索工作流名称"
+              size="small"
+              clearable
+              style="width: 200px"
+            >
+              <template #prefix><el-icon><Search /></el-icon></template>
+            </el-input>
+            <el-select v-model="executionStatusFilter" size="small" clearable placeholder="状态筛选" style="width: 120px">
+              <el-option label="全部" value="" />
+              <el-option label="进行中" value="running" />
+              <el-option label="已完成" value="completed" />
+              <el-option label="失败" value="failed" />
+              <el-option label="已停止" value="stopped" />
+            </el-select>
+            <el-date-picker
+              v-model="executionDateRange"
+              type="daterange"
+              range-separator="至"
+              start-placeholder="开始日期"
+              end-placeholder="结束日期"
+              size="small"
+              value-format="YYYY-MM-DD"
+            />
+          </div>
+
           <div v-if="loadingExecutions" class="loading-container">
             <el-icon class="is-loading"><Loading /></el-icon>
             <span>加载中...</span>
@@ -108,7 +162,7 @@
             <el-button @click="loadExecutionHistory">刷新列表</el-button>
           </div>
 
-          <el-table v-else :data="allExecutions" stripe class="execution-table">
+          <el-table v-else :data="filteredExecutions" stripe class="execution-table">
             <el-table-column prop="workflow_name" label="工作流" width="180">
               <template #default="{ row }">
                 <el-tag type="info">{{ row.workflow_name || row.workflow_id }}</el-tag>
@@ -412,6 +466,49 @@ const runningCount = computed(() => {
   return allExecutions.value.filter(e => e.status === 'running' || e.status === 'pending').length
 })
 
+const completedCount = computed(() => {
+  return allExecutions.value.filter(e => e.status === 'completed').length
+})
+
+const failedCount = computed(() => {
+  return allExecutions.value.filter(e => e.status === 'failed').length
+})
+
+const successRate = computed(() => {
+  const total = allExecutions.value.filter(e => e.status === 'completed' || e.status === 'failed').length
+  if (total === 0) return 100
+  return Math.round((completedCount.value / total) * 100)
+})
+
+const executionFilter = ref('')
+const executionStatusFilter = ref('')
+const executionDateRange = ref<string[]>([])
+
+const filteredExecutions = computed(() => {
+  let result = allExecutions.value
+
+  if (executionFilter.value) {
+    const keyword = executionFilter.value.toLowerCase()
+    result = result.filter(e =>
+      (e.workflow_name || e.workflow_id || '').toLowerCase().includes(keyword)
+    )
+  }
+
+  if (executionStatusFilter.value) {
+    result = result.filter(e => e.status === executionStatusFilter.value)
+  }
+
+  if (executionDateRange.value && executionDateRange.value.length === 2) {
+    const [startDate, endDate] = executionDateRange.value
+    result = result.filter(e => {
+      const execDate = e.started_at?.split(' ')[0] || ''
+      return execDate >= startDate && execDate <= endDate
+    })
+  }
+
+  return result
+})
+
 const filteredWorkflows = computed(() => {
   if (filterEnabled.value === null) {
     return workflows.value
@@ -486,6 +583,23 @@ async function deleteWorkflow(workflow: Workflow) {
     await loadWorkflows()
   } catch {
     // cancelled
+  }
+}
+
+async function duplicateWorkflow(workflow: Workflow) {
+  try {
+    const newWorkflow = {
+      name: `${workflow.name} (副本)`,
+      description: workflow.description,
+      nodes: workflow.nodes,
+      edges: workflow.edges,
+      tags: workflow.tags
+    }
+    await workflowApi.create(newWorkflow)
+    ElMessage.success('复制成功')
+    await loadWorkflows()
+  } catch (err: any) {
+    ElMessage.error(err.message || '复制失败')
   }
 }
 
@@ -1098,6 +1212,54 @@ onUnmounted(() => {
 .price-item.stop-loss {
   color: #f56c6c;
   background: rgba(245, 108, 108, 0.1);
+}
+
+.execution-stats {
+  display: flex;
+  gap: 12px;
+  padding: 12px 0;
+  margin-bottom: 16px;
+}
+
+.stat-card {
+  flex: 1;
+  padding: 16px;
+  background: #2c2c2c;
+  border-radius: 8px;
+  text-align: center;
+  border-left: 3px solid #409eff;
+}
+
+.stat-card.stat-total { border-left-color: #409eff; }
+.stat-card.stat-completed { border-left-color: #67c23a; }
+.stat-card.stat-running { border-left-color: #e6a23c; }
+.stat-card.stat-failed { border-left-color: #f56c6c; }
+.stat-card.stat-success-rate { border-left-color: #909eff; }
+
+.stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: #e5eaf3;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+}
+
+.execution-filters {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #2c2c2c;
+  border-radius: 8px;
+}
+
+.execution-actions {
+  display: flex;
+  gap: 4px;
 }
 
 .price-item.target {

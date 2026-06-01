@@ -291,8 +291,7 @@ class WorkflowExecutor:
             if sector:
                 from core.storage.mongo_storage import BlockStorage
                 block = BlockStorage()
-                block_stocks = block.get_blocks_by_type('industry')
-                self.codes = [s.get('code') for s in block_stocks if s.get('code') == sector]
+                self.codes = block.get_stocks_by_block_name(sector, 'industry')
         self._report_progress(node_id, node_label, f"已加载 {len(self.codes)} 只股票", base_progress + 5)
         logger.info(f"Start node: loaded {len(self.codes)} codes from {source}")
 
@@ -418,6 +417,18 @@ class WorkflowExecutor:
                 return True
             min_positive_ratio = config.get('min_positive_ratio', 0.5)
             return (positive_count / total) >= min_positive_ratio
+
+        elif filter_type == 'sector':
+            sector = config.get('sector', '')
+            if not sector:
+                return True
+            from core.storage.mongo_storage import BlockStorage
+            block = BlockStorage()
+            stock_blocks = block.get_block_by_code(code, 'industry')
+            if not stock_blocks:
+                return False
+            block_name = stock_blocks.get('block_name', '')
+            return block_name == sector
 
         return True
 
@@ -915,7 +926,7 @@ class WorkflowExecutor:
                 if sentiment:
                     fetched_data[code] = {"sentiment": sentiment}
             elif data_type == 'signals':
-                from core.storage.kline_storage import KlineStorage
+                from core.storage.mongo_storage import KlineStorage
                 kline = KlineStorage()
                 signals = kline.get_signals(code)
                 if signals:
