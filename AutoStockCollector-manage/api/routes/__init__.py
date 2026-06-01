@@ -1981,24 +1981,38 @@ def get_sector_list():
     from core.storage.mongo_storage import BlockStorage
 
     storage = BlockStorage()
-    # block 集合存储中文字段名，无 block_type 字段，直接取全部
+    # 取全部记录，按名字去重：优先保留 block_type=="industry" 的记录，
+    # 相同名字出现多次时取 change_rate 绝对值最大的（数据更新鲜）
     records = storage.find_many({})
 
-    result = []
+    seen_names: dict = {}
     for r in records:
         r.pop("_id", None)
         r.pop("_updated_at", None)
-        # 兼容中文字段名（采集时直接存 DataFrame 列名）
         name = r.get("name") or r.get("行业") or r.get("block_name", "")
-        net_flow = r.get("net_flow") or r.get("净额") or 0
-        change_rate = r.get("change_rate") or r.get("行业-涨跌幅") or 0
+        net_flow = r.get("net_flow") or r.get("净额") or r.get("成交额") or 0
+        # 兼容采集时直接存储的中文列名 "涨跌幅"
+        change_rate = r.get("change_rate") or r.get("行业-涨跌幅") or r.get("涨跌幅") or 0
+        block_type = r.get("block_type", "")
         if not name:
             continue
-        result.append({
+        entry = {
             "name": name,
             "net_flow": float(net_flow) if net_flow else 0,
             "change_rate": float(change_rate) if change_rate else 0,
-        })
+            "_block_type": block_type,
+        }
+        existing = seen_names.get(name)
+        if existing is None:
+            seen_names[name] = entry
+        elif block_type == "industry" and existing["_block_type"] != "industry":
+            # 行业板块优先于概念板块
+            seen_names[name] = entry
+        elif block_type == existing["_block_type"] and abs(entry["change_rate"]) > abs(existing["change_rate"]):
+            seen_names[name] = entry
+
+    result = [{"name": v["name"], "net_flow": v["net_flow"], "change_rate": v["change_rate"]}
+              for v in seen_names.values()]
 
     return jsonify({
         "success": True,

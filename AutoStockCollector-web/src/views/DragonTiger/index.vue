@@ -101,10 +101,7 @@ const tableData = ref<DragonTigerRecord[]>([])
 const total = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(50)
-const dateRange = ref<[string, string]>([
-  dayjs().subtract(6, 'month').format('YYYY-MM-DD'),
-  dayjs().format('YYYY-MM-DD'),
-])
+const dateRange = ref<[string, string] | null>(null)
 const codeFilter = ref('')
 
 async function loadData(resetPage = true) {
