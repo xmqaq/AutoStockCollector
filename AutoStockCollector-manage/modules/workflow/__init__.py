@@ -7,7 +7,7 @@ from .models import (
     WorkflowStorage, WorkflowExecutionStorage, WorkflowTemplateStorage,
     NodeType, FilterType, ScoreType, ExecutionStatus, ExecutionStep
 )
-from .executor import WorkflowExecutor
+from .executor import WorkflowExecutor, WorkflowPauseManager
 
 __all__ = [
     'Workflow',

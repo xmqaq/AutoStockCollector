@@ -152,6 +152,7 @@
             <el-select v-model="executionStatusFilter" size="small" clearable placeholder="状态筛选" style="width: 120px">
               <el-option label="全部" value="" />
               <el-option label="执行中" value="running" />
+              <el-option label="已暂停" value="paused" />
               <el-option label="已完成" value="completed" />
               <el-option label="失败" value="failed" />
               <el-option label="已取消" value="cancelled" />
@@ -202,7 +203,7 @@
             <el-table-column prop="progress" label="进度" width="150">
               <template #default="{ row }">
                 <el-progress
-                  :percentage="row.progress || 0"
+                  :percentage="Math.round(row.progress || 0)"
                   :status="row.status === 'completed' ? 'success' : row.status === 'failed' ? 'exception' : undefined"
                   :stroke-width="12"
                 />
@@ -219,15 +220,26 @@
                 {{ row.finished_at ? formatDateTime(row.finished_at) : '-' }}
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="200" fixed="right">
+            <el-table-column label="操作" width="220" fixed="right">
               <template #default="{ row }">
                 <div class="execution-actions">
                   <template v-if="row.status === 'running' || row.status === 'pending'">
                     <el-button type="primary" size="small" text @click="viewExecutionProgress(row)">
                       <el-icon><View /></el-icon> 进度
                     </el-button>
-                    <el-button type="warning" size="small" text @click="stopExecution(row)">
-                      <el-icon><SwitchButton /></el-icon> 停止
+                    <el-button type="warning" size="small" text @click="pauseExecution(row)">
+                      <el-icon><VideoPause /></el-icon> 暂停
+                    </el-button>
+                    <el-button type="danger" size="small" text @click="stopExecution(row)">
+                      <el-icon><SwitchButton /></el-icon> 终止
+                    </el-button>
+                  </template>
+                  <template v-else-if="row.status === 'paused'">
+                    <el-button type="success" size="small" text @click="resumeExecution(row)">
+                      <el-icon><VideoPlay /></el-icon> 继续
+                    </el-button>
+                    <el-button type="danger" size="small" text @click="stopExecution(row)">
+                      <el-icon><SwitchButton /></el-icon> 终止
                     </el-button>
                   </template>
                   <template v-else>
@@ -370,9 +382,14 @@
       </div>
 
       <template #footer>
-        <el-button @click="cancelWorkflow" v-if="isRunning" type="warning">
-          <el-icon><SwitchButton /></el-icon> 取消执行
-        </el-button>
+        <template v-if="isRunning">
+          <el-button @click="pauseCurrentExecution" type="warning">
+            <el-icon><VideoPause /></el-icon> 暂停
+          </el-button>
+          <el-button @click="cancelWorkflow" type="danger">
+            <el-icon><SwitchButton /></el-icon> 终止
+          </el-button>
+        </template>
         <el-button
           v-if="!isRunning && runResult"
           type="primary"
@@ -509,7 +526,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Plus, Edit, Delete, VideoPlay, Clock, Timer,
+  Plus, Edit, Delete, VideoPlay, VideoPause, Clock, Timer,
   Files, DocumentCopy, Loading, CircleCheck, CircleClose, Warning, SwitchButton, Refresh, View,
   DeleteFilled, Search, CopyDocument
 } from '@element-plus/icons-vue'
@@ -686,12 +703,20 @@ async function pollExecutionProgress(workflowId: string, executionId: string) {
     if (res.data?.success) {
       const execution = res.data.data
       currentExecution.value = execution
+      runProgress.value = Math.round(execution.progress || 0)
 
-      runProgress.value = execution.progress
-      runLogs.value = execution.steps.map((step: any) => {
-        const status = execution.status === 'completed' ? '✅' : execution.status === 'failed' ? '❌' : '⏳'
-        return `[${new Date(step.timestamp).toLocaleTimeString('zh-CN')}] ${status} ${step.node_label}: ${step.step}`
-      })
+      // Append only NEW steps, never replace the whole log (preserves startup messages)
+      const steps: any[] = execution.steps || []
+      const existingStepCount = runLogs.value.filter((l: string) => l.startsWith('[')).length
+      if (steps.length > existingStepCount) {
+        const icon = execution.status === 'completed' ? '✅' : execution.status === 'failed' ? '❌' : '⏳'
+        for (let i = existingStepCount; i < steps.length; i++) {
+          const step = steps[i]
+          runLogs.value.push(
+            `[${new Date(step.timestamp).toLocaleTimeString('zh-CN')}] ${icon} ${step.node_label}: ${step.step}`
+          )
+        }
+      }
 
       if (execution.status === 'running' || execution.status === 'pending') {
         pollingTimer = window.setTimeout(() => pollExecutionProgress(workflowId, executionId), 3000)
@@ -817,17 +842,66 @@ async function loadExecutionHistory() {
 
 async function stopExecution(execution: any) {
   try {
-    await ElMessageBox.confirm('确定要停止该执行中的工作流吗？', '停止确认', {
-      confirmButtonText: '确定停止',
-      cancelButtonText: '取消',
-      type: 'warning'
-    })
-
+    await ElMessageBox.confirm(
+      '终止后无法恢复，确定要永久终止该工作流吗？',
+      '终止确认',
+      { confirmButtonText: '确定终止', cancelButtonText: '取消', type: 'warning' }
+    )
     await workflowApi.cancelExecution(execution.workflow_id, execution.id)
-    ElMessage.success('已请求停止执行')
-
+    ElMessage.success('已请求终止执行')
     execution.status = 'cancelled'
     execution.finished_at = new Date().toISOString()
+  } catch {
+    // cancelled
+  }
+}
+
+async function pauseExecution(execution: any) {
+  try {
+    await workflowApi.pauseExecution(execution.workflow_id, execution.id)
+    ElMessage.success('暂停请求已发送，将在当前步骤完成后暂停')
+    execution.status = 'paused'
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error || '暂停失败')
+  }
+}
+
+async function pauseCurrentExecution() {
+  if (!currentExecutionId.value || !currentExecution.value) return
+  try {
+    await workflowApi.pauseExecution(currentExecution.value.workflow_id, currentExecutionId.value)
+    ElMessage.success('暂停请求已发送，将在当前步骤完成后暂停')
+    isRunning.value = false
+    stopPolling()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error || '暂停失败')
+  }
+}
+
+async function resumeExecution(execution: any) {
+  try {
+    await ElMessageBox.confirm(
+      `继续从暂停点（步骤 ${execution.paused_node_idx + 1}）恢复执行吗？`,
+      '继续执行',
+      { confirmButtonText: '继续', cancelButtonText: '取消', type: 'info' }
+    )
+    const res = await workflowApi.resumeExecution(execution.workflow_id, execution.id)
+    if (res.data?.success) {
+      ElMessage.success('已恢复执行')
+      execution.status = 'running'
+      execution.finished_at = undefined
+      // Open progress dialog to monitor
+      runLogs.value = []
+      runProgress.value = Math.round(execution.progress || 0)
+      currentExecutionId.value = execution.id
+      currentExecution.value = execution
+      isRunning.value = true
+      showProgressDialog.value = true
+      addLog(`▶️ 从步骤 ${execution.paused_node_idx + 1} 继续执行...`)
+      pollExecutionProgress(execution.workflow_id, execution.id)
+    } else {
+      ElMessage.error(res.data?.error || '恢复失败')
+    }
   } catch {
     // cancelled
   }
@@ -842,7 +916,7 @@ function viewExecutionResult(execution: any) {
 
 async function viewExecutionProgress(execution: any) {
   runLogs.value = []
-  runProgress.value = execution.progress || 0
+  runProgress.value = Math.round(execution.progress || 0)
   currentExecutionId.value = execution.id
   currentExecution.value = execution
   showProgressDialog.value = true
@@ -875,7 +949,7 @@ async function viewExecutionProgress(execution: any) {
       if (res.data?.success) {
         const latest = res.data.data
         currentExecution.value = latest
-        runProgress.value = latest.progress
+        runProgress.value = Math.round(latest.progress || 0)
 
         const latestStepCount = latest.steps?.length || 0
         const currentLogCount = runLogs.value.filter(l => l.startsWith('[')).length
@@ -916,7 +990,8 @@ function getStatusType(status: string) {
     'running': 'warning',
     'completed': 'success',
     'failed': 'danger',
-    'cancelled': 'info'
+    'cancelled': 'info',
+    'paused': 'warning'
   }
   return map[status] || 'info'
 }
@@ -927,7 +1002,8 @@ function getStatusLabel(status: string) {
     'running': '执行中',
     'completed': '已完成',
     'failed': '失败',
-    'cancelled': '已取消'
+    'cancelled': '已取消',
+    'paused': '已暂停'
   }
   return map[status] || status
 }
@@ -962,6 +1038,7 @@ function handleSelectionChange(selection: any[]) {
 function getExecutionRowClass({ row }: { row: any }) {
   if (row.status === 'cancelled') return 'row-cancelled'
   if (row.status === 'failed') return 'row-failed'
+  if (row.status === 'paused') return 'row-paused'
   return ''
 }
 
@@ -1624,6 +1701,10 @@ onUnmounted(() => {
 
 .execution-table :deep(.row-failed td) {
   color: #f56c6c !important;
+}
+
+.execution-table :deep(.row-paused td) {
+  color: #e6a23c !important;
 }
 
 /* Step list in progress dialog */

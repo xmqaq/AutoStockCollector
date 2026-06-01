@@ -38,7 +38,7 @@
           <el-icon><CircleClose /></el-icon> 结束节点
         </el-button>
         <el-button size="small" @click="addNode('data_fetch')">
-          <el-icon><Database /></el-icon> 数据获取
+          <el-icon><DataBoard /></el-icon> 数据获取
         </el-button>
         <el-button size="small" @click="addNode('technical_indicator')">
           <el-icon><TrendCharts /></el-icon> 技术指标
@@ -245,7 +245,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   VideoPlay, Filter, Star, User, Collection, CircleCheck, CircleClose,
@@ -834,7 +834,7 @@ function onKeyDown(e: KeyboardEvent) {
     selectedEdge.value = null
   } else if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
     e.preventDefault()
-    saveWorkflow()
+    handleSave()
   } else if (e.key === 'z' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
     e.preventDefault()
     undo()

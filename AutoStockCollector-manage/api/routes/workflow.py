@@ -149,6 +149,22 @@ def run_workflow(workflow_id):
         if not workflow.enabled:
             return jsonify({'success': False, 'error': 'Workflow is disabled'}), 400
 
+        # Pre-flight checks
+        nodes_list = [n.to_dict() if hasattr(n, 'to_dict') else n for n in workflow.nodes]
+        if not nodes_list:
+            return jsonify({'success': False, 'error': '工作流步骤为空，请先编辑工作流添加节点'}), 400
+
+        has_ai_node = any(n.get('type') == 'ai_agent' for n in nodes_list)
+        if has_ai_node:
+            try:
+                from config.database import DatabaseConfig as _DB
+                _db = _DB.get_database()
+                ai_key_count = _db["ai_keys"].count_documents({"enabled": True, "api_key": {"$exists": True, "$ne": ""}})
+                if ai_key_count == 0:
+                    return jsonify({'success': False, 'error': '工作流包含AI节点，但未配置有效的AI API Key，请先在"AI Key管理"页面添加并启用Key'}), 400
+            except Exception:
+                pass  # non-fatal, allow execution to proceed
+
         existing = execution_storage.get_running_execution(workflow_id)
         if existing:
             # Check for stale execution: if running for more than 10 minutes, auto-terminate it
@@ -185,7 +201,7 @@ def run_workflow(workflow_id):
         execution_storage.create_execution(execution)
 
         params = request.get_json() or {}
-        nodes = [n.to_dict() if hasattr(n, 'to_dict') else n for n in workflow.nodes]
+        nodes = nodes_list  # already computed in pre-flight check
         edges = [e.to_dict() if hasattr(e, 'to_dict') else e for e in workflow.edges]
 
         def make_progress_callback(exec_id: str):
@@ -209,22 +225,33 @@ def run_workflow(workflow_id):
                 )
             return progress_callback
 
-        def execute_in_background():
-            try:
-                executor = WorkflowExecutor(workflow_id, execution_id, make_progress_callback(execution_id))
-                result = executor.execute(nodes, edges, params)
-                if result.get('success'):
-                    execution_storage.complete_execution(execution_id, result)
-                elif result.get('cancelled'):
-                    execution_storage.cancel_execution(execution_id)
-                else:
-                    execution_storage.fail_execution(execution_id, result.get('error', 'Unknown error'))
-                workflow_storage.update_last_run(workflow_id)
-            except Exception as e:
-                logger.error(f"Background execution failed: {e}")
-                execution_storage.fail_execution(execution_id, str(e))
+        def make_background_runner(exec_id, start_idx=0, codes_override=None):
+            def execute_in_background():
+                try:
+                    executor = WorkflowExecutor(workflow_id, exec_id, make_progress_callback(exec_id))
+                    result = executor.execute(nodes, edges, params,
+                                              start_from_idx=start_idx,
+                                              codes_override=codes_override)
+                    if result.get('success'):
+                        execution_storage.complete_execution(exec_id, result)
+                        workflow_storage.update_last_run(workflow_id)
+                    elif result.get('paused'):
+                        execution_storage.pause_execution(
+                            exec_id,
+                            result.get('paused_node_idx', 0),
+                            result.get('codes', [])
+                        )
+                    elif result.get('cancelled'):
+                        execution_storage.cancel_execution(exec_id)
+                    else:
+                        execution_storage.fail_execution(exec_id, result.get('error', 'Unknown error'))
+                except Exception as e:
+                    import traceback
+                    logger.error(f"Background execution failed: {e}\n{traceback.format_exc()}")
+                    execution_storage.fail_execution(exec_id, str(e))
+            return execute_in_background
 
-        thread = threading.Thread(target=execute_in_background, daemon=True)
+        thread = threading.Thread(target=make_background_runner(execution_id), daemon=True)
         thread.start()
 
         return jsonify({
@@ -269,7 +296,29 @@ def get_execution_progress(workflow_id, execution_id):
 
 @workflow_bp.route('/<workflow_id>/execution/<execution_id>/cancel', methods=['POST'])
 def cancel_execution(workflow_id, execution_id):
-    """取消执行中的工作流"""
+    """终止执行中的工作流（不可恢复）"""
+    try:
+        execution = execution_storage.get_execution(execution_id)
+        if not execution or execution.workflow_id != workflow_id:
+            return jsonify({'success': False, 'error': 'Execution not found'}), 404
+
+        if execution.status not in [ExecutionStatus.PENDING.value, ExecutionStatus.RUNNING.value, ExecutionStatus.PAUSED.value]:
+            return jsonify({'success': False, 'error': 'Execution is not running or paused'}), 400
+
+        from modules.workflow.executor import WorkflowCancelManager, WorkflowPauseManager
+        WorkflowCancelManager.cancel(execution_id)
+        WorkflowPauseManager.clear(execution_id)
+
+        execution_storage.cancel_execution(execution_id)
+        return jsonify({'success': True, 'message': 'Cancel requested'})
+    except Exception as e:
+        logger.error(f"Cancel execution failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@workflow_bp.route('/<workflow_id>/execution/<execution_id>/pause', methods=['POST'])
+def pause_execution_route(workflow_id, execution_id):
+    """暂停执行中的工作流（节点间暂停，可继续）"""
     try:
         execution = execution_storage.get_execution(execution_id)
         if not execution or execution.workflow_id != workflow_id:
@@ -278,13 +327,77 @@ def cancel_execution(workflow_id, execution_id):
         if execution.status not in [ExecutionStatus.PENDING.value, ExecutionStatus.RUNNING.value]:
             return jsonify({'success': False, 'error': 'Execution is not running'}), 400
 
-        from modules.workflow.executor import WorkflowCancelManager
-        WorkflowCancelManager.cancel(execution_id)
+        from modules.workflow.executor import WorkflowPauseManager
+        WorkflowPauseManager.pause(execution_id)
 
-        execution_storage.cancel_execution(execution_id)
-        return jsonify({'success': True, 'message': 'Cancel requested'})
+        return jsonify({'success': True, 'message': '已请求暂停，将在当前步骤完成后暂停'})
     except Exception as e:
-        logger.error(f"Cancel execution failed: {e}")
+        logger.error(f"Pause execution failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@workflow_bp.route('/<workflow_id>/execution/<execution_id>/resume', methods=['POST'])
+def resume_execution_route(workflow_id, execution_id):
+    """从暂停点继续执行工作流"""
+    try:
+        execution = execution_storage.get_execution(execution_id)
+        if not execution or execution.workflow_id != workflow_id:
+            return jsonify({'success': False, 'error': 'Execution not found'}), 404
+
+        if execution.status != ExecutionStatus.PAUSED.value:
+            return jsonify({'success': False, 'error': '任务未处于暂停状态'}), 400
+
+        workflow = workflow_storage.get_workflow(workflow_id)
+        if not workflow:
+            return jsonify({'success': False, 'error': 'Workflow not found'}), 404
+
+        from modules.workflow.executor import WorkflowPauseManager
+        WorkflowPauseManager.clear(execution_id)
+
+        execution_storage.resume_execution(execution_id)
+
+        nodes = [n.to_dict() if hasattr(n, 'to_dict') else n for n in workflow.nodes]
+        edges = [e.to_dict() if hasattr(e, 'to_dict') else e for e in workflow.edges]
+        start_idx = execution.paused_node_idx
+        codes_override = execution.paused_codes or None
+
+        def make_progress_callback(exec_id: str):
+            def progress_callback(node_id, node_label, step, progress, detail=None):
+                step_data = {
+                    'node_id': node_id, 'node_label': node_label, 'step': step,
+                    'progress': progress, 'detail': detail or {},
+                    'timestamp': datetime.now().isoformat()
+                }
+                execution_storage.update_progress(exec_id, progress, node_id, step, step_data)
+            return progress_callback
+
+        def make_background_runner_resume(exec_id, start_from_idx, c_override):
+            def execute_in_background():
+                try:
+                    from modules.workflow.executor import WorkflowExecutor as _WE
+                    executor = _WE(workflow_id, exec_id, make_progress_callback(exec_id))
+                    result = executor.execute(nodes, edges, {}, start_from_idx=start_from_idx, codes_override=c_override)
+                    if result.get('success'):
+                        execution_storage.complete_execution(exec_id, result)
+                        workflow_storage.update_last_run(workflow_id)
+                    elif result.get('paused'):
+                        execution_storage.pause_execution(exec_id, result.get('paused_node_idx', 0), result.get('codes', []))
+                    elif result.get('cancelled'):
+                        execution_storage.cancel_execution(exec_id)
+                    else:
+                        execution_storage.fail_execution(exec_id, result.get('error', 'Unknown error'))
+                except Exception as e:
+                    import traceback
+                    logger.error(f"Resume execution failed: {e}\n{traceback.format_exc()}")
+                    execution_storage.fail_execution(exec_id, str(e))
+            return execute_in_background
+
+        thread = threading.Thread(target=make_background_runner_resume(execution_id, start_idx, codes_override), daemon=True)
+        thread.start()
+
+        return jsonify({'success': True, 'execution_id': execution_id, 'message': f'已从步骤 {start_idx + 1} 继续执行'})
+    except Exception as e:
+        logger.error(f"Resume execution failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

@@ -416,3 +416,11 @@ export const aiAgentApi = {
     return client.post('/api/v1/ai-agents/batch-analyze', { codes, agent_id: agentId })
   },
 }
+
+export const agentApi = {
+  analyze(agentId: string, code: string) {
+    return client.post(`/api/v1/ai-agents/${agentId}/analyze`, { code })
+      .then((res: any) => res.data || res)
+  },
+}
+

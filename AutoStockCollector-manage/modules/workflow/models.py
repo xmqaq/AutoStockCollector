@@ -3,7 +3,7 @@
 """
 from dataclasses import dataclass, field, asdict
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 import json
 from core.storage.mongo_storage import MongoStorage
@@ -147,6 +147,7 @@ class ExecutionStatus(Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    PAUSED = "paused"
 
 
 @dataclass
@@ -192,6 +193,8 @@ class WorkflowExecution:
     error: Optional[str] = None
     started_at: str = ""
     finished_at: Optional[str] = None
+    paused_node_idx: int = 0
+    paused_codes: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -209,7 +212,9 @@ class WorkflowExecution:
             result=data.get('result'),
             error=data.get('error'),
             started_at=data.get('started_at', ''),
-            finished_at=data.get('finished_at')
+            finished_at=data.get('finished_at'),
+            paused_node_idx=data.get('paused_node_idx', 0),
+            paused_codes=data.get('paused_codes', [])
         )
 
 
@@ -293,13 +298,18 @@ class WorkflowStorage(MongoStorage):
         return self.delete_one({"id": workflow_id})
 
     def update_last_run(self, workflow_id: str) -> bool:
-        return self.update_one(
-            {"id": workflow_id},
-            {
-                "$set": {"last_run_at": datetime.now().isoformat()},
-                "$inc": {"run_count": 1}
-            }
-        ) > 0
+        try:
+            result = self.collection.update_one(
+                {"id": workflow_id},
+                {
+                    "$set": {"last_run_at": datetime.now().isoformat()},
+                    "$inc": {"run_count": 1}
+                }
+            )
+            return result.modified_count > 0
+        except Exception as e:
+            logger.error(f"Update last run failed: {e}")
+            return False
 
 
 class WorkflowExecutionStorage(MongoStorage):
@@ -319,7 +329,11 @@ class WorkflowExecutionStorage(MongoStorage):
 
     def get_running_execution(self, workflow_id: str) -> Optional[WorkflowExecution]:
         docs = self.find_many(
-            {"workflow_id": workflow_id, "status": {"$in": [ExecutionStatus.PENDING.value, ExecutionStatus.RUNNING.value]}},
+            {"workflow_id": workflow_id, "status": {"$in": [
+                ExecutionStatus.PENDING.value,
+                ExecutionStatus.RUNNING.value,
+                ExecutionStatus.PAUSED.value
+            ]}},
             sort=[("started_at", -1)],
             limit=1
         )
@@ -338,28 +352,31 @@ class WorkflowExecutionStorage(MongoStorage):
         current_step: str,
         step: Optional[Dict[str, Any]] = None
     ) -> bool:
-        update_doc: Dict[str, Any] = {
-            "$set": {
-                "progress": progress,
-                "current_node": current_node,
-                "current_step": current_step,
-                "status": ExecutionStatus.RUNNING.value
+        try:
+            update_doc: Dict[str, Any] = {
+                "$set": {
+                    "progress": progress,
+                    "current_node": current_node,
+                    "current_step": current_step,
+                    "status": ExecutionStatus.RUNNING.value
+                }
             }
-        }
-        if step:
-            update_doc["$push"] = {"steps": step}
-        return self.update_one({"id": execution_id}, update_doc) > 0
+            if step:
+                update_doc["$push"] = {"steps": step}
+            result = self.collection.update_one({"id": execution_id}, update_doc)
+            return result.modified_count > 0
+        except Exception as e:
+            logger.error(f"Update progress failed: {e}")
+            return False
 
     def complete_execution(self, execution_id: str, result: Dict[str, Any]) -> bool:
         return self.update_one(
             {"id": execution_id},
             {
-                "$set": {
-                    "status": ExecutionStatus.COMPLETED.value,
-                    "progress": 100,
-                    "result": result,
-                    "finished_at": datetime.now().isoformat()
-                }
+                "status": ExecutionStatus.COMPLETED.value,
+                "progress": 100,
+                "result": result,
+                "finished_at": datetime.now().isoformat()
             }
         ) > 0
 
@@ -368,12 +385,10 @@ class WorkflowExecutionStorage(MongoStorage):
         return self.update_one(
             {"id": execution_id},
             {
-                "$set": {
-                    "status": ExecutionStatus.FAILED.value,
-                    "error": error,
-                    "current_step": f"执行失败: {short_error}",
-                    "finished_at": datetime.now().isoformat()
-                }
+                "status": ExecutionStatus.FAILED.value,
+                "error": error,
+                "current_step": f"执行失败: {short_error}",
+                "finished_at": datetime.now().isoformat()
             }
         ) > 0
 
@@ -381,12 +396,43 @@ class WorkflowExecutionStorage(MongoStorage):
         return self.update_one(
             {"id": execution_id},
             {
-                "$set": {
-                    "status": ExecutionStatus.CANCELLED.value,
-                    "finished_at": datetime.now().isoformat()
-                }
+                "status": ExecutionStatus.CANCELLED.value,
+                "finished_at": datetime.now().isoformat()
             }
         ) > 0
+
+    def pause_execution(self, execution_id: str, node_idx: int, codes: List[str]) -> bool:
+        try:
+            result = self.collection.update_one(
+                {"id": execution_id},
+                {"$set": {
+                    "status": ExecutionStatus.PAUSED.value,
+                    "paused_node_idx": node_idx,
+                    "paused_codes": codes,
+                    "current_step": f"已暂停（将从第 {node_idx + 1} 步继续）",
+                    "finished_at": datetime.now().isoformat()
+                }}
+            )
+            return result.modified_count > 0
+        except Exception as e:
+            logger.error(f"Pause execution failed: {e}")
+            return False
+
+    def resume_execution(self, execution_id: str) -> bool:
+        try:
+            result = self.collection.update_one(
+                {"id": execution_id},
+                {"$set": {
+                    "status": ExecutionStatus.RUNNING.value,
+                    "current_step": "恢复执行中...",
+                    "finished_at": None,
+                    "error": None
+                }}
+            )
+            return result.modified_count > 0
+        except Exception as e:
+            logger.error(f"Resume execution failed: {e}")
+            return False
 
     def list_executions(self, workflow_id: str, limit: int = 20) -> List[WorkflowExecution]:
         docs = self.find_many(
@@ -413,7 +459,7 @@ class WorkflowExecutionStorage(MongoStorage):
         return self.delete_many({"id": {"$in": execution_ids}})
 
     def cleanup_stale_executions(self, max_age_minutes: int = 30) -> int:
-        cutoff = (datetime.now() - __import__('datetime').timedelta(minutes=max_age_minutes)).isoformat()
+        cutoff = (datetime.now() - timedelta(minutes=max_age_minutes)).isoformat()
         try:
             result = self.collection.update_many(
                 {"status": {"$in": [ExecutionStatus.RUNNING.value, ExecutionStatus.PENDING.value]},

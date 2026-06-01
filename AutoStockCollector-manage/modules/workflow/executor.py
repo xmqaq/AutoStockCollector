@@ -31,6 +31,24 @@ class WorkflowCancelManager:
         cls._cancelled_executions.pop(execution_id, None)
 
 
+class WorkflowPauseManager:
+    """管理工作流暂停状态"""
+    _paused_executions: Dict[str, bool] = {}
+
+    @classmethod
+    def pause(cls, execution_id: str):
+        cls._paused_executions[execution_id] = True
+        logger.info(f"Execution {execution_id} marked for pause")
+
+    @classmethod
+    def is_paused(cls, execution_id: str) -> bool:
+        return cls._paused_executions.get(execution_id, False)
+
+    @classmethod
+    def clear(cls, execution_id: str):
+        cls._paused_executions.pop(execution_id, None)
+
+
 class WorkflowExecutor:
     def __init__(self, workflow_id: str, execution_id: str = "", progress_callback: Optional[ProgressCallback] = None):
         self.workflow_id = workflow_id
@@ -74,19 +92,27 @@ class WorkflowExecutor:
             return True
         return False
 
-    def execute(self, nodes: List[Dict], edges: List[Dict], params: Dict[str, Any]) -> Dict[str, Any]:
-        logger.info(f"Starting workflow execution: {self.workflow_id}")
+    def execute(
+        self,
+        nodes: List[Dict],
+        edges: List[Dict],
+        params: Dict[str, Any],
+        start_from_idx: int = 0,
+        codes_override: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        logger.info(f"Starting workflow execution: {self.workflow_id} (start_from_idx={start_from_idx})")
         start_time = datetime.now()
         execution_log: List[Dict[str, Any]] = []
 
         try:
-            self._report_progress("init", "初始化", "正在连接数据库，加载股票池...", 1)
-            self._init_codes()
-            node_map = {n['id']: n for n in nodes}
-            execution_order = self._topological_sort(nodes, edges)
-            total_nodes = len(execution_order)
+            if codes_override is not None:
+                self.codes = codes_override
+                self._report_progress("resume", "恢复执行", f"从第 {start_from_idx + 1} 步继续，股票池 {len(self.codes)} 只", 5)
+            else:
+                self._report_progress("init", "初始化", "正在连接数据库，加载股票池...", 1)
+                self._init_codes()
+                self._report_progress("start", "初始化", f"加载 {len(self.codes)} 只有效股票", 5)
 
-            self._report_progress("start", "初始化", f"加载 {len(self.codes)} 只有效股票", 5)
             start_log = {
                 "node": "start",
                 "label": "初始化",
@@ -96,10 +122,17 @@ class WorkflowExecutor:
             }
             execution_log.append(start_log)
 
+            node_map = {n['id']: n for n in nodes}
+            execution_order = self._topological_sort(nodes, edges)
+            total_nodes = len(execution_order)
+
             if total_nodes == 0:
                 logger.warning(f"Workflow {self.workflow_id} has no nodes, completing immediately")
 
             for idx, node in enumerate(execution_order):
+                if idx < start_from_idx:
+                    continue
+
                 if self._cancelled or (self.execution_id and WorkflowCancelManager.is_cancelled(self.execution_id)):
                     logger.info(f"Execution {self.execution_id} cancelled, stopping workflow")
                     self._cancelled = True
@@ -111,9 +144,36 @@ class WorkflowExecutor:
                         "execution_time": datetime.now().isoformat(),
                         "execution_log": execution_log
                     }
+
+                # Check pause BEFORE executing this node
+                if self.execution_id and WorkflowPauseManager.is_paused(self.execution_id):
+                    logger.info(f"Execution {self.execution_id} pausing before node {idx}")
+                    return {
+                        "success": False,
+                        "paused": True,
+                        "paused_node_idx": idx,
+                        "codes": self.codes,
+                        "workflow_id": self.workflow_id,
+                        "execution_time": datetime.now().isoformat(),
+                        "execution_log": execution_log
+                    }
+
                 base_progress = 10 + (idx / max(total_nodes, 1)) * 85
                 result = self._execute_node(node, node_map, params, base_progress)
                 execution_log.append(result)
+
+                # Check pause AFTER node completes (cleaner pause point between nodes)
+                if self.execution_id and WorkflowPauseManager.is_paused(self.execution_id):
+                    logger.info(f"Execution {self.execution_id} pausing after node {idx}")
+                    return {
+                        "success": False,
+                        "paused": True,
+                        "paused_node_idx": idx + 1,
+                        "codes": self.codes,
+                        "workflow_id": self.workflow_id,
+                        "execution_time": datetime.now().isoformat(),
+                        "execution_log": execution_log
+                    }
 
             duration = (datetime.now() - start_time).total_seconds()
             self._report_progress("end", "完成", f"执行完成，耗时 {duration:.2f}s", 100)

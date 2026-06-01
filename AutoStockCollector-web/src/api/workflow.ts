@@ -133,6 +133,12 @@ export const workflowApi = {
   deleteExecution(workflowId: string, executionId: string) {
     return client.delete(`/api/v1/workflow/${workflowId}/execution/${executionId}`)
   },
+  pauseExecution(workflowId: string, executionId: string) {
+    return client.post(`/api/v1/workflow/${workflowId}/execution/${executionId}/pause`)
+  },
+  resumeExecution(workflowId: string, executionId: string) {
+    return client.post(`/api/v1/workflow/${workflowId}/execution/${executionId}/resume`)
+  },
   batchDeleteExecutions(workflowId: string, executionIds: string[]) {
     return client.delete(`/api/v1/workflow/${workflowId}/executions/batch`, {
       data: { execution_ids: executionIds }
