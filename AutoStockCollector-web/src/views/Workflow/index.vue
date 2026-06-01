@@ -403,6 +403,19 @@
                 </div>
               </template>
             </el-table-column>
+            <el-table-column label="AI分析" min-width="200" show-overflow-tooltip>
+              <template #default="{ row }">
+                <div class="ai-analysis-cell" v-if="getAiAnalysis(row)">
+                  <el-popover placement="left" width="400" trigger="hover">
+                    <template #reference>
+                      <span class="ai-analysis-preview">{{ getAiAnalysis(row).slice(0, 40) }}...</span>
+                    </template>
+                    <div class="ai-analysis-full" v-html="formatResult(getAiAnalysis(row))"></div>
+                  </el-popover>
+                </div>
+                <span v-else class="text-muted">-</span>
+              </template>
+            </el-table-column>
           </el-table>
         </div>
 
@@ -907,6 +920,20 @@ function getAverageScore() {
   return (total / runResult.value.results.length).toFixed(1)
 }
 
+function getAiAnalysis(row: any): string {
+  if (!row.metadata) return ''
+  // Find any ai_*_analysis key in metadata
+  const keys = Object.keys(row.metadata).filter(k => k.startsWith('ai_') && k.endsWith('_analysis'))
+  if (keys.length === 0) return row.metadata.ai_analysis || ''
+  return row.metadata[keys[0]] || ''
+}
+
+function formatResult(text: string): string {
+  return text
+    .replace(/\n/g, '<br>')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+}
+
 onMounted(async () => {
   await loadWorkflows()
   await Promise.all([loadTemplates(), loadExecutionHistory()])
@@ -1386,5 +1413,20 @@ onUnmounted(() => {
 
 .text-muted {
   color: #909399;
+}
+
+.ai-analysis-preview {
+  font-size: 12px;
+  color: #a0cfff;
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.ai-analysis-full {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #303133;
+  max-height: 300px;
+  overflow-y: auto;
 }
 </style>

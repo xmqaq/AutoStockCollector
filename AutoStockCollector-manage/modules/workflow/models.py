@@ -364,12 +364,14 @@ class WorkflowExecutionStorage(MongoStorage):
         ) > 0
 
     def fail_execution(self, execution_id: str, error: str) -> bool:
+        short_error = (error or "未知错误")[:120]
         return self.update_one(
             {"id": execution_id},
             {
                 "$set": {
                     "status": ExecutionStatus.FAILED.value,
                     "error": error,
+                    "current_step": f"执行失败: {short_error}",
                     "finished_at": datetime.now().isoformat()
                 }
             }

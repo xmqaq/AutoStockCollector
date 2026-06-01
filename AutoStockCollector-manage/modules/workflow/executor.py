@@ -82,6 +82,7 @@ class WorkflowExecutor:
         execution_log: List[Dict[str, Any]] = []
 
         try:
+            self._report_progress("init", "初始化", "正在连接数据库，加载股票池...", 1)
             self._init_codes()
             node_map = {n['id']: n for n in nodes}
             execution_order = self._topological_sort(nodes, edges)
@@ -686,33 +687,95 @@ class WorkflowExecutor:
             logger.warning("AI Agent node: no agent_id specified")
             return
 
+        # Fetch agent configuration from MongoDB
+        agent_config = None
+        try:
+            from config.database import DatabaseConfig
+            db = DatabaseConfig.get_database()
+            agent_config = db["ai_agents"].find_one({"id": agent_id}, {"_id": 0})
+        except Exception as e:
+            logger.warning(f"AI Agent node: failed to load agent {agent_id}: {e}")
+
+        if not agent_config:
+            logger.warning(f"AI Agent node: agent {agent_id} not found, falling back to default")
+            agent_config = {
+                "system_prompt": "你是专业的股票分析师，请分析以下股票数据并给出投资建议。",
+                "temperature": 0.7,
+                "max_tokens": 2000
+            }
+
+        system_prompt = agent_config.get("system_prompt", "")
+        temperature = float(agent_config.get("temperature", 0.7))
+        max_tokens = int(agent_config.get("max_tokens", 2000))
+
         top_n = config.get('top_n', 20)
         results_to_analyze = self.results[:top_n] if self.results else []
         total = len(results_to_analyze)
 
+        if not results_to_analyze:
+            logger.warning("AI Agent node: no results to analyze")
+            return
+
+        from modules.ai.foundation.llm_router import LLMRouter
+        router = LLMRouter()
+
+        self._report_progress(node_id, node_label, f"AI Agent [{agent_config.get('name', agent_id)}] 开始分析 {total} 只股票", base_progress + 2)
+
         for i, result in enumerate(results_to_analyze):
+            if self._is_cancelled():
+                return
             try:
-                analysis = self.ai_analyzer.analyze_stock(result.code)
-                if analysis:
-                    if analysis.get('scores', {}).get('composite'):
-                        result.score = analysis['scores']['composite']
-                    if analysis.get('llm', {}).get('recommendation'):
-                        result.recommendation = analysis['llm']['recommendation']
-                    if analysis.get('llm', {}).get('risk_factors'):
-                        result.risk_factors = analysis['llm']['risk_factors']
+                # Build per-stock context from real data
+                klines = self.kline.find_many({"code": result.code}, sort=[("date", -1)], limit=20)
+                closes = [k.get('close', 0) for k in klines if k.get('close')]
+                volumes = [k.get('volume', 0) for k in klines if k.get('volume')]
+
+                fund_flow = self.fund_flow.get_latest_flow(result.code)
+                main_inflow = fund_flow.get('main_net_inflow', 0) if fund_flow else 0
+
+                stock_context = f"""【股票信息】
+代码: {result.code}  名称: {result.name}
+综合评分: {result.score:.1f}（技术:{result.technical_score:.0f} 基本面:{result.fundamental_score:.0f} 资金:{result.fund_flow_score:.0f} 舆情:{result.sentiment_score:.0f}）
+近期收盘价（最新→历史）: {closes[:10] if closes else '暂无'}
+近期成交量: {volumes[:10] if volumes else '暂无'}
+主力净流入: {main_inflow}元
+系统初步建议: {result.recommendation}
+
+请结合以上数据给出你的专业分析结论（150字以内）。"""
+
+                prompt = f"{system_prompt}\n\n{stock_context}"
+                llm_result = router.chat(prompt, use_cache=False)
+
+                if llm_result.success and llm_result.raw:
+                    result.metadata[f'ai_{agent_id}_analysis'] = llm_result.raw
+                    # Update recommendation based on AI output
+                    raw_lower = llm_result.raw
+                    if '强烈推荐' in raw_lower or '强力买入' in raw_lower:
+                        result.recommendation = '强烈推荐'
+                    elif '买入' in raw_lower and '谨慎' not in raw_lower:
+                        result.recommendation = '买入'
+                    elif '谨慎' in raw_lower or '观望' in raw_lower:
+                        result.recommendation = '谨慎买入'
+                    elif '回避' in raw_lower or '减持' in raw_lower or '卖出' in raw_lower:
+                        result.recommendation = '回避'
+                    result.risk_factors = [llm_result.raw[:200]]
+                else:
+                    logger.warning(f"AI analysis returned no content for {result.code}: {llm_result.error}")
+
             except Exception as e:
                 logger.warning(f"AI Agent analysis failed for {result.code}: {e}")
-            if (i + 1) % 5 == 0 or i == total - 1:
+
+            if (i + 1) % 3 == 0 or i == total - 1:
                 self._report_progress(
                     node_id, node_label,
-                    f"AI分析中 {i + 1}/{total}",
-                    base_progress + (i + 1) / total * 80,
-                    {"analyzed": i + 1, "total": total}
+                    f"AI分析中 {i + 1}/{total} ({result.code})",
+                    base_progress + (i + 1) / max(total, 1) * 80,
+                    {"analyzed": i + 1, "total": total, "agent": agent_id}
                 )
 
         self.results.sort(key=lambda x: x.score, reverse=True)
         self._report_progress(node_id, node_label, f"AI分析完成: {len(results_to_analyze)} 只", base_progress + 90)
-        logger.info(f"AI Agent node: analyzed {len(results_to_analyze)} stocks with agent {agent_id}")
+        logger.info(f"AI Agent node [{agent_id}]: analyzed {len(results_to_analyze)} stocks")
 
     def _execute_combine_node(self, config: Dict, params: Dict, node_id: str, node_label: str, base_progress: float):
         strategy = config.get('strategy', 'top_n')
@@ -884,8 +947,9 @@ class WorkflowExecutor:
         if result.stop_loss > 0:
             reasons.append(f"建议止损位：{result.stop_loss:.2f}元")
 
-        if result.target_price > 0 and result.current_price > 0:
-            profit_ratio = (result.target_price - result.current_price) / result.current_price * 100
+        current_price = result.metadata.get('current_price') or result.stop_loss / 0.95 if result.stop_loss else 0
+        if result.target_price > 0 and current_price > 0:
+            profit_ratio = (result.target_price - current_price) / current_price * 100
             reasons.append(f"目标涨幅：{profit_ratio:.1f}%")
 
         if not reasons:

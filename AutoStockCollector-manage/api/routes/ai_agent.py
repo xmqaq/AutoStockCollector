@@ -303,10 +303,9 @@ def delete_agent(agent_id: str):
 
 @ai_agent_bp.route("/<agent_id>/test", methods=["POST"])
 def test_agent(agent_id: str):
-    """测试 Agent，可选择传入股票代码通过 HTTP API 获取实时数据进行测试"""
+    """测试 Agent，可选择传入股票代码从 MongoDB 获取实时数据进行测试"""
     _ensure_collection()
     from modules.ai.foundation.llm_router import LLMRouter
-    import requests
 
     db = _get_db()
     agent = db["ai_agents"].find_one({"id": agent_id}, {"_id": 0})
@@ -317,37 +316,39 @@ def test_agent(agent_id: str):
     test_message = data.get("message", "")
     stock_code = data.get("code")
 
+    temperature = float(agent.get("temperature", 0.7))
+    max_tokens = int(agent.get("max_tokens", 2000))
+
     try:
         router = LLMRouter()
 
         if stock_code:
-            stock_info = {}
             kline_data = []
             fund_flow_data = {}
+            stock_info = {}
 
             try:
-                stock_resp = requests.get(
-                    f"http://localhost:5173/api/v1/kline/{stock_code}?limit=10",
-                    timeout=5
-                )
-                if stock_resp.status_code == 200:
-                    resp_data = stock_resp.json()
-                    if isinstance(resp_data, list):
-                        kline_data = resp_data
-                    else:
-                        kline_data = resp_data.get("data", [])
-            except Exception:
-                pass
+                from core.storage.mongo_storage import KlineStorage
+                kline_storage = KlineStorage()
+                kline_data = list(kline_storage.find_many(
+                    {"code": stock_code}, sort=[("date", -1)], limit=20
+                ))
+            except Exception as e:
+                logger.warning(f"Failed to fetch kline data for {stock_code}: {e}")
 
             try:
-                fund_resp = requests.get(
-                    f"http://localhost:5173/api/v1/fund-flow/{stock_code}",
-                    timeout=5
-                )
-                if fund_resp.status_code == 200:
-                    fund_flow_data = fund_resp.json().get("data", {})
-            except Exception:
-                pass
+                from core.storage.mongo_storage import FundFlowStorage
+                fund_storage = FundFlowStorage()
+                fund_flow_data = fund_storage.get_latest_flow(stock_code) or {}
+            except Exception as e:
+                logger.warning(f"Failed to fetch fund flow data for {stock_code}: {e}")
+
+            try:
+                from core.storage.mongo_storage import StockInfoStorage
+                info_storage = StockInfoStorage()
+                stock_info = info_storage.get_by_code(stock_code) or {}
+            except Exception as e:
+                logger.warning(f"Failed to fetch stock info for {stock_code}: {e}")
 
             closes = [k.get("close") for k in kline_data if k.get("close")]
             volumes = [k.get("volume") for k in kline_data if k.get("volume")]
@@ -356,6 +357,7 @@ def test_agent(agent_id: str):
             price_info = f"""
 【股票数据】
 - 股票代码：{stock_code}
+- 股票名称：{stock_info.get('name', '未知')}
 - 近期收盘价：{closes[:10] if closes else '暂无数据'}
 - 近期成交量：{volumes[:10] if volumes else '暂无数据'}
 - PE：{stock_info.get('pe') or '暂无'}
@@ -374,7 +376,8 @@ def test_agent(agent_id: str):
 用户问题: {test_message or '请简单介绍一下你自己'}
 """
 
-        result = router.chat(prompt, use_cache=False)
+        result = router.chat(prompt, use_cache=False,
+                             temperature=temperature, max_tokens=max_tokens)
 
         if result.success:
             return jsonify({
@@ -387,7 +390,7 @@ def test_agent(agent_id: str):
         else:
             return jsonify({
                 "success": False,
-                "error": result.error or "AI 服务暂不可用"
+                "error": result.error or "AI 服务暂不可用，请检查 AI Keys 配置"
             }), 500
     except Exception as e:
         return jsonify({
@@ -813,7 +816,10 @@ def analyze_with_agent(agent_id: str):
 
 请结合以上数据给出专业的分析和建议。"""
 
-        result = router.chat(prompt, use_cache=False)
+        temperature = float(agent.get("temperature", 0.7))
+        max_tokens = int(agent.get("max_tokens", 2000))
+        result = router.chat(prompt, use_cache=False,
+                             temperature=temperature, max_tokens=max_tokens)
 
         if result.success:
             return jsonify({
@@ -826,7 +832,7 @@ def analyze_with_agent(agent_id: str):
         else:
             return jsonify({
                 "success": False,
-                "error": result.error or "AI 服务暂不可用"
+                "error": result.error or "AI 服务暂不可用，请检查 AI Keys 配置"
             }), 500
     except Exception as e:
         return jsonify({

@@ -42,12 +42,13 @@ class LLMRouter:
         except Exception:
             return []
 
-    def _default_caller(self, provider: str, prompt: str) -> str:
+    def _default_caller(self, provider: str, prompt: str,
+                        temperature: float = 0.7, max_tokens: int = 2000) -> str:
         """读 ai_keys 配置，经 ProviderCaller 调用对应厂商。"""
         from modules.ai.foundation.llm_caller import ProviderCaller
         if not hasattr(self, "_provider_caller"):
             self._provider_caller = ProviderCaller()
-        return self._provider_caller(provider, prompt)
+        return self._provider_caller(provider, prompt, temperature=temperature, max_tokens=max_tokens)
 
     def _build_prompt(self, prompt: str, schema: Optional[Dict[str, Any]]) -> str:
         if not schema:
@@ -64,6 +65,8 @@ class LLMRouter:
         schema: Optional[Dict[str, Any]] = None,
         use_cache: bool = True,
         task_type: str = "general",
+        temperature: float = 0.7,
+        max_tokens: int = 2000,
     ) -> LLMResult:
         full_prompt = self._build_prompt(prompt, schema)
         key = self._cache_key(full_prompt)
@@ -79,7 +82,7 @@ class LLMRouter:
         last_error = ""
         for provider in self.providers:
             try:
-                raw = self.caller(provider, full_prompt)
+                raw = self.caller(provider, full_prompt, temperature=temperature, max_tokens=max_tokens)
                 if schema:
                     data = self._parse_json(raw)
                     if data is None:

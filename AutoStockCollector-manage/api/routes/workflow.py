@@ -151,12 +151,25 @@ def run_workflow(workflow_id):
 
         existing = execution_storage.get_running_execution(workflow_id)
         if existing:
-            return jsonify({
-                'success': False,
-                'error': '工作流正在执行中，请等待完成',
-                'execution_id': existing.id,
-                'status': existing.status
-            }), 409
+            # Check for stale execution: if running for more than 10 minutes, auto-terminate it
+            stale = False
+            try:
+                started_dt = datetime.fromisoformat(existing.started_at)
+                if (datetime.now() - started_dt).total_seconds() > 600:
+                    stale = True
+            except Exception:
+                stale = True  # unparseable timestamp → treat as stale
+
+            if stale:
+                execution_storage.fail_execution(existing.id, "执行超时（>10分钟），已自动终止")
+                logger.warning(f"Stale execution {existing.id} auto-terminated for workflow {workflow_id}")
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': '工作流正在执行中，请等待完成',
+                    'execution_id': existing.id,
+                    'status': existing.status
+                }), 409
 
         execution_id = str(uuid.uuid4())
         execution = WorkflowExecution(

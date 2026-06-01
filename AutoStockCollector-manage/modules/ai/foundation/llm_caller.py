@@ -34,7 +34,8 @@ class ProviderCaller:
         self.key_loader = key_loader or _default_key_loader
         self.poster = poster or _default_poster
 
-    def __call__(self, provider: str, prompt: str) -> str:
+    def __call__(self, provider: str, prompt: str,
+                 temperature: float = 0.7, max_tokens: int = 2000) -> str:
         doc = self.key_loader(provider)
         if not doc:
             raise ValueError(f"未找到 provider 配置: {provider}")
@@ -51,7 +52,7 @@ class ProviderCaller:
             data = self.poster(
                 "POST", f"{base_url}/v1/messages",
                 headers={"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
-                json={"model": model, "max_tokens": 2048, "messages": [{"role": "user", "content": prompt}]},
+                json={"model": model, "max_tokens": max_tokens, "messages": [{"role": "user", "content": prompt}]},
                 timeout=_TIMEOUT,
             )
             blocks = data.get("content", [])
@@ -62,7 +63,8 @@ class ProviderCaller:
             data = self.poster(
                 "POST", f"{base_url}/models/{model}:generateContent?key={api_key}",
                 headers={"content-type": "application/json"},
-                json={"contents": [{"parts": [{"text": prompt}]}]},
+                json={"contents": [{"parts": [{"text": prompt}]}],
+                      "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens}},
                 timeout=_TIMEOUT,
             )
             cands = data.get("candidates", [])
@@ -75,7 +77,8 @@ class ProviderCaller:
             data = self.poster(
                 "POST", f"{base_url}/chat/completions",
                 headers={"Authorization": f"Bearer {api_key}", "content-type": "application/json"},
-                json={"model": model, "messages": [{"role": "user", "content": prompt}], "temperature": 0.3},
+                json={"model": model, "messages": [{"role": "user", "content": prompt}],
+                      "temperature": temperature, "max_tokens": max_tokens},
                 timeout=_TIMEOUT,
             )
             choices = data.get("choices", [])
@@ -87,7 +90,8 @@ class ProviderCaller:
         data = self.poster(
             "POST", f"{base_url}/chat/completions",
             headers={"Authorization": f"Bearer {api_key}", "content-type": "application/json"},
-            json={"model": model, "messages": [{"role": "user", "content": prompt}], "temperature": 0.3},
+            json={"model": model, "messages": [{"role": "user", "content": prompt}],
+                  "temperature": temperature, "max_tokens": max_tokens},
             timeout=_TIMEOUT,
         )
         choices = data.get("choices", [])
