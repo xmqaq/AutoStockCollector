@@ -5,6 +5,7 @@
 """
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+import re
 import time
 import threading
 import requests
@@ -176,9 +177,26 @@ class NewsManager:
                     elif href.startswith("/"):
                         href = "https://finance.sina.com.cn" + href
                         
-                    time_elem = item.find("span", class_="time")
-                    publish_date = time_elem.get_text(strip=True) if time_elem else ""
-                    
+                    # URL 含完整日期（如 /2026-02-05/），span 含时间（如 (02月05日 12:01)）
+                    # 日期取 URL，时间取 span，合并得到精确 datetime，无需推断年份
+                    publish_date = None
+                    url_date_m = re.search(r"/(\d{4}-\d{2}-\d{2})/", href)
+                    date_str = url_date_m.group(1) if url_date_m else None
+
+                    time_span = item.find("span")
+                    time_str = None
+                    if time_span:
+                        raw_time = time_span.get_text(strip=True)
+                        tm = re.search(r"\(.*?(\d{1,2}):(\d{2})\)", raw_time)
+                        if tm:
+                            time_str = f"{int(tm.group(1)):02d}:{tm.group(2)}:00"
+
+                    if date_str and time_str:
+                        publish_date = f"{date_str} {time_str}"   # 2026-02-05 12:01:00
+                    elif date_str:
+                        publish_date = f"{date_str} 00:00:00"     # 只有日期，无时间
+                    # date_str 都没有则 None
+
                     record = {
                         "title": title,
                         "url": href,
@@ -272,12 +290,13 @@ class NewsManager:
                         if not record.get("publish_date"):
                             record["publish_date"] = article_date
         
-        # 4. 批量保存
+        # 4. 批量保存，返回实际写入数（去重后）
         if all_records:
-            self.storage.save_news_batch(all_records)
-            logger.info(f"[{channel_name}] 总计采集 {len(all_records)} 条")
-        
-        return len(all_records)
+            inserted, updated = self.storage.save_news_batch(all_records)
+            saved = inserted + updated
+            logger.info(f"[{channel_name}] 采集 {len(all_records)} 条，写入 {saved} 条（新增{inserted}/更新{updated}）")
+            return saved
+        return 0
 
     def collect_all_channels(
         self,
@@ -405,13 +424,51 @@ class NewsManager:
         """获取统计信息"""
         return self.storage.get_news_stats()
 
+    def collect_caixin_news(self) -> int:
+        """采集财新最新财经新闻（stock_news_main_cx，~100条）"""
+        try:
+            import akshare as ak
+            df = ak.stock_news_main_cx()
+            if df is None or df.empty:
+                return 0
+            records = []
+            for _, row in df.iterrows():
+                url = str(row.get("url", ""))
+                summary = str(row.get("summary", "")).strip()
+                tag = str(row.get("tag", "")) or "综合"
+                if not summary:
+                    continue
+                # 财新接口无时间字段，文章页 JS 防爬不可靠，只存日期
+                m = re.search(r"/(\d{4}-\d{2}-\d{2})/", url)
+                publish_date = m.group(1) if m else datetime.now().strftime("%Y-%m-%d")
+                title = (summary[:38] + "…") if len(summary) > 38 else summary
+                records.append({
+                    "title": title,
+                    "content": summary,
+                    "summary": summary[:200],
+                    "url": url,
+                    "publish_date": publish_date,
+                    "news_type": "research",
+                    "channel_name": tag,
+                    "source": "财新",
+                    "_collect_at": datetime.now(),
+                })
+            if records:
+                inserted, updated = self.storage.save_news_batch(records)
+                saved = inserted + updated
+                logger.info(f"[财新] 写入 {saved} 条（新增{inserted}/更新{updated}）")
+                return saved
+        except Exception as e:
+            logger.warning(f"财新新闻采集失败: {e}")
+        return 0
+
     def get_categories(self) -> List[Dict[str, str]]:
         """获取新闻分类列表"""
         return [
-            {"id": "general", "name": "财经滚动", "description": "新浪财经综合滚动新闻"},
-            {"id": "research", "name": "机构评论", "description": "机构研究评论"},
-            {"id": "futures", "name": "期市要闻", "description": "期货市场要闻"},
-            {"id": "nmetal", "name": "贵金属", "description": "黄金白银分析"},
+            {"id": "general",  "name": "财经滚动", "description": "新浪财经综合滚动新闻"},
+            {"id": "research", "name": "机构研报", "description": "机构评论/财新研究"},
+            {"id": "futures",  "name": "期市要闻", "description": "期货市场要闻"},
+            {"id": "nmetal",   "name": "有色金属", "description": "黄金白银贵金属"},
         ]
 
     def close(self):

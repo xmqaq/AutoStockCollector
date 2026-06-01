@@ -51,6 +51,40 @@ class FundFlowCollector(BaseCollector):
             logger.error("stock_fund_flow_individual返回数据缺少'股票代码'列")
             return []
 
+        # 将中文列名统一映射为英文字段名，与 workflow executor 期望一致
+        col_map = {
+            "净额":   "main_net_inflow",
+            "流入资金": "main_inflow",
+            "流出资金": "main_outflow",
+            "成交额":  "total_amount",
+            "最新价":  "price",
+            "涨跌幅":  "change_pct",
+            "换手率":  "turnover_rate",
+            "股票简称": "name",
+            "股票代码": "stock_code",
+        }
+        df.rename(columns={k: v for k, v in col_map.items() if k in df.columns}, inplace=True)
+
+        # 将中文数字字符串（如 "5426.29万", "-2760.14万", "1.36亿"）转换为 float（元）
+        def _parse_cn_amount(v) -> float:
+            if isinstance(v, (int, float)):
+                return float(v)
+            s = str(v).replace(",", "").strip()
+            try:
+                if s.endswith("亿"):
+                    return float(s[:-1]) * 1e8
+                if s.endswith("万"):
+                    return float(s[:-1]) * 1e4
+                if s.endswith("%"):
+                    return float(s[:-1])
+                return float(s)
+            except (ValueError, TypeError):
+                return 0.0
+
+        for col in ("main_net_inflow", "main_inflow", "main_outflow", "total_amount"):
+            if col in df.columns:
+                df[col] = df[col].apply(_parse_cn_amount)
+
         records = df.to_dict("records")
         if records:
             self.storage.save_fund_flow_batch(records)
@@ -222,13 +256,10 @@ class MarginCollector(BaseCollector):
             logger.error(f"Failed to collect margin summary: {e}")
             return None
 
-    def collect_daily_margin(self, date: str) -> List[Dict[str, Any]]:
-        """采集指定日期沪深两市所有个股融资融券明细。date 格式: YYYY-MM-DD 或 YYYYMMDD"""
+    def _fetch_sse_margin(self, date: str) -> List[Dict[str, Any]]:
+        """采集上交所单日融资融券明细（供并发调用）。date: YYYY-MM-DD 或 YYYYMMDD"""
         date_8 = date.replace("-", "")[:8]
         date_fmt = f"{date_8[:4]}-{date_8[4:6]}-{date_8[6:]}"
-        records: List[Dict[str, Any]] = []
-
-        # 上交所个股明细
         try:
             df = ak.stock_margin_detail_sse(date=date_8)
             if df is not None and not df.empty:
@@ -240,12 +271,16 @@ class MarginCollector(BaseCollector):
                     df["code"] = df["标的证券代码"].apply(
                         lambda c: f"SH{str(c).strip().zfill(6)}"
                     )
-                records.extend(df.to_dict("records"))
                 logger.info(f"SSE margin {date_fmt}: {len(df)} records")
+                return df.to_dict("records")
         except Exception as e:
             logger.warning(f"SSE margin {date_fmt} failed: {e}")
+        return []
 
-        # 深交所个股明细
+    def _fetch_szse_margin(self, date: str) -> List[Dict[str, Any]]:
+        """采集深交所单日融资融券明细（供并发调用）。date: YYYY-MM-DD 或 YYYYMMDD"""
+        date_8 = date.replace("-", "")[:8]
+        date_fmt = f"{date_8[:4]}-{date_8[4:6]}-{date_8[6:]}"
         try:
             df = ak.stock_margin_detail_szse(date=date_8)
             if df is not None and not df.empty:
@@ -257,12 +292,15 @@ class MarginCollector(BaseCollector):
                     df["code"] = df["证券代码"].apply(
                         lambda c: f"SZ{str(c).strip().zfill(6)}"
                     )
-                records.extend(df.to_dict("records"))
                 logger.info(f"SZSE margin {date_fmt}: {len(df)} records")
+                return df.to_dict("records")
         except Exception as e:
             logger.warning(f"SZSE margin {date_fmt} failed: {e}")
+        return []
 
-        return records
+    def collect_daily_margin(self, date: str) -> List[Dict[str, Any]]:
+        """采集指定日期沪深两市所有个股融资融券明细。date 格式: YYYY-MM-DD 或 YYYYMMDD"""
+        return self._fetch_sse_margin(date) + self._fetch_szse_margin(date)
 
     def collect_detailed_margin(
         self,

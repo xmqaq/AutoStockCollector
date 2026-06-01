@@ -53,21 +53,30 @@
       </el-col>
     </el-row>
 
+    <!-- Data health compact summary (read-only, no operations) -->
+    <el-card shadow="never" class="section-card health-summary-card">
+      <template #header>
+        <div class="card-header">
+          <span>数据健康状态</span>
+          <el-button size="small" text @click="router.push('/data-monitor')">
+            → 去采集中心
+          </el-button>
+        </div>
+      </template>
+      <div class="health-summary">
+        <el-tag type="success" size="default">✅ 最新 {{ healthOk }} 类</el-tag>
+        <el-tag type="warning" size="default">⚠️ 需更新 {{ healthStale }} 类</el-tag>
+        <el-tag type="danger" size="default">❌ 异常 {{ healthError }} 类</el-tag>
+        <span class="health-detail" v-if="staleTypes.length">
+          · 需更新：{{ staleTypes.join(' / ') }}
+        </span>
+      </div>
+    </el-card>
+
     <!-- Main content -->
     <el-row :gutter="16" class="main-content-row">
-      <!-- Left column: Progress table + Market sentiment -->
+      <!-- Left column: Market sentiment -->
       <el-col :span="16">
-        <el-card shadow="never" class="section-card">
-          <template #header>
-            <div class="card-header">
-              <span>数据覆盖总览</span>
-              <el-button size="small" @click="refreshData" :loading="loading">
-                <el-icon><Refresh /></el-icon> 刷新
-              </el-button>
-            </div>
-          </template>
-          <ProgressTable :data="collectStore.progressList" :loading="loading" show-freshness />
-        </el-card>
         <el-card shadow="never" class="section-card sentiment-card">
           <MarketSentiment />
         </el-card>
@@ -103,23 +112,33 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useCollectStore } from '@/stores/collectStore'
 import { newsApi } from '@/api/news'
 import { fmtAmount, fmtDateTime } from '@/utils/format'
 import type { NewsRecord, SectorRecord } from '@/types'
-import ProgressTable from '@/components/ProgressTable/index.vue'
 import MarketSentiment from '@/components/MarketSentiment/index.vue'
 import SectorHeatmap from '@/components/SectorHeatmap/index.vue'
 import { Monitor, DataAnalysis, TrendCharts, ChatDotRound, Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import { TYPE_LABEL } from '@/utils/collectTypes'
 
 const router = useRouter()
 const collectStore = useCollectStore()
 const loading = ref(false)
 const newsList = ref<NewsRecord[]>([])
 const newsCount = ref(0)
+
+// 数据健康摘要（只读，操作去采集中心）
+const healthOk = computed(() => collectStore.progressList.filter(p => (p as any).health === 'ok').length)
+const healthStale = computed(() => collectStore.progressList.filter(p => (p as any).health === 'stale').length)
+const healthError = computed(() => collectStore.progressList.filter(p => (p as any).health === 'error').length)
+const staleTypes = computed(() =>
+  collectStore.progressList
+    .filter(p => (p as any).health === 'stale')
+    .map(p => (TYPE_LABEL as Record<string, string>)[p.task_type] || p.task_type)
+)
 
 function goToNews(news: NewsRecord) {
   if (news.url) {
@@ -291,5 +310,22 @@ onUnmounted(() => {
 
 .sentiment-card {
   margin-top: 16px;
+}
+
+.health-summary-card {
+  margin-bottom: 0;
+}
+
+.health-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 4px 0;
+}
+
+.health-detail {
+  font-size: 13px;
+  color: #909399;
 }
 </style>

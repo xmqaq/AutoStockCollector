@@ -22,10 +22,28 @@
       </div>
     </el-card>
 
-    <!-- Gauge: running tasks overall progress -->
+    <!-- Gauge: data coverage + freshness -->
     <el-card shadow="never" class="section-card">
       <template #header><span>整体采集进度</span></template>
-      <v-chart :option="gaugeOption" style="height:200px" autoresize />
+      <div class="gauge-wrapper">
+        <v-chart :option="gaugeOption" style="height:200px;flex:1" autoresize />
+        <div class="freshness-panel">
+          <div class="freshness-title">数据时效性</div>
+          <div class="freshness-row">
+            <el-tag type="success" size="small">✅ 最新</el-tag>
+            <span class="freshness-count">{{ freshnessOk }} 类</span>
+          </div>
+          <div class="freshness-row">
+            <el-tag type="warning" size="small">⚠️ 需更新</el-tag>
+            <span class="freshness-count">{{ freshnessStale }} 类</span>
+          </div>
+          <div class="freshness-row">
+            <el-tag type="danger" size="small">❌ 异常</el-tag>
+            <span class="freshness-count">{{ freshnessError }} 类</span>
+          </div>
+          <div class="freshness-hint">{{ coverageText }}</div>
+        </div>
+      </div>
     </el-card>
 
     <!-- 定时任务状态 -->
@@ -149,16 +167,80 @@
 
     <!-- 数据健康状态总览表 -->
     <el-card shadow="never" class="section-card">
-      <template #header><span>数据覆盖状态</span></template>
-      <el-table :data="healthRows" size="small" stripe>
+      <template #header>
+        <div class="card-header">
+          <span>数据覆盖状态</span>
+          <el-button size="small" text :loading="gapsLoading" @click="loadDataGaps">
+            <el-icon><Refresh /></el-icon> 检测缺口
+          </el-button>
+        </div>
+      </template>
+      <el-table
+        :data="healthRows"
+        size="small"
+        stripe
+        row-key="value"
+      >
+        <el-table-column type="expand">
+          <template #default="{ row }">
+            <div class="gap-detail">
+              <template v-if="!gapData[row.value]">
+                <span class="gap-hint">点击上方"检测缺口"加载区间详情</span>
+              </template>
+              <template v-else-if="gapData[row.value].error">
+                <span class="gap-error">查询失败：{{ gapData[row.value].error }}</span>
+              </template>
+              <template v-else-if="row.value === 'financial'">
+                <div v-if="gapData[row.value].covered_quarters?.length" class="gap-section">
+                  <span class="gap-ok-label">✅ 已有报告期：</span>
+                  <span>{{ gapData[row.value].covered_quarters?.slice(-4).join(' / ') }}</span>
+                  <span class="gap-pct"> 完整度 {{ gapData[row.value].completeness_pct }}%</span>
+                </div>
+                <div v-if="gapData[row.value].missing_quarters?.length" class="gap-section gap-missing">
+                  <span class="gap-err-label">❌ 缺失季度：</span>
+                  <span v-for="q in gapData[row.value].missing_quarters?.slice(0, 8)" :key="q">
+                    <el-tag size="small" type="danger" style="margin:2px" @click="fillGap(row.value, q, q)">
+                      {{ q }} [补采]
+                    </el-tag>
+                  </span>
+                </div>
+              </template>
+              <template v-else>
+                <div class="gap-completeness">
+                  完整度 <strong>{{ gapData[row.value].completeness_pct }}%</strong>
+                </div>
+                <div v-for="seg in gapData[row.value].covered_ranges" :key="seg.start" class="gap-section">
+                  <el-tag size="small" type="success">✅ {{ seg.start }} ~ {{ seg.end }}（{{ seg.days }}个交易日）</el-tag>
+                </div>
+                <div v-for="seg in gapData[row.value].gap_ranges" :key="seg.start" class="gap-section">
+                  <el-tag size="small" type="danger">❌ 缺口：{{ seg.start }} ~ {{ seg.end }}（{{ seg.days }}天）</el-tag>
+                  <el-button size="small" link type="primary" @click="fillGap(row.value, seg.start, seg.end)">
+                    点击补采此区间
+                  </el-button>
+                </div>
+                <div v-if="!gapData[row.value].covered_ranges?.length && !gapData[row.value].gap_ranges?.length">
+                  <span class="gap-hint">暂无区间数据</span>
+                </div>
+              </template>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column prop="label" label="数据类型" width="110" />
         <el-table-column prop="record_count" label="数据库条数" width="110" align="right">
           <template #default="{ row }">{{ row.record_count?.toLocaleString() ?? '--' }}</template>
         </el-table-column>
-        <el-table-column prop="latest_date" label="最新数据日期" width="130">
+        <el-table-column label="完整度" width="90" align="center">
+          <template #default="{ row }">
+            <span v-if="gapData[row.value]?.completeness_pct != null" :class="gapData[row.value].completeness_pct < 90 ? 'stale-days' : ''">
+              {{ gapData[row.value].completeness_pct }}%
+            </span>
+            <span v-else class="gap-hint">--</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="latest_date" label="最新数据日期" width="120">
           <template #default="{ row }">{{ row.latest_date ?? '--' }}</template>
         </el-table-column>
-        <el-table-column prop="days_behind" label="距今" width="90" align="center">
+        <el-table-column prop="days_behind" label="距今" width="80" align="center">
           <template #default="{ row }">
             <span v-if="row.days_behind != null" :class="row.days_behind > 1 ? 'stale-days' : ''">
               {{ row.days_behind === 0 ? '最新' : `${row.days_behind}天前` }}
@@ -166,16 +248,17 @@
             <span v-else class="stale-days">--</span>
           </template>
         </el-table-column>
-        <el-table-column label="健康状态" width="110" align="center">
+        <el-table-column label="健康状态" width="100" align="center">
           <template #default="{ row }">
             <el-tag v-if="row.health === 'ok'" type="success" size="small">✅ 最新</el-tag>
             <el-tag v-else-if="row.health === 'stale'" type="warning" size="small">⚠️ 需更新</el-tag>
             <el-tag v-else type="danger" size="small">❌ 异常</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="100" align="center">
+        <el-table-column label="操作" width="180" align="center">
           <template #default="{ row }">
             <el-button size="small" type="primary" plain @click="quickUpdate(row.value)">立即更新</el-button>
+            <el-button size="small" type="danger" plain @click="handleClearSingle(row)">清空</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -312,11 +395,37 @@ const healthRows = computed(() => {
 
 async function quickUpdate(taskType: string) {
   try {
-    await collectApi.updateLatest({ task_types: [taskType] })
-    ElMessage.success(`${TYPE_LABEL[taskType]} 更新任务已启动`)
+    const res = await collectApi.updateLatest({ task_types: [taskType], force: true })
+    const started = res.data?.started || {}
+    if (Object.keys(started).length > 0) {
+      ElMessage.success(`${TYPE_LABEL[taskType]} 更新任务已启动`)
+    } else {
+      ElMessage.info(`${TYPE_LABEL[taskType]} 数据已是最新，无需更新`)
+    }
     await loadTasks()
   } catch {
     ElMessage.error('启动失败')
+  }
+}
+
+async function handleClearSingle(row: { value: string; label: string; record_count: number | null }) {
+  const count = row.record_count ?? 0
+  try {
+    await ElMessageBox.confirm(
+      `确定要清空【${row.label}】吗？\n将删除数据库中全部 ${count.toLocaleString()} 条数据，此操作不可恢复。`,
+      '清空数据确认',
+      {
+        confirmButtonText: '确认清空',
+        cancelButtonText: '取消',
+        type: 'error',
+        confirmButtonClass: 'el-button--danger',
+      }
+    )
+    await collectApi.clearSingle(row.value)
+    ElMessage.success(`${row.label} 已清空，可通过补历史数据重新采集`)
+    await collectStore.fetchProgress()
+  } catch {
+    // user cancelled
   }
 }
 
@@ -418,9 +527,17 @@ async function handleRerun(row: any) {
   if (id) { await collectApi.startTask(id); ElMessage.success('已按原参数重跑'); await loadTasks() }
 }
 
-// ---------------- 仪表盘 ----------------
-// 直接使用后端 progress_all 返回的 overall_percent（已正确计入有数据但无任务的类型）
+// ---------------- 仪表盘（问题六：覆盖度 + 时效性分开展示）----------------
 const overallPercent = computed(() => collectStore.overallPercent)
+
+// 时效性：按 health 字段统计 ok/stale/error 数量
+const freshnessOk = computed(() => collectStore.progressList.filter(p => (p as any).health === 'ok').length)
+const freshnessStale = computed(() => collectStore.progressList.filter(p => (p as any).health === 'stale').length)
+const freshnessError = computed(() => collectStore.progressList.filter(p => (p as any).health === 'error').length)
+const coverageText = computed(() => {
+  const n = collectStore.progressList.filter(p => ((p as any).record_count || 0) > 0).length
+  return `${n}/8 类已有数据`
+})
 
 const gaugeOption = computed(() => ({
   backgroundColor: '#1f1f1f',
@@ -457,7 +574,7 @@ const gaugeOption = computed(() => ({
         fontWeight: 'bold',
         offsetCenter: [0, '40%'],
       },
-      data: [{ value: overallPercent.value, name: '整体进度' }],
+      data: [{ value: overallPercent.value, name: '数据覆盖度' }],
     },
   ],
 }))
@@ -484,6 +601,34 @@ function statusLabel(status: string): string {
     not_started: '未开始',
   }
   return map[status] || status || '未知'
+}
+
+// ---------------- 数据缺口检测（问题五）----------------
+const gapData = ref<Record<string, any>>({})
+const gapsLoading = ref(false)
+
+async function loadDataGaps() {
+  gapsLoading.value = true
+  try {
+    const res = await collectApi.getDataGaps()
+    gapData.value = res.data?.data ?? {}
+    ElMessage.success('缺口检测完成')
+  } catch {
+    ElMessage.error('缺口检测失败')
+  } finally {
+    gapsLoading.value = false
+  }
+}
+
+// 点击"补采此区间"：打开历史弹窗并预填日期
+function fillGap(taskType: string, startDate: string, endDate: string) {
+  historyTypesSet.value = Object.fromEntries(
+    COLLECT_TYPES.map(t => [t.value, t.value === taskType])
+  )
+  historyTypes.value = [taskType]
+  historyDateRange.value = [startDate, endDate]
+  historyPreset.value = 'custom'
+  showHistoryModal.value = true
 }
 
 // ── 定时任务状态 ──────────────────────────────────────────────
@@ -531,9 +676,11 @@ async function pollSilently() {
 }
 
 async function handleClearDb() {
+  const totalRecords = collectStore.progressList.reduce((acc, p) => acc + ((p as any).record_count || 0), 0)
+  const countText = totalRecords > 0 ? `共 ${totalRecords.toLocaleString()} 条数据，` : ''
   try {
     await ElMessageBox.confirm(
-      '确定要清空数据库吗？此操作不可撤销！',
+      `确定要清空全部数据库吗？\n${countText}此操作不可撤销！`,
       '危险操作',
       {
         confirmButtonText: '确定清空',
@@ -697,5 +844,67 @@ onUnmounted(() => {
   margin-top: 2px;
   margin-left: 24px;
   line-height: 1.4;
+}
+
+/* 数据缺口展开行 */
+.gap-detail {
+  padding: 12px 16px 12px 40px;
+  background: #252525;
+  border-top: 1px solid #2c2c2c;
+}
+.gap-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+  flex-wrap: wrap;
+}
+.gap-completeness {
+  font-size: 13px;
+  color: #e5eaf3;
+  margin-bottom: 8px;
+}
+.gap-ok-label { color: #67c23a; font-size: 13px; }
+.gap-err-label { color: #f56c6c; font-size: 13px; }
+.gap-pct { color: #409eff; font-size: 12px; margin-left: 4px; }
+.gap-hint { font-size: 12px; color: #606266; font-style: italic; }
+.gap-error { font-size: 12px; color: #f56c6c; }
+.gap-missing { flex-wrap: wrap; }
+
+/* 仪表盘布局：左侧仪表 + 右侧时效性面板 */
+.gauge-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+.freshness-panel {
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px;
+  background: #252525;
+  border-radius: 6px;
+}
+.freshness-title {
+  font-size: 13px;
+  color: #909399;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.freshness-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.freshness-count {
+  font-size: 18px;
+  font-weight: bold;
+  color: #e5eaf3;
+}
+.freshness-hint {
+  font-size: 11px;
+  color: #606266;
+  margin-top: 4px;
 }
 </style>

@@ -94,6 +94,12 @@ const router = createRouter({
           meta: { title: '板块流向' },
         },
         {
+          path: 'fund-flow',
+          name: 'FundFlow',
+          component: () => import('@/views/FundFlow/index.vue'),
+          meta: { title: '资金流向排行' },
+        },
+        {
           path: 'news',
           name: 'News',
           component: () => import('@/views/News/index.vue'),

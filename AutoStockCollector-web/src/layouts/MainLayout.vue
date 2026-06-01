@@ -98,6 +98,7 @@ const menuItems = [
   { path: '/dragon-tiger', label: '龙虎榜', icon: Lightning },
   { path: '/margin-trading', label: '融资融券', icon: Connection },
   { path: '/sector-flow', label: '板块流向', icon: Promotion },
+  { path: '/fund-flow', label: '资金流向排行', icon: TrendCharts },
   { path: '/news', label: '新闻舆情', icon: ChatDotRound },
   { path: '/watchlist', label: '自选股', icon: StarFilled },
 ]

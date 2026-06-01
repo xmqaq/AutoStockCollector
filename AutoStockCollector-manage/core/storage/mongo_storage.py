@@ -513,7 +513,7 @@ class NewsStorage(MongoStorage):
 
         records = self.find_many(
             filter_doc,
-            sort=[("publish_date", -1)],
+            sort=[("publish_date", -1), ("_updated_at", -1)],
             limit=limit
         )
         for record in records:

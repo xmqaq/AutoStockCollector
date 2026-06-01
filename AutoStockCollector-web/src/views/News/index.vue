@@ -19,7 +19,7 @@
         </el-select>
         <el-input
           v-model="codeFilter"
-          placeholder="股票代码（可选）"
+          placeholder="关键词/股票名"
           size="small"
           style="width:160px"
           clearable
@@ -42,7 +42,7 @@
           <span class="stat-value breaking">{{ stats.breaking_count }}</span>
         </div>
         <div v-for="(count, type) in stats.by_type" :key="type" class="stat-item">
-          <span class="stat-label">{{ type }}</span>
+          <span class="stat-label">{{ typeLabel(String(type)) }}</span>
           <span class="stat-value">{{ count }}</span>
         </div>
       </div>
@@ -65,15 +65,15 @@
               <div class="news-item-title">
                 <span class="news-headline">{{ news.title }}</span>
                 <div class="news-meta">
-                  <span class="news-time">{{ fmtDateTime(news.publish_date || news.datetime || news.date) }}</span>
+                  <span class="news-time">{{ fmtNewsTime(news.publish_date || news.datetime || news.date) }}</span>
                   <el-tag v-if="(news as any).channel_name" size="small" type="info" class="news-source">
                     {{ (news as any).channel_name }}
                   </el-tag>
                   <el-tag v-else-if="(news as any).news_type" size="small" type="info" class="news-source">
-                    {{ (news as any).news_type }}
+                    {{ typeLabel((news as any).news_type) }}
                   </el-tag>
                   <el-tag v-if="news.source" size="small" type="info" class="news-source">
-                    {{ news.source }}
+                    {{ sourceLabel(news.source) }}
                   </el-tag>
                   <el-tag v-if="(news as any).is_breaking" size="small" type="danger">突发</el-tag>
                 </div>
@@ -82,9 +82,9 @@
             <div class="news-content">
               <p v-if="news.summary">{{ news.summary }}</p>
               <p v-else-if="news.content">{{ news.content }}</p>
-              <p v-else class="text-muted">暂无摘要</p>
+              <p v-else-if="!news.url" class="text-muted">暂无内容</p>
               <el-link v-if="news.url" type="primary" :href="news.url" target="_blank">
-                阅读原文
+                点击阅读原文
               </el-link>
             </div>
           </el-collapse-item>
@@ -107,11 +107,50 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { newsApi } from '@/api/news'
-import { fmtDateTime } from '@/utils/format'
-import { normalizeCode } from '@/utils/stockCode'
+import dayjs from 'dayjs'
 import type { NewsRecord } from '@/types'
 import type { NewsCategory, NewsStats } from '@/api/news'
 import { Search } from '@element-plus/icons-vue'
+
+/**
+ * 智能时间格式：
+ * - 精确到分钟 (HH:MM != 00:00)：显示 "YYYY-MM-DD HH:mm"
+ * - 仅有日期 (时间为 00:00:00)：显示 "YYYY-MM-DD"
+ * - null/空：显示 "--"
+ */
+function fmtNewsTime(v: string | undefined | null): string {
+  if (!v) return '--'
+  const d = dayjs(v)
+  if (!d.isValid()) return '--'
+  const timeStr = d.format('HH:mm')
+  return timeStr === '00:00' ? d.format('YYYY-MM-DD') : d.format('YYYY-MM-DD HH:mm')
+}
+
+// 新闻类型中文映射
+const NEWS_TYPE_MAP: Record<string, string> = {
+  general:  '综合财经',
+  futures:  '期货要闻',
+  nmetal:   '有色金属',
+  research: '机构研报',
+  stock:    '股票',
+  forex:    '外汇',
+  bond:     '债券',
+  fund:     '基金',
+}
+function typeLabel(t: string): string {
+  return NEWS_TYPE_MAP[t] || NEWS_TYPE_MAP[t?.toLowerCase()] || t
+}
+
+// 来源中文映射（为多源接入预留）
+const NEWS_SOURCE_MAP: Record<string, string> = {
+  cls:    '财联社',
+  sina:   '新浪财经',
+  '新浪财经': '新浪财经',
+  em:     '东方财富',
+}
+function sourceLabel(s: string): string {
+  return NEWS_SOURCE_MAP[s] || s
+}
 
 const loading = ref(false)
 const newsList = ref<NewsRecord[]>([])
@@ -134,7 +173,7 @@ async function loadNews() {
     const limit = stats.value?.total || 2000
     const params: Record<string, any> = { limit }
     if (codeFilter.value) {
-      params.code = normalizeCode(codeFilter.value)
+      params.code = codeFilter.value.trim()   // 关键词搜索，后端做正则匹配
     }
     if (typeFilter.value) {
       params.type = typeFilter.value

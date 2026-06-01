@@ -23,8 +23,16 @@ export const collectApi = {
     return client.post('/api/v1/collect/history', params)
   },
 
-  updateLatest(params: { task_types?: string[] } = {}) {
+  updateLatest(params: { task_types?: string[]; force?: boolean } = {}) {
     return client.post('/api/v1/collect/update_latest', params)
+  },
+
+  clearSingle(data_type: string) {
+    return client.post('/api/v1/collect/clear_single', { data_type })
+  },
+
+  getDbCounts() {
+    return client.get('/api/v1/collect/progress_all')
   },
 
   createTask(task_type: string, params: Record<string, unknown>) {
@@ -61,5 +69,9 @@ export const collectApi = {
 
   getCronStatus() {
     return client.get('/api/v1/collect/cron_status')
+  },
+
+  getDataGaps() {
+    return client.get('/api/v1/collect/data_gaps')
   },
 }

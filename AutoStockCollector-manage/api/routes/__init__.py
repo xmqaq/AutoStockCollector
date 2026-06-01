@@ -278,6 +278,28 @@ def list_tasks():
     })
 
 
+@api_bp.route("/tasks", methods=["POST"])
+def create_task_v2():
+    """别名路由：兼容前端 POST /tasks（与 /task/create 等价）"""
+    from core.scheduler.scheduler import scheduler
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    task_type = data.get("task_type")
+    params = data.get("params", {})
+
+    if not task_type:
+        return jsonify({"error": "task_type is required"}), 400
+
+    try:
+        task_id = scheduler.create_task(task_type, params)
+        return jsonify({"success": True, "task_id": task_id})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @api_bp.route("/kline/<code>", methods=["GET"])
 def get_kline(code):
     from core.storage.mongo_storage import KlineStorage
@@ -441,17 +463,36 @@ def get_financial(code):
 @api_bp.route("/news", methods=["GET"])
 def get_news():
     from modules.news import NewsManager
+    from core.storage.mongo_storage import NewsStorage
 
-    manager = NewsManager()
     news_type = request.args.get("type")
     channel_name = request.args.get("channel")
     is_breaking = request.args.get("breaking")
     limit = int(request.args.get("limit", 100))
+    code = request.args.get("code", "").strip()
 
     breaking_filter = None
     if is_breaking is not None:
         breaking_filter = is_breaking.lower() in ("true", "1", "yes")
 
+    # 按股票代码/关键词搜索（全文匹配标题和内容）
+    if code:
+        storage = NewsStorage()
+        bare = code[2:] if code[:2] in ("SH", "SZ") else code
+        query = {"$or": [
+            {"title": {"$regex": bare, "$options": "i"}},
+            {"content": {"$regex": bare, "$options": "i"}},
+        ]}
+        if news_type:
+            query["news_type"] = news_type
+        records = storage.find_many(query, sort=[("publish_date", -1), ("_updated_at", -1)], limit=limit)
+        for r in records:
+            r.pop("_id", None)
+            r.pop("_updated_at", None)
+            r.pop("_collect_at", None)
+        return jsonify({"success": True, "count": len(records), "data": records})
+
+    manager = NewsManager()
     records = manager.get_news(
         news_type=news_type,
         channel_name=channel_name,
@@ -507,6 +548,43 @@ def get_breaking_news():
     return jsonify({
         "success": True,
         "count": len(records),
+        "data": records
+    })
+
+
+@api_bp.route("/fund-flow/rank", methods=["GET"])
+def get_fund_flow_rank():
+    """全市场资金流向排行，按主力净流入降序。
+    ?limit=50&date=2026-06-01
+    """
+    from core.storage.mongo_storage import FundFlowStorage
+
+    limit = int(request.args.get("limit", 50))
+    date_filter = request.args.get("date")
+    storage = FundFlowStorage()
+
+    query = {}
+    if date_filter:
+        query["date"] = date_filter
+    else:
+        # 取最新一天的数据
+        latest = storage.find_one({"date": {"$exists": True}}, sort=[("date", -1)])
+        if latest:
+            query["date"] = latest.get("date")
+
+    records = storage.find_many(
+        {**query, "main_net_inflow": {"$exists": True}},
+        sort=[("main_net_inflow", -1)],
+        limit=limit
+    )
+    for r in records:
+        r.pop("_id", None)
+        r.pop("_updated_at", None)
+
+    return jsonify({
+        "success": True,
+        "count": len(records),
+        "date": query.get("date"),
         "data": records
     })
 
@@ -1095,16 +1173,27 @@ def collect_dividend():
     })
 
 
+_DATA_TYPE_COLLECTION_MAP = {
+    "kline":        "kline",
+    "stock_info":   "stock_info",
+    "financial":    "financial",
+    "news":         "news",
+    "fund_flow":    "fund_flow",
+    "dragon_tiger": "dragon_tiger",
+    "sector":       "block",
+    "margin":       "margin_data",
+}
+
+_ALL_COLLECTIONS = list(_DATA_TYPE_COLLECTION_MAP.values())
+
+
 @api_bp.route("/db/clear", methods=["POST"])
 def clear_collections():
     """清空指定的数据集合，默认清空所有8类数据"""
     from config.database import DatabaseConfig
 
     data = request.get_json() or {}
-    collections = data.get("collections", [
-        "kline", "stock_info", "financial", "news",
-        "fund_flow", "dragon_tiger", "block", "margin_data"
-    ])
+    collections = data.get("collections", _ALL_COLLECTIONS)
 
     db = DatabaseConfig.get_database()
     results = {}
@@ -1115,11 +1204,45 @@ def clear_collections():
         except Exception as e:
             results[coll] = f"error: {e}"
 
+    _invalidate_stats_cache()
     return jsonify({
         "success": True,
         "deleted": results,
         "timestamp": datetime.now().isoformat()
     })
+
+
+@api_bp.route("/collect/clear_single", methods=["POST"])
+def clear_single_collection():
+    """按数据类型清空单个集合。
+    Body: {"data_type": "kline"}
+    data_type 可选值：kline / stock_info / financial / news / fund_flow / dragon_tiger / sector / margin
+    """
+    from config.database import DatabaseConfig
+
+    data = request.get_json() or {}
+    data_type = data.get("data_type")
+
+    if not data_type:
+        return jsonify({"error": "data_type is required"}), 400
+
+    coll_name = _DATA_TYPE_COLLECTION_MAP.get(data_type)
+    if not coll_name:
+        return jsonify({"error": f"Unknown data_type: {data_type}. Valid: {list(_DATA_TYPE_COLLECTION_MAP)}"}), 400
+
+    db = DatabaseConfig.get_database()
+    try:
+        result = db[coll_name].delete_many({})
+        _invalidate_stats_cache()
+        return jsonify({
+            "success": True,
+            "data_type": data_type,
+            "collection": coll_name,
+            "deleted_count": result.deleted_count,
+            "timestamp": datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 def _build_history_tasks(start_date: str, end_date: str, task_types=None) -> list:
@@ -1135,8 +1258,8 @@ def _build_history_tasks(start_date: str, end_date: str, task_types=None) -> lis
         "financial":    {"report_type": "annual", "start_date": start_date, "end_date": end_date},
         "dragon_tiger": {"start_date": start_date, "end_date": end_date},
         "margin":       {"start_date": start_date, "end_date": end_date},
-        "fund_flow":    {"start_date": start_date, "end_date": end_date},
-        "news":         {"start_date": start_date, "end_date": end_date, "max_pages": 200, "with_content": True},
+        "fund_flow":    {},   # 快照接口，无历史数据，忽略日期参数
+        "news":         {"max_pages": 5, "with_content": False},  # 只抓标题列表，避免长时间卡死
         # 快照类（日期无效，只采最新）
         "sector":       {},
         # 名录类（全量刷新）
@@ -1209,12 +1332,13 @@ def _get_effective_end_date(today: str) -> str:
 
 
 def _compute_update_latest_tasks(stats: dict, task_types=None, today: str = None,
-                                  already_collected: set = None):
+                                  already_collected: set = None, force: bool = False):
     """根据各类数据当前覆盖情况，计算"更新到最新"应提交的任务。
 
     stats: _get_collection_stats(db) 的返回，形如
            {type: {"record_count": int, "date_from": str|None, "date_to": str|None}}
-    already_collected: 今日已采集的快照类型集合，直接跳过
+    already_collected: 今日已采集的快照类型集合，直接跳过（force=True 时忽略此参数）
+    force: True=跳过"已是最新"判断，总是强制创建任务（用于"立即更新"按钮）
     返回: (tasks, skipped)
           tasks  = [{"task_type": str, "params": dict}, ...]
           skipped = [type, ...]
@@ -1233,13 +1357,16 @@ def _compute_update_latest_tasks(stats: dict, task_types=None, today: str = None
     for t in selected:
         if t in RANGE_TYPES:
             date_to = (stats.get(t) or {}).get("date_to")
-            if date_to and date_to >= effective_end:
+            if not force and date_to and date_to >= effective_end:
                 skipped.append(t)
                 continue
             if date_to:
                 start = (datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
             else:
                 start = (datetime.strptime(effective_end, "%Y-%m-%d") - timedelta(days=365)).strftime("%Y-%m-%d")
+            # force 时至少采最近1个交易日，避免 start > end
+            if force and start > effective_end:
+                start = effective_end
             params = {"start_date": start, "end_date": effective_end}
             if t == "kline":
                 params["adjust"] = "qfq"
@@ -1247,11 +1374,10 @@ def _compute_update_latest_tasks(stats: dict, task_types=None, today: str = None
                 params["report_type"] = "annual"
             tasks.append({"task_type": t, "params": params})
         elif t in SNAPSHOT_TYPES:
-            # 今日已采集则跳过，避免重复拉取相同快照数据
-            if t in already_collected:
+            if not force and t in already_collected:
                 skipped.append(t)
                 continue
-            params = {"limit": 500} if t == "news" else {}
+            params = {"max_pages": 5, "with_content": False} if t == "news" else {}
             tasks.append({"task_type": t, "params": params})
         elif t in CATALOG_TYPES:
             tasks.append({"task_type": t, "params": {"mode": "incremental"}})
@@ -1264,30 +1390,35 @@ def start_update_latest():
 
     Body 参数:
       task_types (可选) 指定只更新哪几类，默认全部 8 类
+      force      (可选) true=跳过"已是最新"判断，强制创建任务（用于"立即更新"按钮）
     """
     from core.scheduler.scheduler import scheduler
     from config.database import DatabaseConfig
 
     data = request.get_json() or {}
     task_types = data.get("task_types")
+    force = bool(data.get("force", False))
 
     db = DatabaseConfig.get_database()
-    # 用缓存统计（避免阻塞路由 30s），点击后会主动失效让下次拿到最新数据
     stats = _get_collection_stats(db)
-    _invalidate_stats_cache()   # 提交任务后让下次 progress_all 刷新
+    _invalidate_stats_cache()
 
-    # 快照类型：若今日已采集则跳过，避免重复请求相同数据
-    from datetime import date as _date
-    today_start = datetime.combine(_date.today(), datetime.min.time())
-    _snap_collections = {"news": "news", "fund_flow": "fund_flow", "sector": "block"}
-    already_collected = set()
-    for snap_type, coll_name in _snap_collections.items():
-        if task_types and snap_type not in task_types:
-            continue
-        if db[coll_name].find_one({"_updated_at": {"$gte": today_start}}):
-            already_collected.add(snap_type)
+    # force=True 时跳过快照去重逻辑，总是重新采集
+    already_collected: set = set()
+    if not force:
+        from datetime import date as _date
+        today_start = datetime.combine(_date.today(), datetime.min.time())
+        _snap_collections = {"news": "news", "fund_flow": "fund_flow", "sector": "block"}
+        for snap_type, coll_name in _snap_collections.items():
+            if task_types and snap_type not in task_types:
+                continue
+            if db[coll_name].find_one({"_updated_at": {"$gte": today_start}}):
+                already_collected.add(snap_type)
 
-    tasks, skipped = _compute_update_latest_tasks(stats, task_types, already_collected=already_collected)
+    tasks, skipped = _compute_update_latest_tasks(
+        stats, task_types, already_collected=already_collected,
+        force=force
+    )
 
     started, failed = {}, {}
     for task_cfg in tasks:
@@ -1348,7 +1479,7 @@ def _get_collection_stats(db) -> dict:
         "kline":        ("kline",        "date"),
         "stock_info":   ("stock_info",   None),
         "financial":    ("financial",    "report_date"),
-        "news":         ("news",         "article_date"),   # publish_date 部分为空，用 article_date
+        "news":         ("news",         "publish_date"),   # publish_date 已修复为有效时间
         "fund_flow":    ("fund_flow",    "date"),           # 新格式个股数据有 date 字段
         "dragon_tiger": ("dragon_tiger", "上榜日"),
         "sector":       ("block",        "_updated_at"),    # block 无 date，用 _updated_at
@@ -1547,6 +1678,186 @@ def progress_all():
         "tasks": summary,
         "timestamp": now.isoformat()
     })
+
+
+# ---------- 数据缺口检测缓存（5分钟 TTL，K线百万级数据避免频繁触发大查询）----------
+_gaps_cache: dict = {}
+_gaps_cache_at: float = 0.0
+_gaps_cache_lock = threading.Lock()
+_GAPS_TTL = 300.0
+
+
+def _invalidate_gaps_cache():
+    global _gaps_cache_at
+    with _gaps_cache_lock:
+        _gaps_cache_at = 0.0
+
+
+@api_bp.route("/collect/data_gaps", methods=["GET"])
+def get_data_gaps():
+    """检测各类数据的区间覆盖情况和缺口。
+    对 kline/dragon_tiger/fund_flow/margin（每日数据）：与交易日历对比找缺口。
+    对 financial（季度数据）：检测哪些标准季度缺失。
+    结果缓存5分钟。
+    """
+    global _gaps_cache, _gaps_cache_at
+    with _gaps_cache_lock:
+        if _gaps_cache and (time.time() - _gaps_cache_at) < _GAPS_TTL:
+            return jsonify({"success": True, "data": _gaps_cache, "cached": True,
+                            "timestamp": datetime.now().isoformat()})
+
+    from config.database import DatabaseConfig
+    db = DatabaseConfig.get_database()
+
+    result = {}
+
+    # ── 每日数据类型 ─────────────────────────────────────────────────────────
+    daily_types = {
+        "kline":        "kline",
+        "dragon_tiger": "dragon_tiger",
+        "fund_flow":    "fund_flow",
+        "margin":       "margin_data",
+    }
+    daily_date_fields = {
+        "kline":        "date",
+        "dragon_tiger": "上榜日",
+        "fund_flow":    "date",
+        "margin":       "date",
+    }
+
+    # 获取交易日历（一次性，供所有类型复用）
+    trading_days_set: set = set()
+    trading_days_sorted: list = []
+    try:
+        import akshare as ak
+        td_df = ak.tool_trade_date_hist_sina()
+        td_col = td_df.columns[0]
+        for v in td_df[td_col]:
+            s = str(v)[:10]
+            if len(s) == 10:
+                trading_days_set.add(s)
+        trading_days_sorted = sorted(trading_days_set)
+    except Exception:
+        pass
+
+    for ttype, coll_name in daily_types.items():
+        coll = db[coll_name]
+        date_field = daily_date_fields[ttype]
+        try:
+            # 只查 distinct date 字段（轻量）
+            raw_dates = coll.distinct(date_field)
+        except Exception:
+            result[ttype] = {"error": "query failed"}
+            continue
+
+        db_dates: set = set()
+        for v in raw_dates:
+            if hasattr(v, "strftime"):
+                db_dates.add(v.strftime("%Y-%m-%d"))
+            else:
+                s = str(v)[:10]
+                if len(s) == 10:
+                    db_dates.add(s)
+
+        if not db_dates:
+            result[ttype] = {
+                "covered_ranges": [],
+                "gap_ranges": [],
+                "completeness_pct": 0.0,
+                "has_data": False,
+            }
+            continue
+
+        db_min = min(db_dates)
+        db_max = max(db_dates)
+
+        # 连续覆盖区间 vs 缺口
+        covered_ranges = []
+        gap_ranges = []
+
+        if trading_days_set:
+            # 在 [db_min, db_max] 范围内对比交易日历
+            relevant_tds = [d for d in trading_days_sorted if db_min <= d <= db_max]
+            total_relevant = len(relevant_tds)
+            covered_count = sum(1 for d in relevant_tds if d in db_dates)
+            completeness_pct = round(covered_count / total_relevant * 100, 1) if total_relevant > 0 else 0.0
+
+            # 构建连续段
+            def _build_ranges(dates_in_set, all_days):
+                ranges = []
+                seg_start = seg_end = None
+                for d in all_days:
+                    if d in dates_in_set:
+                        if seg_start is None:
+                            seg_start = d
+                        seg_end = d
+                    else:
+                        if seg_start is not None:
+                            ranges.append({"start": seg_start, "end": seg_end,
+                                           "days": sum(1 for x in all_days if seg_start <= x <= seg_end and x in dates_in_set)})
+                            seg_start = seg_end = None
+                if seg_start is not None:
+                    ranges.append({"start": seg_start, "end": seg_end,
+                                   "days": sum(1 for x in all_days if seg_start <= x <= seg_end and x in dates_in_set)})
+                return ranges
+
+            covered_ranges = _build_ranges(db_dates, relevant_tds)
+            gap_dates = {d for d in relevant_tds if d not in db_dates}
+            gap_ranges = _build_ranges(gap_dates, relevant_tds)
+        else:
+            # 无交易日历时退化为纯区间
+            covered_ranges = [{"start": db_min, "end": db_max, "days": len(db_dates)}]
+            completeness_pct = 100.0
+
+        result[ttype] = {
+            "covered_ranges": covered_ranges,
+            "gap_ranges": gap_ranges,
+            "completeness_pct": completeness_pct,
+            "has_data": True,
+            "db_min": db_min,
+            "db_max": db_max,
+        }
+
+    # ── 财务数据（季度） ────────────────────────────────────────────────────
+    try:
+        fin_coll = db["financial"]
+        raw_periods = fin_coll.distinct("report_date")
+        db_quarters: set = set()
+        for v in raw_periods:
+            if hasattr(v, "strftime"):
+                db_quarters.add(v.strftime("%Y-%m-%d"))
+            else:
+                s = str(v)[:10]
+                if len(s) == 10:
+                    db_quarters.add(s)
+
+        if db_quarters:
+            db_min_q = min(db_quarters)[:4]
+            db_max_q = max(db_quarters)[:4]
+            std_quarters = []
+            for yr in range(int(db_min_q), int(db_max_q) + 1):
+                for q in ("03-31", "06-30", "09-30", "12-31"):
+                    std_quarters.append(f"{yr}-{q}")
+            covered_q = [q for q in std_quarters if q in db_quarters]
+            missing_q = [q for q in std_quarters if q not in db_quarters]
+            completeness_q = round(len(covered_q) / len(std_quarters) * 100, 1) if std_quarters else 0.0
+            result["financial"] = {
+                "covered_quarters": covered_q,
+                "missing_quarters": missing_q,
+                "completeness_pct": completeness_q,
+                "has_data": True,
+            }
+        else:
+            result["financial"] = {"covered_quarters": [], "missing_quarters": [], "completeness_pct": 0.0, "has_data": False}
+    except Exception:
+        result["financial"] = {"error": "query failed"}
+
+    with _gaps_cache_lock:
+        _gaps_cache = result
+        _gaps_cache_at = time.time()
+
+    return jsonify({"success": True, "data": result, "cached": False,
+                    "timestamp": datetime.now().isoformat()})
 
 
 def success_response(data: Any, message: str = "Success") -> Dict[str, Any]:
