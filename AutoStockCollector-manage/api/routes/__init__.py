@@ -1691,7 +1691,8 @@ def _compute_health(ttype: str, stats: dict, now: datetime) -> dict:
             gap = _count_trading_days_behind(date_to_str, expected)
             # 板块/融资融券：数据发布有延迟，1个交易日内都算 ok
             if ttype in ("sector", "margin") and gap <= 1:
-                return {"health": "ok", "days_behind": gap, "latest_date": date_to_str}
+                # 融资融券/板块数据发布有延迟，差1个交易日算 ok（交易所可能当晚才发布）
+                return {"health": "ok", "days_behind": 0, "latest_date": date_to_str}
             return {"health": "stale", "days_behind": gap, "latest_date": date_to_str}
         except Exception:
             return {"health": "error", "days_behind": None, "latest_date": date_to}
@@ -2113,45 +2114,44 @@ def get_dragon_tiger_list():
 @api_bp.route("/margin", methods=["GET"])
 def get_margin_data():
     from core.storage.mongo_storage import MarginStorage
-    
+
     storage = MarginStorage()
     start_date = request.args.get("start_date")
     end_date = request.args.get("end_date")
-    code = request.args.get("code")
     limit = int(request.args.get("limit", 100))
-    
-    filter_doc = {}
-    # margin 集合存储的是市场级汇总数据；信用交易日期 存储为 8 位字符串 "20260527"
-    if start_date and end_date:
-        sd_8 = start_date.replace("-", "")[:8]
-        ed_8 = end_date.replace("-", "")[:8]
-        filter_doc["信用交易日期"] = {"$gte": sd_8, "$lte": ed_8}
 
-    records = storage.find_many(filter_doc, sort=[("信用交易日期", -1)], limit=limit)
-    
-    for record in records:
-        record.pop("_id", None)
-        record.pop("_updated_at", None)
-    
-    seen = set()
-    result = []
-    for r in records:
-        raw_date = r.get("信用交易日期", "")
-        # 日期格式统一为 YYYY-MM-DD
-        if isinstance(raw_date, str) and len(raw_date) == 8 and raw_date.isdigit():
-            raw_date = f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:]}"
-        dedup_key = str(raw_date)
-        if dedup_key in seen:
-            continue
-        seen.add(dedup_key)
-        result.append({
-            "date": raw_date,
-            "rz_balance": r.get("rz_balance", r.get("融资余额", 0)),
-            "rz_buy": r.get("rz_buy", r.get("融资买入额", 0)),
-            "rq_volume": r.get("rq_volume", r.get("融券余量", 0)),
-            "rq_sell": r.get("rq_sell", r.get("融券卖出量", 0)),
-        })
-    
+    # margin_data 存储的是个股明细（code + date YYYY-MM-DD），按日期聚合出市场日汇总
+    match_filter: dict = {}
+    if start_date and end_date:
+        match_filter["date"] = {"$gte": start_date, "$lte": end_date}
+
+    pipeline = [
+        {"$match": match_filter},
+        {"$group": {
+            "_id": "$date",
+            "rz_balance": {"$sum": "$融资余额"},
+            "rz_buy":     {"$sum": "$融资买入额"},
+            "rq_volume":  {"$sum": "$融券余量"},
+            "rq_sell":    {"$sum": "$融券卖出量"},
+        }},
+        {"$sort": {"_id": -1}},
+        {"$limit": limit},
+    ]
+
+    records = storage.aggregate(pipeline)
+
+    result = [
+        {
+            "date":       r["_id"],
+            "rz_balance": r.get("rz_balance") or 0,
+            "rz_buy":     r.get("rz_buy") or 0,
+            "rq_volume":  r.get("rq_volume") or 0,
+            "rq_sell":    r.get("rq_sell") or 0,
+        }
+        for r in records
+        if r.get("_id")
+    ]
+
     return jsonify({
         "success": True,
         "count": len(result),
