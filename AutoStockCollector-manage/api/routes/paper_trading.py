@@ -60,11 +60,11 @@ def execute_trade():
     except (TypeError, ValueError):
         return jsonify({"error": "shares 必须为整数"}), 400
 
-    if not code or not action or shares <= 0:
-        return jsonify({"error": "code、action、shares 均为必填项"}), 400
-
     from utils.helpers import normalize_stock_code_flexible
     code = normalize_stock_code_flexible(code)
+
+    if not code or not action or shares <= 0:
+        return jsonify({"error": "code、action、shares 均为必填项"}), 400
 
     try:
         if action == "buy":
