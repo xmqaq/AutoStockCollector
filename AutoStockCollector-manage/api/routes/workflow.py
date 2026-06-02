@@ -151,7 +151,8 @@ def run_workflow(workflow_id):
 
         # Pre-flight checks
         nodes_list = [n.to_dict() if hasattr(n, 'to_dict') else n for n in workflow.nodes]
-        if not nodes_list:
+        is_quant = getattr(workflow, 'workflow_type', '') == 'quant_multi_factor'
+        if not nodes_list and not is_quant:
             return jsonify({'success': False, 'error': '工作流步骤为空，请先编辑工作流添加节点'}), 400
 
         has_ai_node = any(n.get('type') == 'ai_agent' for n in nodes_list)
