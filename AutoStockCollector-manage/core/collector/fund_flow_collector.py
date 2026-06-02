@@ -184,6 +184,11 @@ class DragonTigerCollector(BaseCollector):
                 self.storage.save_dragon_tiger_batch(records)
             return records
 
+        except TypeError:
+            # AKShare 在该日期段无龙虎榜时返回 {"result": null}，内部索引 null 抛 TypeError
+            # 这是正常的"当日无数据"情况，不是真正的错误
+            logger.info(f"dragon_tiger: no data for {s}~{e} (API returned null, likely no 龙虎榜 today)")
+            return []
         except Exception as e:
             logger.error(f"Failed to collect dragon tiger: {e}")
             return []
