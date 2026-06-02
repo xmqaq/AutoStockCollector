@@ -187,11 +187,21 @@ const currentAgentInfo = computed(() => {
   return agents.value.find(a => a.id === selectedAgent.value)
 })
 
-const quickActions = [
-  { label: '大盘分析', prompt: '分析一下今天的大盘走势' },
-  { label: '选股推荐', prompt: '帮我推荐几只值得关注的股票' },
-  { label: '风险提示', prompt: '当前市场有什么风险需要注意？' },
-]
+const quickActions = computed(() => {
+  if (stockContext.value) {
+    return [
+      { label: 'K线走势', prompt: '分析最近的K线走势和关键技术信号' },
+      { label: '资金动向', prompt: '分析主力资金流入流出情况' },
+      { label: '基本面', prompt: '评估基本面质量和当前估值水平' },
+      { label: '风险提示', prompt: '有哪些值得关注的投资风险？' },
+    ]
+  }
+  return [
+    { label: '大盘分析', prompt: '分析一下今天的大盘走势' },
+    { label: '选股推荐', prompt: '帮我推荐几只值得关注的股票' },
+    { label: '风险提示', prompt: '当前市场有什么风险需要注意？' },
+  ]
+})
 
 async function loadAgents() {
   try {
