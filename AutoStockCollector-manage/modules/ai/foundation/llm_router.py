@@ -43,12 +43,14 @@ class LLMRouter:
             return []
 
     def _default_caller(self, provider: str, prompt: str,
-                        temperature: float = 0.7, max_tokens: int = 2000) -> str:
+                        temperature: float = 0.7, max_tokens: int = 2000,
+                        messages: Optional[List[Dict[str, Any]]] = None) -> str:
         """读 ai_keys 配置，经 ProviderCaller 调用对应厂商。"""
         from modules.ai.foundation.llm_caller import ProviderCaller
         if not hasattr(self, "_provider_caller"):
             self._provider_caller = ProviderCaller()
-        return self._provider_caller(provider, prompt, temperature=temperature, max_tokens=max_tokens)
+        return self._provider_caller(provider, prompt, temperature=temperature,
+                                     max_tokens=max_tokens, messages=messages)
 
     def _build_prompt(self, prompt: str, schema: Optional[Dict[str, Any]]) -> str:
         if not schema:
@@ -67,8 +69,11 @@ class LLMRouter:
         task_type: str = "general",
         temperature: float = 0.7,
         max_tokens: int = 2000,
+        messages: Optional[List[Dict[str, Any]]] = None,
     ) -> LLMResult:
+        """调用 LLM。传入 messages 时以多轮对话格式发送，跳过缓存（对话有上下文，不宜缓存）。"""
         full_prompt = self._build_prompt(prompt, schema)
+        use_cache = use_cache and not messages
         key = self._cache_key(full_prompt)
 
         if use_cache and key in self._cache:
@@ -82,7 +87,8 @@ class LLMRouter:
         last_error = ""
         for provider in self.providers:
             try:
-                raw = self.caller(provider, full_prompt, temperature=temperature, max_tokens=max_tokens)
+                raw = self.caller(provider, full_prompt, temperature=temperature,
+                                  max_tokens=max_tokens, messages=messages)
                 if schema:
                     data = self._parse_json(raw)
                     if data is None:
@@ -148,29 +154,19 @@ class LLMRouter:
             pass
 
     def chat_stream(self, prompt: str, schema: Optional[Dict[str, Any]] = None,
-                    use_cache: bool = False, task_type: str = "general"):
-        """流式调用，返回生成器"""
-        from dataclasses import dataclass, field
-
-        @dataclass
-        class StreamResult:
-            success: bool = False
-            provider: str = ""
-            chunks: List[str] = field(default_factory=list)
-            error: str = ""
-
+                    use_cache: bool = False, task_type: str = "general",
+                    messages: Optional[List[Dict[str, Any]]] = None):
+        """流式调用，返回生成器。传入 messages 时用多轮对话格式。"""
         full_prompt = self._build_prompt(prompt, schema)
 
         for provider in self.providers:
             try:
                 from modules.ai.foundation.llm_caller import ProviderCaller
                 caller = ProviderCaller()
-                chunks = caller.stream_call(provider, full_prompt)
+                chunks = caller.stream_call(provider, full_prompt, messages=messages)
 
-                result = StreamResult(success=True, provider=provider)
                 for chunk in chunks:
                     if chunk:
-                        result.chunks.append(chunk)
                         yield chunk
 
                 self._log_history(provider, task_type, True)

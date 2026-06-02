@@ -393,7 +393,7 @@
         <el-button
           v-if="!isRunning && runResult"
           type="primary"
-          @click="() => { showProgressDialog = false; showRunDialog = true }"
+          @click="() => { showProgressDialog = false; openResultDialog() }"
         >
           查看结果
         </el-button>
@@ -519,6 +519,107 @@
         <el-button @click="showRunDialog = false">关闭</el-button>
       </template>
     </el-dialog>
+
+    <!-- 量化多因子选股结果对话框 -->
+    <el-dialog v-model="showQuantResultDialog" title="量化多因子选股 — 筛选结果" width="1200px" top="2vh">
+      <div v-if="quantResult" class="quant-result">
+        <el-alert
+          title="本结果仅供参考，不构成投资建议。股市有风险，投资需谨慎。"
+          type="warning"
+          :closable="false"
+          show-icon
+          style="margin-bottom:16px"
+        />
+
+        <!-- Summary -->
+        <div class="quant-summary">
+          <div class="qs-item">
+            <div class="qs-value">{{ quantResult.total_analyzed || 0 }}</div>
+            <div class="qs-label">分析股票数</div>
+          </div>
+          <div class="qs-item">
+            <div class="qs-value">{{ quantResult.after_filter || 0 }}</div>
+            <div class="qs-label">通过硬性过滤</div>
+          </div>
+          <div class="qs-item">
+            <div class="qs-value">{{ quantResult.result_count || 0 }}</div>
+            <div class="qs-label">最终入选 Top30</div>
+          </div>
+          <div class="qs-item">
+            <div class="qs-value">{{ (quantResult.duration || 0).toFixed(1) }}s</div>
+            <div class="qs-label">执行耗时</div>
+          </div>
+        </div>
+
+        <!-- Result Table -->
+        <el-table
+          v-if="quantResult.results && quantResult.results.length > 0"
+          :data="quantResult.results"
+          stripe
+          border
+          max-height="560"
+          row-key="code"
+        >
+          <el-table-column prop="rank" label="排名" width="60" align="center">
+            <template #default="{ row }">
+              <el-tag
+                :type="row.rank <= 3 ? 'danger' : row.rank <= 10 ? 'warning' : 'info'"
+                size="small"
+              >{{ row.rank }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="code" label="代码" width="90">
+            <template #default="{ row }">
+              <el-tag type="info" size="small">{{ row.code }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="name" label="名称" width="100" show-overflow-tooltip />
+          <el-table-column prop="total_score" label="综合评分" width="90" align="center">
+            <template #default="{ row }">
+              <el-tag
+                :type="row.total_score >= 70 ? 'success' : row.total_score >= 60 ? 'warning' : 'info'"
+                size="large"
+              >{{ row.total_score }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="各维度评分" width="260">
+            <template #default="{ row }">
+              <div class="quant-score-badges">
+                <el-tooltip content="基本面评分(权重30%)" placement="top">
+                  <el-tag size="small" :type="row.fundamental_score >= 70 ? 'success' : 'info'">基:{{ row.fundamental_score }}</el-tag>
+                </el-tooltip>
+                <el-tooltip content="技术面评分(权重25%)" placement="top">
+                  <el-tag size="small" :type="row.technical_score >= 70 ? 'success' : 'info'">技:{{ row.technical_score }}</el-tag>
+                </el-tooltip>
+                <el-tooltip content="资金面评分(权重20%)" placement="top">
+                  <el-tag size="small" :type="row.fund_flow_score >= 70 ? 'success' : 'info'">资:{{ row.fund_flow_score }}</el-tag>
+                </el-tooltip>
+                <el-tooltip content="估值面评分(权重15%)" placement="top">
+                  <el-tag size="small" :type="row.valuation_score >= 70 ? 'success' : 'info'">估:{{ row.valuation_score }}</el-tag>
+                </el-tooltip>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="industry" label="行业" width="100" show-overflow-tooltip />
+          <el-table-column label="市值(亿)" width="80" align="right">
+            <template #default="{ row }">{{ row.market_cap_yi || '-' }}</template>
+          </el-table-column>
+          <el-table-column label="PE" width="70" align="right">
+            <template #default="{ row }">{{ row.pe ?? '-' }}</template>
+          </el-table-column>
+          <el-table-column label="PB" width="70" align="right">
+            <template #default="{ row }">{{ row.pb ?? '-' }}</template>
+          </el-table-column>
+          <el-table-column label="ROE%" width="75" align="right">
+            <template #default="{ row }">{{ row.roe ?? '-' }}</template>
+          </el-table-column>
+          <el-table-column prop="reason" label="选股理由" min-width="180" show-overflow-tooltip />
+        </el-table>
+      </div>
+      <template #footer>
+        <el-button @click="showQuantResultDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -550,6 +651,9 @@ const isRunning = ref(false)
 const currentExecutionId = ref('')
 const currentExecution = ref<WorkflowExecution | null>(null)
 let pollingTimer: number | null = null
+
+const showQuantResultDialog = ref(false)
+const quantResult = ref<any>(null)
 
 const loadingExecutions = ref(false)
 const allExecutions = ref<any[]>([])
@@ -730,7 +834,12 @@ async function pollExecutionProgress(workflowId: string, executionId: string) {
           runLogs.value.push(`📈 筛选出 ${execution.result.result_count || 0} 只符合条件的股票`)
           runLogs.value.push(`⏱️ 总耗时: ${(execution.result.duration || 0).toFixed(2)} 秒`)
           showProgressDialog.value = false
-          showRunDialog.value = true
+          if (execution.result.result_type === 'quant_multi_factor') {
+            quantResult.value = execution.result
+            showQuantResultDialog.value = true
+          } else {
+            showRunDialog.value = true
+          }
         } else if (execution.status === 'failed') {
           runLogs.value.push(`❌ 执行失败: ${execution.error || '未知错误'}`)
           ElMessage.error(execution.error || '工作流执行失败')
@@ -907,10 +1016,25 @@ async function resumeExecution(execution: any) {
   }
 }
 
+function openResultDialog() {
+  if (!runResult.value) return
+  if (runResult.value.result_type === 'quant_multi_factor') {
+    quantResult.value = runResult.value
+    showQuantResultDialog.value = true
+  } else {
+    showRunDialog.value = true
+  }
+}
+
 function viewExecutionResult(execution: any) {
   if (execution.result) {
     runResult.value = execution.result
-    showRunDialog.value = true
+    if (execution.result.result_type === 'quant_multi_factor') {
+      quantResult.value = execution.result
+      showQuantResultDialog.value = true
+    } else {
+      showRunDialog.value = true
+    }
   }
 }
 
@@ -1771,5 +1895,37 @@ onUnmounted(() => {
   color: #606266;
   font-size: 11px;
   flex-shrink: 0;
+}
+
+/* 量化多因子选股结果样式 */
+.quant-result {
+  padding: 4px 0;
+}
+.quant-summary {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  padding: 16px 24px;
+}
+.qs-item {
+  text-align: center;
+  flex: 1;
+}
+.qs-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #409eff;
+}
+.qs-label {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+}
+.quant-score-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 </style>

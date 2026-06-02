@@ -828,13 +828,13 @@ def ai_pick_run():
 
 @api_bp.route("/ai/chat", methods=["POST"])
 def ai_chat():
-    """通用AI对话接口"""
+    """通用AI对话接口，支持多轮对话历史"""
     from modules.ai.foundation.llm_router import LLMRouter
 
     data = request.get_json() or {}
     message = data.get("message", "")
     provider = data.get("provider")
-    model = data.get("model")
+    history = data.get("history", [])  # [{role: 'user'|'assistant', content: '...'}]
 
     if not message:
         return jsonify({"success": False, "error": "message is required"}), 400
@@ -844,7 +844,18 @@ def ai_chat():
         if provider:
             router.providers = [provider]
 
-        result = router.chat(message, use_cache=True)
+        # 构建多轮对话 messages（最多保留最近10条历史）
+        messages = None
+        if history:
+            valid_history = [
+                {"role": m["role"], "content": m["content"]}
+                for m in history[-10:]
+                if m.get("role") in ("user", "assistant") and m.get("content")
+            ]
+            if valid_history:
+                messages = valid_history + [{"role": "user", "content": message}]
+
+        result = router.chat(message, use_cache=not messages, messages=messages)
         if result.success:
             return jsonify({
                 "success": True,
@@ -861,6 +872,57 @@ def ai_chat():
     except Exception as e:
         logger.error(f"AI chat failed: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+@api_bp.route("/ai/chat/stream", methods=["POST"])
+def ai_chat_stream():
+    """流式AI对话接口，支持多轮对话历史，SSE格式返回"""
+    import json as _json
+    from flask import Response
+    from modules.ai.foundation.llm_router import LLMRouter
+
+    data = request.get_json() or {}
+    message = data.get("message", "")
+    provider = data.get("provider")
+    history = data.get("history", [])
+
+    if not message:
+        return jsonify({"success": False, "error": "message is required"}), 400
+
+    # 构建多轮对话 messages（最多保留最近10条历史）
+    valid_history = [
+        {"role": m["role"], "content": m["content"]}
+        for m in history[-10:]
+        if m.get("role") in ("user", "assistant") and m.get("content")
+    ]
+    messages = valid_history + [{"role": "user", "content": message}]
+
+    def generate():
+        try:
+            router = LLMRouter()
+            if provider:
+                router.providers = [provider]
+
+            full_content = ""
+            for chunk in router.chat_stream("", messages=messages):
+                if chunk:
+                    full_content += chunk
+                    yield f"data: {_json.dumps({'type': 'content', 'data': chunk})}\n\n"
+
+            yield f"data: {_json.dumps({'type': 'done', 'data': {'content': full_content}})}\n\n"
+        except Exception as e:
+            logger.error(f"AI chat stream failed: {e}")
+            yield f"data: {_json.dumps({'type': 'error', 'data': str(e)})}\n\n"
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @api_bp.route("/ai/pick/results", methods=["GET"])

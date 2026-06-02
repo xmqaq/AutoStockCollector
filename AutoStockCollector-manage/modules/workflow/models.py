@@ -108,6 +108,7 @@ class Workflow:
     last_run_at: Optional[str] = None
     run_count: int = 0
     tags: List[str] = field(default_factory=list)
+    workflow_type: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -121,7 +122,8 @@ class Workflow:
             "updated_at": self.updated_at,
             "last_run_at": self.last_run_at,
             "run_count": self.run_count,
-            "tags": self.tags
+            "tags": self.tags,
+            "workflow_type": self.workflow_type
         }
 
     @classmethod
@@ -137,7 +139,8 @@ class Workflow:
             updated_at=data.get('updated_at', ''),
             last_run_at=data.get('last_run_at'),
             run_count=data.get('run_count', 0),
-            tags=data.get('tags', [])
+            tags=data.get('tags', []),
+            workflow_type=data.get('workflow_type', '')
         )
 
 

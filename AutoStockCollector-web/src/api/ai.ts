@@ -206,8 +206,15 @@ export const aiApi = {
   getMultiAgentProgress(taskId: string) {
     return client.get(`/api/v1/ai/multi-agent/${taskId}`)
   },
-  chat(params: { message: string; model?: string; provider?: string }) {
+  chat(params: { message: string; model?: string; provider?: string; history?: { role: string; content: string }[] }) {
     return client.post('/api/v1/ai/chat', params)
+  },
+  chatStream(params: { message: string; provider?: string; history?: { role: string; content: string }[] }) {
+    return fetch('/api/v1/ai/chat/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    })
   },
 }
 

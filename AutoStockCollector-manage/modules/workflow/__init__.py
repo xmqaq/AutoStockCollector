@@ -8,6 +8,7 @@ from .models import (
     NodeType, FilterType, ScoreType, ExecutionStatus, ExecutionStep
 )
 from .executor import WorkflowExecutor, WorkflowPauseManager
+from .quant_executor import QuantMultiFactorExecutor
 
 __all__ = [
     'Workflow',
@@ -21,5 +22,6 @@ __all__ = [
     'NodeType',
     'FilterType',
     'ScoreType',
-    'WorkflowExecutor'
+    'WorkflowExecutor',
+    'QuantMultiFactorExecutor'
 ]

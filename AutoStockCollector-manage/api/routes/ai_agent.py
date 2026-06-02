@@ -14,18 +14,35 @@ def _get_db():
 
 
 def _ensure_collection():
-    """确保 ai_agents 集合存在并初始化默认数据"""
+    """确保 ai_agents 集合存在并补全缺失的默认 Agent"""
     db = _get_db()
     if "ai_agents" not in db.list_collection_names():
         db.create_collection("ai_agents")
         db["ai_agents"].create_index([("id", 1)], unique=True)
-        _init_default_agents()
+    _sync_default_agents()
+
+
+def _sync_default_agents():
+    """补全缺失的默认 Agent（已存在的不覆盖）"""
+    db = _get_db()
+    for agent in _default_agent_configs():
+        db["ai_agents"].update_one(
+            {"id": agent["id"]},
+            {"$setOnInsert": agent},
+            upsert=True
+        )
 
 
 def _init_default_agents():
-    """初始化默认 Agent"""
+    """初始化默认 Agent（全量覆盖，仅首次建库时调用）"""
     db = _get_db()
-    default_agents = [
+    for agent in _default_agent_configs():
+        db["ai_agents"].update_one({"id": agent["id"]}, {"$set": agent}, upsert=True)
+
+
+def _default_agent_configs():
+    """返回所有默认 Agent 配置"""
+    return [
         {
             "id": "market_analyst",
             "name": "市场分析师",
@@ -177,21 +194,21 @@ def _init_default_agents():
    - 破位下跌 = 技术破位风险
    - 高位放量滞涨 = 主力出货风险
    - 连续下跌 = 趋势转弱风险
-   
+
 2. 【估值风险】
    - PE/PB 显著高于行业 = 估值泡沫风险
    - 涨幅过大 = 回调风险
    - 市盈率为负 = 盈利风险
-   
+
 3. 【流动性风险】
    - 成交量异常萎缩 = 流动性枯竭风险
    - 大单砸盘风险
-   
+
 4. 【消息面风险】
    - 利空新闻影响
    - 行业政策风险
    - 大股东减持风险
-   
+
 5. 【止损建议】
    - 建议止损位设置
    - 仓位管理建议
@@ -203,10 +220,43 @@ def _init_default_agents():
             "priority": 5,
             "created_at": datetime.now().isoformat(),
             "updated_at": datetime.now().isoformat()
+        },
+        {
+            "id": "sentiment_analyst",
+            "name": "舆情分析师",
+            "description": "分析市场舆情、新闻情绪和社会热度",
+            "role": "sentiment_analyst",
+            "system_prompt": """你是一位专业的市场舆情分析师。你能够访问股票相关的新闻标题、市场情绪数据等。
+
+你的舆情分析框架：
+1. 【新闻情绪】
+   - 正面新闻（业绩超预期、政策利好、合同中标）= 情绪支撑
+   - 负面新闻（业绩下滑、监管处罚、高管变动）= 情绪压力
+   - 中性新闻（行业动态、产品发布）= 关注度提升
+
+2. 【市场热度】
+   - 相关新闻数量增多 = 市场关注度上升
+   - 连续多日正面报道 = 持续催化
+   - 突发负面新闻 = 短期冲击风险
+
+3. 【情绪拐点】
+   - 负面新闻出尽 = 可能触底信号
+   - 正面新闻密集出现 = 主力拉升配合
+
+4. 【综合判断】
+   - 情绪评分（0-100）
+   - 正负面比例估算
+   - 对股价的短期影响预判
+
+请给出舆情分析，重点：当前情绪倾向、关键新闻影响、情绪对股价的短期影响。""",
+            "temperature": 0.7,
+            "max_tokens": 1500,
+            "enabled": True,
+            "priority": 6,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat()
         }
     ]
-    for agent in default_agents:
-        db["ai_agents"].update_one({"id": agent["id"]}, {"$set": agent}, upsert=True)
 
 
 @ai_agent_bp.route("", methods=["GET"])
@@ -477,9 +527,10 @@ def compare_stocks():
 @ai_agent_bp.route("/batch-analyze", methods=["POST"])
 def batch_analyze():
     """批量分析多个股票"""
+    from modules.ai.foundation.llm_router import LLMRouter
     data = request.get_json() or {}
     codes = data.get("codes", [])
-    agent_id = data.get("agent_id", "agent_technical")
+    agent_id = data.get("agent_id", "technical_analyst")
 
     if not codes or len(codes) > 20:
         return jsonify({"success": False, "error": "最多支持20个股票"}), 400
@@ -736,6 +787,7 @@ def save_agent_history():
 @ai_agent_bp.route("/<agent_id>/analyze", methods=["POST"])
 def analyze_with_agent(agent_id: str):
     """使用指定 Agent 分析股票"""
+    from modules.ai.foundation.llm_router import LLMRouter
     _ensure_collection()
     db = _get_db()
     agent = db["ai_agents"].find_one({"id": agent_id}, {"_id": 0})

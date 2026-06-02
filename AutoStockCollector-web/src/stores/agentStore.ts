@@ -35,11 +35,11 @@ export const useAgentStore = defineStore('agent', () => {
   ])
 
   const agentMappings = {
-    market: 'agent_market',
-    technical: 'agent_technical',
-    fund: 'agent_fund',
-    sentiment: 'agent_sentiment',
-    risk: 'agent_risk',
+    market: 'market_analyst',
+    technical: 'technical_analyst',
+    fund: 'fund_analyst',
+    sentiment: 'sentiment_analyst',
+    risk: 'risk_analyst',
   }
 
   const currentTask = ref<{
@@ -287,10 +287,11 @@ export const useAgentStore = defineStore('agent', () => {
       risk: 0.15,
     }
 
+    const nonCommanderAgents = agents.value.filter(a => a.role !== 'commander')
     const weightedScore = allResults.reduce((sum, r, idx) => {
-      const agent = agents.value.find(a => a.role !== 'commander')[idx]
-      const role = agent?.role
-      return sum + (r.score || 0) * (weights[role!] || 0.2)
+      const agent = nonCommanderAgents[idx]
+      const role = agent?.role as string | undefined
+      return sum + (r.score || 0) * ((role && role in weights) ? weights[role as keyof typeof weights] : 0.2)
     }, 0)
 
     aggregatedResult.value = {

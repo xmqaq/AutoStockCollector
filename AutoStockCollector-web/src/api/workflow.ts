@@ -42,6 +42,9 @@ export interface WorkflowResult {
   results: any[]
   execution_time: string
   error?: string
+  result_type?: string
+  total_analyzed?: number
+  after_filter?: number
 }
 
 export interface WorkflowExecution {

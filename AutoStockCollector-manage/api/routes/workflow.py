@@ -251,7 +251,28 @@ def run_workflow(workflow_id):
                     execution_storage.fail_execution(exec_id, str(e))
             return execute_in_background
 
-        thread = threading.Thread(target=make_background_runner(execution_id), daemon=True)
+        # Dispatch to quantitative multi-factor executor if workflow_type matches
+        if getattr(workflow, 'workflow_type', '') == 'quant_multi_factor':
+            def make_quant_runner(exec_id):
+                def run():
+                    try:
+                        from modules.workflow.quant_executor import QuantMultiFactorExecutor
+                        executor = QuantMultiFactorExecutor(workflow_id, exec_id, make_progress_callback(exec_id))
+                        result = executor.execute()
+                        if result.get('success'):
+                            execution_storage.complete_execution(exec_id, result)
+                            workflow_storage.update_last_run(workflow_id)
+                        else:
+                            execution_storage.fail_execution(exec_id, result.get('error', 'Unknown error'))
+                    except Exception as e:
+                        import traceback
+                        logger.error(f"Quant execution failed: {e}\n{traceback.format_exc()}")
+                        execution_storage.fail_execution(exec_id, str(e))
+                return run
+
+            thread = threading.Thread(target=make_quant_runner(execution_id), daemon=True)
+        else:
+            thread = threading.Thread(target=make_background_runner(execution_id), daemon=True)
         thread.start()
 
         return jsonify({

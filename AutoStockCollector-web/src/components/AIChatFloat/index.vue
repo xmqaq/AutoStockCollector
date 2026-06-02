@@ -226,11 +226,7 @@ async function handleSend() {
   const text = inputText.value.trim()
   if (!text || loading.value) return
 
-  messages.value.push({
-    role: 'user',
-    content: text,
-    time: getTime(),
-  })
+  messages.value.push({ role: 'user', content: text, time: getTime() })
   inputText.value = ''
   loading.value = true
   scrollToBottom()
@@ -238,29 +234,120 @@ async function handleSend() {
   const stockCodeMatch = text.match(/(\d{6})/)
   const stockCode = stockCodeMatch ? stockCodeMatch[1] : null
 
+  // 股票代码分析：调用对应 Agent 流式接口
+  if (stockCode && selectedAgent.value) {
+    await streamAgentAnalyze(selectedAgent.value, stockCode)
+  } else {
+    await streamChat(text)
+  }
+}
+
+async function streamChat(text: string) {
+  // 构建历史（最多10条，排除刚推入的当前用户消息）
+  const history = messages.value
+    .slice(0, -1)
+    .slice(-10)
+    .map(m => ({ role: m.role, content: m.content }))
+
+  const msgIndex = messages.value.length
+  messages.value.push({ role: 'assistant', content: '', time: getTime() })
+  scrollToBottom()
+
   try {
-    let reply: string
-    if (stockCode && selectedAgent.value) {
-      const res = await aiAgentApi.analyze(selectedAgent.value, stockCode)
-      reply = res.data?.data?.content || '抱歉，AI分析师暂时无法回复'
-    } else {
-      const params: { message: string; provider?: string; model?: string } = { message: text }
-      if (selectedProvider.value) params.provider = selectedProvider.value
-      if (selectedModel.value) params.model = selectedModel.value
-      const res = await aiApi.chat(params)
-      reply = res.data?.data?.content || res.data?.content || '抱歉，AI助手暂时无法回复'
+    const response = await aiApi.chatStream({
+      message: text,
+      provider: selectedProvider.value || undefined,
+      history,
+    })
+
+    if (!response.ok) {
+      messages.value[msgIndex].content = '抱歉，AI助手暂时无法回复'
+      return
     }
-    messages.value.push({
-      role: 'assistant',
-      content: reply,
-      time: getTime(),
-    })
+
+    const reader = response.body!.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() ?? ''
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        try {
+          const evt = JSON.parse(line.slice(6))
+          if (evt.type === 'content' && evt.data) {
+            messages.value[msgIndex].content += evt.data
+            scrollToBottom()
+          }
+        } catch {
+          // ignore parse errors on partial lines
+        }
+      }
+    }
+
+    if (!messages.value[msgIndex].content) {
+      messages.value[msgIndex].content = '抱歉，AI助手暂时无法回复'
+    }
   } catch (e: any) {
-    messages.value.push({
-      role: 'assistant',
-      content: `分析失败: ${e.message || '请稍后重试'}`,
-      time: getTime(),
+    messages.value[msgIndex].content = `请求失败: ${e.message || '请稍后重试'}`
+  } finally {
+    loading.value = false
+    scrollToBottom()
+  }
+}
+
+async function streamAgentAnalyze(agentId: string, stockCode: string) {
+  const msgIndex = messages.value.length
+  messages.value.push({ role: 'assistant', content: '', time: getTime() })
+  scrollToBottom()
+
+  try {
+    const response = await fetch(`/api/v1/ai-agents/${agentId}/analyze/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: stockCode }),
     })
+
+    if (!response.ok) {
+      // 降级到非流式
+      const res = await aiAgentApi.analyze(agentId, stockCode)
+      messages.value[msgIndex].content = res.data?.data?.content || '分析失败'
+      return
+    }
+
+    const reader = response.body!.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() ?? ''
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        try {
+          const evt = JSON.parse(line.slice(6))
+          if (evt.type === 'content' && evt.data) {
+            messages.value[msgIndex].content += evt.data
+            scrollToBottom()
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    if (!messages.value[msgIndex].content) {
+      messages.value[msgIndex].content = '分析完成，但未返回内容'
+    }
+  } catch (e: any) {
+    messages.value[msgIndex].content = `分析失败: ${e.message || '请稍后重试'}`
   } finally {
     loading.value = false
     scrollToBottom()
