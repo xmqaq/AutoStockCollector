@@ -136,7 +136,7 @@
 import { ref, nextTick, computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ChatDotRound, MagicStick, User, UserFilled } from '@element-plus/icons-vue'
-import { aiApi, aiAgentApi, aiKeyApi, type AIAgent, type AIKeyConfig } from '@/api/ai'
+import { aiAgentApi, aiKeyApi, type AIAgent, type AIKeyConfig } from '@/api/ai'
 import { stockApi } from '@/api/stock'
 
 interface Message {
@@ -261,41 +261,46 @@ async function handleSend() {
   loading.value = true
   scrollToBottom()
 
-  const stockCodeMatch = text.match(/(\d{6})/)
-  const stockCode = stockCodeMatch ? stockCodeMatch[1] : null
-
-  // 股票代码分析：调用对应 Agent 流式接口
-  if (stockCode && selectedAgent.value) {
-    await streamAgentAnalyze(selectedAgent.value, stockCode)
-  } else {
-    await streamChat(text)
-  }
-}
-
-async function streamChat(text: string) {
-  // 构建历史（最多10条，排除刚推入的当前用户消息）
   const history = messages.value
     .slice(0, -1)
     .slice(-10)
     .map(m => ({ role: m.role, content: m.content }))
 
+  await streamAgentChat({
+    message: text,
+    agent_id: selectedAgent.value || undefined,
+    stock_code: stockContext.value || undefined,
+    history,
+    provider: selectedProvider.value || undefined,
+  })
+}
+
+interface AgentChatParams {
+  message: string
+  agent_id?: string
+  stock_code?: string
+  history?: Array<{ role: string; content: string }>
+  provider?: string
+}
+
+async function streamAgentChat(params: AgentChatParams) {
   const msgIndex = messages.value.length
   messages.value.push({ role: 'assistant', content: '', time: getTime() })
   scrollToBottom()
 
   try {
-    const response = await aiApi.chatStream({
-      message: text,
-      provider: selectedProvider.value || undefined,
-      history,
+    const response = await fetch('/api/v1/ai/agent-chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
     })
 
-    if (!response.ok) {
-      messages.value[msgIndex].content = '抱歉，AI助手暂时无法回复'
+    if (!response.ok || !response.body) {
+      messages.value[msgIndex].content = '请求失败，请稍后重试'
       return
     }
 
-    const reader = response.body!.getReader()
+    const reader = response.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
 
@@ -312,9 +317,11 @@ async function streamChat(text: string) {
           if (evt.type === 'content' && evt.data) {
             messages.value[msgIndex].content += evt.data
             scrollToBottom()
+          } else if (evt.type === 'error' && evt.data) {
+            messages.value[msgIndex].content = `错误：${evt.data}`
           }
         } catch {
-          // ignore parse errors on partial lines
+          // 忽略不完整 SSE 行
         }
       }
     }
@@ -324,60 +331,6 @@ async function streamChat(text: string) {
     }
   } catch (e: any) {
     messages.value[msgIndex].content = `请求失败: ${e.message || '请稍后重试'}`
-  } finally {
-    loading.value = false
-    scrollToBottom()
-  }
-}
-
-async function streamAgentAnalyze(agentId: string, stockCode: string) {
-  const msgIndex = messages.value.length
-  messages.value.push({ role: 'assistant', content: '', time: getTime() })
-  scrollToBottom()
-
-  try {
-    const response = await fetch(`/api/v1/ai-agents/${agentId}/analyze/stream`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: stockCode }),
-    })
-
-    if (!response.ok) {
-      // 降级到非流式
-      const res = await aiAgentApi.analyze(agentId, stockCode)
-      messages.value[msgIndex].content = res.data?.data?.content || '分析失败'
-      return
-    }
-
-    const reader = response.body!.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() ?? ''
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue
-        try {
-          const evt = JSON.parse(line.slice(6))
-          if (evt.type === 'content' && evt.data) {
-            messages.value[msgIndex].content += evt.data
-            scrollToBottom()
-          }
-        } catch {
-          // ignore
-        }
-      }
-    }
-
-    if (!messages.value[msgIndex].content) {
-      messages.value[msgIndex].content = '分析完成，但未返回内容'
-    }
-  } catch (e: any) {
-    messages.value[msgIndex].content = `分析失败: ${e.message || '请稍后重试'}`
   } finally {
     loading.value = false
     scrollToBottom()
