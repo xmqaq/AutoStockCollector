@@ -185,3 +185,70 @@ class TestTradeEngine(unittest.TestCase):
 
         positions = engine.get_positions("default")
         self.assertEqual(len(positions), 0)
+
+
+class TestPaperStats(unittest.TestCase):
+    def _make_stats(self, trades):
+        with patch("config.database.DatabaseConfig.get_database") as mock_db:
+            mock_db.return_value = {"trade_records": MagicMock()}
+            from modules.paper_trading.stats import PaperStats
+            s = PaperStats()
+            s._trades = MagicMock()
+            s._trades.find.return_value = trades
+            return s
+
+    def _trade(self, action, code, shares, price, traded_at, cash_after=0):
+        return {
+            "action": action, "code": code, "shares": shares,
+            "price": price, "traded_at": traded_at, "cash_after": cash_after,
+        }
+
+    def test_win_rate_100_when_all_profitable(self):
+        trades = [
+            self._trade("buy", "SH600000", 100, 10.0, "2026-01-01T10:00:00"),
+            self._trade("sell", "SH600000", 100, 12.0, "2026-01-10T10:00:00"),
+        ]
+        s = self._make_stats(trades)
+        result = s.get_stats()
+        self.assertEqual(result["win_trades"], 1)
+        self.assertEqual(result["total_trades"], 1)
+        self.assertAlmostEqual(result["win_rate"], 100.0, places=1)
+
+    def test_win_rate_0_when_all_losses(self):
+        trades = [
+            self._trade("buy", "SH600000", 100, 10.0, "2026-01-01T10:00:00"),
+            self._trade("sell", "SH600000", 100, 8.0, "2026-01-10T10:00:00"),
+        ]
+        s = self._make_stats(trades)
+        result = s.get_stats()
+        self.assertEqual(result["win_trades"], 0)
+        self.assertAlmostEqual(result["win_rate"], 0.0, places=1)
+
+    def test_partial_sell_creates_one_completed_pair(self):
+        trades = [
+            self._trade("buy", "SH600000", 500, 10.0, "2026-01-01T10:00:00"),
+            self._trade("sell", "SH600000", 200, 11.0, "2026-01-05T10:00:00"),
+        ]
+        s = self._make_stats(trades)
+        result = s.get_stats()
+        self.assertEqual(result["total_trades"], 1)
+
+    def test_empty_trades_returns_zeros(self):
+        s = self._make_stats([])
+        result = s.get_stats()
+        self.assertEqual(result["total_trades"], 0)
+        self.assertEqual(result["win_rate"], 0)
+        self.assertEqual(result["profit_factor"], 0)
+
+    def test_nav_returns_sorted_series(self):
+        trades = [
+            self._trade("buy", "SH600000", 100, 10.0, "2026-01-01T10:00:00", cash_after=99000.0),
+            self._trade("sell", "SH600000", 100, 12.0, "2026-01-10T10:00:00", cash_after=101200.0),
+        ]
+        acct = MagicMock()
+        acct.get.return_value = {"initial_capital": 100000.0}
+        s = self._make_stats(trades)
+        nav = s.get_nav("default", acct)
+        self.assertEqual(len(nav), 2)
+        self.assertEqual(nav[0]["date"], "2026-01-01")
+        self.assertAlmostEqual(nav[1]["nav"], 1.012, places=3)
