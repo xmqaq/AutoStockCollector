@@ -2662,6 +2662,7 @@ def ai_agent_chat():
     context_block = ""
     stock_name = ""
     if stock_code:
+        stock_code = _normalize_code(stock_code)   # sh600000 → SH600000，与 DB 格式一致
         try:
             from modules.ai.foundation.dal import StockDAL
             from modules.ai.foundation.factors import (
