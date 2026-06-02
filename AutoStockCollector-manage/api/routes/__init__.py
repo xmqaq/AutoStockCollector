@@ -123,7 +123,7 @@ def register_routes(app):
     from api.routes.ai_advanced import ai_advanced_bp
     from api.routes.monitor import monitor_bp
     from api.routes.sentiment import sentiment_bp
-    from api.routes.position import position_bp
+    from api.routes.paper_trading import paper_bp
     from api.routes.market import market_bp
     from api.routes.ai_agent import ai_agent_bp
     from api.routes.workflow import workflow_bp
@@ -132,7 +132,7 @@ def register_routes(app):
     app.register_blueprint(ai_advanced_bp)
     app.register_blueprint(monitor_bp)
     app.register_blueprint(sentiment_bp)
-    app.register_blueprint(position_bp)
+    app.register_blueprint(paper_bp)
     app.register_blueprint(market_bp)
     app.register_blueprint(ai_agent_bp)
     app.register_blueprint(workflow_bp)
