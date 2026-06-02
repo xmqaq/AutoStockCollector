@@ -1,17 +1,53 @@
 <template>
-  <div class="position-management">
-    <el-row :gutter="16">
+  <div class="paper-trading">
+    <!-- 顶部账户概览 -->
+    <el-card shadow="never" class="account-bar" v-loading="accountLoading">
+      <div class="account-overview" v-if="account">
+        <div class="account-stat">
+          <div class="stat-label">初始资金</div>
+          <div class="stat-value">{{ formatAmount(account.initial_capital) }}</div>
+        </div>
+        <div class="account-stat">
+          <div class="stat-label">当前现金</div>
+          <div class="stat-value">{{ formatAmount(account.cash_balance) }}</div>
+        </div>
+        <div class="account-stat">
+          <div class="stat-label">持仓市值</div>
+          <div class="stat-value text-primary">{{ formatAmount(totalMarketValue) }}</div>
+        </div>
+        <div class="account-stat">
+          <div class="stat-label">账户净值</div>
+          <div class="stat-value" :class="totalReturn >= 0 ? 'text-rise' : 'text-fall'">
+            {{ formatAmount(account.cash_balance + totalMarketValue) }}
+          </div>
+        </div>
+        <div class="account-stat">
+          <div class="stat-label">总收益率</div>
+          <div class="stat-value" :class="totalReturn >= 0 ? 'text-rise' : 'text-fall'">
+            {{ formatPercent(totalReturn) }}
+          </div>
+        </div>
+        <el-button size="small" @click="showInitDialog = true">初始化账户</el-button>
+      </div>
+      <div v-else class="no-account">
+        <span>尚未初始化账户</span>
+        <el-button type="primary" size="small" @click="showInitDialog = true">立即初始化</el-button>
+      </div>
+    </el-card>
+
+    <el-row :gutter="16" style="margin-top: 12px">
+      <!-- 左侧：持仓表 -->
       <el-col :span="16">
         <el-card shadow="never" class="section-card">
           <template #header>
             <div class="card-header">
-              <span>持仓列表</span>
-              <el-button type="primary" size="small" @click="showAddDialog = true">
-                添加持仓
+              <span>当前持仓</span>
+              <el-button type="primary" size="small" @click="showBuyDialog = true">
+                手动买入
               </el-button>
             </div>
           </template>
-          <el-table :data="positions" stripe size="small" v-loading="loading">
+          <el-table :data="positions" stripe size="small" v-loading="posLoading">
             <el-table-column prop="code" label="代码" width="100" align="center">
               <template #default="{ row }">
                 <router-link :to="`/stock-detail?code=${row.code}`" class="stock-link">
@@ -19,623 +55,453 @@
                 </router-link>
               </template>
             </el-table-column>
-            <el-table-column prop="name" label="名称" min-width="100" align="center" show-overflow-tooltip />
-            <el-table-column prop="shares" label="持仓数量" width="90" align="center">
-              <template #default="{ row }">{{ row.shares || 0 }}</template>
+            <el-table-column prop="name" label="名称" min-width="90" align="center" show-overflow-tooltip />
+            <el-table-column prop="shares" label="持仓量" width="80" align="center" />
+            <el-table-column label="成本价" width="80" align="center">
+              <template #default="{ row }">{{ row.avg_cost.toFixed(2) }}</template>
             </el-table-column>
-            <el-table-column prop="avg_cost" label="持仓成本" width="90" align="center">
-              <template #default="{ row }">
-                {{ (row.avg_cost || 0).toFixed(2) }}
-              </template>
+            <el-table-column label="现价" width="80" align="center">
+              <template #default="{ row }">{{ row.current_price.toFixed(2) }}</template>
             </el-table-column>
-            <el-table-column prop="current_price" label="当前价" width="90" align="center">
-              <template #default="{ row }">
-                {{ (row.current_price || 0).toFixed(2) }}
-              </template>
+            <el-table-column label="市值" width="90" align="center">
+              <template #default="{ row }">{{ formatAmount(row.market_value) }}</template>
             </el-table-column>
-            <el-table-column label="持仓市值" width="100" align="center">
-              <template #default="{ row }">
-                {{ formatAmount(row.market_value) }}
-              </template>
-            </el-table-column>
-            <el-table-column label="盈亏金额" width="100" align="center">
-              <template #default="{ row }">
-                <span :class="row.pnl >= 0 ? 'text-rise' : 'text-fall'">
-                  {{ formatChange(row.pnl) }}
-                </span>
-              </template>
-            </el-table-column>
-            <el-table-column label="盈亏比例" width="90" align="center">
+            <el-table-column label="盈亏%" width="90" align="center">
               <template #default="{ row }">
                 <span :class="row.pnl_percent >= 0 ? 'text-rise' : 'text-fall'">
                   {{ formatPercent(row.pnl_percent) }}
                 </span>
               </template>
             </el-table-column>
-            <el-table-column prop="position_ratio" label="仓位占比" width="90" align="center">
-              <template #default="{ row }">
-                <el-progress
-                  :percentage="row.position_ratio || 0"
-                  :stroke-width="8"
-                  :show-text="false"
-                  :color="row.pnl >= 0 ? '#67c23a' : '#f56c6c'"
-                />
-              </template>
+            <el-table-column label="占比" width="70" align="center">
+              <template #default="{ row }">{{ row.position_ratio.toFixed(1) }}%</template>
             </el-table-column>
-            <el-table-column label="止损位" width="80" align="center">
+            <el-table-column label="操作" width="140" align="center">
               <template #default="{ row }">
-                <span class="price-text stop-loss">{{ (row.stop_loss || 0).toFixed(2) }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="目标价" width="80" align="center">
-              <template #default="{ row }">
-                <span class="price-text target-price">{{ (row.target_price || 0).toFixed(2) }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="100" align="center">
-              <template #default="{ row }">
-                <div class="action-buttons">
-                  <el-button type="primary" size="small" text @click="editPosition(row)">
-                    编辑
-                  </el-button>
-                  <el-button type="danger" size="small" text @click="removePosition(row.code)">
-                    删除
-                  </el-button>
-                </div>
+                <el-button type="primary" size="small" text @click="fetchAiAdvice(row, 'buy')">
+                  AI 建议
+                </el-button>
+                <el-button type="warning" size="small" text @click="openManualSell(row)">
+                  卖出
+                </el-button>
               </template>
             </el-table-column>
           </el-table>
+          <el-empty v-if="!posLoading && positions.length === 0" description="暂无持仓" :image-size="60" />
         </el-card>
       </el-col>
 
+      <!-- 右侧：统计卡片 -->
       <el-col :span="8">
         <el-card shadow="never" class="section-card">
-          <template #header><span>收益统计</span></template>
-          <el-descriptions :column="1" border size="small">
-            <el-descriptions-item label="总成本">
-              <span class="text-secondary">{{ formatAmount(incomeStats.totalCost) }}</span>
-            </el-descriptions-item>
-            <el-descriptions-item label="总市值">
-              <span class="text-primary">{{ formatAmount(incomeStats.totalMarketValue) }}</span>
-            </el-descriptions-item>
-            <el-descriptions-item label="浮动盈亏">
-              <span :class="incomeStats.unrealizedPnL >= 0 ? 'text-rise' : 'text-fall'">
-                {{ formatChange(incomeStats.unrealizedPnL) }}
+          <template #header><span>净值曲线</span></template>
+          <ProfitChart :data="navChartData" title="" chart-height="200px" />
+        </el-card>
+
+        <el-card shadow="never" class="section-card" style="margin-top: 12px">
+          <template #header><span>回测统计</span></template>
+          <el-descriptions :column="2" border size="small">
+            <el-descriptions-item label="总交易次数">{{ stats.total_trades }}</el-descriptions-item>
+            <el-descriptions-item label="胜率">
+              <span :class="stats.win_rate >= 50 ? 'text-rise' : 'text-fall'">
+                {{ stats.win_rate.toFixed(1) }}%
               </span>
             </el-descriptions-item>
-            <el-descriptions-item label="盈亏比例">
-              <span :class="incomeStats.unrealizedPnLPercent >= 0 ? 'text-rise' : 'text-fall'">
-                {{ formatPercent(incomeStats.unrealizedPnLPercent) }}
-              </span>
+            <el-descriptions-item label="平均盈利">
+              <span class="text-rise">+{{ stats.avg_profit_pct.toFixed(2) }}%</span>
             </el-descriptions-item>
-            <el-descriptions-item label="平均持仓天数">
-              {{ incomeStats.holdingDays }} 天
+            <el-descriptions-item label="平均亏损">
+              <span class="text-fall">{{ stats.avg_loss_pct.toFixed(2) }}%</span>
             </el-descriptions-item>
-            <el-descriptions-item label="年化收益率">
-              <span :class="incomeStats.annualizedReturn >= 0 ? 'text-rise' : 'text-fall'">
-                {{ formatPercent(incomeStats.annualizedReturn) }}
-              </span>
-            </el-descriptions-item>
-            <el-descriptions-item label="持仓股票数">
-              {{ positions.length }} 只
-            </el-descriptions-item>
+            <el-descriptions-item label="盈亏比" :span="2">{{ stats.profit_factor.toFixed(2) }}</el-descriptions-item>
           </el-descriptions>
         </el-card>
 
         <el-card shadow="never" class="section-card" style="margin-top: 12px">
-          <ProfitChart :data="profitHistory" title="盈亏曲线" chart-height="280px" />
-        </el-card>
-
-        <el-card shadow="never" class="section-card" style="margin-top: 12px">
-          <template #header><span>仓位预警</span></template>
-          <div class="alert-list">
-            <div
-              v-for="alert in alerts"
-              :key="alert.code"
-              class="alert-item"
-              :class="alert.type"
-            >
-              <div class="alert-header">
-                <span class="alert-code">{{ alert.code }}</span>
-                <el-tag size="small" :type="alert.type === 'danger' ? 'danger' : 'warning'">
-                  {{ alert.label }}
+          <template #header><span>最近交易</span></template>
+          <div class="trade-list">
+            <div v-for="t in recentTrades" :key="t.traded_at" class="trade-item">
+              <div class="trade-header">
+                <span class="trade-code">{{ t.code }} {{ t.name }}</span>
+                <el-tag size="small" :type="t.action === 'buy' ? 'success' : 'danger'">
+                  {{ t.action === 'buy' ? '买入' : '卖出' }}
                 </el-tag>
               </div>
-              <div class="alert-content">{{ alert.message }}</div>
+              <div class="trade-detail">
+                {{ t.shares }} 股 @ {{ t.price.toFixed(2) }}
+                <span class="trade-time">{{ t.traded_at.slice(0, 10) }}</span>
+              </div>
+              <div v-if="t.ai_signal?.action" class="trade-signal">
+                AI: {{ t.ai_signal.action }}
+              </div>
             </div>
-            <el-empty v-if="alerts.length === 0" description="暂无预警" :image-size="60" />
+            <el-empty v-if="recentTrades.length === 0" description="暂无记录" :image-size="40" />
           </div>
         </el-card>
 
         <el-card shadow="never" class="section-card" style="margin-top: 12px">
           <template #header><span>持仓分布</span></template>
-          <div v-if="distributionData.length > 0" class="distribution-chart">
-            <div
-              v-for="(item, idx) in distributionData"
-              :key="idx"
-              class="distribution-item"
-            >
+          <div v-if="positions.length > 0" class="distribution-chart">
+            <div v-for="p in positions" :key="p.code" class="distribution-item">
               <div class="dist-info">
-                <span class="dist-label">{{ item.code }}</span>
-                <span class="dist-percent">{{ item.percent.toFixed(1) }}%</span>
+                <span class="dist-label">{{ p.code }}</span>
+                <span class="dist-percent">{{ p.position_ratio.toFixed(1) }}%</span>
               </div>
               <div class="dist-bar-container">
-                <div class="dist-bar" :style="{ width: item.percent + '%' }"></div>
+                <div class="dist-bar" :style="{ width: p.position_ratio + '%' }" />
               </div>
             </div>
           </div>
-          <el-empty v-else description="暂无数据" :image-size="60" />
+          <el-empty v-else description="暂无数据" :image-size="40" />
         </el-card>
       </el-col>
     </el-row>
 
-    <el-dialog v-model="showAddDialog" :title="form.isEdit ? '编辑持仓' : '添加持仓'" width="500px">
-      <el-form :model="form" label-width="100px" size="default">
+    <!-- 初始化账户对话框 -->
+    <el-dialog v-model="showInitDialog" title="初始化模拟账户" width="400px">
+      <el-form label-width="100px">
+        <el-form-item label="初始资金">
+          <el-input-number v-model="initCapital" :min="1000" :step="10000" style="width: 100%" />
+        </el-form-item>
+        <div class="dialog-warn">注意：初始化将清空所有交易记录和持仓！</div>
+      </el-form>
+      <template #footer>
+        <el-button @click="showInitDialog = false">取消</el-button>
+        <el-button type="primary" :loading="initLoading" @click="doInitAccount">确认初始化</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 手动买入对话框 -->
+    <el-dialog v-model="showBuyDialog" title="手动买入" width="420px">
+      <el-form label-width="100px">
         <el-form-item label="股票代码">
-          <el-input v-model="form.code" :disabled="form.isEdit" placeholder="如: SH600000" />
+          <el-input v-model="buyForm.code" placeholder="如 SH600000" />
         </el-form-item>
-        <el-form-item label="持仓数量">
-          <el-input-number v-model="form.shares" :min="0" style="width: 100%" />
+        <el-form-item label="买入数量">
+          <el-input-number v-model="buyForm.shares" :min="100" :step="100" style="width: 100%" />
         </el-form-item>
-        <el-form-item label="持仓成本">
-          <el-input-number v-model="form.avg_cost" :min="0" :precision="2" style="width: 100%" />
+        <div class="dialog-info" v-if="account">可用现金：{{ formatAmount(account.cash_balance) }}</div>
+      </el-form>
+      <template #footer>
+        <el-button @click="showBuyDialog = false">取消</el-button>
+        <el-button type="primary" :loading="tradeLoading" @click="doManualBuy">确认买入</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- AI 买入确认框 -->
+    <el-dialog v-model="showAiBuyDialog" title="AI 买入建议" width="480px">
+      <div class="ai-advice-panel" v-if="aiAdvice">
+        <div class="advice-row">
+          <span class="advice-label">建议操作</span>
+          <el-tag type="success">{{ aiAdvice.action }}</el-tag>
+        </div>
+        <div class="advice-row" v-if="aiAdvice.reason">
+          <span class="advice-label">理由</span>
+          <span class="advice-text">{{ aiAdvice.reason }}</span>
+        </div>
+        <div class="advice-row" v-if="aiAdvice.buy_zone">
+          <span class="advice-label">参考区间</span>
+          <span class="advice-text">{{ aiAdvice.buy_zone }}</span>
+        </div>
+        <el-divider />
+        <el-form label-width="100px">
+          <el-form-item label="当前价">{{ tradeTarget?.current_price?.toFixed(2) ?? '—' }}</el-form-item>
+          <el-form-item label="可用现金">{{ formatAmount(account?.cash_balance ?? 0) }}</el-form-item>
+          <el-form-item label="买入数量">
+            <el-input-number v-model="tradeShares" :min="100" :step="100" style="width: 100%" />
+          </el-form-item>
+          <el-form-item label="预计金额">
+            <span class="text-primary">
+              {{ formatAmount((tradeTarget?.current_price ?? 0) * tradeShares) }}
+            </span>
+          </el-form-item>
+        </el-form>
+      </div>
+      <template #footer>
+        <el-button @click="showAiBuyDialog = false">取消</el-button>
+        <el-button type="primary" :loading="tradeLoading" @click="doAiTrade('buy')">确认买入</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- AI 卖出 / 手动卖出确认框 -->
+    <el-dialog v-model="showSellDialog" :title="aiAdvice ? 'AI 卖出建议' : '卖出确认'" width="480px">
+      <div class="ai-advice-panel" v-if="aiAdvice">
+        <div class="advice-row">
+          <span class="advice-label">建议操作</span>
+          <el-tag type="danger">{{ aiAdvice.action }}</el-tag>
+        </div>
+        <div class="advice-row" v-if="aiAdvice.reason">
+          <span class="advice-label">理由</span>
+          <span class="advice-text">{{ aiAdvice.reason }}</span>
+        </div>
+        <el-divider />
+      </div>
+      <el-form label-width="100px">
+        <el-form-item label="股票">{{ tradeTarget?.code }} {{ tradeTarget?.name }}</el-form-item>
+        <el-form-item label="当前持仓">{{ tradeTarget?.shares }} 股</el-form-item>
+        <el-form-item label="当前价">{{ tradeTarget?.current_price?.toFixed(2) ?? '—' }}</el-form-item>
+        <el-form-item label="卖出数量">
+          <el-input-number
+            v-model="tradeShares"
+            :min="100"
+            :max="tradeTarget?.shares ?? 0"
+            :step="100"
+            style="width: 100%"
+          />
         </el-form-item>
-        <el-form-item label="止损位">
-          <el-input-number v-model="form.stop_loss" :min="0" :precision="2" style="width: 100%" />
-        </el-form-item>
-        <el-form-item label="目标价">
-          <el-input-number v-model="form.target_price" :min="0" :precision="2" style="width: 100%" />
+        <el-form-item label="预计回收">
+          <span class="text-primary">
+            {{ formatAmount((tradeTarget?.current_price ?? 0) * tradeShares) }}
+          </span>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showAddDialog = false">取消</el-button>
-        <el-button type="primary" @click="savePosition">保存</el-button>
+        <el-button @click="showSellDialog = false">取消</el-button>
+        <el-button type="danger" :loading="tradeLoading" @click="doAiTrade('sell')">确认卖出</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { positionApi } from '@/api/position'
+import { paperApi, type PaperAccount, type PaperPosition, type TradeRecord, type PaperStats, type NavPoint, type AiSignal } from '@/api/paper'
 import ProfitChart from '@/components/ProfitChart/index.vue'
 
-interface Position {
-  code: string
-  name?: string
-  shares: number
-  avg_cost: number
-  current_price?: number
-  market_value?: number
-  pnl?: number
-  pnl_percent?: number
-  position_ratio?: number
-  stop_loss: number
-  target_price: number
-  created_at?: string
+const accountLoading = ref(false)
+const posLoading = ref(false)
+const initLoading = ref(false)
+const tradeLoading = ref(false)
+const aiLoading = ref(false)
+
+const account = ref<PaperAccount | null>(null)
+const positions = ref<PaperPosition[]>([])
+const recentTrades = ref<TradeRecord[]>([])
+const stats = ref<PaperStats>({
+  total_trades: 0, win_trades: 0, loss_trades: 0,
+  win_rate: 0, avg_profit_pct: 0, avg_loss_pct: 0, profit_factor: 0,
+})
+const navData = ref<NavPoint[]>([])
+
+const showInitDialog = ref(false)
+const showBuyDialog = ref(false)
+const showAiBuyDialog = ref(false)
+const showSellDialog = ref(false)
+
+const initCapital = ref(100000)
+const buyForm = ref({ code: '', shares: 100 })
+const tradeTarget = ref<PaperPosition | null>(null)
+const tradeShares = ref(100)
+const aiAdvice = ref<AiSignal | null>(null)
+
+const totalMarketValue = computed(() =>
+  positions.value.reduce((s, p) => s + p.market_value, 0)
+)
+
+const totalReturn = computed(() => {
+  if (!account.value || account.value.initial_capital === 0) return 0
+  const netValue = account.value.cash_balance + totalMarketValue.value
+  return (netValue - account.value.initial_capital) / account.value.initial_capital * 100
+})
+
+const navChartData = computed(() =>
+  navData.value.map(n => ({ date: n.date, value: n.nav * (account.value?.initial_capital ?? 100000), cost: account.value?.initial_capital ?? 100000 }))
+)
+
+function formatAmount(v: number): string {
+  if (Math.abs(v) >= 1e8) return (v / 1e8).toFixed(2) + '亿'
+  if (Math.abs(v) >= 1e4) return (v / 1e4).toFixed(2) + '万'
+  return v.toFixed(2)
 }
 
-interface Alert {
-  code: string
-  label: string
-  type: string
-  message: string
+function formatPercent(v: number): string {
+  return (v >= 0 ? '+' : '') + v.toFixed(2) + '%'
 }
 
-interface IncomeStat {
-  totalCost: number
-  totalMarketValue: number
-  unrealizedPnL: number
-  unrealizedPnLPercent: number
-  holdingDays: number
-  annualizedReturn: number
-}
-
-interface ProfitRecord {
-  date: string
-  value: number
-  cost?: number
-}
-
-const loading = ref(false)
-const showAddDialog = ref(false)
-const positions = ref<Position[]>([])
-const profitHistory = ref<ProfitRecord[]>([])
-const form = ref({
-  code: '',
-  shares: 0,
-  avg_cost: 0,
-  stop_loss: 0,
-  target_price: 0,
-  isEdit: false
-})
-
-const totalMarketValue = computed(() => {
-  return positions.value.reduce((sum, p) => sum + (p.market_value || 0), 0)
-})
-
-const totalCost = computed(() => {
-  return positions.value.reduce((sum, p) => sum + (p.shares * p.avg_cost), 0)
-})
-
-const totalPnl = computed(() => {
-  return positions.value.reduce((sum, p) => sum + (p.pnl || 0), 0)
-})
-
-const totalPnlPercent = computed(() => {
-  if (totalCost.value === 0) return 0
-  return (totalPnl.value / totalCost.value) * 100
-})
-
-const incomeStats = computed<IncomeStat>(() => {
-  const stats: IncomeStat = {
-    totalCost: totalCost.value,
-    totalMarketValue: totalMarketValue.value,
-    unrealizedPnL: totalPnl.value,
-    unrealizedPnLPercent: totalPnlPercent.value,
-    holdingDays: 0,
-    annualizedReturn: 0
-  }
-  
-  if (positions.value.length > 0) {
-    const now = new Date()
-    let totalDays = 0
-    let count = 0
-    
-    for (const pos of positions.value) {
-      if (pos.created_at) {
-        const created = new Date(pos.created_at)
-        const days = Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24))
-        totalDays += days
-        count++
-      }
-    }
-    
-    if (count > 0) {
-      stats.holdingDays = Math.floor(totalDays / count)
-      if (stats.holdingDays > 0 && stats.unrealizedPnLPercent !== 0) {
-        stats.annualizedReturn = (stats.unrealizedPnLPercent / stats.holdingDays) * 365
-      }
-    }
-  }
-  
-  return stats
-})
-
-const alerts = computed<Alert[]>(() => {
-  const list: Alert[] = []
-  
-  for (const pos of positions.value) {
-    const pnlPercent = pos.pnl_percent ?? 0
-    const positionRatio = pos.position_ratio ?? 0
-    const currentPrice = pos.current_price ?? 0
-    const posName = pos.name || pos.code
-    
-    if (pnlPercent <= -10) {
-      list.push({
-        code: pos.code,
-        label: '止损预警',
-        type: 'danger',
-        message: `${posName} 亏损已达 ${Math.abs(pnlPercent).toFixed(2)}%，建议关注`
-      })
-    } else if (pnlPercent <= -5) {
-      list.push({
-        code: pos.code,
-        label: '亏损预警',
-        type: 'warning',
-        message: `${posName} 亏损 ${Math.abs(pnlPercent).toFixed(2)}%`
-      })
-    }
-    
-    if (positionRatio > 30) {
-      list.push({
-        code: pos.code,
-        label: '仓位过重',
-        type: 'warning',
-        message: `${posName} 仓位占比 ${positionRatio.toFixed(1)}%，建议分散风险`
-      })
-    }
-    
-    if (currentPrice <= pos.stop_loss && pos.stop_loss > 0) {
-      list.push({
-        code: pos.code,
-        label: '触发止损',
-        type: 'danger',
-        message: `${posName} 当前价已跌破止损位 ${pos.stop_loss.toFixed(2)}`
-      })
-    }
-  }
-  
-  return list
-})
-
-const distributionData = computed(() => {
-  if (totalMarketValue.value === 0) return []
-  
-  return positions.value
-    .map(p => ({
-      code: p.code,
-      percent: ((p.market_value || 0) / totalMarketValue.value) * 100
-    }))
-    .sort((a, b) => b.percent - a.percent)
-})
-
-function formatAmount(amount: number): string {
-  if (Math.abs(amount) >= 1e8) {
-    return (amount / 1e8).toFixed(2) + '亿'
-  } else if (Math.abs(amount) >= 1e4) {
-    return (amount / 1e4).toFixed(2) + '万'
-  }
-  return amount.toFixed(2)
-}
-
-function formatChange(value: number): string {
-  const prefix = value >= 0 ? '+' : ''
-  return prefix + value.toFixed(2)
-}
-
-function formatPercent(value: number): string {
-  const prefix = value >= 0 ? '+' : ''
-  return prefix + value.toFixed(2) + '%'
-}
-
-async function loadPositions() {
-  loading.value = true
+async function loadAll() {
+  accountLoading.value = true
+  posLoading.value = true
   try {
-    const positionsData = await positionApi.list()
-    positions.value = positionsData
-    generateMockProfitHistory()
-  } catch {
-    positions.value = []
-    profitHistory.value = []
+    const [acct, pos, trades, st, nav] = await Promise.all([
+      paperApi.getAccount(),
+      paperApi.getPositions(),
+      paperApi.getTrades(10),
+      paperApi.getStats(),
+      paperApi.getNav(),
+    ])
+    account.value = acct
+    positions.value = pos
+    recentTrades.value = trades
+    stats.value = st
+    navData.value = nav
   } finally {
-    loading.value = false
+    accountLoading.value = false
+    posLoading.value = false
   }
 }
 
-function generateMockProfitHistory() {
-  const history: ProfitRecord[] = []
-  const now = new Date()
-  let cost = 100000
-  let value = 100000
-  
-  for (let i = 90; i >= 0; i--) {
-    const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000)
-    const dateStr = date.toISOString().split('T')[0]
-    
-    const change = (Math.random() - 0.45) * 2000
-    value += change
-    cost += Math.random() * 100
-    
-    history.push({
-      date: dateStr,
-      value: Math.round(value * 100) / 100,
-      cost: Math.round(cost * 100) / 100,
-    })
-  }
-  
-  profitHistory.value = history
-}
-
-async function savePosition() {
-  if (!form.value.code) {
-    ElMessage.warning('请输入股票代码')
+async function doInitAccount() {
+  if (initCapital.value <= 0) return
+  try {
+    await ElMessageBox.confirm(
+      `确认将模拟账户初始资金设为 ${formatAmount(initCapital.value)}？所有持仓和交易记录将被清空！`,
+      '初始化确认',
+      { confirmButtonText: '确认', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch {
     return
   }
-  
+  initLoading.value = true
   try {
-    const positionData = {
-      code: form.value.code,
-      shares: form.value.shares,
-      avg_cost: form.value.avg_cost,
-      stop_loss: form.value.stop_loss,
-      target_price: form.value.target_price
+    await paperApi.initAccount(initCapital.value)
+    ElMessage.success('账户初始化成功')
+    showInitDialog.value = false
+    loadAll()
+  } catch {
+    ElMessage.error('初始化失败')
+  } finally {
+    initLoading.value = false
+  }
+}
+
+async function fetchAiAdvice(pos: PaperPosition, intent: 'buy' | 'sell') {
+  aiAdvice.value = null
+  tradeTarget.value = pos
+  aiLoading.value = true
+
+  // 默认买入数量：按可用现金 20% 估算
+  if (intent === 'buy' && account.value) {
+    const budget = account.value.cash_balance * 0.2
+    const estimatedShares = Math.floor(budget / (pos.current_price || 1) / 100) * 100
+    tradeShares.value = Math.max(100, estimatedShares)
+  } else if (intent === 'sell') {
+    tradeShares.value = Math.floor(pos.shares * 0.5 / 100) * 100 || 100
+  }
+
+  try {
+    const advice = await paperApi.getAiAdvice(pos.code, pos.avg_cost, pos.position_ratio / 100)
+    aiAdvice.value = advice
+
+    const actionLower = (advice.action ?? '').toLowerCase()
+    const isSellSignal = actionLower.includes('卖') || actionLower.includes('减仓') || actionLower.includes('清仓')
+
+    // 尝试解析 position_advice 中的卖出比例
+    if (intent === 'sell' && advice.position_advice) {
+      const match = advice.position_advice.match(/(\d+)\s*%/)
+      if (match) {
+        const ratio = parseInt(match[1]) / 100
+        tradeShares.value = Math.max(100, Math.floor(pos.shares * ratio / 100) * 100)
+      }
     }
-    
-    if (form.value.isEdit) {
-      await positionApi.updatePosition(positionData)
+
+    if (isSellSignal || intent === 'sell') {
+      showSellDialog.value = true
     } else {
-      await positionApi.addPosition(positionData)
+      showAiBuyDialog.value = true
     }
-    
-    ElMessage.success(form.value.isEdit ? '更新成功' : '保存成功')
-    showAddDialog.value = false
-    resetForm()
-    loadPositions()
   } catch {
-    ElMessage.error(form.value.isEdit ? '更新失败' : '保存失败')
+    ElMessage.error('获取 AI 建议失败')
+  } finally {
+    aiLoading.value = false
   }
 }
 
-function resetForm() {
-  form.value = {
-    code: '',
-    shares: 0,
-    avg_cost: 0,
-    stop_loss: 0,
-    target_price: 0,
-    isEdit: false
-  }
+function openManualSell(pos: PaperPosition) {
+  tradeTarget.value = pos
+  aiAdvice.value = null
+  tradeShares.value = pos.shares
+  showSellDialog.value = true
 }
 
-function editPosition(row: Position) {
-  form.value = {
-    code: row.code,
-    shares: row.shares,
-    avg_cost: row.avg_cost,
-    stop_loss: row.stop_loss,
-    target_price: row.target_price,
-    isEdit: true
+async function doManualBuy() {
+  if (!buyForm.value.code || buyForm.value.shares <= 0) {
+    ElMessage.warning('请填写股票代码和数量')
+    return
   }
-  showAddDialog.value = true
-}
-
-async function removePosition(code: string) {
+  tradeLoading.value = true
   try {
-    await ElMessageBox.confirm('确定要删除该持仓吗？', '提示', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning'
-    })
-    
-    await positionApi.deletePosition(code)
-    ElMessage.success('删除成功')
-    loadPositions()
-  } catch {
-    // 用户取消
+    await paperApi.executeTrade({ code: buyForm.value.code, action: 'buy', shares: buyForm.value.shares })
+    ElMessage.success('买入成功')
+    showBuyDialog.value = false
+    buyForm.value = { code: '', shares: 100 }
+    loadAll()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error ?? '买入失败')
+  } finally {
+    tradeLoading.value = false
   }
 }
 
-onMounted(async () => {
-  await nextTick()
-  loadPositions()
-})
+async function doAiTrade(action: 'buy' | 'sell') {
+  if (!tradeTarget.value || tradeShares.value <= 0) return
+  tradeLoading.value = true
+  try {
+    await paperApi.executeTrade({
+      code: tradeTarget.value.code,
+      action,
+      shares: tradeShares.value,
+      ai_signal: aiAdvice.value ?? undefined,
+    })
+    ElMessage.success(action === 'buy' ? '买入成功' : '卖出成功')
+    showAiBuyDialog.value = false
+    showSellDialog.value = false
+    loadAll()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error ?? '交易失败')
+  } finally {
+    tradeLoading.value = false
+  }
+}
+
+onMounted(loadAll)
 </script>
 
 <style scoped>
-.position-management {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
+.paper-trading { display: flex; flex-direction: column; gap: 0; }
 
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
+.account-bar { background: #1f1f1f; border: 1px solid #2c2c2c; }
+.account-overview { display: flex; align-items: center; gap: 32px; flex-wrap: wrap; }
+.account-stat { display: flex; flex-direction: column; gap: 4px; }
+.stat-label { font-size: 12px; color: #909399; }
+.stat-value { font-size: 16px; font-weight: 600; color: #e5eaf3; }
+.no-account { display: flex; align-items: center; gap: 12px; color: #909399; }
 
-.section-card {
-  background: #1f1f1f;
-  border: 1px solid #2c2c2c;
-}
-
+.section-card { background: #1f1f1f; border: 1px solid #2c2c2c; }
 .section-card :deep(.el-card__header) {
-  border-bottom: 1px solid #2c2c2c;
-  padding: 12px 16px;
-  color: #e5eaf3;
-  font-size: 14px;
-  font-weight: 600;
+  border-bottom: 1px solid #2c2c2c; padding: 12px 16px;
+  color: #e5eaf3; font-size: 14px; font-weight: 600;
 }
+.card-header { display: flex; justify-content: space-between; align-items: center; }
 
-.stock-link {
-  color: #409eff;
-  text-decoration: none;
-}
+.stock-link { color: #409eff; text-decoration: none; }
+.stock-link:hover { text-decoration: underline; }
 
-.stock-link:hover {
-  text-decoration: underline;
-}
+.text-rise { color: #ef5350; }
+.text-fall { color: #26a69a; }
+.text-primary { color: #409eff; }
 
-.text-rise {
-  color: #ef5350;
-}
+.trade-list { display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow-y: auto; }
+.trade-item { padding: 8px 10px; background: #2c2c2c; border-radius: 4px; }
+.trade-header { display: flex; justify-content: space-between; align-items: center; }
+.trade-code { font-size: 13px; font-weight: 600; color: #e5eaf3; }
+.trade-detail { font-size: 12px; color: #909399; margin-top: 4px; display: flex; justify-content: space-between; }
+.trade-time { color: #606266; }
+.trade-signal { font-size: 11px; color: #e6a23c; margin-top: 2px; }
 
-.text-fall {
-  color: #26a69a;
-}
+.distribution-chart { display: flex; flex-direction: column; gap: 8px; }
+.distribution-item { display: flex; flex-direction: column; gap: 4px; }
+.dist-info { display: flex; justify-content: space-between; font-size: 12px; }
+.dist-label { color: #e5eaf3; }
+.dist-percent { color: #909399; }
+.dist-bar-container { height: 6px; background: #2c2c2c; border-radius: 3px; overflow: hidden; }
+.dist-bar { height: 100%; background: #409eff; border-radius: 3px; transition: width 0.3s ease; }
 
-.text-primary {
-  color: #409eff;
-}
+.ai-advice-panel { margin-bottom: 8px; }
+.advice-row { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
+.advice-label { font-size: 12px; color: #909399; min-width: 60px; padding-top: 2px; }
+.advice-text { font-size: 13px; color: #e5eaf3; line-height: 1.5; }
 
-.text-secondary {
-  color: #909399;
-}
-
-.price-text {
-  font-size: 12px;
-}
-
-.stop-loss {
-  color: #f56c6c;
-}
-
-.target-price {
-  color: #67c23a;
-}
-
-.alert-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.alert-item {
-  padding: 10px 12px;
-  border-radius: 4px;
-  background: #2c2c2c;
-}
-
-.alert-item.danger {
-  border-left: 3px solid #f56c6c;
-}
-
-.alert-item.warning {
-  border-left: 3px solid #e6a23c;
-}
-
-.alert-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 4px;
-}
-
-.alert-code {
-  font-weight: 600;
-  color: #e5eaf3;
-  font-size: 13px;
-}
-
-.alert-content {
-  font-size: 12px;
-  color: #909399;
-}
-
-.distribution-chart {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.distribution-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.dist-info {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-}
-
-.dist-label {
-  color: #e5eaf3;
-}
-
-.dist-percent {
-  color: #909399;
-}
-
-.dist-bar-container {
-  height: 6px;
-  background: #2c2c2c;
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.dist-bar {
-  height: 100%;
-  background: #409eff;
-  border-radius: 3px;
-  transition: width 0.3s ease;
-}
-
-.action-buttons {
-  display: flex;
-  gap: 4px;
-}
+.dialog-warn { color: #f56c6c; font-size: 12px; margin-top: 8px; padding-left: 100px; }
+.dialog-info { color: #909399; font-size: 12px; margin-top: 4px; padding-left: 100px; }
 </style>
