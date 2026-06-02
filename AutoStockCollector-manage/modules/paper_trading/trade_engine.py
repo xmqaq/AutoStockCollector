@@ -144,6 +144,8 @@ class TradeEngine:
         proceeds = round(amount - commission, 2)
 
         account_doc = account.get(user_id)
+        if not account_doc:
+            raise ValueError("账户未初始化，请先设置初始资金")
         cash = account_doc["cash_balance"]
         cash_after = round(cash + proceeds, 2)
 
