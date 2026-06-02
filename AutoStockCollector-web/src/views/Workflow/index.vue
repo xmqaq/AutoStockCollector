@@ -633,6 +633,7 @@ import {
 } from '@element-plus/icons-vue'
 import { workflowApi, type Workflow, type WorkflowResult, type WorkflowTemplate, type WorkflowExecution } from '@/api/workflow'
 import WorkflowCanvas from '@/components/WorkflowCanvas/index.vue'
+import { fmtDateTime } from '@/utils/format'
 
 const loading = ref(false)
 const activeTab = ref('list')
@@ -1133,9 +1134,7 @@ function getStatusLabel(status: string) {
 }
 
 function formatDateTime(dateStr: string) {
-  if (!dateStr) return ''
-  const date = new Date(dateStr)
-  return date.toLocaleString('zh-CN')
+  return fmtDateTime(dateStr) || ''
 }
 
 function addLog(message: string) {

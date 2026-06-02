@@ -121,7 +121,6 @@ def _fetch_kline_with_volume(full_code: str) -> Dict[str, Dict]:
 
 def register_routes(app):
     from api.routes.ai_advanced import ai_advanced_bp
-    from api.routes.monitor import monitor_bp
     from api.routes.sentiment import sentiment_bp
     from api.routes.paper_trading import paper_bp
     from api.routes.market import market_bp
@@ -130,7 +129,6 @@ def register_routes(app):
     
     app.register_blueprint(api_bp)
     app.register_blueprint(ai_advanced_bp)
-    app.register_blueprint(monitor_bp)
     app.register_blueprint(sentiment_bp)
     app.register_blueprint(paper_bp)
     app.register_blueprint(market_bp)
@@ -1691,8 +1689,8 @@ def _compute_health(ttype: str, stats: dict, now: datetime) -> dict:
                 return {"health": "ok", "days_behind": 0, "latest_date": date_to_str}
 
             gap = _count_trading_days_behind(date_to_str, expected)
-            # 板块快照：1个交易日内都算 ok
-            if ttype == "sector" and gap <= 1:
+            # 板块/融资融券：数据发布有延迟，1个交易日内都算 ok
+            if ttype in ("sector", "margin") and gap <= 1:
                 return {"health": "ok", "days_behind": gap, "latest_date": date_to_str}
             return {"health": "stale", "days_behind": gap, "latest_date": date_to_str}
         except Exception:
@@ -1789,6 +1787,22 @@ def progress_all():
         stats = coll_stats.get(ttype, {})
         record_count = stats.get("record_count", 0)
         health_info = _compute_health(ttype, stats, now)
+
+        # 龙虎榜特殊处理：若今日任务已完成但结果为0条，说明今日非触发日，属正常
+        if (ttype == "dragon_tiger" and task
+                and task.get("status") == "completed"
+                and task.get("success", 0) == 0):
+            try:
+                ts_ms = int(task["task_id"].rsplit("_", 1)[-1])
+                task_date = datetime.fromtimestamp(ts_ms / 1000).strftime("%Y-%m-%d")
+                if task_date == now.strftime("%Y-%m-%d"):
+                    health_info = {
+                        "health": "ok",
+                        "days_behind": 0,
+                        "latest_date": stats.get("date_to"),
+                    }
+            except Exception:
+                pass
 
         if task:
             progress = task.get("progress", 0)

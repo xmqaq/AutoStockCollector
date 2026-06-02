@@ -9,7 +9,7 @@ import re
 import time
 import threading
 import requests
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 from bs4 import BeautifulSoup
 from core.storage.mongo_storage import NewsStorage
 from utils.logger import get_logger
@@ -227,26 +227,34 @@ class NewsManager:
         logger.info(f"[{channel_name}] 开始并行获取{max_pages}页列表...")
         
         page_records_map = {}
-        with ThreadPoolExecutor(max_workers=min(self.max_workers, 8)) as executor:
+        _per_page_timeout = 20      # 单页超时（秒），略大于 requests timeout=15
+        _total_timeout = max_pages * _per_page_timeout + 10
+        executor = ThreadPoolExecutor(max_workers=min(self.max_workers, 8))
+        try:
             future_to_page = {
                 executor.submit(self._fetch_page, cid, page): page
                 for page in range(1, max_pages + 1)
             }
-            
-            for future in as_completed(future_to_page):
-                page = future_to_page[future]
-                try:
-                    records = future.result()
-                    if records:
-                        page_records_map[page] = records
-                    else:
-                        # 没有数据，取消未完成的任务
-                        for f in future_to_page:
-                            if not f.done():
-                                f.cancel()
-                        break
-                except Exception as e:
-                    logger.debug(f"第{page}页异常: {e}")
+
+            try:
+                for future in as_completed(future_to_page, timeout=_total_timeout):
+                    page = future_to_page[future]
+                    try:
+                        records = future.result()
+                        if records:
+                            page_records_map[page] = records
+                        else:
+                            # 没有数据，取消未完成的任务
+                            for f in future_to_page:
+                                if not f.done():
+                                    f.cancel()
+                            break
+                    except Exception as e:
+                        logger.debug(f"第{page}页异常: {e}")
+            except TimeoutError:
+                logger.warning(f"[{channel_name}] 页面采集超时（总超时 {_total_timeout}s），已收到 {len(page_records_map)} 页")
+        finally:
+            executor.shutdown(wait=False)  # 不阻塞等待仍在运行的线程
         
         if not page_records_map:
             logger.warning(f"[{channel_name}] 无数据")

@@ -61,7 +61,15 @@ export const useCollectStore = defineStore('collect', () => {
     try {
       const res = await collectApi.getTasks({ status, limit })
       if (res.data) {
-        tasks.value = res.data.tasks || res.data.data || []
+        const raw: TaskRecord[] = res.data.tasks || res.data.data || []
+        raw.sort((a, b) => {
+          if (a.status === 'running' && b.status !== 'running') return -1
+          if (a.status !== 'running' && b.status === 'running') return 1
+          const ta = a.create_time || a.created_at || ''
+          const tb = b.create_time || b.created_at || ''
+          return tb > ta ? 1 : tb < ta ? -1 : 0
+        })
+        tasks.value = raw
       }
     } finally {
       loading.value = false

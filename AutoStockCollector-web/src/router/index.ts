@@ -58,12 +58,6 @@ const router = createRouter({
           meta: { title: 'AI智能选股' },
         },
         {
-          path: 'monitor',
-          name: 'Monitor',
-          component: () => import('@/views/Monitor/index.vue'),
-          meta: { title: 'AI盯盘' },
-        },
-        {
           path: 'ai-keys',
           name: 'AIKeys',
           component: () => import('@/views/AIKey/index.vue'),

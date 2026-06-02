@@ -112,45 +112,6 @@ export interface WinRateStats {
   profit_loss_ratio: number
 }
 
-export interface MonitorConfig {
-  enabled: boolean
-  price_rise_threshold: number
-  price_fall_threshold: number
-  quick_fall_threshold: number
-  volume_ratio_threshold: number
-  shrink_ratio_threshold: number
-  main_flow_threshold: number
-  continuous_days: number
-  notify_in_app: boolean
-  notify_email: boolean
-  notify_webhook: boolean
-  email: string
-  webhook_url: string
-}
-
-export interface MonitorStock {
-  code: string
-  name: string
-  price: number
-  change_rate: number
-  high: number
-  low: number
-  alert_type: string
-  alert_label: string
-}
-
-export interface Alert {
-  id: string
-  code: string
-  name: string
-  type: 'price' | 'volume' | 'flow' | 'other'
-  level: 'info' | 'warning' | 'danger'
-  message: string
-  detail?: string
-  read: boolean
-  created_at: string
-}
-
 export const aiKeyApi = {
   list() {
     return client.get('/api/v1/ai-keys')
@@ -215,39 +176,6 @@ export const aiApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
     })
-  },
-}
-
-export const monitorApi = {
-  getConfig(userId = 'default') {
-    return client.get(`/api/v1/monitor/config`, { params: { user_id: userId } })
-  },
-  saveConfig(config: Partial<MonitorConfig>, userId = 'default') {
-    return client.post(`/api/v1/monitor/config`, config, { params: { user_id: userId } })
-  },
-  getStocks(userId = 'default') {
-    return client.get(`/api/v1/monitor/stocks`, { params: { user_id: userId } })
-  },
-  addStock(code: string, name?: string, userId = 'default') {
-    return client.post(`/api/v1/monitor/stocks`, { code, name }, { params: { user_id: userId } })
-  },
-  removeStock(code: string, userId = 'default') {
-    return client.delete(`/api/v1/monitor/stocks/${code}`, { params: { user_id: userId } })
-  },
-  getAlerts(limit = 50, unreadOnly = false) {
-    return client.get('/api/v1/monitor/alerts', { params: { limit, unread_only: unreadOnly } })
-  },
-  markAlertRead(alertId: string) {
-    return client.post(`/api/v1/monitor/alerts/${alertId}/read`)
-  },
-  markAllAlertsRead() {
-    return client.post('/api/v1/monitor/alerts/read-all')
-  },
-  deleteAlert(alertId: string) {
-    return client.delete(`/api/v1/monitor/alerts/${alertId}`)
-  },
-  triggerTestAlert(type = 'price') {
-    return client.post('/api/v1/monitor/alerts/trigger', { type })
   },
 }
 

@@ -60,10 +60,10 @@
       <el-table v-else :data="cronJobs" size="small" stripe>
         <el-table-column prop="label" label="任务名称" min-width="160" />
         <el-table-column prop="next_run" label="下次执行" width="160">
-          <template #default="{ row }">{{ row.next_run ?? '--' }}</template>
+          <template #default="{ row }">{{ row.next_run ? fmtDateTime(row.next_run) : '--' }}</template>
         </el-table-column>
         <el-table-column prop="last_run" label="最近执行" width="160">
-          <template #default="{ row }">{{ row.last_run ?? '尚未执行' }}</template>
+          <template #default="{ row }">{{ row.last_run ? fmtDateTime(row.last_run) : '尚未执行' }}</template>
         </el-table-column>
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
@@ -431,7 +431,7 @@ async function quickUpdate(taskType: string) {
     } else {
       ElMessage.info(`${TYPE_LABEL[taskType]} 数据已是最新，无需更新`)
     }
-    await loadTasks()
+    await Promise.all([loadTasks(), collectStore.fetchProgress()])
   } catch {
     ElMessage.error('启动失败')
   }

@@ -73,7 +73,6 @@ import {
   Odometer,
   Key,
   Wallet,
-  Bell,
   Search,
   Operation,
 } from '@element-plus/icons-vue'
@@ -91,7 +90,6 @@ const menuItems = [
   { path: '/ai-picker', label: 'AI智能选股', icon: TrendCharts },
   { path: '/stock-analysis', label: '个股深度分析', icon: Search },
   { path: '/position', label: '仓位管理', icon: Wallet },
-  { path: '/monitor', label: 'AI盯盘', icon: Bell },
   { path: '/ai-keys', label: 'AI Key管理', icon: Key },
   { path: '/ai-agents', label: 'AI Agent管理', icon: MagicStick },
   { path: '/workflow', label: '工作流管理', icon: Operation },

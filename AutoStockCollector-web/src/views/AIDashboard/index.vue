@@ -21,11 +21,6 @@
         <div class="hub-entry-title">买卖参考建议</div>
         <div class="hub-entry-desc">基于分析的操作参考</div>
       </div>
-      <div class="hub-entry" @click="go('/monitor')">
-        <div class="hub-entry-icon">🔔</div>
-        <div class="hub-entry-title">AI 盯盘</div>
-        <div class="hub-entry-desc">实时监控与告警</div>
-      </div>
     </div>
 
     <el-card shadow="never" class="hub-card">

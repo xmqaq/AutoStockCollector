@@ -341,8 +341,11 @@ class TaskScheduler:
         ]
 
         # 合并，内存版优先（状态最新）
-        db_ids = {t["task_id"] for t in db_list}
-        merged = in_memory + [t for t in db_list if t["task_id"] not in {x["task_id"] for x in in_memory}]
+        in_mem_ids = {t["task_id"] for t in in_memory}
+        merged = in_memory + [t for t in db_list if t["task_id"] not in in_mem_ids]
+        # 排序：running 置顶，其余按创建时间倒序（新的在上）
+        merged.sort(key=lambda t: t.get("create_time") or "", reverse=True)
+        merged.sort(key=lambda t: 0 if t.get("status") == "running" else 1)
         return merged[:limit]
 
     def delete_task(self, task_id: str) -> bool:
@@ -393,8 +396,16 @@ class TaskScheduler:
     def cancel_task(self, task_id: str) -> bool:
         task = self._tasks.get(task_id)
         if not task:
-            logger.error(f"Task {task_id} not found")
-            return False
+            # 任务不在内存（如 cron 触发后 DB 残留的 running 状态）：直接写 DB
+            db_task = self.task_storage.get_task(task_id)
+            if not db_task:
+                logger.error(f"Task {task_id} not found")
+                return False
+            if db_task.get("status") in ("completed", "cancelled"):
+                return False
+            self.task_storage.update_task_status(task_id, "cancelled")
+            logger.info(f"Task {task_id} (DB-only) force-cancelled")
+            return True
         if task.status in (TaskStatus.COMPLETED, TaskStatus.CANCELLED):
             return False
         task.cancel()
@@ -942,11 +953,12 @@ class TaskScheduler:
                         nxt = (datetime.strptime(latest, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
                         segments.append((nxt, end_date))
                     if not segments:
-                        logger.info(f"dragon_tiger 已覆盖 {start_date}~{end_date} (DB {earliest}~{latest})，跳过")
-                        task.update_progress(0, 0, 0, 0)
-                        task.complete(0, 0)
-                        return
-                    logger.info(f"dragon_tiger 补缺段: {segments} (DB已有 {earliest}~{latest})")
+                        # 请求区间在信封内：可能存在内部空洞，不能跳过，回退到全量区间
+                        # storage 使用 upsert，重复采集已有数据是安全的
+                        segments = [(start_date, end_date)]
+                        logger.info(f"dragon_tiger {start_date}~{end_date} 在DB范围内，仍运行以填补可能的内部空洞")
+                    else:
+                        logger.info(f"dragon_tiger 补缺段: {segments} (DB已有 {earliest}~{latest})")
                 else:
                     segments = [(start_date, end_date)]
             except Exception as e:
@@ -1020,35 +1032,31 @@ class TaskScheduler:
                 return f"{s[:4]}-{s[4:6]}-{s[6:]}"
             return None
 
+        # 生成请求区间内所有交易日
+        all_days_in_range = sorted(set(get_trading_days(start_fmt, end_fmt)))
+        if not all_days_in_range:
+            task.complete(0, 0)
+            return
+
+        # 精确查询区间内已存在的日期，过滤掉已有数据的天（正确处理内部空洞）
+        # 旧逻辑使用信封边界(min/max)判断，导致内部空洞被误判为"已覆盖"
         try:
-            oldest = storage.find_one({"date": {"$exists": True}}, sort=[("date", 1)])
-            newest = storage.find_one({"date": {"$exists": True}}, sort=[("date", -1)])
-            earliest = _norm_date(oldest.get("date")) if oldest else None
-            latest = _norm_date(newest.get("date")) if newest else None
-        except Exception:
-            earliest = latest = None
-
-        segments = []
-        if earliest and latest:
-            if start_fmt < earliest:
-                prev = (datetime.strptime(earliest, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
-                segments.append((start_fmt, prev))
-            if end_fmt > latest:
-                nxt = (datetime.strptime(latest, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
-                segments.append((nxt, end_fmt))
-            if not segments:
-                logger.info(f"margin 已覆盖 {start_fmt}~{end_fmt}，跳过")
-                task.complete(0, 0)
-                return
-        else:
-            segments = [(start_fmt, end_fmt)]
-
-        all_days = []
-        for seg_s, seg_e in segments:
-            all_days.extend(get_trading_days(seg_s, seg_e))
-        all_days = sorted(set(all_days))
+            existing_raw = storage.collection.distinct(
+                "date", {"date": {"$gte": start_fmt, "$lte": end_fmt}}
+            )
+            existing_set = {_norm_date(d) for d in existing_raw if _norm_date(d)}
+            all_days = [d for d in all_days_in_range if d not in existing_set]
+            if existing_set:
+                logger.info(
+                    f"margin {start_fmt}~{end_fmt}: {len(all_days_in_range)}个交易日，"
+                    f"DB已有{len(existing_set)}个，待补{len(all_days)}个"
+                )
+        except Exception as e:
+            logger.warning(f"margin 查询已有日期失败，按完整区间采集: {e}")
+            all_days = all_days_in_range
 
         if not all_days:
+            logger.info(f"margin 已完整覆盖 {start_fmt}~{end_fmt}，跳过")
             task.complete(0, 0)
             return
 
