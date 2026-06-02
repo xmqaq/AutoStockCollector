@@ -384,7 +384,8 @@ async function fetchAiAdvice(pos: PaperPosition, intent: 'buy' | 'sell') {
     aiAdvice.value = advice
 
     const actionLower = (advice.action ?? '').toLowerCase()
-    const isSellSignal = actionLower.includes('卖') || actionLower.includes('减仓') || actionLower.includes('清仓')
+    const isSellSignal = actionLower.includes('卖') || actionLower.includes('减仓') || actionLower.includes('清仓') ||
+      actionLower.includes('sell') || actionLower.includes('reduce')
 
     // 尝试解析 position_advice 中的卖出比例
     if (intent === 'sell' && advice.position_advice) {
