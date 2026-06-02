@@ -32,33 +32,114 @@ def _record_result(label: str, ok: bool, msg: str = "") -> None:
         })
 
 
+def _parse_ts(task_id: str) -> int:
+    """从 task_id（如 kline_1779931587433）提取毫秒时间戳用于排序。"""
+    try:
+        return int(task_id.rsplit("_", 1)[-1])
+    except Exception:
+        return 0
+
+
+def _fmt_task_time(raw) -> str:
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        return raw[:19]
+    if hasattr(raw, "strftime"):
+        return raw.strftime("%Y-%m-%d %H:%M:%S")
+    return str(raw)[:19]
+
+
 def get_cron_status() -> list:
-    """返回所有定时任务的当前状态（供 API 调用）。"""
+    """返回所有定时任务的当前状态（供 API 调用）。
+    优先从 scheduler（MongoDB 持久化）读取最近任务结果，服务重启后状态不丢失。
+    """
     with _jobs_lock:
         jobs_snapshot = list(_registered_jobs)
 
+    # 从 scheduler（MongoDB）查询各类型最近任务（按 task_id 时间戳倒序）
+    tasks_by_type: dict = {}
+    try:
+        from core.scheduler.scheduler import scheduler
+        all_tasks = scheduler.list_tasks(limit=500)
+        for task in all_tasks:
+            ttype = task.get("task_type")
+            if not ttype:
+                continue
+            tasks_by_type.setdefault(ttype, []).append(task)
+        for lst in tasks_by_type.values():
+            lst.sort(key=lambda t: _parse_ts(t.get("task_id", "")), reverse=True)
+    except Exception:
+        pass
+
     result = []
-    with _history_lock:
-        for job in jobs_snapshot:
-            label = job["label"]
-            history = list(_job_history.get(label, []))
-            last = history[-1] if history else None
-            consecutive_failures = 0
-            for h in reversed(history):
-                if not h["ok"]:
-                    consecutive_failures += 1
+    for job in jobs_snapshot:
+        label = job["label"]
+        task_type = job.get("task_type", "")
+        type_tasks = tasks_by_type.get(task_type, []) if task_type else []
+
+        # 计算连续失败次数（基于最近 5 次已完成的任务）
+        finished = [t for t in type_tasks if t.get("status") in ("completed", "failed")]
+        consecutive_failures = 0
+        for t in finished[:5]:
+            if t.get("status") == "failed":
+                consecutive_failures += 1
+            else:
+                break
+
+        last_run = None
+        last_ok = None
+        last_msg = ""
+
+        latest = finished[0] if finished else (type_tasks[0] if type_tasks else None)
+        if latest:
+            status = latest.get("status", "")
+            success = latest.get("success", 0)
+            failed_cnt = latest.get("failed", 0)
+            last_run = _fmt_task_time(latest.get("update_time") or latest.get("end_time") or latest.get("create_time"))
+
+            if status == "completed":
+                last_ok = True
+                if success == 0:
+                    if task_type == "dragon_tiger":
+                        last_msg = "今日无龙虎榜数据（非触发日）"
+                    else:
+                        last_msg = "今日无数据"
                 else:
-                    break
-            next_run = job.get("next_run")
-            result.append({
-                "label": label,
-                "next_run": next_run.strftime("%Y-%m-%d %H:%M:%S") if next_run else None,
-                "last_run": last["time"] if last else None,
-                "last_ok": last["ok"] if last else None,
-                "last_msg": last.get("msg", "") if last else "",
-                "consecutive_failures": consecutive_failures,
-                "alert": consecutive_failures >= 2,
-            })
+                    last_msg = f"成功{success}条"
+                    if failed_cnt > 0:
+                        last_msg += f"，失败{failed_cnt}条"
+            elif status == "failed":
+                last_ok = False
+                last_msg = (latest.get("error_message") or "任务失败")[:80]
+            elif status == "running":
+                last_ok = None
+                progress = latest.get("progress", 0)
+                total = latest.get("total", 0)
+                last_msg = f"运行中 {progress}/{total}"
+            else:
+                last_ok = None
+                last_msg = ""
+        else:
+            # 回退到内存历史（首次启动且从未触发过任何任务时）
+            with _history_lock:
+                history = list(_job_history.get(label, []))
+            last_hist = history[-1] if history else None
+            if last_hist:
+                last_run = last_hist["time"]
+                last_ok = last_hist["ok"]
+                last_msg = last_hist.get("msg", "")
+
+        next_run = job.get("next_run")
+        result.append({
+            "label": label,
+            "next_run": next_run.strftime("%Y-%m-%d %H:%M:%S") if next_run else None,
+            "last_run": last_run,
+            "last_ok": last_ok,
+            "last_msg": last_msg,
+            "consecutive_failures": consecutive_failures,
+            "alert": consecutive_failures >= 2,
+        })
     return result
 
 
@@ -211,7 +292,7 @@ def _next_hourly_run(at_minute: int) -> datetime.datetime:
     return scheduled
 
 
-def _make_job(label: str, handler, kind: str, hour: int = 0, minute: int = 0) -> dict:
+def _make_job(label: str, handler, kind: str, hour: int = 0, minute: int = 0, task_type: str = "") -> dict:
     """构建任务描述字典。kind: 'daily' | 'hourly'"""
     if kind == "daily":
         next_run = _next_daily_run(hour, minute)
@@ -224,6 +305,7 @@ def _make_job(label: str, handler, kind: str, hour: int = 0, minute: int = 0) ->
         "hour": hour,
         "minute": minute,
         "next_run": next_run,
+        "task_type": task_type,
     }
 
 
@@ -273,15 +355,15 @@ def start_daily_jobs() -> None:
         ai_hour, ai_minute = 15, 30
 
     jobs = [
-        _make_job("K线增量 16:05",       job_kline_incremental,   "daily", 16, 5),
-        _make_job("龙虎榜 16:10",         job_dragon_tiger,        "daily", 16, 10),
-        _make_job("资金流向 16:15",       job_fund_flow,           "daily", 16, 15),
-        _make_job("融资融券 16:20",       job_margin,              "daily", 16, 20),
-        _make_job("板块数据 16:25",       job_sector,              "daily", 16, 25),
-        _make_job("新闻增量 整点",        job_news_incremental,    "hourly", 0,  0),
-        _make_job("股票信息 周一09:00",   job_stock_info_weekly,   "daily",  9,  0),
-        _make_job("财务数据 季度09:30",   job_financial_quarterly, "daily",  9, 30),
-        _make_job(f"AI选股 {ai_time}",   _ai_pick_wrapper,        "daily", ai_hour, ai_minute),
+        _make_job("K线增量 16:05",       job_kline_incremental,   "daily", 16, 5,  task_type="kline"),
+        _make_job("龙虎榜 16:10",         job_dragon_tiger,        "daily", 16, 10, task_type="dragon_tiger"),
+        _make_job("资金流向 16:15",       job_fund_flow,           "daily", 16, 15, task_type="fund_flow"),
+        _make_job("融资融券 16:20",       job_margin,              "daily", 16, 20, task_type="margin"),
+        _make_job("板块数据 16:25",       job_sector,              "daily", 16, 25, task_type="sector"),
+        _make_job("新闻增量 整点",        job_news_incremental,    "hourly", 0,  0,  task_type="news"),
+        _make_job("股票信息 周一09:00",   job_stock_info_weekly,   "daily",  9,  0,  task_type="stock_info"),
+        _make_job("财务数据 季度09:30",   job_financial_quarterly, "daily",  9, 30, task_type="financial"),
+        _make_job(f"AI选股 {ai_time}",   _ai_pick_wrapper,        "daily", ai_hour, ai_minute, task_type="ai_pick"),
     ]
 
     with _jobs_lock:
