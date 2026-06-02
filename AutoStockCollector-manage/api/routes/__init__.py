@@ -2615,9 +2615,195 @@ def get_sector_stocks(sector_name):
                 "change_rate": latest.get("change_rate", 0) if latest else 0,
                 "net_flow": block.get("net_flow", 0),
             })
-    
+
     return jsonify({
         "success": True,
         "count": len(result),
         "data": result
     })
+
+
+@api_bp.route("/ai/agent-chat", methods=["POST"])
+def ai_agent_chat():
+    """统一 Agent Chat：通用聊天 + 角色 agent + 股票数据预注入，SSE 流式返回。
+    Body: {message, agent_id?, stock_code?, history?, provider?}
+    """
+    import json as _json
+    from flask import Response
+    from modules.ai.foundation.llm_router import LLMRouter
+
+    data = request.get_json() or {}
+    message = (data.get("message") or "").strip()
+    agent_id = (data.get("agent_id") or "").strip()
+    stock_code = (data.get("stock_code") or "").strip()
+    history = data.get("history") or []
+    provider = (data.get("provider") or "").strip()
+
+    if not message:
+        return jsonify({"success": False, "error": "message is required"}), 400
+
+    # 1. 加载 agent 配置
+    system_prompt = "你是一个专业的A股投资助手，能够提供市场分析和投资建议。"
+    temperature = 0.7
+    max_tokens = 2000
+    if agent_id:
+        try:
+            from config.database import DatabaseConfig
+            db = DatabaseConfig.get_database()
+            agent_doc = db["ai_agents"].find_one({"id": agent_id, "enabled": True})
+            if agent_doc:
+                system_prompt = agent_doc.get("system_prompt", system_prompt)
+                temperature = float(agent_doc.get("temperature", temperature))
+                max_tokens = int(agent_doc.get("max_tokens", max_tokens))
+        except Exception as e:
+            logger.warning(f"Failed to load agent config for {agent_id}: {e}")
+
+    # 2. 构建股票上下文
+    context_block = ""
+    stock_name = ""
+    if stock_code:
+        try:
+            from modules.ai.foundation.dal import StockDAL
+            from modules.ai.foundation.factors import (
+                trend_score, volume_score, valuation_score,
+                fund_flow_score, composite_score,
+            )
+            bundle = StockDAL().get_stock_bundle(stock_code)
+            stock_name = bundle.name or stock_code
+
+            scores: dict = {}
+            if bundle.closes:
+                scores["trend"] = round(trend_score(bundle.closes), 1)
+                if bundle.volumes:
+                    scores["volume"] = round(volume_score(bundle.volumes), 1)
+            scores["valuation"] = round(valuation_score(
+                bundle.pe, bundle.pb, getattr(bundle, "ps", None),
+                bundle.roe, bundle.gross_margin, bundle.debt_ratio,
+                bundle.revenue_growth, bundle.profit_growth,
+            ), 1)
+            scores["fund_flow"] = round(fund_flow_score(bundle.main_net_inflow), 1)
+            defined = {k: v for k, v in scores.items() if v is not None}
+            total_w = {"trend": 0.25, "volume": 0.10, "valuation": 0.35, "fund_flow": 0.30}
+            scores["composite"] = round(composite_score(defined, total_w), 1)
+
+            context_block = _build_agent_context(agent_id, bundle, scores)
+        except Exception as e:
+            logger.warning(f"Failed to build stock context for {stock_code}: {e}")
+            context_block = f"（获取 {stock_code} 数据时出错，请基于通用知识分析）"
+
+    def generate():
+        yield f"data: {_json.dumps({'type': 'context', 'data': {'stock_name': stock_name, 'has_data': bool(context_block)}})}\n\n"
+
+        full_system = system_prompt
+        if context_block:
+            full_system += "\n\n" + context_block
+
+        valid_history = [
+            {"role": m["role"], "content": m["content"]}
+            for m in history[-10:]
+            if m.get("role") in ("user", "assistant") and m.get("content")
+        ]
+        msgs = [{"role": "system", "content": full_system}] + valid_history + [{"role": "user", "content": message}]
+
+        try:
+            router = LLMRouter()
+            if provider:
+                router.providers = [provider]
+
+            full_content = ""
+            for chunk in router.chat_stream("", messages=msgs):
+                if chunk:
+                    full_content += chunk
+                    yield f"data: {_json.dumps({'type': 'content', 'data': chunk})}\n\n"
+
+            yield f"data: {_json.dumps({'type': 'done', 'data': {'content': full_content}})}\n\n"
+        except Exception as e:
+            logger.error(f"AI agent chat stream failed: {e}")
+            yield f"data: {_json.dumps({'type': 'error', 'data': str(e)})}\n\n"
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+def _build_agent_context(agent_id: str, bundle, scores: dict) -> str:
+    """按角色裁剪注入的股票上下文块，供 ai_agent_chat 端点使用。"""
+    lines = [f"【{bundle.name or bundle.code} 数据】"]
+    closes = list(bundle.closes or [])
+    volumes = list(bundle.volumes or [])
+
+    if agent_id == "technical_analyst":
+        lines.append(f"近20日收盘价（最新在前）：{[round(c, 2) for c in closes[:20]] if closes else '暂无'}")
+        lines.append(f"近20日成交量：{[round(v, 0) for v in volumes[:20]] if volumes else '暂无'}")
+        lines.append(f"技术评分：{scores.get('trend', '暂无')}  成交量评分：{scores.get('volume', '暂无')}")
+        if len(closes) >= 5:
+            lines.append(f"MA5：{round(sum(closes[:5]) / 5, 2)}")
+        if len(closes) >= 20:
+            lines.append(f"MA20：{round(sum(closes[:20]) / 20, 2)}")
+
+    elif agent_id == "fund_analyst":
+        lines.append(f"近10日成交量：{[round(v, 0) for v in volumes[:10]] if volumes else '暂无'}")
+        if bundle.main_net_inflow is not None:
+            sign = "+" if bundle.main_net_inflow >= 0 else ""
+            lines.append(f"主力净流入：{sign}{bundle.main_net_inflow / 1e8:.2f}亿元")
+        lines.append(f"资金评分：{scores.get('fund_flow', '暂无')}")
+
+    elif agent_id == "fundamental_analyst":
+        lines.append(f"市盈率(TTM)：{bundle.pe or '暂无'}")
+        lines.append(f"市净率(PB)：{bundle.pb or '暂无'}")
+        lines.append(f"ROE：{bundle.roe or '暂无'}")
+        lines.append(f"毛利率：{bundle.gross_margin or '暂无'}")
+        lines.append(f"负债率：{bundle.debt_ratio or '暂无'}")
+        lines.append(f"营收同比：{bundle.revenue_growth or '暂无'}")
+        lines.append(f"净利润同比：{bundle.profit_growth or '暂无'}")
+        lines.append(f"基本面评分：{scores.get('valuation', '暂无')}")
+
+    elif agent_id == "sentiment_analyst":
+        news = (bundle.news or [])[:5]
+        if news:
+            lines.append("最近5条新闻：")
+            for n in news:
+                date = str(n.get("publish_date", ""))[:10]
+                lines.append(f"  [{date}] {n.get('title', '')}")
+        else:
+            lines.append("暂无相关新闻")
+
+    elif agent_id == "market_analyst":
+        lines.append(f"近10日收盘价：{[round(c, 2) for c in closes[:10]] if closes else '暂无'}")
+        lines.append(f"近10日成交量：{[round(v, 0) for v in volumes[:10]] if volumes else '暂无'}")
+        if bundle.main_net_inflow is not None:
+            sign = "+" if bundle.main_net_inflow >= 0 else ""
+            lines.append(f"主力净流入：{sign}{bundle.main_net_inflow / 1e8:.2f}亿元")
+        for n in (bundle.news or [])[:2]:
+            lines.append(f"新闻：{n.get('title', '')}")
+        lines.append(
+            f"综合评分：{scores.get('composite', '暂无')}"
+            f"（技术{scores.get('trend', '?')} 基本面{scores.get('valuation', '?')} 资金{scores.get('fund_flow', '?')}）"
+        )
+
+    elif agent_id == "risk_analyst":
+        lines.append(f"近20日收盘价：{[round(c, 2) for c in closes[:20]] if closes else '暂无'}")
+        lines.append(f"PE：{bundle.pe or '暂无'}  PB：{bundle.pb or '暂无'}  ROE：{bundle.roe or '暂无'}")
+        if bundle.main_net_inflow is not None:
+            sign = "+" if bundle.main_net_inflow >= 0 else ""
+            lines.append(f"主力净流入：{sign}{bundle.main_net_inflow / 1e8:.2f}亿元")
+        lines.append(
+            f"各维度评分 — 技术：{scores.get('trend', '?')}  基本面：{scores.get('valuation', '?')}"
+            f"  资金：{scores.get('fund_flow', '?')}  综合：{scores.get('composite', '?')}"
+        )
+        for n in (bundle.news or [])[:3]:
+            lines.append(f"新闻：{n.get('title', '')}")
+
+    else:
+        if closes:
+            lines.append(f"近10日收盘价：{[round(c, 2) for c in closes[:10]]}")
+        if bundle.pe:
+            lines.append(f"PE：{bundle.pe}  PB：{bundle.pb or '暂无'}")
+
+    return "\n".join(lines)
