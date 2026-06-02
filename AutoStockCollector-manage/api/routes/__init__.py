@@ -925,6 +925,61 @@ def ai_chat_stream():
     )
 
 
+@api_bp.route("/ai/analyze-news", methods=["POST"])
+def ai_analyze_news():
+    """用 LLM 对单条新闻进行情绪/信号分析。
+    Body: { "news": { "title": str, "content": str, ... } }
+    Returns: { success, data: { signal, summary, provider } }
+    """
+    from modules.ai.foundation.llm_router import LLMRouter
+
+    data = request.get_json() or {}
+    news = data.get("news") or {}
+    title = news.get("title", "")
+    content = news.get("content", "")
+
+    if not title and not content:
+        return jsonify({"success": False, "error": "news title or content is required"}), 400
+
+    prompt = (
+        f"请对以下财经新闻进行简短分析，判断对A股市场的影响，"
+        f"给出信号（利好/利空/中性/观望）和一句话摘要。\n\n"
+        f"标题：{title}\n"
+        f"内容：{content[:500] if content else '（无正文）'}\n\n"
+        f"请用JSON格式回复，字段：signal（利好/利空/中性/观望）、summary（不超过50字）。"
+    )
+
+    try:
+        router = LLMRouter()
+        result = router.chat(prompt, use_cache=False)
+        if not result.success:
+            return jsonify({"success": False, "error": result.error or "AI服务暂不可用"}), 500
+
+        raw = result.raw or ""
+        import re, json as _json
+        signal = "观望"
+        summary = raw[:100]
+        m = re.search(r'\{[^{}]+\}', raw, re.DOTALL)
+        if m:
+            try:
+                parsed = _json.loads(m.group())
+                signal = parsed.get("signal", signal)
+                summary = parsed.get("summary", summary)
+            except Exception:
+                pass
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "signal": signal,
+                "summary": summary,
+                "provider": result.provider,
+            }
+        })
+    except Exception as e:
+        logger.error(f"AI analyze-news failed: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @api_bp.route("/ai/pick/results", methods=["GET"])
 def ai_pick_results():
     """读最近一次选股结果（缓存）。"""
