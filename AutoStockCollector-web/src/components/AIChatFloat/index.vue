@@ -31,6 +31,16 @@
             </div>
           </el-option>
         </el-select>
+        <el-tag
+          v-if="stockContext"
+          size="small"
+          type="success"
+          class="stock-context-tag"
+          closable
+          @close="clearStockContext"
+        >
+          {{ stockName || stockContext }}
+        </el-tag>
       </div>
 
       <div class="messages" ref="messagesRef">
@@ -123,9 +133,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, computed, onMounted } from 'vue'
+import { ref, nextTick, computed, watch, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { ChatDotRound, MagicStick, User, UserFilled } from '@element-plus/icons-vue'
 import { aiApi, aiAgentApi, aiKeyApi, type AIAgent, type AIKeyConfig } from '@/api/ai'
+import { stockApi } from '@/api/stock'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -143,6 +155,24 @@ const agents = ref<AIAgent[]>([])
 const selectedAgent = ref('')
 const aiKeys = ref<AIKeyConfig[]>([])
 const selectedProvider = ref('')
+
+const route = useRoute()
+const stockName = ref('')
+
+const stockContext = computed(() => (route.query.code as string) || '')
+
+watch(stockContext, async (code) => {
+  if (!code) {
+    stockName.value = ''
+    return
+  }
+  try {
+    const res = await stockApi.getStockInfo(code)
+    stockName.value = res.data?.data?.name || code
+  } catch {
+    stockName.value = code
+  }
+}, { immediate: true })
 
 const enabledProviders = computed(() => {
   return aiKeys.value.filter(k => k.enabled && k.has_key)
@@ -371,6 +401,14 @@ function clearChat() {
   messages.value = []
 }
 
+function clearStockContext() {
+  const query = { ...route.query }
+  delete query.code
+  import('@/router/index').then(({ default: router }) =>
+    router.replace({ query })
+  )
+}
+
 onMounted(() => {
   loadAgents()
   loadAIKeys()
@@ -431,6 +469,13 @@ onMounted(() => {
 .agent-select {
   flex: 1;
   min-width: 120px;
+}
+
+.stock-context-tag {
+  flex-shrink: 0;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .agent-option {
