@@ -414,8 +414,15 @@ class WorkflowExecutor:
         elif filter_type == 'pe_range':
             info = self.stock_info.get_by_code(code)
             if not info:
-                return False
-            pe = info.get('pe', 0) or 0
+                return True
+            raw_pe = (info.get('pe') or info.get('市盈率-动态') or
+                      info.get('市盈率(动态)') or 0)
+            try:
+                pe = float(str(raw_pe).replace('--', '0').replace(',', ''))
+            except (ValueError, TypeError):
+                pe = 0
+            if pe == 0:
+                return True  # data unavailable → pass through
             min_pe = config.get('min_pe', 0)
             max_pe = config.get('max_pe', float('inf'))
             return min_pe <= pe <= max_pe
@@ -423,8 +430,14 @@ class WorkflowExecutor:
         elif filter_type == 'pb_range':
             info = self.stock_info.get_by_code(code)
             if not info:
-                return False
-            pb = info.get('pb', 0) or 0
+                return True
+            raw_pb = info.get('pb') or info.get('市净率') or 0
+            try:
+                pb = float(str(raw_pb).replace('--', '0').replace(',', ''))
+            except (ValueError, TypeError):
+                pb = 0
+            if pb == 0:
+                return True  # data unavailable → pass through
             min_pb = config.get('min_pb', 0)
             max_pb = config.get('max_pb', float('inf'))
             return min_pb <= pb <= max_pb
@@ -456,10 +469,16 @@ class WorkflowExecutor:
         elif filter_type == 'market_cap':
             info = self.stock_info.get_by_code(code)
             if not info:
-                return False
-            market_cap = info.get('total_mv', 0) or 0
-            if not market_cap:
-                market_cap = info.get('market_cap', 0) or 0
+                return True  # no stock info → pass through
+            # Try multiple field names (English and Chinese from AKShare)
+            raw = (info.get('total_mv') or info.get('market_cap') or
+                   info.get('总市值') or info.get('流通市值') or 0)
+            try:
+                market_cap = float(str(raw).replace(',', ''))
+            except (ValueError, TypeError):
+                market_cap = 0
+            if market_cap == 0:
+                return True  # data not available → pass through
             min_cap = config.get('min_cap', 0) * 1e8
             max_cap = config.get('max_cap', float('inf')) * 1e8
             return min_cap <= market_cap <= max_cap
@@ -1402,18 +1421,18 @@ class WorkflowExecutor:
                 t1, t2 = trough_idx[j], trough_idx[j + 1]
 
                 if p1 < t1 < p2 < t2:
-                    zg = max(highs_reversed[p1:p2+1])
-                    zd = min(lows_reversed[t1:t2+1])
-                    zg = min(zg, zd)
-                    zd = max(zg, zd)
+                    # 中枢高点(ZG) = 重叠区顶 = min of swing highs
+                    # 中枢低点(ZD) = 重叠区底 = max of swing lows
+                    zg = min(highs_reversed[p1], highs_reversed[p2])
+                    zd = max(lows_reversed[t1], lows_reversed[t2])
 
-                    if zg > zd:
+                    if zg > zd:  # valid 中枢: price ranges actually overlap
                         zhongshu = {
                             "zg": round(zg, 2),
                             "zd": round(zd, 2),
                             "zz": round((zg + zd) / 2, 2),
-                            "gg": round(max(highs_reversed[p1:p2+1]), 2),
-                            "dd": round(min(lows_reversed[t1:t2+1]), 2),
+                            "gg": round(max(highs_reversed[p1], highs_reversed[p2]), 2),
+                            "dd": round(min(lows_reversed[t1], lows_reversed[t2]), 2),
                             "start_idx": len(closes) - p2 - 1,
                             "bars": p2 - p1 + 1
                         }
@@ -1440,6 +1459,40 @@ class WorkflowExecutor:
                all(data[i] <= data[i + j] for j in range(1, window + 1)):
                 troughs.append(i)
         return troughs
+
+    def _add_chanlun_result(self, code: str, price: float, score: float, reasons: List[str], buy_type: str):
+        """Add or update a SelectionResult for a chanlun buy signal."""
+        existing = next((r for r in self.results if r.code == code), None)
+        if existing:
+            existing.score = min(100, existing.score + 5)
+            existing.risk_factors.extend(reasons)
+            existing.metadata[buy_type] = True
+        else:
+            info = self.stock_info.get_by_code(code)
+            name = ''
+            if info:
+                name = (info.get('A股简称') or info.get('name') or
+                        info.get('公司名称') or '')
+            stop_loss = round(price * 0.95, 2)
+            target_price_val = round(price * 1.15, 2)
+            self.results.append(SelectionResult(
+                code=code,
+                name=name,
+                score=score,
+                technical_score=score,
+                fundamental_score=50.0,
+                sentiment_score=50.0,
+                fund_flow_score=50.0,
+                recommendation='买入' if score >= 70 else '谨慎买入',
+                risk_level=RiskLevel.MEDIUM,
+                stop_loss=stop_loss,
+                target_price=target_price_val,
+                support_levels=[stop_loss],
+                resistance_levels=[target_price_val],
+                risk_factors=list(reasons),
+                strategy=self.workflow_id,
+                metadata={buy_type: True, 'price': price}
+            ))
 
     def _execute_chanlun_bc_node(self, config: Dict, params: Dict, node_id: str, node_label: str, base_progress: float):
         """缠论背驰判断节点"""
@@ -1562,6 +1615,11 @@ class WorkflowExecutor:
             buy1_data = dict(sorted(buy1_data.items(), key=lambda x: x[1]['strength'], reverse=True))
 
         params['buy1_data'] = buy1_data
+
+        for code, data in buy1_data.items():
+            self._add_chanlun_result(code, data['price'], 60 + data['strength'] * 10, data['reasons'], 'buy1')
+        self.results.sort(key=lambda x: x.score, reverse=True)
+
         self._report_progress(node_id, node_label, f"一买识别完成: {len(buy1_data)} 只股票", base_progress + 70)
         logger.info(f"Chanlun Buy1 node: found {len(buy1_data)} first-type buy points")
 
@@ -1629,6 +1687,11 @@ class WorkflowExecutor:
             buy2_data = dict(sorted(buy2_data.items(), key=lambda x: x[1]['strength'], reverse=True))
 
         params['buy2_data'] = buy2_data
+
+        for code, data in buy2_data.items():
+            self._add_chanlun_result(code, data['price'], 65 + data['strength'] * 8, data['reasons'], 'buy2')
+        self.results.sort(key=lambda x: x.score, reverse=True)
+
         self._report_progress(node_id, node_label, f"二买识别完成: {len(buy2_data)} 只股票", base_progress + 70)
         logger.info(f"Chanlun Buy2 node: found {len(buy2_data)} second-type buy points")
 
@@ -1707,5 +1770,10 @@ class WorkflowExecutor:
             buy3_data = dict(sorted(buy3_data.items(), key=lambda x: x[1]['strength'], reverse=True))
 
         params['buy3_data'] = buy3_data
+
+        for code, data in buy3_data.items():
+            self._add_chanlun_result(code, data['price'], 70 + data['strength'] * 8, data['reasons'], 'buy3')
+        self.results.sort(key=lambda x: x.score, reverse=True)
+
         self._report_progress(node_id, node_label, f"三买识别完成: {len(buy3_data)} 只股票", base_progress + 70)
         logger.info(f"Chanlun Buy3 node: found {len(buy3_data)} third-type buy points")

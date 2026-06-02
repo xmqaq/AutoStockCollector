@@ -32,9 +32,9 @@
         class="index-item"
       >
         <div class="index-name">{{ idx.name }}</div>
-        <div class="index-price" :class="idx.change >= 0 ? 'rise' : 'fall'">{{ idx.price?.toFixed(2) || '--' }}</div>
+        <div class="index-price" :class="idx.change >= 0 ? 'rise' : 'fall'">{{ idx.price ? idx.price.toFixed(2) : '--' }}</div>
         <div class="index-change" :class="idx.change >= 0 ? 'rise' : 'fall'">
-          {{ idx.change >= 0 ? '+' : '' }}{{ idx.change?.toFixed(2) || '--' }}%
+          {{ idx.price ? (idx.change >= 0 ? '+' : '') + (idx.change ?? 0).toFixed(2) + '%' : '--' }}
         </div>
       </div>
     </div>

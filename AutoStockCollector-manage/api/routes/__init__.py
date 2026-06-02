@@ -2,7 +2,7 @@
 API路由定义
 """
 from flask import Blueprint, request, jsonify
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 import time
 import threading
@@ -1448,7 +1448,7 @@ def _parse_task_ts(task_id: str) -> int:
         return 0
 
 
-# ---------- 集合统计缓存（30 秒 TTL，避免每次 progress_all 打 24 次 MongoDB 查询） ----------
+# ---------- 集合统计缓存（与前端刷新间隔对齐，避免每次 progress_all 打 16 次 MongoDB 查询） ----------
 _stats_cache: dict = {}
 _stats_cache_at: float = 0.0
 _stats_cache_lock = threading.Lock()
@@ -1477,7 +1477,7 @@ def _get_collection_stats(db) -> dict:
 
     meta = {
         "kline":        ("kline",        "date"),
-        "stock_info":   ("stock_info",   None),
+        "stock_info":   ("stock_info",   "_updated_at"),
         "financial":    ("financial",    "report_date"),
         "news":         ("news",         "publish_date"),   # publish_date 已修复为有效时间
         "fund_flow":    ("fund_flow",    "date"),           # 新格式个股数据有 date 字段
@@ -1519,76 +1519,120 @@ def _invalidate_stats_cache():
         _stats_cache_at = 0.0
 
 
+def _get_expected_latest_td(now: datetime) -> str:
+    """返回"此时应有数据的最近交易日"，考虑16:00收盘时间。
+    16:00前：上一个交易日（今日数据还未生成）
+    16:00后：今日（若今日是交易日，否则往前找）
+    """
+    from utils.helpers import is_trading_day
+
+    _CLOSE_HOUR = 16
+    if now.hour < _CLOSE_HOUR:
+        candidate = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
+    else:
+        candidate = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    for _ in range(10):
+        if is_trading_day(candidate):
+            return candidate.strftime("%Y-%m-%d")
+        candidate -= timedelta(days=1)
+    return (now - timedelta(days=1)).strftime("%Y-%m-%d")
+
+
+def _count_trading_days_behind(date_to_str: str, expected_str: str) -> int:
+    """计算 date_to 落后 expected 多少个交易日（用于 days_behind 展示）。"""
+    from utils.helpers import get_trading_days
+    try:
+        dt_to = datetime.strptime(date_to_str, "%Y-%m-%d") + timedelta(days=1)
+        return len(get_trading_days(dt_to.strftime("%Y-%m-%d"), expected_str))
+    except Exception:
+        try:
+            return (datetime.strptime(expected_str, "%Y-%m-%d")
+                    - datetime.strptime(date_to_str, "%Y-%m-%d")).days
+        except Exception:
+            return 0
+
+
 def _compute_health(ttype: str, stats: dict, now: datetime) -> dict:
     """计算单类数据的时效性健康状态。
     返回 {'health': 'ok'|'stale'|'error', 'days_behind': int, 'latest_date': str|None}
     """
-    from utils.helpers import get_latest_trading_day
-
     record_count = stats.get("record_count", 0)
     date_to = stats.get("date_to")  # YYYY-MM-DD 字符串或 None
 
     if record_count == 0:
         return {"health": "error", "days_behind": None, "latest_date": None}
 
-    # 每日更新类：K线/龙虎榜/资金流向/融资融券/板块
+    # ── 每日更新类（K线/龙虎榜/资金流向/融资融券/板块）──────────────────────
     if ttype in ("kline", "dragon_tiger", "fund_flow", "margin", "sector"):
         if not date_to:
             return {"health": "error", "days_behind": None, "latest_date": None}
         try:
-            latest_td = get_latest_trading_day(now)
-            latest_td_str = latest_td.strftime("%Y-%m-%d")
+            expected = _get_expected_latest_td(now)
             date_to_str = str(date_to)[:10]
-            if date_to_str >= latest_td_str:
+            if date_to_str >= expected:
                 return {"health": "ok", "days_behind": 0, "latest_date": date_to_str}
-            from datetime import timedelta
-            delta_days = (latest_td - datetime.strptime(date_to_str, "%Y-%m-%d")).days
-            # 板块数据是快照性质，更新1天内算ok
-            if ttype == "sector":
-                status = "ok" if delta_days <= 1 else "stale"
-                return {"health": status, "days_behind": delta_days, "latest_date": date_to_str}
-            return {"health": "stale", "days_behind": delta_days, "latest_date": date_to_str}
+
+            gap = _count_trading_days_behind(date_to_str, expected)
+            # 板块快照：1个交易日内都算 ok
+            if ttype == "sector" and gap <= 1:
+                return {"health": "ok", "days_behind": gap, "latest_date": date_to_str}
+            return {"health": "stale", "days_behind": gap, "latest_date": date_to_str}
         except Exception:
             return {"health": "error", "days_behind": None, "latest_date": date_to}
 
-    # 财务数据：有当前季度数据 → ok
+    # ── 财务数据：按真实披露截止日判断 ──────────────────────────────────────
     if ttype == "financial":
         if not date_to:
             return {"health": "error", "days_behind": None, "latest_date": None}
         try:
-            date_to_dt = datetime.strptime(str(date_to)[:10], "%Y-%m-%d")
-            # 当前季度末：Q1=3-31 Q2=6-30 Q3=9-30 Q4=12-31（过了披露截止日才算）
-            quarter_map = {1: "03-31", 2: "06-30", 3: "09-30", 4: "12-31"}
-            q = (now.month - 1) // 3  # 当前季度编号（0-based），取上一季度
-            if q == 0:
-                expected_str = f"{now.year - 1}-12-31"
-            else:
-                expected_str = f"{now.year}-{quarter_map[q]}"
-            if str(date_to)[:10] >= expected_str:
-                return {"health": "ok", "days_behind": 0, "latest_date": str(date_to)[:10]}
+            year = now.year
+            # (报告期, 披露截止日)；年报截止日为次年4月30
+            events = [
+                (f"{year - 1}-12-31", datetime(year, 4, 30)),
+                (f"{year}-03-31",     datetime(year, 4, 30)),
+                (f"{year}-06-30",     datetime(year, 8, 31)),
+                (f"{year}-09-30",     datetime(year, 10, 31)),
+                (f"{year}-12-31",     datetime(year + 1, 4, 30)),
+            ]
+            # 截止日已过的最新报告期
+            due = [p for p, d in events if d <= now]
+            expected_str = max(due) if due else f"{year - 1}-12-31"
+            date_to_str = str(date_to)[:10]
+            if date_to_str >= expected_str:
+                return {"health": "ok", "days_behind": 0, "latest_date": date_to_str}
+            date_to_dt = datetime.strptime(date_to_str, "%Y-%m-%d")
             delta = (now - date_to_dt).days
-            return {"health": "stale", "days_behind": delta, "latest_date": str(date_to)[:10]}
+            return {"health": "stale", "days_behind": delta, "latest_date": date_to_str}
         except Exception:
             return {"health": "error", "days_behind": None, "latest_date": date_to}
 
-    # 新闻：最新记录24小时内 → ok
+    # ── 新闻：今天或昨天有新闻即为最新 ─────────────────────────────────────
     if ttype == "news":
         if not date_to:
             return {"health": "error", "days_behind": None, "latest_date": None}
         try:
-            date_to_dt = datetime.strptime(str(date_to)[:10], "%Y-%m-%d")
-            delta = (now - date_to_dt).days
+            delta = (now.date() - datetime.strptime(str(date_to)[:10], "%Y-%m-%d").date()).days
             if delta <= 1:
                 return {"health": "ok", "days_behind": delta, "latest_date": str(date_to)[:10]}
             return {"health": "stale", "days_behind": delta, "latest_date": str(date_to)[:10]}
         except Exception:
             return {"health": "stale", "days_behind": None, "latest_date": date_to}
 
-    # 股票信息：7天内更新 → ok
+    # ── 股票信息：最近7天内更新过 ────────────────────────────────────────────
     if ttype == "stock_info":
-        if record_count >= 5000:  # A股股票数参考值
-            return {"health": "ok", "days_behind": 0, "latest_date": None}
-        return {"health": "stale", "days_behind": None, "latest_date": None}
+        if not date_to:
+            # 没有 _updated_at 记录时退化为条数判断
+            return {"health": "ok" if record_count >= 5000 else "stale",
+                    "days_behind": None, "latest_date": None}
+        try:
+            delta = (now.date() - datetime.strptime(str(date_to)[:10], "%Y-%m-%d").date()).days
+            if delta <= 7:
+                return {"health": "ok", "days_behind": delta, "latest_date": str(date_to)[:10]}
+            return {"health": "stale", "days_behind": delta, "latest_date": str(date_to)[:10]}
+        except Exception:
+            return {"health": "ok" if record_count >= 5000 else "stale",
+                    "days_behind": None, "latest_date": date_to}
 
     return {"health": "ok", "days_behind": 0, "latest_date": date_to}
 
@@ -1834,10 +1878,14 @@ def get_data_gaps():
         if db_quarters:
             db_min_q = min(db_quarters)[:4]
             db_max_q = max(db_quarters)[:4]
+            today_str = datetime.now().strftime("%Y-%m-%d")
+            # 只生成已经过去的季度（严格小于今天），未来季度财报尚不存在
             std_quarters = []
             for yr in range(int(db_min_q), int(db_max_q) + 1):
                 for q in ("03-31", "06-30", "09-30", "12-31"):
-                    std_quarters.append(f"{yr}-{q}")
+                    qdate = f"{yr}-{q}"
+                    if qdate < today_str:
+                        std_quarters.append(qdate)
             covered_q = [q for q in std_quarters if q in db_quarters]
             missing_q = [q for q in std_quarters if q not in db_quarters]
             completeness_q = round(len(covered_q) / len(std_quarters) * 100, 1) if std_quarters else 0.0
@@ -2056,9 +2104,9 @@ def get_market_indices():
             result.append({
                 "code": idx["code"].upper(),
                 "name": idx["name"],
-                "price": _f(p[3]) or 0,
-                "change": _f(p[33]) or 0,
-                "change_amount": _f(p[32]) or 0,
+                "price": _f(p[3]) or None,
+                "change": _f(p[33]),
+                "change_amount": _f(p[32]),
                 "volume": _f(p[6]) or 0,
                 "amount": 0,
                 "amplitude": 0,

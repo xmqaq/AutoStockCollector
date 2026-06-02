@@ -1002,6 +1002,7 @@ class TaskScheduler:
         from utils.helpers import get_trading_days
         from core.storage.mongo_storage import MarginStorage
         import time
+        import random
 
         start_date = task.params.get("start_date", "20260101")
         end_date = task.params.get("end_date", datetime.now().strftime("%Y%m%d"))
@@ -1084,7 +1085,7 @@ class TaskScheduler:
                 logger.warning(f"margin {trading_date} failed: {e}")
             done += 1
             task.update_progress(done, len(all_days), total, failed_cnt)
-            time.sleep(0.3)  # 从0.5s降至0.3s，约节省20%时间
+            time.sleep(random.uniform(0.2, 0.4))  # 随机抖动避免触发接口限速
 
         task.complete(total, failed_cnt)
 

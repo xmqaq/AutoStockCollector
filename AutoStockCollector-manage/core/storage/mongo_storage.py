@@ -388,6 +388,8 @@ class MongoStorage:
 class KlineStorage(MongoStorage):
     def __init__(self):
         super().__init__("kline")
+        self.create_index([("date", 1)])
+        self.create_index([("code", 1), ("date", -1)])
 
     def get_latest_date(self, code: str) -> Optional[str]:
         record = self.find_one(
@@ -451,6 +453,7 @@ class KlineStorage(MongoStorage):
 class StockInfoStorage(MongoStorage):
     def __init__(self):
         super().__init__("stock_info")
+        self.create_index([("_updated_at", -1)])
 
     def get_by_code(self, code: str) -> Optional[Dict[str, Any]]:
         record = self.find_one({"code": code})
@@ -467,6 +470,7 @@ class StockInfoStorage(MongoStorage):
 class FinancialStorage(MongoStorage):
     def __init__(self):
         super().__init__("financial")
+        self.create_index([("report_date", 1)])
 
     def get_by_code_and_period(
         self,
@@ -492,6 +496,7 @@ class NewsStorage(MongoStorage):
         self.create_index([("channel_name", 1)])
         self.create_index([("is_breaking", 1)])
         self.create_index([("source", 1)])
+        self.create_index([("publish_date", -1)])
 
     def get_latest_news(
         self,
@@ -586,6 +591,7 @@ class NewsStorage(MongoStorage):
 class FundFlowStorage(MongoStorage):
     def __init__(self):
         super().__init__("fund_flow")
+        self.create_index([("date", -1)])
 
     def get_latest_flow(self, code: str) -> Optional[Dict[str, Any]]:
         """支持带 SH/SZ 前缀和不带前缀两种 code 格式。"""
@@ -609,6 +615,8 @@ class FundFlowStorage(MongoStorage):
 class TaskStorage(MongoStorage):
     def __init__(self):
         super().__init__("task")
+        self.create_index([("create_time", -1)])
+        self.create_index([("task_id", 1)])
 
     def create_task(
         self,
@@ -715,6 +723,7 @@ class WatchlistStorage(MongoStorage):
 class BlockStorage(MongoStorage):
     def __init__(self):
         super().__init__("block")
+        self.create_index([("_updated_at", -1)])
 
     def save_block(self, block: Dict[str, Any]) -> str:
         if "code" in block and "block_type" in block:
@@ -745,6 +754,7 @@ class BlockStorage(MongoStorage):
 class DragonTigerStorage(MongoStorage):
     def __init__(self):
         super().__init__("dragon_tiger")
+        self.create_index([("上榜日", -1)])
 
     def save_daily_rank(self, rank: Dict[str, Any]) -> str:
         if "code" in rank and "date" in rank:
@@ -770,6 +780,7 @@ class DragonTigerStorage(MongoStorage):
 class MarginStorage(MongoStorage):
     def __init__(self):
         super().__init__("margin_data")
+        self.create_index([("date", -1)])
 
     def save_margin(self, margin: Dict[str, Any]) -> str:
         # 个股数据用 code + date；旧市场汇总数据兼容 信用交易日期 + market

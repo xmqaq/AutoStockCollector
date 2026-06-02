@@ -1,7 +1,18 @@
 <template>
   <div class="dashboard">
     <!-- Metric cards -->
-    <el-row :gutter="16" class="metric-cards">
+    <el-row v-if="!dataLoaded" :gutter="16" class="metric-cards">
+      <el-col v-for="i in 4" :key="i" :span="6">
+        <el-card class="metric-card" shadow="never">
+          <div class="metric-content">
+            <div class="sk-line sk-label-line"></div>
+            <div class="sk-line sk-value-line"></div>
+          </div>
+          <div class="sk-circle"></div>
+        </el-card>
+      </el-col>
+    </el-row>
+    <el-row v-else :gutter="16" class="metric-cards">
       <el-col :span="6">
         <el-card class="metric-card" shadow="never">
           <div class="metric-content">
@@ -53,7 +64,7 @@
       </el-col>
     </el-row>
 
-    <!-- Data health compact summary (read-only, no operations) -->
+    <!-- Data health card grid -->
     <el-card shadow="never" class="section-card health-summary-card">
       <template #header>
         <div class="card-header">
@@ -63,51 +74,96 @@
           </el-button>
         </div>
       </template>
-      <div class="health-summary">
-        <el-tag type="success" size="default">✅ 最新 {{ healthOk }} 类</el-tag>
-        <el-tag type="warning" size="default">⚠️ 需更新 {{ healthStale }} 类</el-tag>
-        <el-tag type="danger" size="default">❌ 异常 {{ healthError }} 类</el-tag>
-        <span class="health-detail" v-if="staleTypes.length">
-          · 需更新：{{ staleTypes.join(' / ') }}
-        </span>
-      </div>
+
+      <!-- Skeleton: before first data load -->
+      <template v-if="!dataLoaded">
+        <div class="health-summary-row">
+          <div class="sk-line" style="width:90px;height:22px;border-radius:11px"></div>
+          <div class="sk-line" style="width:90px;height:22px;border-radius:11px"></div>
+          <div class="sk-line" style="width:90px;height:22px;border-radius:11px"></div>
+        </div>
+        <div class="health-cards-grid">
+          <div v-for="i in 8" :key="i" class="health-card sk-health-card">
+            <div class="sk-line" style="height:12px;width:60%"></div>
+            <div class="sk-line" style="height:22px;width:80%"></div>
+            <div class="sk-line" style="height:10px;width:50%"></div>
+            <div class="sk-line" style="height:20px;width:40%;border-radius:10px"></div>
+          </div>
+        </div>
+      </template>
+
+      <!-- Real: after first data load -->
+      <template v-else>
+        <!-- Summary row -->
+        <div class="health-summary-row">
+          <el-tag type="success" size="small">✅ 最新 {{ healthOk }} 类</el-tag>
+          <el-tag type="warning" size="small">⚠️ 需更新 {{ healthStale }} 类</el-tag>
+          <el-tag type="danger" size="small">❌ 异常 {{ healthError }} 类</el-tag>
+          <span class="health-stale-list" v-if="staleTypes.length">
+            需更新：<span v-for="(t, i) in staleTypes" :key="t" class="stale-name">{{ t }}<span v-if="i < staleTypes.length - 1">、</span></span>
+          </span>
+        </div>
+        <!-- 8 cards grid -->
+        <div class="health-cards-grid">
+          <div
+            v-for="row in healthCards"
+            :key="row.value"
+            :class="['health-card', `health-card--${row.health}`]"
+            @click="router.push('/data-monitor')"
+          >
+            <div class="hc-icon-name">
+              <span class="hc-icon">{{ row.icon }}</span>
+              <span class="hc-name">{{ row.label }}</span>
+            </div>
+            <div class="hc-count">{{ row.record_count != null ? row.record_count.toLocaleString() : '--' }}<span class="hc-unit">{{ row.unit }}</span></div>
+            <div :class="['hc-date', row.health === 'stale' ? 'hc-date--stale' : '']">{{ row.latest_date ?? '--' }}</div>
+            <div class="hc-status">
+              <el-tag v-if="row.health === 'ok'" type="success" size="small">✅ 最新</el-tag>
+              <el-tag v-else-if="row.health === 'stale'" type="warning" size="small">⚠️ 需更新</el-tag>
+              <el-tag v-else type="danger" size="small">❌ 异常</el-tag>
+            </div>
+          </div>
+        </div>
+      </template>
     </el-card>
 
-    <!-- Main content -->
-    <el-row :gutter="16" class="main-content-row">
+    <!-- Main content: Market sentiment + Sector heatmap side by side -->
+    <el-row :gutter="16" class="main-content-row" style="align-items: stretch">
       <!-- Left column: Market sentiment -->
-      <el-col :span="16">
-        <el-card shadow="never" class="section-card sentiment-card">
+      <el-col :span="15" style="display: flex; flex-direction: column">
+        <el-card shadow="never" class="section-card fill-card">
           <MarketSentiment />
         </el-card>
       </el-col>
 
-      <!-- Right column: Sector heatmap + News list -->
-      <el-col :span="8">
-        <el-card shadow="never" class="section-card">
+      <!-- Right column: Sector heatmap only -->
+      <el-col :span="9" style="display: flex; flex-direction: column">
+        <el-card shadow="never" class="section-card fill-card">
           <SectorHeatmap @select="handleSectorSelect" />
-        </el-card>
-        <el-card shadow="never" class="section-card">
-          <template #header>
-            <span>最新资讯</span>
-          </template>
-          <div v-if="newsList.length === 0" class="empty-state">
-            <el-empty description="暂无新闻" :image-size="60" />
-          </div>
-          <div v-else class="news-list">
-            <div
-              v-for="(news, idx) in newsList"
-              :key="idx"
-              class="news-item"
-              @click="goToNews(news)"
-            >
-              <div class="news-title">{{ news.title }}</div>
-              <div class="news-meta">{{ fmtDateTime(news.publish_date || news.datetime || news.date) }}</div>
-            </div>
-          </div>
         </el-card>
       </el-col>
     </el-row>
+
+    <!-- News list: full width below -->
+    <el-card shadow="never" class="section-card">
+      <template #header>
+        <span>最新资讯</span>
+      </template>
+      <div v-if="newsList.length === 0" class="empty-state">
+        <el-empty description="暂无新闻" :image-size="60" />
+      </div>
+      <div v-else class="news-list">
+        <div
+          v-for="(news, idx) in newsList"
+          :key="idx"
+          class="news-item"
+          @click="goToNews(news)"
+        >
+          <div class="news-title">{{ news.title }}</div>
+          <div class="news-meta">{{ fmtDateTime(news.publish_date || news.datetime || news.date) }}</div>
+        </div>
+      </div>
+    </el-card>
   </div>
 </template>
 
@@ -127,6 +183,7 @@ import { TYPE_LABEL } from '@/utils/collectTypes'
 const router = useRouter()
 const collectStore = useCollectStore()
 const loading = ref(false)
+const dataLoaded = ref(false)
 const newsList = ref<NewsRecord[]>([])
 const newsCount = ref(0)
 
@@ -139,6 +196,37 @@ const staleTypes = computed(() =>
     .filter(p => (p as any).health === 'stale')
     .map(p => (TYPE_LABEL as Record<string, string>)[p.task_type] || p.task_type)
 )
+
+const CARD_META: Record<string, { icon: string; unit: string }> = {
+  kline:        { icon: '📈', unit: '条' },
+  financial:    { icon: '💰', unit: '条' },
+  dragon_tiger: { icon: '🐯', unit: '条' },
+  margin:       { icon: '💳', unit: '条' },
+  news:         { icon: '📰', unit: '条' },
+  fund_flow:    { icon: '💹', unit: '条' },
+  sector:       { icon: '📊', unit: '条' },
+  stock_info:   { icon: '📋', unit: '只' },
+}
+
+const CARD_ORDER = ['kline', 'financial', 'dragon_tiger', 'margin', 'news', 'fund_flow', 'sector', 'stock_info']
+
+const healthCards = computed(() => {
+  const byType: Record<string, any> = {}
+  collectStore.progressList.forEach(p => { byType[p.task_type] = p })
+  return CARD_ORDER.map(key => {
+    const p = byType[key] || {}
+    const meta = CARD_META[key] || { icon: '📦', unit: '条' }
+    return {
+      value: key,
+      label: (TYPE_LABEL as Record<string, string>)[key] || key,
+      icon: meta.icon,
+      unit: meta.unit,
+      record_count: (p.record_count ?? (p as any).record_count) as number | null,
+      latest_date: ((p as any).latest_date ?? (p as any).date_to) as string | null,
+      health: ((p as any).health ?? ((p as any).record_count > 0 ? 'stale' : 'error')) as string,
+    }
+  })
+})
 
 function goToNews(news: NewsRecord) {
   if (news.url) {
@@ -156,10 +244,10 @@ function handleSectorSelect(sector: SectorRecord) {
 async function refreshData() {
   loading.value = true
   try {
-    await collectStore.fetchProgress()
-    await loadNews()
+    await Promise.all([collectStore.fetchProgress(), loadNews()])
   } finally {
     loading.value = false
+    dataLoaded.value = true
   }
 }
 
@@ -267,10 +355,10 @@ onUnmounted(() => {
 }
 
 .news-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  max-height: 400px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0 24px;
+  max-height: 320px;
   overflow-y: auto;
 }
 
@@ -308,24 +396,152 @@ onUnmounted(() => {
   padding: 20px 0;
 }
 
-.sentiment-card {
-  margin-top: 16px;
+.fill-card {
+  flex: 1;
 }
 
 .health-summary-card {
   margin-bottom: 0;
 }
 
-.health-summary {
+/* 汇总行 */
+.health-summary-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
-  padding: 4px 0;
+  margin-bottom: 14px;
 }
 
-.health-detail {
-  font-size: 13px;
+.health-stale-list {
+  font-size: 12px;
   color: #909399;
+}
+
+.stale-name {
+  color: #e6a23c;
+  font-weight: 600;
+}
+
+/* 8 卡片网格 */
+.health-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.health-card {
+  background: #252525;
+  border-radius: 6px;
+  padding: 12px 14px;
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  transition: background 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.health-card:hover {
+  background: #2d2d2d;
+}
+
+.health-card--ok    { border-left-color: #67c23a; }
+.health-card--stale { border-left-color: #e6a23c; }
+.health-card--error { border-left-color: #f56c6c; background: rgba(245,108,108,0.05); }
+
+.hc-icon-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #909399;
+}
+
+.hc-icon { font-size: 14px; }
+
+.hc-name {
+  font-weight: 600;
+  color: #c8cdd6;
+}
+
+.hc-count {
+  font-size: 18px;
+  font-weight: 700;
+  color: #e5eaf3;
+  line-height: 1.2;
+}
+
+.hc-unit {
+  font-size: 11px;
+  font-weight: normal;
+  color: #606266;
+  margin-left: 2px;
+}
+
+.hc-date {
+  font-size: 11px;
+  color: #606266;
+}
+
+.hc-date--stale {
+  color: #e6a23c;
+}
+
+.hc-status {
+  margin-top: 2px;
+}
+
+/* ── 骨架屏 ── */
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.sk-line {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04) 25%,
+    rgba(255, 255, 255, 0.10) 50%,
+    rgba(255, 255, 255, 0.04) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+
+.sk-label-line {
+  height: 13px;
+  width: 55%;
+}
+
+.sk-value-line {
+  height: 26px;
+  width: 70%;
+}
+
+.sk-circle {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04) 25%,
+    rgba(255, 255, 255, 0.10) 50%,
+    rgba(255, 255, 255, 0.04) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  flex-shrink: 0;
+}
+
+.sk-health-card {
+  gap: 8px;
+  border-left-color: #333;
+  cursor: default;
+}
+
+.sk-health-card:hover {
+  background: #252525;
 }
 </style>

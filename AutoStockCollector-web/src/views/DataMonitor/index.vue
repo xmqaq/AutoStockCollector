@@ -184,7 +184,32 @@
         <el-table-column type="expand">
           <template #default="{ row }">
             <div class="gap-detail">
-              <template v-if="!gapData[row.value]">
+              <!-- 无日期序列类型：直接显示说明，不做缺口检测 -->
+              <template v-if="NO_DATE_SEQ.has(row.value)">
+                <div class="no-seq-desc">
+                  <template v-if="row.value === 'news'">
+                    <p>按条存储，共 <strong>{{ row.record_count?.toLocaleString() ?? '--' }}</strong> 条</p>
+                    <p class="no-seq-sub">无日期连续性要求，每日增量采集最新新闻</p>
+                  </template>
+                  <template v-else-if="row.value === 'sector'">
+                    <p>快照性质，共 <strong>{{ row.record_count?.toLocaleString() ?? '--' }}</strong> 条</p>
+                    <p class="no-seq-sub">最新更新时间：{{ row.latest_date ?? '--' }}</p>
+                    <p class="no-seq-sub">每日采集当日板块涨跌数据</p>
+                  </template>
+                  <template v-else-if="row.value === 'stock_info'">
+                    <p>全量覆盖，共 <strong>{{ row.record_count?.toLocaleString() ?? '--' }}</strong> 只股票</p>
+                    <p class="no-seq-sub">最后刷新时间：{{ row.latest_date ?? '--' }}</p>
+                    <p class="no-seq-sub">每周自动全量刷新一次</p>
+                  </template>
+                  <template v-else-if="row.value === 'fund_flow'">
+                    <p>每日全市场快照数据，共 <strong>{{ row.record_count?.toLocaleString() ?? '--' }}</strong> 条</p>
+                    <p class="no-seq-sub">受接口限制，不提供历史数据查询</p>
+                    <p class="no-seq-sub">每个交易日收盘后自动更新当日数据</p>
+                  </template>
+                </div>
+              </template>
+              <!-- 有日期序列类型：显示缺口检测结果 -->
+              <template v-else-if="!gapData[row.value]">
                 <span class="gap-hint">点击上方"检测缺口"加载区间详情</span>
               </template>
               <template v-else-if="gapData[row.value].error">
@@ -199,7 +224,8 @@
                 <div v-if="gapData[row.value].missing_quarters?.length" class="gap-section gap-missing">
                   <span class="gap-err-label">❌ 缺失季度：</span>
                   <span v-for="q in gapData[row.value].missing_quarters?.slice(0, 8)" :key="q">
-                    <el-tag size="small" type="danger" style="margin:2px" @click="fillGap(row.value, q, q)">
+                    <el-tag size="small" type="danger" style="margin:2px"
+                      @click="() => { const [s,e] = quarterToRange(q); fillGap(row.value, s, e) }">
                       {{ q }} [补采]
                     </el-tag>
                   </span>
@@ -354,6 +380,9 @@ use([GaugeChart, TooltipComponent, CanvasRenderer])
 
 const collectStore = useCollectStore()
 const loading = ref(false)
+
+// 无日期序列的数据类型：不做缺口检测，展开时显示说明文字
+const NO_DATE_SEQ = new Set(['news', 'fund_flow', 'sector', 'stock_info'])
 const currentTaskPage = ref(1)
 const taskPageSize = ref(50)
 const pagedTasks = computed(() =>
@@ -480,7 +509,7 @@ async function handleHistory() {
     })
     ElMessage.success('历史采集任务已启动')
     showHistoryModal.value = false
-    await loadTasks()
+    await Promise.all([loadTasks(), collectStore.fetchProgress()])
   } finally { historyLoading.value = false }
 }
 
@@ -516,7 +545,7 @@ async function handleUpdate() {
     const skipped = res.data?.skipped || []
     ElMessage.success(skipped.length ? `已启动，${skipped.length} 类已是最新跳过` : '更新任务已启动')
     showUpdateModal.value = false
-    await loadTasks()
+    await Promise.all([loadTasks(), collectStore.fetchProgress()])
   } finally { updateLoading.value = false }
 }
 
@@ -524,7 +553,7 @@ async function handleUpdate() {
 async function handleRerun(row: any) {
   const res = await collectApi.createTask(row.task_type, row.params || {})
   const id = res.data?.task_id
-  if (id) { await collectApi.startTask(id); ElMessage.success('已按原参数重跑'); await loadTasks() }
+  if (id) { await collectApi.startTask(id); ElMessage.success('已按原参数重跑'); await Promise.all([loadTasks(), collectStore.fetchProgress()]) }
 }
 
 // ---------------- 仪表盘（问题六：覆盖度 + 时效性分开展示）----------------
@@ -618,6 +647,20 @@ async function loadDataGaps() {
   } finally {
     gapsLoading.value = false
   }
+}
+
+// 将季度末日期转为该季度的完整起止范围
+// 例：2025-09-30 → ['2025-07-01', '2025-09-30']
+function quarterToRange(q: string): [string, string] {
+  const suffix = q.slice(5)  // 'MM-DD'
+  const yr = q.slice(0, 4)
+  const startMap: Record<string, string> = {
+    '03-31': `${yr}-01-01`,
+    '06-30': `${yr}-04-01`,
+    '09-30': `${yr}-07-01`,
+    '12-31': `${yr}-10-01`,
+  }
+  return [startMap[suffix] ?? q, q]
 }
 
 // 点击"补采此区间"：打开历史弹窗并预填日期
@@ -870,6 +913,20 @@ onUnmounted(() => {
 .gap-hint { font-size: 12px; color: #606266; font-style: italic; }
 .gap-error { font-size: 12px; color: #f56c6c; }
 .gap-missing { flex-wrap: wrap; }
+
+/* 无日期序列类型展开说明 */
+.no-seq-desc {
+  line-height: 1.6;
+}
+.no-seq-desc p {
+  margin: 2px 0;
+  font-size: 13px;
+  color: #e5eaf3;
+}
+.no-seq-sub {
+  color: #909399 !important;
+  font-size: 12px !important;
+}
 
 /* 仪表盘布局：左侧仪表 + 右侧时效性面板 */
 .gauge-wrapper {
