@@ -63,7 +63,6 @@ declare module 'vue' {
     ElText: typeof import('element-plus/es')['ElText']
     ElTimeSelect: typeof import('element-plus/es')['ElTimeSelect']
     ElTooltip: typeof import('element-plus/es')['ElTooltip']
-    HelloWorld: typeof import('./src/components/HelloWorld.vue')['default']
     KlineChart: typeof import('./src/components/KlineChart/index.vue')['default']
     LLMDialoguePanel: typeof import('./src/components/LLMDialoguePanel/index.vue')['default']
     MarketSentiment: typeof import('./src/components/MarketSentiment/index.vue')['default']

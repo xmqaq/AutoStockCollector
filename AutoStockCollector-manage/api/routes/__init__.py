@@ -2642,6 +2642,13 @@ def ai_agent_chat():
     if not message:
         return jsonify({"success": False, "error": "message is required"}), 400
 
+    # 消息中未传 stock_code 时，尝试从消息文本提取（支持 SH600000 / sz000001 / 600000 格式）
+    if not stock_code:
+        import re as _re
+        _m = _re.search(r'(?:(?:SH|SZ|sh|sz)\d{6}|(?<!\d)[036]\d{5}(?!\d))', message)
+        if _m:
+            stock_code = _normalize_code(_m.group(0))
+
     # 1. 加载 agent 配置
     system_prompt = "你是一个专业的A股投资助手，能够提供市场分析和投资建议。"
     temperature = 0.7
