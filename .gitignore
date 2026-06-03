@@ -37,3 +37,4 @@ Dockerfile
 docker-compose.yml
 nginx.conf
 *.tar.gz
+deploy.sh
