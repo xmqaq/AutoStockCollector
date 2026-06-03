@@ -40,7 +40,7 @@ class Settings:
     API_CONFIG = {
         "host": "0.0.0.0",
         "port": 5555,
-        "debug": True,
+        "debug": os.getenv("FLASK_DEBUG", "true").lower() in ("true", "1"),
     }
 
     AI_MODEL_CONFIG = {
