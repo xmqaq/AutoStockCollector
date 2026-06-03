@@ -68,6 +68,11 @@ class Settings:
         "snapshot_retention_days": 90,
     }
 
+    WORKFLOW_SCHEDULE_CONFIG = {
+        "daily_workflow_id": os.getenv("DAILY_WORKFLOW_ID", ""),
+        "daily_workflow_time": os.getenv("DAILY_WORKFLOW_TIME", "17:00"),
+    }
+
     @classmethod
     def get_collection_config(cls, collection_type: str) -> Dict:
         configs = {

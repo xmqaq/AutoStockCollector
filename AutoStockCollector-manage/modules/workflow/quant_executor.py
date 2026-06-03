@@ -135,7 +135,7 @@ class QuantMultiFactorExecutor:
 
         # 1. Stock basic info
         cursor = db['stock_info'].find({}, {
-            'code': 1, 'name': 1,
+            'code': 1, 'name': 1, 'A股简称': 1, '证券简称': 1,
             '总市值': 1, '流通市值': 1,
             '市盈率-动态': 1, '市净率': 1,
             '上市时间': 1, '上市日期': 1, '所属行业': 1,
@@ -145,6 +145,7 @@ class QuantMultiFactorExecutor:
         for r in cursor:
             code = r.get('code')
             if code:
+                r['name'] = r.get('name') or r.get('A股简称') or r.get('证券简称') or ''
                 self.stock_info[code] = r
         logger.info(f"Step1: loaded {len(self.stock_info)} stock_info records")
         self._report("step1", "初始化股票池", f"已加载 {len(self.stock_info)} 只股票基础信息", 4)
@@ -153,8 +154,8 @@ class QuantMultiFactorExecutor:
         self.financial_data = defaultdict(list)
         cursor = db['financial'].find({}, {
             'code': 1, 'report_date': 1,
-            'roe': 1, 'revenue': 1, 'net_profit': 1,
-            'debt_ratio': 1, 'gross_margin': 1,
+            '净资产收益率': 1, '营业总收入': 1, '净利润': 1,
+            '资产负债率': 1, '销售毛利率': 1,
             '_id': 0
         }).sort('report_date', -1)
         for r in cursor:
@@ -166,7 +167,7 @@ class QuantMultiFactorExecutor:
         self._report("step1", "初始化股票池", f"已加载 {total_fin} 条财务数据（最近4季度）", 7)
 
         # 3. Kline – recent 90 days, sorted ascending
-        cutoff = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
+        cutoff = datetime.now() - timedelta(days=90)
         self.kline_data = defaultdict(list)
         cursor = db['kline'].find(
             {'date': {'$gte': cutoff}},
@@ -185,8 +186,7 @@ class QuantMultiFactorExecutor:
         self.fund_flow_data = defaultdict(list)
         cursor = db['fund_flow'].find({}, {
             'code': 1, 'date': 1,
-            'main_net_inflow': 1, 'super_large_net': 1,
-            'total_amount': 1, 'total_volume': 1,
+            'main_net_inflow': 1, 'total_amount': 1,
             '_id': 0
         }).sort('date', -1)
         for r in cursor:
@@ -196,6 +196,7 @@ class QuantMultiFactorExecutor:
         total_flow = sum(len(v) for v in self.fund_flow_data.values())
         logger.info(f"Step1: loaded {total_flow} fund_flow records")
         self._report("step1", "初始化股票池", f"已加载 {total_flow} 条资金流向数据", 13)
+
 
     # ------------------------------------------------------------------ #
     # Step 2 – Hard filter (in-memory)
@@ -260,7 +261,7 @@ class QuantMultiFactorExecutor:
         score = 0.0
 
         # ROE – 30分
-        roe = self._f(records[0].get('roe')) if records else None
+        roe = self._f(records[0].get('净资产收益率')) if records else None
         if roe is None:
             score += 15
         elif roe >= 20:
@@ -276,13 +277,13 @@ class QuantMultiFactorExecutor:
         # else 0
 
         # Revenue growth – 25分
-        score += self._growth_score(records, 'revenue', 25, 12)
+        score += self._growth_score(records, '营业总收入', 25, 12)
 
         # Net profit growth – 25分
-        score += self._growth_score(records, 'net_profit', 25, 12)
+        score += self._growth_score(records, '净利润', 25, 12)
 
         # Debt ratio – 20分
-        debt = self._f(records[0].get('debt_ratio')) if records else None
+        debt = self._f(records[0].get('资产负债率')) if records else None
         if debt is None:
             score += 10
         elif debt <= 30:
@@ -574,11 +575,10 @@ class QuantMultiFactorExecutor:
             v = valuation.get(code, 50.0)
 
             total = (
-                f * 0.30 +
-                t * 0.25 +
-                ff * 0.20 +
-                v * 0.15 +
-                50.0 * 0.10  # market sentiment placeholder
+                f * 0.33 +
+                t * 0.28 +
+                ff * 0.22 +
+                v * 0.17
             )
 
             info = self.stock_info.get(code, {})
@@ -593,16 +593,16 @@ class QuantMultiFactorExecutor:
 
             pe = self._f(info.get('市盈率-动态') or info.get('pe'))
             pb = self._f(info.get('市净率') or info.get('pb'))
-            roe = self._f(records[0].get('roe')) if records else None
+            roe = self._f(records[0].get('净资产收益率')) if records else None
 
             rev_growth = None
             if len(records) >= 2:
-                r0 = self._f(records[0].get('revenue'))
-                r1 = self._f(records[1].get('revenue'))
+                r0 = self._f(records[0].get('营业总收入'))
+                r1 = self._f(records[1].get('营业总收入'))
                 if r0 is not None and r1 and r1 != 0:
                     rev_growth = round((r0 - r1) / abs(r1) * 100, 1)
 
-            debt_ratio = self._f(records[0].get('debt_ratio')) if records else None
+            debt_ratio = self._f(records[0].get('资产负债率')) if records else None
 
             scored.append({
                 'code': code,
@@ -650,6 +650,17 @@ class QuantMultiFactorExecutor:
             s = str(val).replace(',', '').replace('--', '').strip()
             if not s or s.lower() in ('nan', 'none', 'null', ''):
                 return None
-            return float(s)
+
+            multiplier = 1.0
+            if s.endswith('亿'):
+                multiplier = 1e8
+                s = s[:-1]
+            elif s.endswith('万'):
+                multiplier = 1e4
+                s = s[:-1]
+            if s.endswith('%'):
+                s = s[:-1]
+
+            return float(s) * multiplier
         except (ValueError, TypeError):
             return None

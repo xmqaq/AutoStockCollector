@@ -126,6 +126,8 @@ class DatabaseConfig:
         cls._safe_index(db.ai_result, [("code", 1), ("strategy", 1), ("date", -1)], unique=True)
         cls._safe_index(db.ai_result, [("created_at", -1)])
 
+        cls._safe_index(db.cron_schedule, [("label", 1)], unique=True)
+
         logger.info("Database indexes ensured successfully")
 
 

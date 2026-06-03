@@ -205,6 +205,9 @@ class TaskScheduler:
     _instance = None
     _lock = threading.Lock()
 
+    # 内存中最多保留的任务数，超出时淘汰最旧的终态任务
+    MAX_TASKS = 1000
+
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
             with cls._lock:
@@ -228,6 +231,25 @@ class TaskScheduler:
 
             self._start_monitor()
             logger.info("TaskScheduler initialized")
+
+    def _evict_lru(self):
+        """当 _tasks 超过 MAX_TASKS 时，淘汰最旧的终态任务（completed/failed/cancelled）。"""
+        terminal = {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}
+        with self._lock:
+            if len(self._tasks) <= self.MAX_TASKS:
+                return
+            terminal_tasks = [
+                (tid, t) for tid, t in self._tasks.items()
+                if t.status in terminal and t.end_time
+            ]
+            if not terminal_tasks:
+                return
+            terminal_tasks.sort(key=lambda x: x[1].end_time)
+            to_remove = len(self._tasks) - self.MAX_TASKS
+            for tid, _ in terminal_tasks[:to_remove]:
+                del self._tasks[tid]
+            if to_remove:
+                logger.info(f"Evicted {to_remove} stale tasks, current count: {len(self._tasks)}")
 
     # ------------------------------------------------------------------ #
     # Collector 懒加载工厂                                                  #
@@ -288,6 +310,7 @@ class TaskScheduler:
             logger.warning(f"Task persistence unavailable, running in-memory only: {e}")
         with self._lock:
             self._tasks[task_id] = task
+        self._evict_lru()
         logger.info(f"Created task: {task_id}")
         return task_id
 
@@ -1157,7 +1180,7 @@ class TaskScheduler:
 
     def _gc_tasks(self):
         from datetime import timedelta
-        cutoff = datetime.now() - timedelta(hours=7 * 24)
+        cutoff = datetime.now() - timedelta(hours=48)
         with self._lock:
             stale = [
                 tid for tid, t in self._tasks.items()
@@ -1166,6 +1189,8 @@ class TaskScheduler:
             ]
             for tid in stale:
                 del self._tasks[tid]
+        # 即使时间未到 cutoff，如果总数超过 MAX_TASKS 也执行 LRU 淘汰
+        self._evict_lru()
 
     def _on_task_done(self, task_id: str, future: Future):
         """Future 回调：只处理未捕获的异常，不删任务对象"""

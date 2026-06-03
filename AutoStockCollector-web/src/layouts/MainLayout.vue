@@ -8,19 +8,32 @@
       </div>
       <el-menu
         :default-active="activeMenu"
+        :default-openeds="openedMenus"
         background-color="#141414"
         text-color="#c0c4cc"
         active-text-color="#409eff"
         @select="handleMenuSelect"
       >
-        <el-menu-item
-          v-for="item in menuItems"
-          :key="item.path"
-          :index="item.path"
-        >
-          <el-icon><component :is="item.icon" /></el-icon>
-          <template #title>{{ item.label }}</template>
-        </el-menu-item>
+        <template v-for="group in menuGroups" :key="group.key">
+          <el-menu-item v-if="!group.children" :index="group.path!">
+            <el-icon><component :is="group.icon" /></el-icon>
+            <template #title>{{ group.label }}</template>
+          </el-menu-item>
+          <el-sub-menu v-else :index="group.key">
+            <template #title>
+              <el-icon><component :is="group.icon" /></el-icon>
+              <span>{{ group.label }}</span>
+            </template>
+            <el-menu-item
+              v-for="child in group.children"
+              :key="child.key"
+              :index="child.key"
+            >
+              <el-icon><component :is="child.icon" /></el-icon>
+              <template #title>{{ child.label }}</template>
+            </el-menu-item>
+          </el-sub-menu>
+        </template>
       </el-menu>
     </el-aside>
 
@@ -54,7 +67,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useCollectStore } from '@/stores/collectStore'
 import AIChatFloat from '@/components/AIChatFloat/index.vue'
@@ -63,13 +76,11 @@ import {
   Monitor,
   TrendCharts,
   MagicStick,
-  Histogram,
   Lightning,
   Connection,
   Promotion,
   ChatDotRound,
   StarFilled,
-  Setting,
   Odometer,
   Key,
   Wallet,
@@ -81,42 +92,107 @@ const route = useRoute()
 const router = useRouter()
 const collectStore = useCollectStore()
 
-const menuItems = [
-  { path: '/dashboard', label: '系统总览', icon: DataAnalysis },
-  { path: '/data-monitor', label: '采集中心', icon: Monitor },
-  { path: '/stock-detail', label: '股票详情', icon: TrendCharts },
-  { path: '/market', label: '实时行情', icon: Odometer },
-  { path: '/ai-dashboard', label: 'AI智能中枢', icon: MagicStick },
-  { path: '/ai-picker', label: '量化选股', icon: TrendCharts },
-  { path: '/stock-analysis', label: '个股深度分析', icon: Search },
-  { path: '/position', label: '仓位管理', icon: Wallet },
-  { path: '/ai-keys', label: 'AI Key管理', icon: Key },
-  { path: '/ai-agents', label: 'AI Agent管理', icon: MagicStick },
-  { path: '/workflow', label: '工作流管理', icon: Operation },
-  { path: '/dragon-tiger', label: '龙虎榜', icon: Lightning },
-  { path: '/margin-trading', label: '融资融券', icon: Connection },
-  { path: '/sector-flow', label: '板块流向', icon: Promotion },
-  { path: '/fund-flow', label: '资金流向排行', icon: TrendCharts },
-  { path: '/news', label: '新闻舆情', icon: ChatDotRound },
-  { path: '/watchlist', label: '自选股', icon: StarFilled },
+interface MenuChild {
+  key: string
+  label: string
+  icon: Component
+}
+
+interface MenuGroup {
+  key: string
+  label: string
+  icon: Component
+  path?: string
+  children?: MenuChild[]
+}
+
+const menuGroups: MenuGroup[] = [
+  {
+    key: 'system',
+    label: '系统总览',
+    path: '/dashboard',
+    icon: DataAnalysis,
+  },
+  {
+    key: 'data-center',
+    label: '数据中心',
+    icon: Monitor,
+    children: [
+      { key: '/data-monitor', label: '采集中心', icon: Monitor },
+      { key: '/stock-detail', label: '股票详情', icon: TrendCharts },
+      { key: '/market', label: '实时行情', icon: Odometer },
+      { key: '/dragon-tiger', label: '龙虎榜', icon: Lightning },
+      { key: '/margin-trading', label: '融资融券', icon: Connection },
+      { key: '/sector-flow', label: '板块流向', icon: Promotion },
+      { key: '/fund-flow', label: '资金流向排行', icon: TrendCharts },
+      { key: '/news', label: '新闻舆情', icon: ChatDotRound },
+    ],
+  },
+  {
+    key: 'ai',
+    label: 'AI智能',
+    icon: MagicStick,
+    children: [
+      { key: '/ai-dashboard', label: 'AI智能中枢', icon: MagicStick },
+      { key: '/ai-picker', label: '量化选股', icon: TrendCharts },
+      { key: '/stock-analysis', label: '个股深度分析', icon: Search },
+      { key: '/ai-keys', label: 'AI Key管理', icon: Key },
+      { key: '/ai-agents', label: 'AI Agent管理', icon: MagicStick },
+    ],
+  },
+  {
+    key: 'quant',
+    label: '量化交易',
+    icon: Operation,
+    children: [
+      { key: '/position', label: '仓位管理', icon: Wallet },
+      { key: '/workflow', label: '工作流管理', icon: Operation },
+    ],
+  },
+  {
+    key: 'watchlist',
+    label: '自选股',
+    path: '/watchlist',
+    icon: StarFilled,
+  },
 ]
 
-const activeMenu = computed(() => {
-  const currentPath = route.path
-  const matchingItem = menuItems.find(item => currentPath.startsWith(item.path))
-  return matchingItem?.path || currentPath
+function findLeaf(path: string): string | undefined {
+  for (const group of menuGroups) {
+    if (group.children) {
+      const child = group.children.find(c => path.startsWith(c.key))
+      if (child) return child.key
+    } else if (group.path && path.startsWith(group.path)) {
+      return group.path
+    }
+  }
+}
+
+const activeMenu = computed(() => findLeaf(route.path) || route.path)
+
+const openedMenus = computed(() => {
+  const path = route.path
+  const group = menuGroups.find(
+    g => g.children && g.children.some(c => path.startsWith(c.key)),
+  )
+  return group ? [group.key] : []
 })
 
 function handleMenuSelect(path: string) {
-  console.log('Menu selected:', path, 'Current route:', route.path)
-  router.push(path).catch((err) => {
-    console.error('Navigation failed:', err)
-  })
+  router.push(path).catch(() => {})
 }
 
 const currentTitle = computed(() => {
-  const matchingItem = menuItems.find(item => route.path.startsWith(item.path))
-  return matchingItem?.label || 'AutoStockCollector'
+  const path = route.path
+  for (const group of menuGroups) {
+    if (group.children) {
+      const child = group.children.find(c => path.startsWith(c.key))
+      if (child) return child.label
+    } else if (group.path && path.startsWith(group.path)) {
+      return group.label
+    }
+  }
+  return 'AutoStockCollector'
 })
 
 let healthTimer: ReturnType<typeof setInterval>

@@ -20,6 +20,57 @@ _history_lock = threading.Lock()
 _registered_jobs: list = []
 _jobs_lock = threading.Lock()
 
+_SCHEDULE_COLLECTION = "cron_schedule"
+
+
+def _get_cron_collection():
+    from config.database import DatabaseConfig
+    return DatabaseConfig.get_database()[_SCHEDULE_COLLECTION]
+
+
+def _persist_schedule():
+    """将当前调度状态写入 MongoDB，服务重启后可恢复。"""
+    try:
+        col = _get_cron_collection()
+        col.delete_many({})
+        with _jobs_lock:
+            if not _registered_jobs:
+                return
+            docs = [{
+                "label": j["label"],
+                "kind": j["kind"],
+                "hour": j["hour"],
+                "minute": j["minute"],
+                "next_run": j["next_run"].isoformat(),
+                "task_type": j.get("task_type", ""),
+            } for j in _registered_jobs]
+        col.insert_many(docs)
+    except Exception as e:
+        logger.warning(f"[cron] persist schedule failed: {e}")
+
+
+def _restore_next_run():
+    """从 MongoDB 恢复各任务的 next_run，使重启后调度状态不丢失。"""
+    try:
+        col = _get_cron_collection()
+        saved = {doc["label"]: doc for doc in col.find({})}
+        if not saved:
+            return
+        with _jobs_lock:
+            restored = 0
+            for job in _registered_jobs:
+                entry = saved.get(job["label"])
+                if entry:
+                    try:
+                        job["next_run"] = datetime.datetime.fromisoformat(entry["next_run"])
+                        restored += 1
+                    except Exception:
+                        pass
+        if restored:
+            logger.info(f"[cron] restored next_run for {restored} jobs from DB")
+    except Exception as e:
+        logger.warning(f"[cron] restore schedule failed: {e}")
+
 
 def _record_result(label: str, ok: bool, msg: str = "") -> None:
     with _history_lock:
@@ -272,6 +323,85 @@ def _ai_pick_wrapper():
         run_ai_pick_job()
 
 
+# ─── 选股工作流定时调度 ────────────────────────────────────────────────────────
+
+def job_workflow_daily():
+    """每日定时触发选股工作流。"""
+    if not _is_weekday():
+        return
+    workflow_id = _os.environ.get("DAILY_WORKFLOW_ID", "")
+    if not workflow_id:
+        logger.info("[cron] 选股工作流: DAILY_WORKFLOW_ID 未设置，跳过")
+        return
+    try:
+        from modules.workflow.models import WorkflowStorage, WorkflowExecutionStorage, ExecutionStatus
+        from modules.workflow.executor import WorkflowExecutor
+        import uuid
+        from datetime import datetime
+
+        storage = WorkflowStorage()
+        workflow = storage.get_workflow(workflow_id)
+        if not workflow:
+            logger.warning(f"[cron] 选股工作流: workflow {workflow_id} 不存在")
+            return
+        if not workflow.enabled:
+            logger.info(f"[cron] 选股工作流: workflow {workflow_id} 已禁用，跳过")
+            return
+
+        exec_storage = WorkflowExecutionStorage()
+        existing = exec_storage.get_running_execution(workflow_id)
+        if existing:
+            logger.info(f"[cron] 选股工作流: workflow {workflow_id} 已有执行中任务，跳过")
+            return
+
+        execution_id = str(uuid.uuid4())
+        execution = WorkflowExecution(
+            id=execution_id,
+            workflow_id=workflow_id,
+            status=ExecutionStatus.RUNNING.value,
+            progress=0,
+            current_node="",
+            current_step="准备执行...",
+            steps=[],
+            started_at=datetime.now().isoformat(),
+        )
+        exec_storage.create_execution(execution)
+
+        def progress_callback(node_id, node_label, step, progress, detail=None):
+            step_data = {
+                "node_id": node_id,
+                "node_label": node_label,
+                "step": step,
+                "progress": progress,
+                "detail": detail or {},
+                "timestamp": datetime.now().isoformat(),
+            }
+            exec_storage.update_progress(execution_id, progress, node_id, step, step_data)
+
+        def run():
+            try:
+                nodes = [n.to_dict() for n in workflow.nodes]
+                edges = [e.to_dict() for e in workflow.edges]
+                executor = WorkflowExecutor(workflow_id, execution_id, progress_callback)
+                result = executor.execute(nodes, edges, {})
+                if result.get("success"):
+                    exec_storage.complete_execution(execution_id, result)
+                    storage.update_last_run(workflow_id)
+                else:
+                    exec_storage.fail_execution(execution_id, result.get("error", "执行失败"))
+            except Exception as e:
+                import traceback
+                logger.error(f"[cron] 选股工作流执行异常: {e}\n{traceback.format_exc()}")
+                exec_storage.fail_execution(execution_id, str(e))
+
+        import threading
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
+        logger.info(f"[cron] 选股工作流 {workflow_id} 已触发: execution_id={execution_id}")
+    except Exception as e:
+        logger.error(f"[cron] 选股工作流触发失败: {e}")
+
+
 # ─── 纯 Python 调度核心 ───────────────────────────────────────────────────────
 
 def _next_daily_run(hour: int, minute: int) -> datetime.datetime:
@@ -324,13 +454,15 @@ def _scheduler_loop() -> None:
             with _jobs_lock:
                 due = [j for j in _registered_jobs if j["next_run"] <= now]
 
-            for job in due:
-                try:
-                    job["handler"]()
-                except Exception as e:
-                    logger.warning(f"[cron] {job['label']} 执行异常: {e}")
-                with _jobs_lock:
-                    _advance_next_run(job)
+            if due:
+                for job in due:
+                    try:
+                        job["handler"]()
+                    except Exception as e:
+                        logger.warning(f"[cron] {job['label']} 执行异常: {e}")
+                    with _jobs_lock:
+                        _advance_next_run(job)
+                _persist_schedule()
 
         except Exception as e:
             logger.warning(f"[cron] scheduler_loop error: {e}")
@@ -354,6 +486,12 @@ def start_daily_jobs() -> None:
     except Exception:
         ai_hour, ai_minute = 15, 30
 
+    wf_time = _os.environ.get("DAILY_WORKFLOW_TIME", "17:00")
+    try:
+        wf_hour, wf_minute = map(int, wf_time.split(":"))
+    except Exception:
+        wf_hour, wf_minute = 17, 0
+
     jobs = [
         _make_job("K线增量 16:05",       job_kline_incremental,   "daily", 16, 5,  task_type="kline"),
         _make_job("龙虎榜 16:10",         job_dragon_tiger,        "daily", 16, 10, task_type="dragon_tiger"),
@@ -364,11 +502,15 @@ def start_daily_jobs() -> None:
         _make_job("股票信息 周一09:00",   job_stock_info_weekly,   "daily",  9,  0,  task_type="stock_info"),
         _make_job("财务数据 季度09:30",   job_financial_quarterly, "daily",  9, 30, task_type="financial"),
         _make_job(f"AI选股 {ai_time}",   _ai_pick_wrapper,        "daily", ai_hour, ai_minute, task_type="ai_pick"),
+        _make_job(f"选股工作流 {wf_time}", job_workflow_daily,     "daily", wf_hour, wf_minute, task_type="workflow"),
     ]
 
     with _jobs_lock:
         _registered_jobs.clear()
         _registered_jobs.extend(jobs)
+
+    # 从 MongoDB 恢复调度状态，使重启后 next_run 不丢失
+    _restore_next_run()
 
     labels = " / ".join(j["label"] for j in jobs)
     logger.info(f"[cron] 定时任务已注册: {labels}")

@@ -1,7 +1,7 @@
 """
 选股工作流API路由
 """
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, Response, stream_with_context
 from datetime import datetime
 import uuid
 import threading
@@ -10,6 +10,7 @@ from modules.workflow import (
     WorkflowExecution, WorkflowExecutionStorage, ExecutionStatus,
     WorkflowTemplate, WorkflowTemplateStorage
 )
+from modules.workflow.sse import WorkflowSSE
 from utils.logger import get_logger
 
 
@@ -205,6 +206,8 @@ def run_workflow(workflow_id):
         nodes = nodes_list  # already computed in pre-flight check
         edges = [e.to_dict() if hasattr(e, 'to_dict') else e for e in workflow.edges]
 
+        WorkflowSSE.cleanup(execution_id)
+
         def make_progress_callback(exec_id: str):
             def progress_callback(
                 node_id: str,
@@ -224,6 +227,7 @@ def run_workflow(workflow_id):
                 execution_storage.update_progress(
                     exec_id, progress, node_id, step, step_data
                 )
+                WorkflowSSE.publish(exec_id, 'progress', step_data)
             return progress_callback
 
         def make_background_runner(exec_id, start_idx=0, codes_override=None):
@@ -236,20 +240,28 @@ def run_workflow(workflow_id):
                     if result.get('success'):
                         execution_storage.complete_execution(exec_id, result)
                         workflow_storage.update_last_run(workflow_id)
+                        WorkflowSSE.publish(exec_id, 'complete', {'status': 'completed', 'result': result})
                     elif result.get('paused'):
                         execution_storage.pause_execution(
                             exec_id,
                             result.get('paused_node_idx', 0),
                             result.get('codes', [])
                         )
+                        WorkflowSSE.publish(exec_id, 'paused', {'status': 'paused'})
                     elif result.get('cancelled'):
                         execution_storage.cancel_execution(exec_id)
+                        WorkflowSSE.publish(exec_id, 'cancelled', {'status': 'cancelled'})
                     else:
-                        execution_storage.fail_execution(exec_id, result.get('error', 'Unknown error'))
+                        err = result.get('error', 'Unknown error')
+                        execution_storage.fail_execution(exec_id, err)
+                        WorkflowSSE.publish(exec_id, 'error', {'status': 'failed', 'error': err})
                 except Exception as e:
                     import traceback
                     logger.error(f"Background execution failed: {e}\n{traceback.format_exc()}")
                     execution_storage.fail_execution(exec_id, str(e))
+                    WorkflowSSE.publish(exec_id, 'error', {'status': 'failed', 'error': str(e)})
+                finally:
+                    WorkflowSSE.cleanup(exec_id)
             return execute_in_background
 
         # Dispatch to quantitative multi-factor executor if workflow_type matches
@@ -263,12 +275,18 @@ def run_workflow(workflow_id):
                         if result.get('success'):
                             execution_storage.complete_execution(exec_id, result)
                             workflow_storage.update_last_run(workflow_id)
+                            WorkflowSSE.publish(exec_id, 'complete', {'status': 'completed', 'result': result})
                         else:
-                            execution_storage.fail_execution(exec_id, result.get('error', 'Unknown error'))
+                            err = result.get('error', 'Unknown error')
+                            execution_storage.fail_execution(exec_id, err)
+                            WorkflowSSE.publish(exec_id, 'error', {'status': 'failed', 'error': err})
                     except Exception as e:
                         import traceback
                         logger.error(f"Quant execution failed: {e}\n{traceback.format_exc()}")
                         execution_storage.fail_execution(exec_id, str(e))
+                        WorkflowSSE.publish(exec_id, 'error', {'status': 'failed', 'error': str(e)})
+                    finally:
+                        WorkflowSSE.cleanup(exec_id)
                 return run
 
             thread = threading.Thread(target=make_quant_runner(execution_id), daemon=True)
@@ -279,7 +297,7 @@ def run_workflow(workflow_id):
         return jsonify({
             'success': True,
             'execution_id': execution_id,
-            'message': '工作流已启动，请通过 /execution/{id}/progress 查询进度'
+            'message': '工作流已启动，可通过 SSE 订阅实时进度'
         }), 202
 
     except Exception as e:
@@ -314,6 +332,39 @@ def get_execution_progress(workflow_id, execution_id):
     except Exception as e:
         logger.error(f"Get execution progress failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@workflow_bp.route('/<workflow_id>/execution/<execution_id>/stream', methods=['GET'])
+def stream_execution_progress(workflow_id, execution_id):
+    """SSE 实时推送执行进度（替代轮询）。"""
+    execution = execution_storage.get_execution(execution_id)
+    if not execution or execution.workflow_id != workflow_id:
+        return jsonify({'success': False, 'error': 'Execution not found'}), 404
+
+    q = WorkflowSSE.subscribe(execution_id)
+
+    def generate():
+        try:
+            while True:
+                try:
+                    payload = q.get(timeout=30)
+                    yield payload
+                    if '"status": "completed"' in payload or '"status": "failed"' in payload or '"status": "cancelled"' in payload:
+                        break
+                except Exception:
+                    yield f"event: heartbeat\ndata: {{{{}}}}\n\n"
+        finally:
+            WorkflowSSE.unsubscribe(execution_id, q)
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',
+            'Connection': 'keep-alive',
+        }
+    )
 
 
 @workflow_bp.route('/<workflow_id>/execution/<execution_id>/cancel', methods=['POST'])
