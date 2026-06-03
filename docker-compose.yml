@@ -1,0 +1,17 @@
+services:
+  backend:
+    build: ./AutoStockCollector-manage
+    container_name: stock-backend
+    restart: unless-stopped
+    env_file: ./AutoStockCollector-manage/.env
+    ports:
+      - "5555:5555"
+
+  frontend:
+    build: ./AutoStockCollector-web
+    container_name: stock-frontend
+    restart: unless-stopped
+    ports:
+      - "8888:80"
+    depends_on:
+      - backend

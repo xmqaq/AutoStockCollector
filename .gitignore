@@ -31,10 +31,6 @@ __pycache__/
 .playwright-mcp/
 *.png
 
-# Docker / deploy
-Dockerfile
-.dockerignore
-docker-compose.yml
-nginx.conf
+# Deploy artifacts
 *.tar.gz
 deploy.sh
