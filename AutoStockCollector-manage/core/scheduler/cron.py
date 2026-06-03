@@ -21,11 +21,56 @@ _registered_jobs: list = []
 _jobs_lock = threading.Lock()
 
 _SCHEDULE_COLLECTION = "cron_schedule"
+_STATUS_COLLECTION = "cron_job_status"
 
 
 def _get_cron_collection():
     from config.database import DatabaseConfig
     return DatabaseConfig.get_database()[_SCHEDULE_COLLECTION]
+
+
+def _get_status_collection():
+    from config.database import DatabaseConfig
+    return DatabaseConfig.get_database()[_STATUS_COLLECTION]
+
+
+def _persist_cron_status(task_type: str, last_run: str, last_ok: bool, last_msg: str,
+                         inc_count: bool = False):
+    """将定时任务的执行状态独立存储到 cron_job_status，不依赖 task_history。
+    inc_count=True 时才递增 run_count（仅在任务真正完成时调用一次）。
+    """
+    try:
+        col = _get_status_collection()
+        update = {"$set": {
+            "task_type": task_type,
+            "last_run": last_run,
+            "last_ok": last_ok,
+            "last_msg": last_msg,
+            "updated_at": datetime.datetime.now().isoformat(),
+        }}
+        if inc_count:
+            update["$inc"] = {"run_count": 1}
+        col.update_one({"task_type": task_type}, update, upsert=True)
+    except Exception as e:
+        logger.warning(f"[cron] persist cron status failed: {e}")
+
+
+def _load_cron_status(task_type: str) -> dict:
+    """从 cron_job_status 读取独立保存的状态（用于 task_history 被清空后回退）。"""
+    try:
+        col = _get_status_collection()
+        return col.find_one({"task_type": task_type}, {"_id": 0}) or {}
+    except Exception:
+        return {}
+
+
+def get_all_cron_run_counts() -> dict:
+    """批量读取所有 task_type 的 run_count，减少查询次数。"""
+    try:
+        col = _get_status_collection()
+        return {doc["task_type"]: doc for doc in col.find({}, {"_id": 0})}
+    except Exception:
+        return {}
 
 
 def _persist_schedule():
@@ -103,7 +148,8 @@ def _fmt_task_time(raw) -> str:
 
 def get_cron_status() -> list:
     """返回所有定时任务的当前状态（供 API 调用）。
-    优先从 scheduler（MongoDB 持久化）读取最近任务结果，服务重启后状态不丢失。
+    优先从 scheduler 读取最近任务结果；若任务历史已被清空，
+    回退到 cron_job_status（独立存储，不随任务历史清空）。
     """
     with _jobs_lock:
         jobs_snapshot = list(_registered_jobs)
@@ -123,6 +169,8 @@ def get_cron_status() -> list:
     except Exception:
         pass
 
+    saved_status = get_all_cron_run_counts()
+
     result = []
     for job in jobs_snapshot:
         label = job["label"]
@@ -141,6 +189,7 @@ def get_cron_status() -> list:
         last_run = None
         last_ok = None
         last_msg = ""
+        run_count = 0
 
         latest = finished[0] if finished else (type_tasks[0] if type_tasks else None)
         if latest:
@@ -171,15 +220,28 @@ def get_cron_status() -> list:
             else:
                 last_ok = None
                 last_msg = ""
+
+            if status in ("completed", "failed") and task_type:
+                _persist_cron_status(task_type, last_run, last_ok, last_msg)
         else:
-            # 回退到内存历史（首次启动且从未触发过任何任务时）
-            with _history_lock:
-                history = list(_job_history.get(label, []))
-            last_hist = history[-1] if history else None
-            if last_hist:
-                last_run = last_hist["time"]
-                last_ok = last_hist["ok"]
-                last_msg = last_hist.get("msg", "")
+            # 任务历史已清空 → 回退到独立存储的 cron_job_status
+            saved = saved_status.get(task_type, {})
+            if saved:
+                last_run = saved.get("last_run")
+                last_ok = saved.get("last_ok")
+                last_msg = saved.get("last_msg", "")
+            else:
+                # 最终回退：内存历史（仅服务启动后首次调用时有用）
+                with _history_lock:
+                    history = list(_job_history.get(label, []))
+                last_hist = history[-1] if history else None
+                if last_hist:
+                    last_run = last_hist["time"]
+                    last_ok = last_hist["ok"]
+                    last_msg = last_hist.get("msg", "")
+
+        rc = saved_status.get(task_type, {}).get("run_count", 0)
+        run_count = rc if rc else 0
 
         next_run = job.get("next_run")
         result.append({
@@ -188,6 +250,7 @@ def get_cron_status() -> list:
             "last_run": last_run,
             "last_ok": last_ok,
             "last_msg": last_msg,
+            "run_count": run_count,
             "consecutive_failures": consecutive_failures,
             "alert": consecutive_failures >= 2,
         })

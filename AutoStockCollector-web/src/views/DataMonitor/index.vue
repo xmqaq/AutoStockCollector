@@ -74,6 +74,12 @@
           </template>
         </el-table-column>
         <el-table-column prop="last_msg" label="最近信息" min-width="180" show-overflow-tooltip />
+        <el-table-column label="累计执行" width="100" align="center">
+          <template #default="{ row }">
+            <span v-if="row.run_count > 0" class="run-count">已执行{{ row.run_count }}次</span>
+            <span v-else class="run-count-zero">--</span>
+          </template>
+        </el-table-column>
       </el-table>
     </el-card>
 
@@ -764,7 +770,7 @@ async function handleDelete(id: string) {
 async function handleClearTasks() {
   try {
     await ElMessageBox.confirm(
-      '将删除所有已完成/失败/已取消的任务记录（运行中的保留）。确定吗？',
+      '将删除所有已完成/失败/已取消的任务记录（运行中的保留）。\n定时任务执行状态不受影响。',
       '清空已完成任务',
       { confirmButtonText: '清空', cancelButtonText: '取消', type: 'warning' }
     )
@@ -926,6 +932,15 @@ onUnmounted(() => {
 .no-seq-sub {
   color: #909399 !important;
   font-size: 12px !important;
+}
+
+.run-count {
+  font-size: 12px;
+  color: #909399;
+}
+.run-count-zero {
+  font-size: 12px;
+  color: #606266;
 }
 
 /* 仪表盘布局：左侧仪表 + 右侧时效性面板 */
