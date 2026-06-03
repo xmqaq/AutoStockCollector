@@ -2133,7 +2133,8 @@ def get_margin_data():
     end_date = request.args.get("end_date")
     limit = int(request.args.get("limit", 100))
 
-    # margin_data 存储的是个股明细（code + date YYYY-MM-DD），按日期聚合出市场日汇总
+    # margin_data 个股明细按日期聚合出市场日汇总
+    # 沪市字段名为"融资余额"，深市为"融资余额(元)"，两者都要累加
     match_filter: dict = {}
     if start_date and end_date:
         match_filter["date"] = {"$gte": start_date, "$lte": end_date}
@@ -2142,10 +2143,10 @@ def get_margin_data():
         {"$match": match_filter},
         {"$group": {
             "_id": "$date",
-            "rz_balance": {"$sum": "$融资余额"},
-            "rz_buy":     {"$sum": "$融资买入额"},
-            "rq_volume":  {"$sum": "$融券余量"},
-            "rq_sell":    {"$sum": "$融券卖出量"},
+            "rz_balance": {"$sum": {"$ifNull": ["$融资余额", {"$ifNull": ["$融资余额(元)", 0]}]}},
+            "rz_buy":     {"$sum": {"$ifNull": ["$融资买入额", {"$ifNull": ["$融资买入额(元)", 0]}]}},
+            "rq_volume":  {"$sum": {"$ifNull": ["$融券余量", {"$ifNull": ["$融券余量(股)", 0]}]}},
+            "rq_sell":    {"$sum": {"$ifNull": ["$融券卖出量", {"$ifNull": ["$融券卖出量(股)", 0]}]}},
         }},
         {"$sort": {"_id": -1}},
         {"$limit": limit},

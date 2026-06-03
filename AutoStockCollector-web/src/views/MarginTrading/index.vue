@@ -94,7 +94,7 @@ const dateRange = ref<[string, string]>([
 ])
 
 const chartData = computed(() => {
-  return [...tableData.value].sort((a, b) => a.date.localeCompare(b.date)).slice(0, 60)
+  return [...tableData.value].sort((a, b) => a.date.localeCompare(b.date))
 })
 
 const lineOption = computed(() => {
@@ -109,7 +109,11 @@ const lineOption = computed(() => {
       borderColor: '#444',
       textStyle: { color: '#e5eaf3' },
     },
-    grid: { left: 80, right: 20, top: 30, bottom: 40 },
+    grid: { left: 80, right: 20, top: 30, bottom: 60 },
+    dataZoom: [
+      { type: 'inside', start: 0, end: 100 },
+      { type: 'slider', start: 0, end: 100, height: 20, bottom: 5 },
+    ],
     xAxis: {
       type: 'category',
       data: dates,
@@ -147,12 +151,12 @@ const lineOption = computed(() => {
 async function loadData() {
   loading.value = true
   try {
-    const params: { start_date?: string; end_date?: string; limit?: number } = {
-      limit: 200,
-    }
+    const params: { start_date?: string; end_date?: string; limit?: number } = {}
     if (dateRange.value) {
       params.start_date = dateRange.value[0]
       params.end_date = dateRange.value[1]
+      const days = dayjs(dateRange.value[1]).diff(dayjs(dateRange.value[0]), 'day')
+      params.limit = Math.max(300, days)
     }
     const res = await marginApi.getMargin(params)
     tableData.value = res.data?.data || res.data || []
