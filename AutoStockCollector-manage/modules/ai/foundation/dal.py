@@ -6,6 +6,23 @@ from typing import Any, Dict, List, Optional
 import re as _re
 
 
+def _parse_pct(raw) -> Optional[float]:
+    """解析百分比字符串为数值。"10.57%" → 10.57，纯数字原样返回。"""
+    if raw is None:
+        return None
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    s = str(raw).strip()
+    if not s or s in ("-", "—", "--", "N/A", "False"):
+        return None
+    if s.endswith("%"):
+        s = s[:-1]
+    try:
+        return float(s)
+    except (ValueError, TypeError):
+        return None
+
+
 def _parse_amount_yuan(raw) -> Optional[float]:
     """将各种格式的金额字符串解析为以元为单位的浮点数。
     支持：数字、"6.43亿"→6.43e8、"2549万"→2549e4、"-6.43亿" 等。
@@ -52,6 +69,9 @@ class StockDataBundle:
     net_profit_ttm: Optional[float] = None  # 近四季归母净利润之和（元）
     main_net_inflow: Optional[float] = None
     realtime_price: Optional[float] = None   # 最新实时价格（优先于 closes[0]）
+    turnover_rate: Optional[float] = None    # 换手率（%）
+    total_amount: Optional[float] = None     # 当日总成交额（元）
+    industry: str = ""                       # 所属行业
     financial: Dict[str, Any] = field(default_factory=dict)
     news: List[Dict[str, Any]] = field(default_factory=list)
     dragon_tiger: List[Dict[str, Any]] = field(default_factory=list)
@@ -60,7 +80,7 @@ class StockDataBundle:
 
 @dataclass
 class FactorInputs:
-    """选股打分所需的轻量数据（不含 news/龙虎/两融/财报）。"""
+    """选股打分所需的轻量数据。"""
     code: str
     closes: List[float] = field(default_factory=list)
     volumes: List[float] = field(default_factory=list)
@@ -68,6 +88,15 @@ class FactorInputs:
     pb: Optional[float] = None
     ps: Optional[float] = None
     main_net_inflow: Optional[float] = None
+    roe: Optional[float] = None
+    gross_margin: Optional[float] = None
+    debt_ratio: Optional[float] = None
+    revenue_growth: Optional[float] = None
+    profit_growth: Optional[float] = None
+    turnover_rate: Optional[float] = None
+    total_amount: Optional[float] = None
+    price: Optional[float] = None
+    industry: str = ""
 
 
 class StockDAL:
@@ -281,12 +310,14 @@ class StockDAL:
         name = (info.get("name") or info.get("A股简称") or info.get("公司名称") or "")
         ps = info.get("ps")
 
-        # 实时价优先级：腾讯行情 > fund_flow最新价 > kline 最新收盘
-        # 兼容旧字段(成交价格/当前价)和新字段(最新价)
+        industry = info.get("所属行业", "")
+
+        # 实时价优先级：腾讯行情 > fund_flow.price > fund_flow旧字段 > kline 最新收盘
         _ff_price = (
-            fund.get("最新价")           # 新格式：stock_fund_flow_individual
-            or fund.get("当前价")         # 旧格式
-            or fund.get("成交价格")       # 旧格式大单明细
+            fund.get("price")
+            or fund.get("最新价")
+            or fund.get("当前价")
+            or fund.get("成交价格")
         )
         realtime_price = (
             self._fetch_realtime_price(code)
@@ -315,36 +346,19 @@ class StockDAL:
         net_profit_ttm = self._compute_ttm_net_profit(financials)
 
         # ── 从最新财报提取基本面维度 ──
-        def _fv(r: Dict, *keys) -> Optional[float]:
-            for k in keys:
-                v = r.get(k)
-                if v is not None:
-                    try:
-                        return float(v)
-                    except (TypeError, ValueError):
-                        pass
-            return None
-
-        roe = _fv(financial, "roe", "ROE", "净资产收益率")
-        gross_margin = _fv(financial, "gross_margin", "毛利率", "销售毛利率")
-        debt_ratio = _fv(financial, "debt_ratio", "资产负债率", "负债率")
-
-        # 营收/利润同比增速：若财报有两期则计算，否则取字段直接值
-        revenue_growth: Optional[float] = _fv(financial, "revenue_growth", "营收增速", "营业收入增速")
-        profit_growth: Optional[float] = _fv(financial, "profit_growth", "利润增速", "净利润增速")
-        if revenue_growth is None and len(financials) >= 2:
-            rev_now = _fv(financials[0], "营业收入", "revenue")
-            rev_prev = _fv(financials[1], "营业收入", "revenue")
-            if rev_now and rev_prev and rev_prev != 0:
-                revenue_growth = round((rev_now - rev_prev) / abs(rev_prev) * 100, 2)
-        if profit_growth is None and len(financials) >= 2:
-            p_now = _fv(financials[0], "净利润", "net_profit")
-            p_prev = _fv(financials[1], "净利润", "net_profit")
-            if p_now and p_prev and p_prev != 0:
-                profit_growth = round((p_now - p_prev) / abs(p_prev) * 100, 2)
+        roe = _parse_pct(financial.get("净资产收益率") or financial.get("roe"))
+        gross_margin = _parse_pct(financial.get("销售毛利率") or financial.get("gross_margin"))
+        debt_ratio = _parse_pct(financial.get("资产负债率") or financial.get("debt_ratio"))
+        revenue_growth = _parse_pct(financial.get("营业总收入同比增长率") or financial.get("revenue_growth"))
+        profit_growth = _parse_pct(financial.get("净利润同比增长率") or financial.get("profit_growth"))
 
         # 主力净流入（元）：兼容旧格式(main_net_inflow,数值)和新格式(净额,"−6.43亿"字符串)
         main_net_inflow = _parse_amount_yuan(fund.get("main_net_inflow") or fund.get("净额"))
+
+        turnover_rate = _parse_pct(fund.get("turnover_rate"))
+        total_amount = fund.get("total_amount")
+        if total_amount is not None:
+            total_amount = float(total_amount)
 
         return StockDataBundle(
             code=code,
@@ -362,6 +376,9 @@ class StockDAL:
             net_profit_ttm=net_profit_ttm,
             main_net_inflow=main_net_inflow,
             realtime_price=realtime_price,
+            turnover_rate=turnover_rate,
+            total_amount=total_amount,
+            industry=industry,
             financial=financial,
             news=news,
             dragon_tiger=dragon,
@@ -373,22 +390,81 @@ class StockDAL:
         codes = self.kline_storage.distinct("code") or []
         return [c for c in codes if c]
 
+    def preload_screen_cache(self, codes: List[str]) -> None:
+        """批量预加载初筛所需数据到内存缓存，避免逐只查DB。"""
+        from config.database import DatabaseConfig
+        db = DatabaseConfig.get_database()
+
+        # 批量加载最新一期财报（按 code 分组取 report_date 最大的）
+        pipeline = [
+            {"$sort": {"report_date": -1}},
+            {"$group": {"_id": "$code", "doc": {"$first": "$$ROOT"}}},
+        ]
+        self._fin_cache: Dict[str, Dict] = {}
+        for rec in db["financial"].aggregate(pipeline, allowDiskUse=True):
+            self._fin_cache[rec["_id"]] = rec["doc"]
+
+        # 批量加载 fund_flow（取最新日期的全部记录）
+        latest_date = db["fund_flow"].find_one({}, sort=[("date", -1)])
+        self._ff_cache: Dict[str, Dict] = {}
+        if latest_date:
+            for rec in db["fund_flow"].find({"date": latest_date["date"]}):
+                self._ff_cache[rec["code"]] = rec
+
+        # 批量加载 stock_info
+        self._info_cache: Dict[str, Dict] = {}
+        for rec in db["stock_info"].find({}, {"_id": 0}):
+            c = rec.get("code", "")
+            if c:
+                self._info_cache[c] = rec
+
     def get_factor_inputs(self, code: str, kline_limit: int = 30) -> FactorInputs:
-        """轻量取数：仅打分必需字段。"""
+        """轻量取数：仅打分必需字段。有预加载缓存时走缓存。"""
         klines = self.kline_storage.find_many(
             {"code": code}, sort=[("date", -1)], limit=kline_limit
         ) or []
         closes = [float(k.get("close", 0)) for k in klines]
         volumes = [float(k.get("volume") or k.get("amount") or 0) for k in klines]
-        info = self.info_storage.get_by_code(code) or {}
-        bare = self._strip_market_prefix(code)
-        fund = self.fund_flow_storage.get_latest_flow(bare) or {}
-        # stage-1 初筛不查 financial（5208 支逐一查太慢），PE/PB 缺失时估值因子取中性 50
-        pe = info.get("pe") or info.get("市盈率") or info.get("PE")
-        pb = info.get("pb") or info.get("市净率") or info.get("PB")
-        pe = float(pe) if pe is not None else None
-        pb = float(pb) if pb is not None else None
+
+        # 走缓存或单次查询
+        if hasattr(self, '_info_cache'):
+            info = self._info_cache.get(code, {})
+        else:
+            info = self.info_storage.get_by_code(code) or {}
+
+        if hasattr(self, '_ff_cache'):
+            fund = self._ff_cache.get(code, {})
+        else:
+            bare = self._strip_market_prefix(code)
+            fund = self.fund_flow_storage.get_latest_flow(bare) or {}
+
+        if hasattr(self, '_fin_cache'):
+            financial = self._fin_cache.get(code, {})
+        else:
+            financial = self.financial_storage.find_one(
+                {"code": code}, sort=[("report_date", -1)]
+            ) or {}
+
+        # PE/PB: 用 fund_flow 当前价 + financial EPS/BPS 计算
+        price = fund.get("price")
+        if price is not None:
+            price = float(price)
+        eps_val = _parse_pct(financial.get("基本每股收益"))
+        bps_val = _parse_pct(financial.get("每股净资产"))
+        latest_close = price or (closes[0] if closes else None)
+        pe: Optional[float] = None
+        pb: Optional[float] = None
+        if latest_close and eps_val and eps_val > 0:
+            pe = round(latest_close / eps_val, 2)
+        if latest_close and bps_val and bps_val > 0:
+            pb = round(latest_close / bps_val, 2)
+
         main_net_inflow = _parse_amount_yuan(fund.get("main_net_inflow") or fund.get("净额"))
+        turnover_rate = _parse_pct(fund.get("turnover_rate"))
+        total_amount = fund.get("total_amount")
+        if total_amount is not None:
+            total_amount = float(total_amount)
+
         return FactorInputs(
             code=code,
             closes=closes,
@@ -397,4 +473,13 @@ class StockDAL:
             pb=pb,
             ps=info.get("ps"),
             main_net_inflow=main_net_inflow,
+            roe=_parse_pct(financial.get("净资产收益率")),
+            gross_margin=_parse_pct(financial.get("销售毛利率")),
+            debt_ratio=_parse_pct(financial.get("资产负债率")),
+            revenue_growth=_parse_pct(financial.get("营业总收入同比增长率")),
+            profit_growth=_parse_pct(financial.get("净利润同比增长率")),
+            turnover_rate=turnover_rate,
+            total_amount=total_amount,
+            price=price,
+            industry=info.get("所属行业", ""),
         )

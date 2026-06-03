@@ -262,13 +262,17 @@ export interface AIPick {
   code: string
   name: string
   composite: number
+  scores: Record<string, number>
+  score_details: Record<string, any>
   recommendation: string
   source: string
+  industry?: string
 }
 
 export interface AIPickResult {
   strategy: string
   picks: AIPick[]
+  ai_summary?: string
   candidate_count?: number
   universe_count?: number
   timestamp: string
@@ -287,6 +291,9 @@ export const aiServiceApi = {
   },
   pickResults() {
     return client.get('/api/v1/ai/pick/results')
+  },
+  pickProgress() {
+    return client.get('/api/v1/ai/pick/progress')
   },
 }
 

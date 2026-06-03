@@ -8,8 +8,8 @@
     <div class="hub-entries">
       <div class="hub-entry" @click="go('/ai-picker')">
         <div class="hub-entry-icon">📈</div>
-        <div class="hub-entry-title">AI 智能选股</div>
-        <div class="hub-entry-desc">两阶段漏斗，全市场精选</div>
+        <div class="hub-entry-title">量化选股</div>
+        <div class="hub-entry-desc">多因子模型 · AI解读</div>
       </div>
       <div class="hub-entry" @click="go('/stock-analysis')">
         <div class="hub-entry-icon">🔍</div>

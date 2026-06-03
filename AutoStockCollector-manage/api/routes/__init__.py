@@ -989,6 +989,19 @@ def ai_pick_results():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@api_bp.route("/ai/pick/progress", methods=["GET"])
+def ai_pick_progress():
+    """查询选股执行进度。"""
+    try:
+        from modules.ai.engines.picker import get_progress
+        prog = get_progress()
+        prog["updated_at"] = str(prog.get("updated_at", ""))
+        return jsonify({"success": True, "data": prog})
+    except Exception as e:
+        logger.error(f"AI pick progress failed: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @api_bp.route("/scheduler/stats", methods=["GET"])
 def get_scheduler_stats():
     from core.scheduler.scheduler import scheduler
@@ -2688,7 +2701,7 @@ def ai_agent_chat():
             from modules.ai.foundation.dal import StockDAL
             from modules.ai.foundation.factors import (
                 trend_score, volume_score, valuation_score,
-                fund_flow_score, composite_score,
+                fund_flow_score, composite_score_simple as composite_score,
             )
             bundle = StockDAL().get_stock_bundle(stock_code)
             stock_name = bundle.name or stock_code

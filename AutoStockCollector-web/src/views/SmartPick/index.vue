@@ -3,7 +3,7 @@
     <el-card shadow="never" class="section-card">
       <template #header>
         <div class="header-toolbar">
-          <span>AI智能选股</span>
+          <span>量化选股</span>
           <div class="strategy-select">
             <el-select v-model="selectedStrategy" size="small" style="width:180px">
               <el-option

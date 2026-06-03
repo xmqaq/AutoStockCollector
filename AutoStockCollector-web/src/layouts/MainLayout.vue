@@ -87,7 +87,7 @@ const menuItems = [
   { path: '/stock-detail', label: '股票详情', icon: TrendCharts },
   { path: '/market', label: '实时行情', icon: Odometer },
   { path: '/ai-dashboard', label: 'AI智能中枢', icon: MagicStick },
-  { path: '/ai-picker', label: 'AI智能选股', icon: TrendCharts },
+  { path: '/ai-picker', label: '量化选股', icon: TrendCharts },
   { path: '/stock-analysis', label: '个股深度分析', icon: Search },
   { path: '/position', label: '仓位管理', icon: Wallet },
   { path: '/ai-keys', label: 'AI Key管理', icon: Key },

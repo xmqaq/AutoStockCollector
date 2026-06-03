@@ -55,7 +55,7 @@ const router = createRouter({
           path: 'ai-picker',
           name: 'AIPicker',
           component: () => import('@/views/AIPicker/index.vue'),
-          meta: { title: 'AI智能选股' },
+          meta: { title: '量化选股' },
         },
         {
           path: 'ai-keys',
