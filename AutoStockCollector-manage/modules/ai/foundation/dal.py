@@ -234,10 +234,7 @@ class StockDAL:
         def _get_profit(r: Dict) -> Optional[float]:
             v = (r.get("净利润") or r.get("net_profit") or
                  r.get("归属于上市公司股东的净利润") or r.get("净利润(元)"))
-            try:
-                return float(v) if v is not None else None
-            except (TypeError, ValueError):
-                return None
+            return _parse_amount_yuan(v)
 
         def _report_date(r: Dict) -> str:
             d = r.get("report_date") or r.get("报告期") or ""
@@ -285,6 +282,82 @@ class StockDAL:
         if p and latest_q:
             return p * 4 / latest_q
         return p
+
+    @staticmethod
+    def _compute_ttm_roe(financials: List[Dict[str, Any]]) -> Optional[float]:
+        """用 TTM 净利润 / 最新期末净资产 计算年化 ROE（%）。
+        季报 ROE 反映的是期间累计而非年化，直接用会低估全年盈利能力。
+        """
+        if not financials:
+            return None
+        ttm_profit = StockDAL._compute_ttm_net_profit(financials)
+        if not ttm_profit:
+            return None
+        latest = financials[0]
+        bps = latest.get("每股净资产") or latest.get("bps")
+        if bps is None:
+            return None
+        try:
+            bps_f = float(bps)
+            if bps_f <= 0:
+                return None
+            # 近似总股本 = 净利润 / EPS
+            eps_str = latest.get("基本每股收益") or latest.get("eps")
+            np_str = latest.get("净利润")
+            if eps_str and np_str:
+                eps_f = float(eps_str)
+                np_f = _parse_amount_yuan(np_str) or 0
+                if eps_f > 0 and np_f > 0:
+                    shares = np_f / eps_f
+                    net_assets = bps_f * shares
+                    return round(ttm_profit / net_assets * 100, 2)
+            # 兜底：用最新季报 ROE 的报告期年化
+            q = StockDAL._report_quarter(str(latest.get("report_date", "")))
+            raw_roe = _parse_pct(latest.get("净资产收益率") or latest.get("roe"))
+            if raw_roe is not None and q < 4:
+                return round(raw_roe * 4 / q, 2)
+            return raw_roe
+        except (ValueError, TypeError, ZeroDivisionError):
+            return None
+
+    @staticmethod
+    def _stable_growth(financials: List[Dict[str, Any]]) -> Dict[str, Optional[float]]:
+        """优先取最近年报的增速；若最近年报距今>15个月则回退到最新季报。
+        避免 Q1 单季同比波动过大误导评分。
+        """
+        result: Dict[str, Optional[float]] = {"revenue_growth": None, "profit_growth": None}
+        if not financials:
+            return result
+
+        def _report_date(r: Dict) -> str:
+            return str(r.get("report_date") or r.get("报告期") or "")[:10]
+
+        latest_date = _report_date(financials[0])
+        latest_q = StockDAL._report_quarter(latest_date)
+
+        if latest_q == 4:
+            # 最新就是年报，直接用
+            result["revenue_growth"] = _parse_pct(
+                financials[0].get("营业总收入同比增长率") or financials[0].get("revenue_growth"))
+            result["profit_growth"] = _parse_pct(
+                financials[0].get("净利润同比增长率") or financials[0].get("profit_growth"))
+            return result
+
+        # 找最近的年报
+        for r in financials[1:]:
+            if StockDAL._report_quarter(_report_date(r)) == 4:
+                result["revenue_growth"] = _parse_pct(
+                    r.get("营业总收入同比增长率") or r.get("revenue_growth"))
+                result["profit_growth"] = _parse_pct(
+                    r.get("净利润同比增长率") or r.get("profit_growth"))
+                return result
+
+        # 无年报可用，回退到最新季报
+        result["revenue_growth"] = _parse_pct(
+            financials[0].get("营业总收入同比增长率") or financials[0].get("revenue_growth"))
+        result["profit_growth"] = _parse_pct(
+            financials[0].get("净利润同比增长率") or financials[0].get("profit_growth"))
+        return result
 
     def get_stock_bundle(self, code: str, kline_limit: int = 60, news_limit: int = 10) -> StockDataBundle:
         klines = self.kline_storage.find_many(
@@ -346,11 +419,13 @@ class StockDAL:
         net_profit_ttm = self._compute_ttm_net_profit(financials)
 
         # ── 从最新财报提取基本面维度 ──
-        roe = _parse_pct(financial.get("净资产收益率") or financial.get("roe"))
+        roe = self._compute_ttm_roe(financials) or _parse_pct(
+            financial.get("净资产收益率") or financial.get("roe"))
         gross_margin = _parse_pct(financial.get("销售毛利率") or financial.get("gross_margin"))
         debt_ratio = _parse_pct(financial.get("资产负债率") or financial.get("debt_ratio"))
-        revenue_growth = _parse_pct(financial.get("营业总收入同比增长率") or financial.get("revenue_growth"))
-        profit_growth = _parse_pct(financial.get("净利润同比增长率") or financial.get("profit_growth"))
+        growth = self._stable_growth(financials)
+        revenue_growth = growth["revenue_growth"]
+        profit_growth = growth["profit_growth"]
 
         # 主力净流入（元）：兼容旧格式(main_net_inflow,数值)和新格式(净额,"−6.43亿"字符串)
         main_net_inflow = _parse_amount_yuan(fund.get("main_net_inflow") or fund.get("净额"))
@@ -465,6 +540,23 @@ class StockDAL:
         if total_amount is not None:
             total_amount = float(total_amount)
 
+        # ROE: 季报值年化，避免 Q1 ROE 低估
+        roe = _parse_pct(financial.get("净资产收益率") or financial.get("roe"))
+        rd = str(financial.get("report_date") or financial.get("报告期") or "")
+        q = self._report_quarter(rd)
+        if roe is not None and q < 4:
+            roe = round(roe * 4 / q, 2)
+
+        # 增速: 初筛阶段只有单条缓存，无法取年报。
+        # 对 Q1 数据做保守折算（Q1 同比波动大，打 6 折平滑）
+        revenue_growth = _parse_pct(financial.get("营业总收入同比增长率") or financial.get("revenue_growth"))
+        profit_growth = _parse_pct(financial.get("净利润同比增长率") or financial.get("profit_growth"))
+        if q == 1:
+            if revenue_growth is not None:
+                revenue_growth = round(revenue_growth * 0.6, 2)
+            if profit_growth is not None:
+                profit_growth = round(profit_growth * 0.6, 2)
+
         return FactorInputs(
             code=code,
             closes=closes,
@@ -473,11 +565,11 @@ class StockDAL:
             pb=pb,
             ps=info.get("ps"),
             main_net_inflow=main_net_inflow,
-            roe=_parse_pct(financial.get("净资产收益率")),
+            roe=roe,
             gross_margin=_parse_pct(financial.get("销售毛利率")),
             debt_ratio=_parse_pct(financial.get("资产负债率")),
-            revenue_growth=_parse_pct(financial.get("营业总收入同比增长率")),
-            profit_growth=_parse_pct(financial.get("净利润同比增长率")),
+            revenue_growth=revenue_growth,
+            profit_growth=profit_growth,
             turnover_rate=turnover_rate,
             total_amount=total_amount,
             price=price,
