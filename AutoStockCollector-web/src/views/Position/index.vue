@@ -106,9 +106,6 @@
                 <el-button type="warning" size="small" text @click="openSellDialog(row)">
                   卖出
                 </el-button>
-                <el-button type="info" size="small" text @click="fetchAiAdvice(row, 'buy')">
-                  AI
-                </el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -356,46 +353,13 @@
       </template>
     </el-dialog>
 
-    <!-- AI 建议确认框 -->
-    <el-dialog v-model="showAiDialog" :title="aiAdvice ? `AI ${aiAdvice.action ?? '建议'}` : 'AI 建议'" width="480px">
-      <div class="ai-advice-panel" v-if="aiAdvice">
-        <div class="advice-row">
-          <span class="advice-label">建议操作</span>
-          <el-tag :type="aiIsSell ? 'danger' : 'success'">{{ aiAdvice.action }}</el-tag>
-        </div>
-        <div class="advice-row" v-if="aiAdvice.reason">
-          <span class="advice-label">理由</span>
-          <span class="advice-text">{{ aiAdvice.reason }}</span>
-        </div>
-        <div class="advice-row" v-if="aiAdvice.buy_zone">
-          <span class="advice-label">参考区间</span>
-          <span class="advice-text">{{ aiAdvice.buy_zone }}</span>
-        </div>
-        <el-divider />
-        <el-form label-width="100px">
-          <el-form-item label="当前价">{{ aiTarget?.current_price?.toFixed(2) ?? '—' }}</el-form-item>
-          <el-form-item label="操作数量">
-            <el-input-number v-model="aiShares" :min="100" :max="aiIsSell ? (aiTarget?.shares ?? 0) : undefined" :step="100" style="width: 100%" />
-          </el-form-item>
-          <el-form-item label="预计金额">
-            <span class="text-primary">{{ formatAmount((aiTarget?.current_price ?? 0) * aiShares) }}</span>
-          </el-form-item>
-        </el-form>
-      </div>
-      <template #footer>
-        <el-button @click="showAiDialog = false">取消</el-button>
-        <el-button :type="aiIsSell ? 'danger' : 'primary'" :loading="tradeLoading" @click="doAiTrade">
-          {{ aiIsSell ? '确认卖出' : '确认买入' }}
-        </el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { paperApi, type PaperAccount, type PaperPosition, type TradeRecord, type PaperStats, type NavPoint, type AiSignal } from '@/api/paper'
+import { paperApi, type PaperAccount, type PaperPosition, type TradeRecord, type PaperStats, type NavPoint } from '@/api/paper'
 import ProfitChart from '@/components/ProfitChart/index.vue'
 
 const REFRESH_INTERVAL = 30000
@@ -404,7 +368,6 @@ const accountLoading = ref(false)
 const posLoading = ref(false)
 const initLoading = ref(false)
 const tradeLoading = ref(false)
-const aiLoading = ref(false)
 
 const account = ref<PaperAccount | null>(null)
 const positions = ref<PaperPosition[]>([])
@@ -419,7 +382,6 @@ const isTradingTime = ref(false)
 const showInitDialog = ref(false)
 const showBuyDialog = ref(false)
 const showSellDialog = ref(false)
-const showAiDialog = ref(false)
 const initCapital = ref(100000)
 
 let refreshTimer: ReturnType<typeof setInterval> | null = null
@@ -587,14 +549,6 @@ const sellProfit = computed(() => {
     - sellStampTax.value - sellCommission.value
 })
 
-// --- AI dialog state ---
-const aiTarget = ref<PaperPosition | null>(null)
-const aiAdvice = ref<AiSignal | null>(null)
-const aiShares = ref(100)
-const aiIsSell = computed(() => {
-  const action = (aiAdvice.value?.action ?? '').toLowerCase()
-  return action.includes('卖') || action.includes('减仓') || action.includes('清仓') || action.includes('sell') || action.includes('reduce')
-})
 
 // --- helpers ---
 function pnlColorClass(v: number) {
@@ -781,59 +735,6 @@ async function doConfirmSell() {
   }
 }
 
-// --- AI ---
-async function fetchAiAdvice(pos: PaperPosition, intent: 'buy' | 'sell') {
-  aiAdvice.value = null
-  aiTarget.value = pos
-  aiLoading.value = true
-
-  if (intent === 'buy' && account.value) {
-    const budget = account.value.cash_balance * 0.2
-    aiShares.value = Math.max(100, Math.floor(budget / (pos.current_price || 1) / 100) * 100)
-  } else {
-    aiShares.value = Math.floor(pos.shares * 0.5 / 100) * 100 || 100
-  }
-
-  try {
-    const advice = await paperApi.getAiAdvice(pos.code, pos.avg_cost, pos.position_ratio / 100)
-    aiAdvice.value = advice
-    if (advice.position_advice) {
-      const match = advice.position_advice.match(/(\d+)\s*%/)
-      if (match) {
-        const ratio = parseInt(match[1]) / 100
-        aiShares.value = Math.max(100, Math.floor(pos.shares * ratio / 100) * 100)
-      }
-    }
-    showAiDialog.value = true
-  } catch {
-    ElMessage.error('获取 AI 建议失败')
-  } finally {
-    aiLoading.value = false
-  }
-}
-
-async function doAiTrade() {
-  if (!aiTarget.value || aiShares.value <= 0) return
-  const action = aiIsSell.value ? 'sell' : 'buy'
-  tradeLoading.value = true
-  try {
-    await paperApi.executeTrade({
-      code: aiTarget.value.code,
-      action,
-      shares: aiShares.value,
-      price: aiTarget.value.current_price,
-      ai_signal: aiAdvice.value ?? undefined,
-    })
-    ElMessage.success(action === 'buy' ? '买入成功' : '卖出成功')
-    showAiDialog.value = false
-    loadAll()
-  } catch (e: any) {
-    ElMessage.error(e?.response?.data?.error ?? '交易失败')
-  } finally {
-    tradeLoading.value = false
-  }
-}
-
 onMounted(loadAll)
 onUnmounted(() => {
   if (refreshTimer) clearInterval(refreshTimer)
@@ -889,10 +790,6 @@ onUnmounted(() => {
 .dist-bar-container { height: 6px; background: #2c2c2c; border-radius: 3px; overflow: hidden; }
 .dist-bar { height: 100%; background: #409eff; border-radius: 3px; transition: width 0.3s ease; }
 
-.ai-advice-panel { margin-bottom: 8px; }
-.advice-row { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
-.advice-label { font-size: 12px; color: #909399; min-width: 60px; padding-top: 2px; }
-.advice-text { font-size: 13px; color: #e5eaf3; line-height: 1.5; }
 
 .dialog-warn { color: #f56c6c; font-size: 12px; margin-top: 8px; padding-left: 100px; }
 .dialog-info { color: #909399; font-size: 12px; margin-top: 4px; padding-left: 100px; }
