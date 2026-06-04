@@ -141,7 +141,6 @@
     <el-empty v-if="!result?.picks?.length && !loading" description="暂无选股结果，点击「立即重跑」" />
 
     <p v-if="result" class="ap-method-note">评分为运行时快照：K线取近30个交易日，财务取最新报告期，资金面取近5日均值，PE/PB由财报EPS推算</p>
-    <p v-if="result" class="ap-disclaimer">{{ result.disclaimer }}</p>
   </div>
 </template>
 
@@ -402,7 +401,6 @@ onBeforeUnmount(stopProgressPolling)
 .ap-expand-svg.is-expanded { transform: rotate(180deg); }
 .ap-col-expand { overflow: visible !important; }
 .ap-method-note { font-size: 11px; color: #44445a; text-align: center; margin-top: 8px; }
-.ap-disclaimer { font-size: 11px; color: #44445a; text-align: center; }
 
 /* 进度条 */
 .ap-progress-box {

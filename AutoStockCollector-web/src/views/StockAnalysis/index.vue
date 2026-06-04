@@ -186,7 +186,6 @@
       </el-card>
 
       <p class="da-method-note">评分基于实时数据计算：K线取近60个交易日，财务取最新报告期，资金面取近5日均值，PE/PB取TTM口径</p>
-      <p class="da-disclaimer">{{ data.disclaimer }}</p>
     </template>
   </div>
 </template>
@@ -625,7 +624,6 @@ onMounted(() => {
 .da-news-content { margin-top: 8px; font-size: 12px; color: #8888a8; line-height: 1.6; }
 
 .da-method-note { font-size: 11px; color: #44445a; text-align: center; margin-top: 8px; }
-.da-disclaimer { font-size: 11px; color: #44445a; text-align: center; margin-top: 4px; }
 
 .rise { color: #ef5350; }
 .fall { color: #26a69a; }
