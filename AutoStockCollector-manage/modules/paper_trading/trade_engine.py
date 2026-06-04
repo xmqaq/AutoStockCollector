@@ -23,13 +23,21 @@ class TradeEngine:
         self._trades = db["trade_records"]
 
     def _get_realtime_price(self, code: str) -> Optional[float]:
+        """腾讯行情接口取实时价，与深度分析模块一致。"""
+        import re
         try:
-            import akshare as ak
-            symbol = code.replace('SH', '').replace('SZ', '')
-            df = ak.stock_bid_ask_em(symbol=symbol)
-            price = float(df[df['item'] == '最新']['value'].values[0])
-            if price > 0:
-                return price
+            import requests as _req
+            r = _req.get(
+                f"https://qt.gtimg.cn/q={code.lower()}",
+                proxies={"http": "", "https": ""},
+                timeout=5,
+            )
+            m = re.search(rf'v_{code.lower()}="([^"]+)"', r.text)
+            if m:
+                parts = m.group(1).split("~")
+                if len(parts) > 3:
+                    v = parts[3]
+                    return float(v) if v else None
         except Exception:
             pass
         return None
@@ -56,10 +64,10 @@ class TradeEngine:
         return None
 
     def get_current_price(self, code: str) -> Tuple[Optional[float], str]:
-        if is_trading_time():
-            price = self._get_realtime_price(code)
-            if price:
-                return price, 'realtime'
+        # 优先尝试腾讯行情（盘中返回实时价，收盘后返回当日收盘价）
+        price = self._get_realtime_price(code)
+        if price:
+            return price, 'realtime' if is_trading_time() else 'close'
         db_price = self._get_db_price(code)
         if db_price:
             return db_price, 'close'
