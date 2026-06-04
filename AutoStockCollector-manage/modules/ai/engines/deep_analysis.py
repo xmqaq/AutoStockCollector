@@ -42,7 +42,8 @@ class DeepAnalysisService:
         scores = self._build_scores(bundle)
         news = self._build_news(bundle)
 
-        from datetime import datetime as _dt
+        from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+        beijing = _tz(_td(hours=8))
         return {
             "basic_info": basic_info,
             "price_info": price_info,
@@ -52,7 +53,7 @@ class DeepAnalysisService:
             "technical": technical,
             "scores": scores,
             "news": news,
-            "analysis_time": _dt.now().strftime("%Y-%m-%d %H:%M"),
+            "analysis_time": _dt.now(beijing).strftime("%Y-%m-%d %H:%M"),
             "disclaimer": RISK_DISCLAIMER,
         }
 
