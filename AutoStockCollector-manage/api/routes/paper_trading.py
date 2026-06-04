@@ -8,17 +8,21 @@ paper_bp = Blueprint("paper", __name__, url_prefix="/api/paper")
 _account = None
 _engine = None
 _stats = None
+_snapshot = None
 
 
 def _lazy_init():
-    global _account, _engine, _stats
+    global _account, _engine, _stats, _snapshot
     if _account is None:
         from modules.paper_trading.account import PaperAccount
         from modules.paper_trading.trade_engine import TradeEngine
         from modules.paper_trading.stats import PaperStats
+        from modules.paper_trading.snapshot import PortfolioSnapshot
         _account = PaperAccount()
         _engine = TradeEngine()
         _stats = PaperStats()
+        _snapshot = PortfolioSnapshot()
+        _snapshot.ensure_today("default", _account, _engine)
 
 
 @paper_bp.route("/account", methods=["GET"])
@@ -60,6 +64,13 @@ def execute_trade():
     except (TypeError, ValueError):
         return jsonify({"error": "shares 必须为整数"}), 400
 
+    price = None
+    if data.get("price") is not None:
+        try:
+            price = float(data["price"])
+        except (TypeError, ValueError):
+            pass
+
     from utils.helpers import normalize_stock_code_flexible
     code = normalize_stock_code_flexible(code)
 
@@ -68,11 +79,15 @@ def execute_trade():
 
     try:
         if action == "buy":
-            record = _engine.buy(user_id, code, shares, ai_signal, _account)
+            record = _engine.buy(user_id, code, shares, ai_signal, _account, price=price)
         elif action == "sell":
-            record = _engine.sell(user_id, code, shares, ai_signal, _account)
+            record = _engine.sell(user_id, code, shares, ai_signal, _account, price=price)
         else:
             return jsonify({"error": "action 必须为 buy 或 sell"}), 400
+        try:
+            _snapshot.record(user_id, _account, _engine)
+        except Exception as e:
+            logger.warning(f"快照记录失败: {e}")
         return jsonify({"success": True, "data": record})
     except ValueError as e:
         return jsonify({"success": False, "error": str(e)}), 400
@@ -82,8 +97,36 @@ def execute_trade():
 def get_positions():
     _lazy_init()
     user_id = request.args.get("user_id", "default")
-    positions = _engine.get_positions(user_id)
-    return jsonify({"success": True, "count": len(positions), "data": positions})
+    positions, trading = _engine.get_positions(user_id)
+    return jsonify({
+        "success": True,
+        "count": len(positions),
+        "data": positions,
+        "is_trading_time": trading,
+    })
+
+
+@paper_bp.route("/price", methods=["GET"])
+def get_price():
+    _lazy_init()
+    code = request.args.get("code", "").strip()
+    if not code:
+        return jsonify({"error": "code 为必填项"}), 400
+    from utils.helpers import normalize_stock_code_flexible
+    code = normalize_stock_code_flexible(code)
+    price, price_type = _engine.get_current_price(code)
+    if price is None:
+        return jsonify({"success": False, "error": f"无法获取 {code} 的价格"}), 404
+    from modules.paper_trading.trade_engine import is_trading_time
+    return jsonify({
+        "success": True,
+        "data": {
+            "code": code,
+            "price": round(price, 2),
+            "price_type": price_type,
+            "is_trading_time": is_trading_time(),
+        }
+    })
 
 
 @paper_bp.route("/trades", methods=["GET"])
@@ -116,5 +159,17 @@ def get_stats():
 def get_nav():
     _lazy_init()
     user_id = request.args.get("user_id", "default")
-    nav = _stats.get_nav(user_id, _account)
+    snapshots = _snapshot.get_history(user_id)
+    if snapshots:
+        nav = [{
+            "date": s["date"],
+            "net_value": s["net_value"],
+            "cash": s["cash"],
+            "market_value": s["market_value"],
+            "profit_amount": s["profit_amount"],
+            "profit_pct": s["profit_pct"],
+            "initial_capital": s["initial_capital"],
+        } for s in snapshots]
+    else:
+        nav = _stats.get_nav(user_id, _account)
     return jsonify({"success": True, "data": nav})

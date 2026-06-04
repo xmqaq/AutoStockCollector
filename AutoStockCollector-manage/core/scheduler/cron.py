@@ -386,6 +386,26 @@ def _ai_pick_wrapper():
         run_ai_pick_job()
 
 
+def job_portfolio_snapshot():
+    if not _is_weekday():
+        return
+    try:
+        from modules.paper_trading.account import PaperAccount
+        from modules.paper_trading.trade_engine import TradeEngine
+        from modules.paper_trading.snapshot import PortfolioSnapshot
+        account = PaperAccount()
+        engine = TradeEngine()
+        snapshot = PortfolioSnapshot()
+        snapshot.record("default", account, engine)
+        logger.info("[cron] 净值快照记录成功")
+        _record_result("净值快照 16:30", True, "快照记录完成")
+        _persist_cron_status("portfolio_snapshot", datetime.datetime.now().isoformat(), True, "快照记录完成", inc_count=True)
+    except Exception as e:
+        logger.warning(f"[cron] 净值快照失败: {e}")
+        _record_result("净值快照 16:30", False, str(e))
+        _persist_cron_status("portfolio_snapshot", datetime.datetime.now().isoformat(), False, str(e))
+
+
 # ─── 选股工作流定时调度 ────────────────────────────────────────────────────────
 
 def job_workflow_daily():
@@ -566,6 +586,7 @@ def start_daily_jobs() -> None:
         _make_job("财务数据 季度09:30",   job_financial_quarterly, "daily",  9, 30, task_type="financial"),
         _make_job(f"AI选股 {ai_time}",   _ai_pick_wrapper,        "daily", ai_hour, ai_minute, task_type="ai_pick"),
         _make_job(f"选股工作流 {wf_time}", job_workflow_daily,     "daily", wf_hour, wf_minute, task_type="workflow"),
+        _make_job("净值快照 16:30",       job_portfolio_snapshot,  "daily", 16, 30, task_type="portfolio_snapshot"),
     ]
 
     with _jobs_lock:

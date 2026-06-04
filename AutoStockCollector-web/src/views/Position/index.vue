@@ -17,15 +17,26 @@
         </div>
         <div class="account-stat">
           <div class="stat-label">账户净值</div>
-          <div class="stat-value" :class="totalReturn >= 0 ? 'text-rise' : 'text-fall'">
-            {{ formatAmount(account.cash_balance + totalMarketValue) }}
+          <div class="stat-value" :class="pnlColorClass(netValue - account.initial_capital)">
+            {{ formatAmount(netValue) }}
+          </div>
+        </div>
+        <div class="account-stat">
+          <div class="stat-label">总盈亏</div>
+          <div class="stat-value" :class="pnlColorClass(totalPnlAmount)">
+            {{ totalPnlAmount >= 0 ? '+' : '' }}{{ formatAmount(totalPnlAmount) }}
           </div>
         </div>
         <div class="account-stat">
           <div class="stat-label">总收益率</div>
-          <div class="stat-value" :class="totalReturn >= 0 ? 'text-rise' : 'text-fall'">
+          <div class="stat-value" :class="pnlColorClass(totalReturn)">
             {{ formatPercent(totalReturn) }}
           </div>
+        </div>
+        <div class="price-indicator">
+          <span v-if="isTradingTime" class="indicator-dot indicator-live" />
+          <span v-else class="indicator-dot indicator-close" />
+          <span class="indicator-text">{{ isTradingTime ? '实时价格' : '昨日收盘价' }}</span>
         </div>
         <el-button size="small" @click="showInitDialog = true">初始化账户</el-button>
       </div>
@@ -42,7 +53,7 @@
           <template #header>
             <div class="card-header">
               <span>当前持仓</span>
-              <el-button type="primary" size="small" @click="showBuyDialog = true">
+              <el-button type="primary" size="small" @click="openBuyDialog()">
                 手动买入
               </el-button>
             </div>
@@ -55,34 +66,48 @@
                 </router-link>
               </template>
             </el-table-column>
-            <el-table-column prop="name" label="名称" min-width="90" align="center" show-overflow-tooltip />
-            <el-table-column prop="shares" label="持仓量" width="80" align="center" />
-            <el-table-column label="成本价" width="80" align="center">
+            <el-table-column prop="name" label="名称" min-width="80" align="center" show-overflow-tooltip />
+            <el-table-column prop="shares" label="持仓量" width="75" align="center" />
+            <el-table-column label="成本价" width="75" align="center">
               <template #default="{ row }">{{ row.avg_cost.toFixed(2) }}</template>
             </el-table-column>
-            <el-table-column label="现价" width="80" align="center">
-              <template #default="{ row }">{{ row.current_price.toFixed(2) }}</template>
+            <el-table-column label="现价" width="75" align="center">
+              <template #default="{ row }">
+                <span :class="pnlColorClass(row.current_price - row.avg_cost)">
+                  {{ row.current_price.toFixed(2) }}
+                </span>
+              </template>
             </el-table-column>
-            <el-table-column label="市值" width="90" align="center">
+            <el-table-column label="市值" width="85" align="center">
               <template #default="{ row }">{{ formatAmount(row.market_value) }}</template>
             </el-table-column>
-            <el-table-column label="盈亏%" width="90" align="center">
+            <el-table-column label="盈亏%" width="80" align="center">
               <template #default="{ row }">
-                <span :class="row.pnl_percent >= 0 ? 'text-rise' : 'text-fall'">
+                <span :class="pnlColorClass(row.pnl_percent)">
                   {{ formatPercent(row.pnl_percent) }}
                 </span>
               </template>
             </el-table-column>
-            <el-table-column label="占比" width="70" align="center">
+            <el-table-column label="今日%" width="80" align="center">
+              <template #default="{ row }">
+                <span :class="pnlColorClass(row.today_pnl_percent)">
+                  {{ formatPercent(row.today_pnl_percent ?? 0) }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column label="占比" width="60" align="center">
               <template #default="{ row }">{{ row.position_ratio.toFixed(1) }}%</template>
             </el-table-column>
-            <el-table-column label="操作" width="140" align="center">
+            <el-table-column label="操作" width="160" align="center">
               <template #default="{ row }">
-                <el-button type="primary" size="small" text @click="fetchAiAdvice(row, 'buy')">
-                  AI 建议
+                <el-button type="primary" size="small" text @click="openBuyDialog(row)">
+                  加仓
                 </el-button>
-                <el-button type="warning" size="small" text @click="openManualSell(row)">
+                <el-button type="warning" size="small" text @click="openSellDialog(row)">
                   卖出
+                </el-button>
+                <el-button type="info" size="small" text @click="fetchAiAdvice(row, 'buy')">
+                  AI
                 </el-button>
               </template>
             </el-table-column>
@@ -171,29 +196,172 @@
       </template>
     </el-dialog>
 
-    <!-- 手动买入对话框 -->
-    <el-dialog v-model="showBuyDialog" title="手动买入" width="420px">
+    <!-- 买入对话框（三种模式） -->
+    <el-dialog v-model="showBuyDialog" :title="buyDialogTitle" width="520px" @close="resetBuyForm">
+      <div class="trade-dialog-header" v-if="buyCurrentPrice">
+        <span>当前价：<b>{{ buyCurrentPrice.toFixed(2) }}</b> 元</span>
+        <span :class="buyPriceType === 'realtime' ? 'indicator-live-text' : 'indicator-close-text'">
+          {{ buyPriceType === 'realtime' ? '实时' : '收盘价' }}
+        </span>
+      </div>
       <el-form label-width="100px">
-        <el-form-item label="股票代码">
-          <el-input v-model="buyForm.code" placeholder="如 SH600000" />
+        <el-form-item label="股票代码" v-if="!buyTargetPosition">
+          <el-input v-model="buyForm.code" placeholder="如 SH600000 或 603979" @blur="onBuyCodeBlur" />
         </el-form-item>
-        <el-form-item label="买入数量">
-          <el-input-number v-model="buyForm.shares" :min="100" :step="100" style="width: 100%" />
+
+        <el-form-item label="买入方式">
+          <el-radio-group v-model="buyForm.mode" size="small">
+            <el-radio-button value="shares">按股数</el-radio-button>
+            <el-radio-button value="amount">按金额</el-radio-button>
+            <el-radio-button value="ratio">按仓位比例</el-radio-button>
+          </el-radio-group>
         </el-form-item>
-        <div class="dialog-info" v-if="account">可用现金：{{ formatAmount(account.cash_balance) }}</div>
+
+        <!-- 按股数 -->
+        <template v-if="buyForm.mode === 'shares'">
+          <el-form-item label="买入数量">
+            <el-input-number v-model="buyForm.shares" :min="100" :step="100" style="width: 100%" />
+            <div class="form-hint">最小单位 100 股（1手）</div>
+          </el-form-item>
+        </template>
+
+        <!-- 按金额 -->
+        <template v-if="buyForm.mode === 'amount'">
+          <el-form-item label="买入金额">
+            <el-input-number v-model="buyForm.amount" :min="0" :step="1000" style="width: 100%" />
+            <div class="form-hint">
+              可用现金：{{ formatAmount(account?.cash_balance ?? 0) }}
+              <template v-if="buyCurrentPrice && buyCurrentPrice > 0">
+                &nbsp;→ 可买 {{ buyAmountShares }} 股，实际 {{ formatAmount(buyAmountActual) }} 元
+              </template>
+            </div>
+          </el-form-item>
+        </template>
+
+        <!-- 按仓位比例 -->
+        <template v-if="buyForm.mode === 'ratio'">
+          <el-form-item label="目标仓位">
+            <el-input-number v-model="buyForm.targetRatio" :min="0" :max="100" :step="5" style="width: 100%">
+              <template #append>%</template>
+            </el-input-number>
+            <div class="form-hint">
+              账户净值：{{ formatAmount(netValue) }}
+              <template v-if="buyTargetPosition">
+                &nbsp;| 当前该股仓位：{{ currentStockRatio.toFixed(1) }}%
+              </template>
+            </div>
+            <div class="form-hint" v-if="buyRatioShares > 0">
+              → 目标金额 {{ formatAmount(buyRatioTargetAmount) }}，需买 {{ buyRatioShares }} 股
+            </div>
+            <div class="form-hint text-fall" v-else-if="buyForm.targetRatio > 0 && buyCurrentPrice">
+              当前仓位已达目标，如需减仓请使用卖出功能
+            </div>
+          </el-form-item>
+        </template>
+
+        <!-- 确认信息 -->
+        <el-divider v-if="buyConfirmShares > 0">确认信息</el-divider>
+        <div class="confirm-block" v-if="buyConfirmShares > 0">
+          <div class="confirm-row"><span>买入数量</span><span>{{ buyConfirmShares }} 股</span></div>
+          <div class="confirm-row"><span>买入金额</span><span>{{ formatAmount(buyConfirmAmount) }}</span></div>
+          <div class="confirm-row"><span>预估手续费</span><span>约 {{ buyCommission.toFixed(2) }} 元（万三，最低5元）</span></div>
+          <div class="confirm-row"><span>买入后现金</span><span>{{ formatAmount((account?.cash_balance ?? 0) - buyConfirmAmount - buyCommission) }}</span></div>
+          <div class="confirm-row" v-if="buyTargetPosition">
+            <span>买入后该股仓位</span>
+            <span>{{ buyAfterRatio.toFixed(1) }}%</span>
+          </div>
+        </div>
       </el-form>
       <template #footer>
         <el-button @click="showBuyDialog = false">取消</el-button>
-        <el-button type="primary" :loading="tradeLoading" @click="doManualBuy">确认买入</el-button>
+        <el-button type="primary" :loading="tradeLoading" :disabled="buyConfirmShares <= 0" @click="doConfirmBuy">
+          确认买入
+        </el-button>
       </template>
     </el-dialog>
 
-    <!-- AI 买入确认框 -->
-    <el-dialog v-model="showAiBuyDialog" title="AI 买入建议" width="480px">
+    <!-- 卖出对话框（三种模式） -->
+    <el-dialog v-model="showSellDialog" :title="sellDialogTitle" width="520px" @close="resetSellForm">
+      <div class="trade-dialog-header" v-if="sellTarget">
+        <div>当前价：<b>{{ sellTarget.current_price.toFixed(2) }}</b> 元 &nbsp; 成本价：{{ sellTarget.avg_cost.toFixed(2) }} 元</div>
+        <div>持仓：{{ sellTarget.shares }} 股 &nbsp; 当前盈亏：
+          <span :class="pnlColorClass(sellTarget.pnl_percent)">{{ formatPercent(sellTarget.pnl_percent) }}</span>
+        </div>
+      </div>
+      <el-form label-width="100px">
+        <el-form-item label="卖出方式">
+          <el-radio-group v-model="sellForm.mode" size="small">
+            <el-radio-button value="shares">按股数</el-radio-button>
+            <el-radio-button value="amount">按金额</el-radio-button>
+            <el-radio-button value="ratio">按比例卖出</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+
+        <!-- 按股数 -->
+        <template v-if="sellForm.mode === 'shares'">
+          <el-form-item label="卖出数量">
+            <el-input-number v-model="sellForm.shares" :min="100" :max="sellTarget?.shares ?? 0" :step="100" style="width: 100%" />
+          </el-form-item>
+        </template>
+
+        <!-- 按金额 -->
+        <template v-if="sellForm.mode === 'amount'">
+          <el-form-item label="卖出金额">
+            <el-input-number v-model="sellForm.amount" :min="0" :step="1000" style="width: 100%" />
+            <div class="form-hint" v-if="sellTarget">
+              持仓市值：{{ formatAmount(sellTarget.market_value) }}
+              → 卖出 {{ sellAmountShares }} 股
+            </div>
+          </el-form-item>
+        </template>
+
+        <!-- 按比例 -->
+        <template v-if="sellForm.mode === 'ratio'">
+          <el-form-item label="卖出比例">
+            <el-input-number v-model="sellForm.ratio" :min="0" :max="100" :step="25" style="width: 100%">
+              <template #append>%</template>
+            </el-input-number>
+            <div class="form-hint-buttons">
+              <el-button size="small" v-for="pct in [25, 50, 75, 100]" :key="pct" @click="sellForm.ratio = pct">
+                {{ pct }}%
+              </el-button>
+            </div>
+            <div class="form-hint" v-if="sellTarget">
+              → 卖出 {{ sellRatioShares }} 股，约 {{ formatAmount(sellRatioShares * (sellTarget?.current_price ?? 0)) }}
+            </div>
+          </el-form-item>
+        </template>
+
+        <!-- 确认信息 -->
+        <el-divider v-if="sellConfirmShares > 0">确认信息</el-divider>
+        <div class="confirm-block" v-if="sellConfirmShares > 0 && sellTarget">
+          <div class="confirm-row"><span>卖出数量</span><span>{{ sellConfirmShares }} 股</span></div>
+          <div class="confirm-row"><span>卖出金额</span><span>{{ formatAmount(sellConfirmAmount) }}</span></div>
+          <div class="confirm-row"><span>印花税</span><span>{{ sellStampTax.toFixed(2) }} 元（千分之一，卖出收）</span></div>
+          <div class="confirm-row"><span>手续费</span><span>{{ sellCommission.toFixed(2) }} 元（万三，最低5元）</span></div>
+          <div class="confirm-row"><span>实际到账</span><span>{{ formatAmount(sellActualGain) }}</span></div>
+          <div class="confirm-row">
+            <span>本次盈亏</span>
+            <span :class="pnlColorClass(sellProfit)">
+              {{ sellProfit >= 0 ? '+' : '' }}{{ sellProfit.toFixed(2) }} 元
+            </span>
+          </div>
+        </div>
+      </el-form>
+      <template #footer>
+        <el-button @click="showSellDialog = false">取消</el-button>
+        <el-button type="danger" :loading="tradeLoading" :disabled="sellConfirmShares <= 0" @click="doConfirmSell">
+          确认卖出
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- AI 建议确认框 -->
+    <el-dialog v-model="showAiDialog" :title="aiAdvice ? `AI ${aiAdvice.action ?? '建议'}` : 'AI 建议'" width="480px">
       <div class="ai-advice-panel" v-if="aiAdvice">
         <div class="advice-row">
           <span class="advice-label">建议操作</span>
-          <el-tag type="success">{{ aiAdvice.action }}</el-tag>
+          <el-tag :type="aiIsSell ? 'danger' : 'success'">{{ aiAdvice.action }}</el-tag>
         </div>
         <div class="advice-row" v-if="aiAdvice.reason">
           <span class="advice-label">理由</span>
@@ -205,69 +373,32 @@
         </div>
         <el-divider />
         <el-form label-width="100px">
-          <el-form-item label="当前价">{{ tradeTarget?.current_price?.toFixed(2) ?? '—' }}</el-form-item>
-          <el-form-item label="可用现金">{{ formatAmount(account?.cash_balance ?? 0) }}</el-form-item>
-          <el-form-item label="买入数量">
-            <el-input-number v-model="tradeShares" :min="100" :step="100" style="width: 100%" />
+          <el-form-item label="当前价">{{ aiTarget?.current_price?.toFixed(2) ?? '—' }}</el-form-item>
+          <el-form-item label="操作数量">
+            <el-input-number v-model="aiShares" :min="100" :max="aiIsSell ? (aiTarget?.shares ?? 0) : undefined" :step="100" style="width: 100%" />
           </el-form-item>
           <el-form-item label="预计金额">
-            <span class="text-primary">
-              {{ formatAmount((tradeTarget?.current_price ?? 0) * tradeShares) }}
-            </span>
+            <span class="text-primary">{{ formatAmount((aiTarget?.current_price ?? 0) * aiShares) }}</span>
           </el-form-item>
         </el-form>
       </div>
       <template #footer>
-        <el-button @click="showAiBuyDialog = false">取消</el-button>
-        <el-button type="primary" :loading="tradeLoading" @click="doAiTrade('buy')">确认买入</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- AI 卖出 / 手动卖出确认框 -->
-    <el-dialog v-model="showSellDialog" :title="aiAdvice ? 'AI 卖出建议' : '卖出确认'" width="480px">
-      <div class="ai-advice-panel" v-if="aiAdvice">
-        <div class="advice-row">
-          <span class="advice-label">建议操作</span>
-          <el-tag type="danger">{{ aiAdvice.action }}</el-tag>
-        </div>
-        <div class="advice-row" v-if="aiAdvice.reason">
-          <span class="advice-label">理由</span>
-          <span class="advice-text">{{ aiAdvice.reason }}</span>
-        </div>
-        <el-divider />
-      </div>
-      <el-form label-width="100px">
-        <el-form-item label="股票">{{ tradeTarget?.code }} {{ tradeTarget?.name }}</el-form-item>
-        <el-form-item label="当前持仓">{{ tradeTarget?.shares }} 股</el-form-item>
-        <el-form-item label="当前价">{{ tradeTarget?.current_price?.toFixed(2) ?? '—' }}</el-form-item>
-        <el-form-item label="卖出数量">
-          <el-input-number
-            v-model="tradeShares"
-            :min="100"
-            :max="tradeTarget?.shares ?? 0"
-            :step="100"
-            style="width: 100%"
-          />
-        </el-form-item>
-        <el-form-item label="预计回收">
-          <span class="text-primary">
-            {{ formatAmount((tradeTarget?.current_price ?? 0) * tradeShares) }}
-          </span>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showSellDialog = false">取消</el-button>
-        <el-button type="danger" :loading="tradeLoading" @click="doAiTrade('sell')">确认卖出</el-button>
+        <el-button @click="showAiDialog = false">取消</el-button>
+        <el-button :type="aiIsSell ? 'danger' : 'primary'" :loading="tradeLoading" @click="doAiTrade">
+          {{ aiIsSell ? '确认卖出' : '确认买入' }}
+        </el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { paperApi, type PaperAccount, type PaperPosition, type TradeRecord, type PaperStats, type NavPoint, type AiSignal } from '@/api/paper'
 import ProfitChart from '@/components/ProfitChart/index.vue'
+
+const REFRESH_INTERVAL = 30000
 
 const accountLoading = ref(false)
 const posLoading = ref(false)
@@ -283,31 +414,194 @@ const stats = ref<PaperStats>({
   win_rate: 0, avg_profit_pct: 0, avg_loss_pct: 0, profit_factor: 0,
 })
 const navData = ref<NavPoint[]>([])
+const isTradingTime = ref(false)
 
 const showInitDialog = ref(false)
 const showBuyDialog = ref(false)
-const showAiBuyDialog = ref(false)
 const showSellDialog = ref(false)
-
+const showAiDialog = ref(false)
 const initCapital = ref(100000)
-const buyForm = ref({ code: '', shares: 100 })
-const tradeTarget = ref<PaperPosition | null>(null)
-const tradeShares = ref(100)
-const aiAdvice = ref<AiSignal | null>(null)
 
+let refreshTimer: ReturnType<typeof setInterval> | null = null
+
+// --- computed ---
 const totalMarketValue = computed(() =>
   positions.value.reduce((s, p) => s + p.market_value, 0)
 )
 
+const netValue = computed(() =>
+  (account.value?.cash_balance ?? 0) + totalMarketValue.value
+)
+
+const totalPnlAmount = computed(() =>
+  netValue.value - (account.value?.initial_capital ?? 0)
+)
+
 const totalReturn = computed(() => {
   if (!account.value || account.value.initial_capital === 0) return 0
-  const netValue = account.value.cash_balance + totalMarketValue.value
-  return (netValue - account.value.initial_capital) / account.value.initial_capital * 100
+  return totalPnlAmount.value / account.value.initial_capital * 100
 })
 
 const navChartData = computed(() =>
-  navData.value.map(n => ({ date: n.date, value: n.nav * (account.value?.initial_capital ?? 100000), cost: account.value?.initial_capital ?? 100000 }))
+  navData.value.map(n => {
+    const initial = n.initial_capital ?? account.value?.initial_capital ?? 100000
+    const netVal = n.net_value ?? (n.nav ? n.nav * initial : n.cash)
+    return {
+      date: n.date,
+      value: netVal,
+      cost: initial,
+      profit_amount: n.profit_amount ?? (netVal - initial),
+      profit_pct: n.profit_pct ?? ((netVal - initial) / initial * 100),
+    }
+  })
 )
+
+// --- Buy dialog state ---
+const buyTargetPosition = ref<PaperPosition | null>(null)
+const buyCurrentPrice = ref<number | null>(null)
+const buyPriceType = ref<string>('close')
+const buyForm = ref({
+  code: '',
+  mode: 'shares' as 'shares' | 'amount' | 'ratio',
+  shares: 100,
+  amount: 10000,
+  targetRatio: 50,
+})
+
+const buyDialogTitle = computed(() =>
+  buyTargetPosition.value
+    ? `买入 ${buyTargetPosition.value.name}（${buyTargetPosition.value.code}）`
+    : '手动买入'
+)
+
+const currentStockRatio = computed(() => {
+  if (!buyTargetPosition.value || netValue.value <= 0) return 0
+  return buyTargetPosition.value.market_value / netValue.value * 100
+})
+
+const buyAmountShares = computed(() => {
+  if (!buyCurrentPrice.value || buyCurrentPrice.value <= 0) return 0
+  return Math.floor(buyForm.value.amount / buyCurrentPrice.value / 100) * 100
+})
+
+const buyAmountActual = computed(() =>
+  buyAmountShares.value * (buyCurrentPrice.value ?? 0)
+)
+
+const buyRatioTargetAmount = computed(() =>
+  netValue.value * buyForm.value.targetRatio / 100
+)
+
+const buyRatioShares = computed(() => {
+  if (!buyCurrentPrice.value || buyCurrentPrice.value <= 0) return 0
+  const currentHoldingValue = buyTargetPosition.value
+    ? buyTargetPosition.value.current_price * buyTargetPosition.value.shares
+    : 0
+  const needBuy = buyRatioTargetAmount.value - currentHoldingValue
+  if (needBuy <= 0) return 0
+  return Math.floor(needBuy / buyCurrentPrice.value / 100) * 100
+})
+
+const buyConfirmShares = computed(() => {
+  const mode = buyForm.value.mode
+  if (mode === 'shares') {
+    return buyForm.value.shares % 100 === 0 ? buyForm.value.shares : 0
+  }
+  if (mode === 'amount') return buyAmountShares.value
+  if (mode === 'ratio') return buyRatioShares.value
+  return 0
+})
+
+const buyConfirmAmount = computed(() =>
+  buyConfirmShares.value * (buyCurrentPrice.value ?? 0)
+)
+
+const buyCommission = computed(() =>
+  Math.max(5, buyConfirmAmount.value * 0.0003)
+)
+
+const buyAfterRatio = computed(() => {
+  if (netValue.value <= 0) return 0
+  const existingValue = buyTargetPosition.value
+    ? buyTargetPosition.value.market_value
+    : 0
+  return (existingValue + buyConfirmAmount.value) / netValue.value * 100
+})
+
+// --- Sell dialog state ---
+const sellTarget = ref<PaperPosition | null>(null)
+const sellForm = ref({
+  mode: 'ratio' as 'shares' | 'amount' | 'ratio',
+  shares: 100,
+  amount: 10000,
+  ratio: 100,
+})
+
+const sellDialogTitle = computed(() =>
+  sellTarget.value
+    ? `卖出 ${sellTarget.value.name}（${sellTarget.value.code}）`
+    : '卖出'
+)
+
+const sellAmountShares = computed(() => {
+  if (!sellTarget.value || sellTarget.value.current_price <= 0) return 0
+  const raw = Math.floor(sellForm.value.amount / sellTarget.value.current_price / 100) * 100
+  return Math.min(raw, sellTarget.value.shares)
+})
+
+const sellRatioShares = computed(() => {
+  if (!sellTarget.value) return 0
+  const total = sellTarget.value.shares
+  if (sellForm.value.ratio >= 100) return total
+  const raw = Math.floor(total * sellForm.value.ratio / 100 / 100) * 100
+  return Math.min(raw, total)
+})
+
+const sellConfirmShares = computed(() => {
+  const mode = sellForm.value.mode
+  if (mode === 'shares') return sellForm.value.shares
+  if (mode === 'amount') return sellAmountShares.value
+  if (mode === 'ratio') return sellRatioShares.value
+  return 0
+})
+
+const sellConfirmAmount = computed(() =>
+  sellConfirmShares.value * (sellTarget.value?.current_price ?? 0)
+)
+
+const sellStampTax = computed(() =>
+  sellConfirmAmount.value * 0.001
+)
+
+const sellCommission = computed(() =>
+  Math.max(5, sellConfirmAmount.value * 0.0003)
+)
+
+const sellActualGain = computed(() =>
+  sellConfirmAmount.value - sellStampTax.value - sellCommission.value
+)
+
+const sellProfit = computed(() => {
+  if (!sellTarget.value) return 0
+  return (sellTarget.value.current_price - sellTarget.value.avg_cost) * sellConfirmShares.value
+    - sellStampTax.value - sellCommission.value
+})
+
+// --- AI dialog state ---
+const aiTarget = ref<PaperPosition | null>(null)
+const aiAdvice = ref<AiSignal | null>(null)
+const aiShares = ref(100)
+const aiIsSell = computed(() => {
+  const action = (aiAdvice.value?.action ?? '').toLowerCase()
+  return action.includes('卖') || action.includes('减仓') || action.includes('清仓') || action.includes('sell') || action.includes('reduce')
+})
+
+// --- helpers ---
+function pnlColorClass(v: number) {
+  if (v > 0) return 'text-rise'
+  if (v < 0) return 'text-fall'
+  return 'text-neutral'
+}
 
 function formatAmount(v: number): string {
   if (Math.abs(v) >= 1e8) return (v / 1e8).toFixed(2) + '亿'
@@ -319,19 +613,21 @@ function formatPercent(v: number): string {
   return (v >= 0 ? '+' : '') + v.toFixed(2) + '%'
 }
 
+// --- data loading ---
 async function loadAll() {
   accountLoading.value = true
   posLoading.value = true
   try {
-    const [acct, pos, trades, st, nav] = await Promise.all([
-      paperApi.getAccount(),
+    const [posResult, acct, trades, st, nav] = await Promise.all([
       paperApi.getPositions(),
+      paperApi.getAccount(),
       paperApi.getTrades(10),
       paperApi.getStats(),
       paperApi.getNav(),
     ])
+    positions.value = posResult.positions
+    isTradingTime.value = posResult.is_trading_time
     account.value = acct
-    positions.value = pos
     recentTrades.value = trades
     stats.value = st
     navData.value = nav
@@ -339,8 +635,36 @@ async function loadAll() {
     accountLoading.value = false
     posLoading.value = false
   }
+  setupAutoRefresh()
 }
 
+async function refreshPositions() {
+  try {
+    const posResult = await paperApi.getPositions()
+    positions.value = posResult.positions
+    isTradingTime.value = posResult.is_trading_time
+    const acct = await paperApi.getAccount()
+    account.value = acct
+  } catch {
+    // silent
+  }
+  if (!isTradingTime.value && refreshTimer) {
+    clearInterval(refreshTimer)
+    refreshTimer = null
+  }
+}
+
+function setupAutoRefresh() {
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+    refreshTimer = null
+  }
+  if (isTradingTime.value) {
+    refreshTimer = setInterval(refreshPositions, REFRESH_INTERVAL)
+  }
+}
+
+// --- account init ---
 async function doInitAccount() {
   if (initCapital.value <= 0) return
   try {
@@ -349,9 +673,7 @@ async function doInitAccount() {
       '初始化确认',
       { confirmButtonText: '确认', cancelButtonText: '取消', type: 'warning' }
     )
-  } catch {
-    return
-  }
+  } catch { return }
   initLoading.value = true
   try {
     await paperApi.initAccount(initCapital.value)
@@ -365,67 +687,56 @@ async function doInitAccount() {
   }
 }
 
-async function fetchAiAdvice(pos: PaperPosition, intent: 'buy' | 'sell') {
-  aiAdvice.value = null
-  tradeTarget.value = pos
-  aiLoading.value = true
-
-  // 默认买入数量：按可用现金 20% 估算
-  if (intent === 'buy' && account.value) {
-    const budget = account.value.cash_balance * 0.2
-    const estimatedShares = Math.floor(budget / (pos.current_price || 1) / 100) * 100
-    tradeShares.value = Math.max(100, estimatedShares)
-  } else if (intent === 'sell') {
-    tradeShares.value = Math.floor(pos.shares * 0.5 / 100) * 100 || 100
+// --- buy ---
+function openBuyDialog(pos?: PaperPosition) {
+  buyTargetPosition.value = pos ?? null
+  buyCurrentPrice.value = pos?.current_price ?? null
+  buyPriceType.value = pos?.price_type ?? 'close'
+  buyForm.value = {
+    code: pos?.code ?? '',
+    mode: 'shares',
+    shares: 100,
+    amount: 10000,
+    targetRatio: 50,
   }
+  showBuyDialog.value = true
+}
 
-  try {
-    const advice = await paperApi.getAiAdvice(pos.code, pos.avg_cost, pos.position_ratio / 100)
-    aiAdvice.value = advice
+function resetBuyForm() {
+  buyTargetPosition.value = null
+  buyCurrentPrice.value = null
+}
 
-    const actionLower = (advice.action ?? '').toLowerCase()
-    const isSellSignal = actionLower.includes('卖') || actionLower.includes('减仓') || actionLower.includes('清仓') ||
-      actionLower.includes('sell') || actionLower.includes('reduce')
-
-    // 尝试解析 position_advice 中的卖出比例
-    if (intent === 'sell' && advice.position_advice) {
-      const match = advice.position_advice.match(/(\d+)\s*%/)
-      if (match) {
-        const ratio = parseInt(match[1]) / 100
-        tradeShares.value = Math.max(100, Math.floor(pos.shares * ratio / 100) * 100)
-      }
-    }
-
-    if (isSellSignal || intent === 'sell') {
-      showSellDialog.value = true
-    } else {
-      showAiBuyDialog.value = true
-    }
-  } catch {
-    ElMessage.error('获取 AI 建议失败')
-  } finally {
-    aiLoading.value = false
+async function onBuyCodeBlur() {
+  const code = buyForm.value.code.trim()
+  if (!code) return
+  const result = await paperApi.getPrice(code)
+  if (result) {
+    buyCurrentPrice.value = result.price
+    buyPriceType.value = result.price_type
+  } else {
+    ElMessage.warning('无法获取该股票价格，请检查代码')
   }
 }
 
-function openManualSell(pos: PaperPosition) {
-  tradeTarget.value = pos
-  aiAdvice.value = null
-  tradeShares.value = pos.shares
-  showSellDialog.value = true
-}
-
-async function doManualBuy() {
-  if (!buyForm.value.code || buyForm.value.shares <= 0) {
-    ElMessage.warning('请填写股票代码和数量')
-    return
+async function doConfirmBuy() {
+  if (buyConfirmShares.value <= 0 || !buyCurrentPrice.value) return
+  const code = buyTargetPosition.value?.code ?? buyForm.value.code.trim()
+  if (!code) { ElMessage.warning('请输入股票代码'); return }
+  const totalCost = buyConfirmAmount.value + buyCommission.value
+  if (totalCost > (account.value?.cash_balance ?? 0)) {
+    ElMessage.warning('现金不足'); return
   }
   tradeLoading.value = true
   try {
-    await paperApi.executeTrade({ code: buyForm.value.code, action: 'buy', shares: buyForm.value.shares })
+    await paperApi.executeTrade({
+      code,
+      action: 'buy',
+      shares: buyConfirmShares.value,
+      price: buyCurrentPrice.value,
+    })
     ElMessage.success('买入成功')
     showBuyDialog.value = false
-    buyForm.value = { code: '', shares: 100 }
     loadAll()
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.error ?? '买入失败')
@@ -434,19 +745,87 @@ async function doManualBuy() {
   }
 }
 
-async function doAiTrade(action: 'buy' | 'sell') {
-  if (!tradeTarget.value || tradeShares.value <= 0) return
+// --- sell ---
+function openSellDialog(pos: PaperPosition) {
+  sellTarget.value = pos
+  sellForm.value = {
+    mode: 'ratio',
+    shares: Math.min(100, pos.shares),
+    amount: pos.market_value,
+    ratio: 100,
+  }
+  showSellDialog.value = true
+}
+
+function resetSellForm() {
+  sellTarget.value = null
+}
+
+async function doConfirmSell() {
+  if (sellConfirmShares.value <= 0 || !sellTarget.value) return
   tradeLoading.value = true
   try {
     await paperApi.executeTrade({
-      code: tradeTarget.value.code,
+      code: sellTarget.value.code,
+      action: 'sell',
+      shares: sellConfirmShares.value,
+      price: sellTarget.value.current_price,
+    })
+    ElMessage.success('卖出成功')
+    showSellDialog.value = false
+    loadAll()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error ?? '卖出失败')
+  } finally {
+    tradeLoading.value = false
+  }
+}
+
+// --- AI ---
+async function fetchAiAdvice(pos: PaperPosition, intent: 'buy' | 'sell') {
+  aiAdvice.value = null
+  aiTarget.value = pos
+  aiLoading.value = true
+
+  if (intent === 'buy' && account.value) {
+    const budget = account.value.cash_balance * 0.2
+    aiShares.value = Math.max(100, Math.floor(budget / (pos.current_price || 1) / 100) * 100)
+  } else {
+    aiShares.value = Math.floor(pos.shares * 0.5 / 100) * 100 || 100
+  }
+
+  try {
+    const advice = await paperApi.getAiAdvice(pos.code, pos.avg_cost, pos.position_ratio / 100)
+    aiAdvice.value = advice
+    if (advice.position_advice) {
+      const match = advice.position_advice.match(/(\d+)\s*%/)
+      if (match) {
+        const ratio = parseInt(match[1]) / 100
+        aiShares.value = Math.max(100, Math.floor(pos.shares * ratio / 100) * 100)
+      }
+    }
+    showAiDialog.value = true
+  } catch {
+    ElMessage.error('获取 AI 建议失败')
+  } finally {
+    aiLoading.value = false
+  }
+}
+
+async function doAiTrade() {
+  if (!aiTarget.value || aiShares.value <= 0) return
+  const action = aiIsSell.value ? 'sell' : 'buy'
+  tradeLoading.value = true
+  try {
+    await paperApi.executeTrade({
+      code: aiTarget.value.code,
       action,
-      shares: tradeShares.value,
+      shares: aiShares.value,
+      price: aiTarget.value.current_price,
       ai_signal: aiAdvice.value ?? undefined,
     })
     ElMessage.success(action === 'buy' ? '买入成功' : '卖出成功')
-    showAiBuyDialog.value = false
-    showSellDialog.value = false
+    showAiDialog.value = false
     loadAll()
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.error ?? '交易失败')
@@ -456,17 +835,28 @@ async function doAiTrade(action: 'buy' | 'sell') {
 }
 
 onMounted(loadAll)
+onUnmounted(() => {
+  if (refreshTimer) clearInterval(refreshTimer)
+})
 </script>
 
 <style scoped>
 .paper-trading { display: flex; flex-direction: column; gap: 0; }
 
 .account-bar { background: #1f1f1f; border: 1px solid #2c2c2c; }
-.account-overview { display: flex; align-items: center; gap: 32px; flex-wrap: wrap; }
+.account-overview { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; }
 .account-stat { display: flex; flex-direction: column; gap: 4px; }
 .stat-label { font-size: 12px; color: #909399; }
 .stat-value { font-size: 16px; font-weight: 600; color: #e5eaf3; }
 .no-account { display: flex; align-items: center; gap: 12px; color: #909399; }
+
+.price-indicator { display: flex; align-items: center; gap: 6px; margin-left: auto; margin-right: 8px; }
+.indicator-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.indicator-live { background: #67c23a; box-shadow: 0 0 4px #67c23a; }
+.indicator-close { background: #606266; }
+.indicator-text { font-size: 12px; color: #909399; }
+.indicator-live-text { color: #67c23a; font-size: 12px; font-weight: 600; }
+.indicator-close-text { color: #909399; font-size: 12px; }
 
 .section-card { background: #1f1f1f; border: 1px solid #2c2c2c; }
 .section-card :deep(.el-card__header) {
@@ -480,6 +870,7 @@ onMounted(loadAll)
 
 .text-rise { color: #ef5350; }
 .text-fall { color: #26a69a; }
+.text-neutral { color: #909399; }
 .text-primary { color: #409eff; }
 
 .trade-list { display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow-y: auto; }
@@ -505,4 +896,24 @@ onMounted(loadAll)
 
 .dialog-warn { color: #f56c6c; font-size: 12px; margin-top: 8px; padding-left: 100px; }
 .dialog-info { color: #909399; font-size: 12px; margin-top: 4px; padding-left: 100px; }
+
+.trade-dialog-header {
+  padding: 8px 12px; margin-bottom: 12px;
+  background: #2c2c2c; border-radius: 4px;
+  font-size: 13px; color: #e5eaf3;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.trade-dialog-header span { display: inline-flex; align-items: center; gap: 6px; }
+
+.form-hint { font-size: 12px; color: #909399; margin-top: 4px; }
+.form-hint-buttons { display: flex; gap: 4px; margin-top: 6px; }
+
+.confirm-block { padding: 0 12px; }
+.confirm-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 0; font-size: 13px; color: #e5eaf3;
+  border-bottom: 1px solid #2c2c2c;
+}
+.confirm-row:last-child { border-bottom: none; }
+.confirm-row span:first-child { color: #909399; }
 </style>

@@ -25,6 +25,8 @@ interface ProfitRecord {
   date: string
   value: number
   cost?: number
+  profit_amount?: number
+  profit_pct?: number
 }
 
 const props = withDefaults(defineProps<{
@@ -47,7 +49,7 @@ const chartOption = computed(() => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const series: any[] = [
     {
-      name: '盈亏金额',
+      name: '账户净值',
       type: 'line',
       data: values,
       smooth: true,
@@ -68,7 +70,7 @@ const chartOption = computed(() => {
 
   if (hasCosts) {
     series.push({
-      name: '成本线',
+      name: '初始资金',
       type: 'line',
       data: costs,
       smooth: false,
@@ -86,20 +88,29 @@ const chartOption = computed(() => {
       borderColor: '#444',
       textStyle: { color: '#e5eaf3' },
       formatter: (params: unknown[]) => {
-        const ps = params as Array<{ axisValue: string; value: number; seriesName: string; color: string }>
+        const ps = params as Array<{ axisValue: string; value: number; seriesName: string; color: string; dataIndex: number }>
+        const idx = ps[0].dataIndex
+        const record = data[idx]
         let html = `<div style="padding:8px"><div style="font-weight:bold;color:#e5eaf3">${ps[0].axisValue}</div>`
-        ps.forEach(p => {
-          html += `<div style="color:${p.color}">${p.seriesName}: ${p.value >= 0 ? '+' : ''}${p.value.toFixed(2)}</div>`
-        })
+        if (record?.profit_amount !== undefined) {
+          const pnlColor = record.profit_amount >= 0 ? '#ef5350' : '#26a69a'
+          html += `<div style="color:#e5eaf3">净值: ${record.value.toFixed(2)}</div>`
+          html += `<div style="color:${pnlColor}">盈亏: ${record.profit_amount >= 0 ? '+' : ''}${record.profit_amount.toFixed(2)}</div>`
+          html += `<div style="color:${pnlColor}">收益率: ${record.profit_pct !== undefined ? (record.profit_pct >= 0 ? '+' : '') + record.profit_pct.toFixed(2) + '%' : ''}</div>`
+        } else {
+          ps.forEach(p => {
+            html += `<div style="color:${p.color}">${p.seriesName}: ${p.value >= 0 ? '+' : ''}${p.value.toFixed(2)}</div>`
+          })
+        }
         html += '</div>'
         return html
       },
     },
     legend: hasCosts ? {
-      data: ['盈亏金额', '成本线'],
+      data: ['账户净值', '初始资金'],
       bottom: 0,
       textStyle: { color: '#909399' },
-    } : undefined,
+    } as const : undefined,
     grid: { left: 50, right: 20, top: 20, bottom: hasCosts ? 40 : 30 },
     xAxis: {
       type: 'category',

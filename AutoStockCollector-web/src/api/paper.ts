@@ -17,6 +17,9 @@ export interface PaperPosition {
   market_value: number
   pnl: number
   pnl_percent: number
+  today_pnl_percent: number
+  yesterday_close: number | null
+  price_type: 'realtime' | 'close' | 'fallback' | 'unknown'
   position_ratio: number
 }
 
@@ -52,7 +55,12 @@ export interface PaperStats {
 export interface NavPoint {
   date: string
   cash: number
-  nav: number
+  nav?: number
+  net_value?: number
+  market_value?: number
+  profit_amount?: number
+  profit_pct?: number
+  initial_capital?: number
 }
 
 export interface AiSignal {
@@ -81,15 +89,28 @@ export const paperApi = {
     return res.data.data
   },
 
-  async getPositions(): Promise<PaperPosition[]> {
-    const res = await request.get<{ data: PaperPosition[] }>('/api/paper/positions')
-    return res.data?.data ?? []
+  async getPositions(): Promise<{ positions: PaperPosition[]; is_trading_time: boolean }> {
+    const res = await request.get<{ data: PaperPosition[]; is_trading_time: boolean }>('/api/paper/positions')
+    return {
+      positions: res.data?.data ?? [],
+      is_trading_time: res.data?.is_trading_time ?? false,
+    }
+  },
+
+  async getPrice(code: string): Promise<{ price: number; price_type: string; is_trading_time: boolean } | null> {
+    try {
+      const res = await request.get<{ data: { price: number; price_type: string; is_trading_time: boolean } }>(`/api/paper/price?code=${encodeURIComponent(code)}`)
+      return res.data?.data ?? null
+    } catch {
+      return null
+    }
   },
 
   async executeTrade(payload: {
     code: string
     action: 'buy' | 'sell'
     shares: number
+    price?: number
     ai_signal?: AiSignal
   }): Promise<TradeRecord> {
     const res = await request.post<{ data: TradeRecord }>('/api/paper/trade', payload)
