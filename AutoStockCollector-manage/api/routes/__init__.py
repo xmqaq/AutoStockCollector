@@ -10,6 +10,7 @@ from utils.logger import get_logger
 from modules.ai.engines.analysis import AnalysisEngine
 from modules.ai.engines.advice import AdviceEngine
 from modules.ai.engines.picker import PickerEngine
+from modules.ai.engines.deep_analysis import DeepAnalysisService
 
 logger = get_logger(__name__)
 
@@ -767,6 +768,36 @@ def ai_stock_analysis(code):
         return jsonify({"success": True, "data": result})
     except Exception as e:
         logger.error(f"AI stock analysis failed for {code}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@api_bp.route("/stock/deep_analysis/<code>", methods=["GET"])
+def stock_deep_analysis(code):
+    """个股深度分析 v2：一次性返回所有维度数据。"""
+    normalized = _normalize_code(code)
+    if not normalized:
+        return jsonify({"success": False, "error": "invalid code"}), 400
+    try:
+        svc = DeepAnalysisService()
+        data = svc.get_full_data(normalized)
+        return jsonify({"success": True, "data": data})
+    except Exception as e:
+        logger.error(f"Deep analysis failed for {code}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@api_bp.route("/stock/deep_analysis/<code>/ai", methods=["POST"])
+def stock_deep_analysis_ai(code):
+    """AI深度分析报告：基于真实数据调用LLM生成。"""
+    normalized = _normalize_code(code)
+    if not normalized:
+        return jsonify({"success": False, "error": "invalid code"}), 400
+    try:
+        svc = DeepAnalysisService()
+        result = svc.ai_report(normalized)
+        return jsonify({"success": True, "data": result})
+    except Exception as e:
+        logger.error(f"AI report failed for {code}: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 

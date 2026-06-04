@@ -221,12 +221,129 @@ export const backtestEnhancedApi = {
   },
 }
 
-// ── 第二期一体化 AI 服务 ──────────────────────────────
+// ── 深度分析 v2 ──────────────────────────────
+export interface DeepBasicInfo {
+  code: string
+  name: string
+  industry: string
+  market_cap_yi: number | null
+  list_date: string | null
+}
+
+export interface DeepPriceInfo {
+  current_price: number | null
+  price_change_pct: number | null
+  high_52w: number | null
+  low_52w: number | null
+  volume_ratio: number | null
+}
+
+export interface DeepKlineItem {
+  date: string
+  open: number | null
+  high: number | null
+  low: number | null
+  close: number | null
+  volume: number | null
+}
+
+export interface DeepFinancialHistory {
+  report_date: string
+  report_type: string
+  revenue_yi: number | null
+  net_profit_yi: number | null
+  roe: number | null
+  gross_margin: number | null
+}
+
+export interface DeepFinancial {
+  report_date: string | null
+  report_type: string
+  roe: number | null
+  revenue_yi: number | null
+  revenue_growth: number | null
+  net_profit_yi: number | null
+  profit_growth: number | null
+  gross_margin: number | null
+  debt_ratio: number | null
+  eps: number | null
+  net_asset_ps: number | null
+  pe: number | null
+  pb: number | null
+  history: DeepFinancialHistory[]
+}
+
+export interface DeepFundFlow {
+  date: string | null
+  main_net_inflow: number | null
+  main_net_inflow_yi: number | null
+  inflow_ratio: number | null
+  turnover_rate: number | null
+  total_amount: number | null
+  total_amount_yi: number | null
+}
+
+export interface DeepTechnical {
+  ma5: number | null
+  ma20: number | null
+  ma60: number | null
+  macd_dif: number | null
+  macd_dea: number | null
+  macd_bar: number | null
+  rsi14: number | null
+  momentum_20d: number | null
+  trend: string
+  macd_signal: string
+  data_available: boolean
+}
+
+export interface DeepScoreDim {
+  score: number | null
+  details: Record<string, any>
+}
+
+export interface DeepScores {
+  fundamental: DeepScoreDim
+  technical: DeepScoreDim
+  fund_flow: DeepScoreDim
+  valuation: DeepScoreDim
+  composite: number | null
+}
+
+export interface DeepNewsItem {
+  title: string
+  publish_time: string
+  source: string
+  content: string
+}
+
+export interface DeepAnalysisData {
+  basic_info: DeepBasicInfo
+  price_info: DeepPriceInfo
+  kline: DeepKlineItem[]
+  financial: DeepFinancial
+  fund_flow: DeepFundFlow
+  technical: DeepTechnical
+  scores: DeepScores
+  news: DeepNewsItem[]
+  disclaimer: string
+}
+
+export interface AIReportResult {
+  success: boolean
+  content?: string
+  provider?: string
+  from_cache?: boolean
+  error?: string
+  disclaimer: string
+}
+
+// ── 第二期一体化 AI 服务（旧接口保留兼容） ──────────────────────────────
 export interface AIScores {
   technical: number
   fundamental: number
   fund_flow: number
-  sentiment: number
+  valuation: number
   composite: number
 }
 
@@ -277,6 +394,15 @@ export interface AIPickResult {
   universe_count?: number
   timestamp: string
   disclaimer: string
+}
+
+export const deepAnalysisApi = {
+  getData(code: string) {
+    return client.get(`/api/v1/stock/deep_analysis/${code}`)
+  },
+  getAIReport(code: string) {
+    return client.post(`/api/v1/stock/deep_analysis/${code}/ai`)
+  },
 }
 
 export const aiServiceApi = {
