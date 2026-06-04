@@ -313,12 +313,25 @@ function toggleNews(i: number) {
   expandedNews.value = expandedNews.value === i ? null : i
 }
 
+function cleanDate(raw: string): string {
+  if (!raw) return ''
+  const s = raw.trim()
+  if (s.length >= 10 && s[4] === '-') return s.slice(0, 10)
+  if (s.length === 8 && /^\d+$/.test(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6)}`
+  return s.slice(0, 10)
+}
+
+function shortDate(d: string): string {
+  const clean = cleanDate(d)
+  return clean.length >= 10 ? clean.slice(5) : clean
+}
+
 // ── K线图配置 ──
 const klineOption = computed(() => {
   const kdata = data.value?.kline
   if (!kdata?.length) return {}
 
-  const dates = kdata.map(d => d.date)
+  const dates = kdata.map(d => cleanDate(d.date))
   const ohlc = kdata.map(d => [d.open, d.close, d.low, d.high])
 
   function calcMA(period: number): (number | string)[] {
@@ -379,7 +392,7 @@ const klineOption = computed(() => {
       { left: 60, right: 20, top: '75%', bottom: 50 },
     ],
     xAxis: [
-      { type: 'category', data: dates, boundaryGap: false, axisLine: { lineStyle: { color: '#333' } }, splitLine: { show: false }, axisLabel: { color: '#666', fontSize: 10 }, gridIndex: 0 },
+      { type: 'category', data: dates, boundaryGap: false, axisLine: { lineStyle: { color: '#333' } }, splitLine: { show: false }, axisLabel: { color: '#666', fontSize: 10, formatter: (v: string) => shortDate(v) }, gridIndex: 0 },
       { type: 'category', data: dates, boundaryGap: false, axisLine: { lineStyle: { color: '#333' } }, splitLine: { show: false }, axisLabel: { show: false }, gridIndex: 1 },
     ],
     yAxis: [
@@ -388,7 +401,7 @@ const klineOption = computed(() => {
     ],
     dataZoom: [
       { type: 'inside', xAxisIndex: [0, 1], start: 0, end: 100 },
-      { type: 'slider', xAxisIndex: [0, 1], bottom: 8, height: 16, borderColor: '#333', fillerColor: 'rgba(100,100,200,0.1)', handleStyle: { color: '#555' }, textStyle: { color: '#666' } },
+      { type: 'slider', xAxisIndex: [0, 1], bottom: 8, height: 16, borderColor: '#333', fillerColor: 'rgba(100,100,200,0.1)', handleStyle: { color: '#555' }, textStyle: { color: '#666' }, labelFormatter: (_: number, v: string) => shortDate(v) },
     ],
     series: [
       {

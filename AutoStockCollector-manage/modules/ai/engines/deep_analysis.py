@@ -35,7 +35,7 @@ class DeepAnalysisService:
 
         basic_info = self._build_basic_info(code, bundle)
         kline_data = self._build_kline(code)
-        price_info = self._build_price_info(bundle, kline_data)
+        price_info = self._build_price_info(bundle, kline_data, code)
         financial = self._build_financial(code, bundle)
         fund_flow = self._build_fund_flow(code, bundle)
         technical = self._build_technical(bundle)
@@ -108,17 +108,22 @@ class DeepAnalysisService:
             "list_date": info.get("上市日期") or info.get("list_date"),
         }
 
-    def _build_price_info(self, bundle, kline_data: List[Dict]) -> Dict[str, Any]:
+    def _build_price_info(self, bundle, kline_data: List[Dict], code: str = "") -> Dict[str, Any]:
         current = bundle.realtime_price or (bundle.closes[0] if bundle.closes else None)
 
         price_change_pct = None
-        if len(kline_data) >= 2 and kline_data[0].get("close") and kline_data[1].get("close"):
-            prev = kline_data[1]["close"]
+        if len(kline_data) >= 2 and kline_data[-1].get("close") and kline_data[-2].get("close"):
+            today = kline_data[-1]["close"]
+            prev = kline_data[-2]["close"]
             if prev > 0:
-                price_change_pct = _safe_round((kline_data[0]["close"] - prev) / prev * 100, 2)
+                price_change_pct = _safe_round((today - prev) / prev * 100, 2)
 
-        highs = [k["high"] for k in kline_data if k.get("high")]
-        lows = [k["low"] for k in kline_data if k.get("low")]
+        # 52周高低：取250条K线覆盖完整一年
+        klines_52w = self.dal.kline_storage.find_many(
+            {"code": code}, sort=[("date", -1)], limit=250
+        ) or []
+        highs = [float(k["high"]) for k in klines_52w if k.get("high")]
+        lows = [float(k["low"]) for k in klines_52w if k.get("low")]
         high_52w = _safe_round(max(highs)) if highs else None
         low_52w = _safe_round(min(lows)) if lows else None
 
@@ -135,6 +140,20 @@ class DeepAnalysisService:
             "volume_ratio": volume_ratio,
         }
 
+    @staticmethod
+    def _clean_date(raw_date) -> str:
+        """将各种日期格式统一为 YYYY-MM-DD 字符串。"""
+        if raw_date is None:
+            return ""
+        s = str(raw_date).strip()
+        # ISO 格式 "2026-03-05T00:00:00..." → 取前10位
+        if len(s) >= 10 and s[4] == '-':
+            return s[:10]
+        # 紧凑格式 "20260305" → 插入横线
+        if len(s) == 8 and s.isdigit():
+            return f"{s[:4]}-{s[4:6]}-{s[6:]}"
+        return s[:10] if len(s) > 10 else s
+
     def _build_kline(self, code: str) -> List[Dict[str, Any]]:
         """返回最近60条K线原始数据，按日期正序（旧→新）。"""
         raw = self.dal.kline_storage.find_many(
@@ -143,7 +162,7 @@ class DeepAnalysisService:
         result = []
         for k in reversed(raw):
             result.append({
-                "date": k.get("date", ""),
+                "date": self._clean_date(k.get("date", "")),
                 "open": _safe_round(k.get("open")),
                 "high": _safe_round(k.get("high")),
                 "low": _safe_round(k.get("low")),
@@ -171,8 +190,17 @@ class DeepAnalysisService:
         current_price = bundle.realtime_price or (bundle.closes[0] if bundle.closes else None)
         eps = _parse_pct(eps_raw)
         bps = _parse_pct(bps_raw)
-        pe = _safe_round(current_price / eps, 2) if current_price and eps and eps > 0 else bundle.pe
-        pb = _safe_round(current_price / bps, 2) if current_price and bps and bps > 0 else bundle.pb
+        # 季报 EPS 需年化后再算 PE；优先使用 bundle.pe（来自百度 TTM 接口）
+        if eps and eps > 0 and q < 4:
+            eps_annualized = eps * 4 / q
+        else:
+            eps_annualized = eps
+        pe = bundle.pe  # TTM PE 优先
+        if pe is None and current_price and eps_annualized and eps_annualized > 0:
+            pe = _safe_round(current_price / eps_annualized, 2)
+        pb = bundle.pb  # 实时 PB 优先
+        if pb is None and current_price and bps and bps > 0:
+            pb = _safe_round(current_price / bps, 2)
 
         history = []
         seen_dates = set()
