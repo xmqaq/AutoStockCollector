@@ -281,6 +281,8 @@ export interface DeepFundFlow {
   turnover_rate: number | null
   total_amount: number | null
   total_amount_yi: number | null
+  avg5_main_net_inflow_yi: number | null
+  avg5_turnover_rate: number | null
 }
 
 export interface DeepTechnical {
@@ -326,6 +328,7 @@ export interface DeepAnalysisData {
   technical: DeepTechnical
   scores: DeepScores
   news: DeepNewsItem[]
+  analysis_time: string
   disclaimer: string
 }
 

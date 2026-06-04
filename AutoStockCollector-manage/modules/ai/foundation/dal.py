@@ -67,10 +67,14 @@ class StockDataBundle:
     revenue_growth: Optional[float] = None  # 营收同比增速（%）
     profit_growth: Optional[float] = None   # 归母净利润同比增速（%）
     net_profit_ttm: Optional[float] = None  # 近四季归母净利润之和（元）
-    main_net_inflow: Optional[float] = None
+    main_net_inflow: Optional[float] = None   # 近5日平均主力净流入（元），用于评分
     realtime_price: Optional[float] = None   # 最新实时价格（优先于 closes[0]）
-    turnover_rate: Optional[float] = None    # 换手率（%）
-    total_amount: Optional[float] = None     # 当日总成交额（元）
+    turnover_rate: Optional[float] = None    # 近5日平均换手率（%）
+    total_amount: Optional[float] = None     # 近5日平均总成交额（元）
+    main_net_inflow_latest: Optional[float] = None  # 最新单日主力净流入（元），用于展示
+    turnover_rate_latest: Optional[float] = None     # 最新单日换手率（%）
+    total_amount_latest: Optional[float] = None      # 最新单日总成交额（元）
+    fund_flow_date: str = ""                          # 最新资金流向日期
     industry: str = ""                       # 所属行业
     financial: Dict[str, Any] = field(default_factory=dict)
     news: List[Dict[str, Any]] = field(default_factory=list)
@@ -359,6 +363,60 @@ class StockDAL:
             financials[0].get("净利润同比增长率") or financials[0].get("profit_growth"))
         return result
 
+    def _get_fund_flow_avg(self, code: str, days: int = 5) -> Dict[str, Any]:
+        """取近 N 日资金流向的均值（用于评分平滑）+ 最新单日数据（用于展示）。"""
+        bare = self._strip_market_prefix(code)
+        # FundFlowStorage.get_latest_flow 支持带/不带前缀，但 find_many 需要匹配实际存储
+        # 构造候选 code 列表
+        candidates = [bare]
+        prefix = "SH" if bare.startswith(("6", "9")) else "SZ"
+        candidates.append(f"{prefix}{bare}")
+        if code != bare:
+            candidates.append(code)
+
+        records = self.fund_flow_storage.find_many(
+            {"code": {"$in": candidates}},
+            sort=[("date", -1)],
+            limit=days,
+        ) or []
+
+        result: Dict[str, Any] = {
+            "main_net_inflow": None, "turnover_rate": None, "total_amount": None,
+            "main_net_inflow_latest": None, "turnover_rate_latest": None,
+            "total_amount_latest": None, "fund_flow_date": "",
+            "latest_record": {},
+        }
+        if not records:
+            return result
+
+        result["latest_record"] = records[0]
+        result["fund_flow_date"] = str(records[0].get("date", ""))
+
+        # 最新单日
+        result["main_net_inflow_latest"] = _parse_amount_yuan(
+            records[0].get("main_net_inflow") or records[0].get("净额"))
+        result["turnover_rate_latest"] = _parse_pct(records[0].get("turnover_rate"))
+        ta = records[0].get("total_amount")
+        result["total_amount_latest"] = float(ta) if ta is not None else None
+
+        # N 日均值
+        inflows, trs, tas = [], [], []
+        for r in records:
+            v = _parse_amount_yuan(r.get("main_net_inflow") or r.get("净额"))
+            if v is not None:
+                inflows.append(v)
+            tr = _parse_pct(r.get("turnover_rate"))
+            if tr is not None:
+                trs.append(tr)
+            ta_v = r.get("total_amount")
+            if ta_v is not None:
+                tas.append(float(ta_v))
+
+        result["main_net_inflow"] = sum(inflows) / len(inflows) if inflows else None
+        result["turnover_rate"] = sum(trs) / len(trs) if trs else None
+        result["total_amount"] = sum(tas) / len(tas) if tas else None
+        return result
+
     def get_stock_bundle(self, code: str, kline_limit: int = 60, news_limit: int = 10) -> StockDataBundle:
         klines = self.kline_storage.find_many(
             {"code": code}, sort=[("date", -1)], limit=kline_limit
@@ -368,9 +426,10 @@ class StockDAL:
         volumes = [float(k.get("volume") or k.get("amount") or 0) for k in klines]
 
         info = self.info_storage.get_by_code(code) or {}
-        # fund_flow 以裸代码（无 SH/SZ 前缀）存储
         bare = self._strip_market_prefix(code)
-        fund = self.fund_flow_storage.get_latest_flow(bare) or {}
+        # 资金面：取近5日均值用于评分 + 最新单日用于展示
+        ff_avg = self._get_fund_flow_avg(code, days=5)
+        fund = ff_avg["latest_record"]
         news = self.news_storage.get_latest_news(code=code, limit=news_limit) or []
         # 取最近 8 条财报（覆盖 2 年×4个季度），用于 TTM 计算
         financials = self.financial_storage.find_many(
@@ -427,13 +486,10 @@ class StockDAL:
         revenue_growth = growth["revenue_growth"]
         profit_growth = growth["profit_growth"]
 
-        # 主力净流入（元）：兼容旧格式(main_net_inflow,数值)和新格式(净额,"−6.43亿"字符串)
-        main_net_inflow = _parse_amount_yuan(fund.get("main_net_inflow") or fund.get("净额"))
-
-        turnover_rate = _parse_pct(fund.get("turnover_rate"))
-        total_amount = fund.get("total_amount")
-        if total_amount is not None:
-            total_amount = float(total_amount)
+        # 资金面：5日均值用于评分，最新单日用于展示
+        main_net_inflow = ff_avg["main_net_inflow"]
+        turnover_rate = ff_avg["turnover_rate"]
+        total_amount = ff_avg["total_amount"]
 
         return StockDataBundle(
             code=code,
@@ -453,6 +509,10 @@ class StockDAL:
             realtime_price=realtime_price,
             turnover_rate=turnover_rate,
             total_amount=total_amount,
+            main_net_inflow_latest=ff_avg["main_net_inflow_latest"],
+            turnover_rate_latest=ff_avg["turnover_rate_latest"],
+            total_amount_latest=ff_avg["total_amount_latest"],
+            fund_flow_date=ff_avg["fund_flow_date"],
             industry=industry,
             financial=financial,
             news=news,
@@ -479,12 +539,37 @@ class StockDAL:
         for rec in db["financial"].aggregate(pipeline, allowDiskUse=True):
             self._fin_cache[rec["_id"]] = rec["doc"]
 
-        # 批量加载 fund_flow（取最新日期的全部记录）
-        latest_date = db["fund_flow"].find_one({}, sort=[("date", -1)])
+        # 批量加载 fund_flow（取最近5个交易日，按 code 聚合均值）
+        recent_dates = db["fund_flow"].distinct("date")
+        recent_dates = sorted(recent_dates, reverse=True)[:5]
         self._ff_cache: Dict[str, Dict] = {}
-        if latest_date:
-            for rec in db["fund_flow"].find({"date": latest_date["date"]}):
-                self._ff_cache[rec["code"]] = rec
+        if recent_dates:
+            raw_records: Dict[str, list] = {}
+            for rec in db["fund_flow"].find({"date": {"$in": recent_dates}}):
+                c = rec.get("code", "")
+                if c:
+                    raw_records.setdefault(c, []).append(rec)
+            for c, recs in raw_records.items():
+                inflows, trs, tas = [], [], []
+                for r in recs:
+                    v = _parse_amount_yuan(r.get("main_net_inflow") or r.get("净额"))
+                    if v is not None:
+                        inflows.append(v)
+                    tr = _parse_pct(r.get("turnover_rate"))
+                    if tr is not None:
+                        trs.append(tr)
+                    ta = r.get("total_amount")
+                    if ta is not None:
+                        tas.append(float(ta))
+                latest = max(recs, key=lambda r: r.get("date", ""))
+                avg_rec = dict(latest)
+                if inflows:
+                    avg_rec["main_net_inflow"] = sum(inflows) / len(inflows)
+                if trs:
+                    avg_rec["turnover_rate"] = sum(trs) / len(trs)
+                if tas:
+                    avg_rec["total_amount"] = sum(tas) / len(tas)
+                self._ff_cache[c] = avg_rec
 
         # 批量加载 stock_info
         self._info_cache: Dict[str, Dict] = {}

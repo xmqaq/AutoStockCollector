@@ -40,7 +40,12 @@
 
       <!-- 区块二：量化评分总览 -->
       <el-card shadow="never" class="da-card">
-        <template #header><span>量化评分总览</span></template>
+        <template #header>
+          <div class="da-score-header">
+            <span>量化评分总览</span>
+            <span v-if="data.analysis_time" class="da-time-hint">数据时间：{{ data.analysis_time }}</span>
+          </div>
+        </template>
         <div class="da-scores">
           <div class="da-score-main">
             <div class="da-score-num" :style="{ color: scoreColor(data.scores.composite) }">
@@ -74,6 +79,7 @@
             </div>
           </div>
         </div>
+        <div class="da-score-note">资金面评分基于近5个交易日均值，降低单日波动影响</div>
         <div class="da-expand-toggle" @click="scoreExpanded = !scoreExpanded">
           {{ scoreExpanded ? '收起详情' : '展开评分详情' }}
           <el-icon><component :is="scoreExpanded ? 'ArrowUp' : 'ArrowDown'" /></el-icon>
@@ -547,6 +553,9 @@ onMounted(() => {
 .da-dim { display: grid; grid-template-columns: 56px 1fr 36px; align-items: center; gap: 8px; }
 .da-dim-name { font-size: 12px; color: #8888a8; }
 .da-dim-val { font-size: 12px; color: #c8cae8; text-align: right; }
+.da-score-header { display: flex; justify-content: space-between; align-items: center; }
+.da-time-hint { font-size: 11px; color: #606080; font-weight: 400; }
+.da-score-note { font-size: 11px; color: #505068; text-align: center; margin-top: 10px; }
 .da-expand-toggle {
   text-align: center; padding: 8px 0 0; cursor: pointer;
   font-size: 12px; color: #606080; display: flex; align-items: center; justify-content: center; gap: 4px;

@@ -42,6 +42,7 @@ class DeepAnalysisService:
         scores = self._build_scores(bundle)
         news = self._build_news(bundle)
 
+        from datetime import datetime as _dt
         return {
             "basic_info": basic_info,
             "price_info": price_info,
@@ -51,6 +52,7 @@ class DeepAnalysisService:
             "technical": technical,
             "scores": scores,
             "news": news,
+            "analysis_time": _dt.now().strftime("%Y-%m-%d %H:%M"),
             "disclaimer": RISK_DISCLAIMER,
         }
 
@@ -243,18 +245,23 @@ class DeepAnalysisService:
         }
 
     def _build_fund_flow(self, code: str, bundle) -> Dict[str, Any]:
-        bare = StockDAL._strip_market_prefix(code)
-        fund = self.dal.fund_flow_storage.get_latest_flow(bare) or {}
+        # 最新单日数据用于展示
+        latest_inflow = bundle.main_net_inflow_latest
+        latest_ta = bundle.total_amount_latest
+        # 5日均值数据用于评分
+        avg_inflow = bundle.main_net_inflow
         return {
-            "date": fund.get("date"),
-            "main_net_inflow": _safe_round(bundle.main_net_inflow, 0),
-            "main_net_inflow_yi": _safe_round(bundle.main_net_inflow / 1e8, 4) if bundle.main_net_inflow else None,
-            "inflow_ratio": (_safe_round(bundle.main_net_inflow / bundle.total_amount * 100, 2)
-                             if bundle.main_net_inflow and bundle.total_amount and bundle.total_amount > 0
+            "date": bundle.fund_flow_date,
+            "main_net_inflow": _safe_round(latest_inflow, 0),
+            "main_net_inflow_yi": _safe_round(latest_inflow / 1e8, 4) if latest_inflow else None,
+            "inflow_ratio": (_safe_round(latest_inflow / latest_ta * 100, 2)
+                             if latest_inflow and latest_ta and latest_ta > 0
                              else None),
-            "turnover_rate": _safe_round(bundle.turnover_rate),
-            "total_amount": _safe_round(bundle.total_amount, 0),
-            "total_amount_yi": _safe_round(bundle.total_amount / 1e8, 2) if bundle.total_amount else None,
+            "turnover_rate": _safe_round(bundle.turnover_rate_latest),
+            "total_amount": _safe_round(latest_ta, 0),
+            "total_amount_yi": _safe_round(latest_ta / 1e8, 2) if latest_ta else None,
+            "avg5_main_net_inflow_yi": _safe_round(avg_inflow / 1e8, 4) if avg_inflow else None,
+            "avg5_turnover_rate": _safe_round(bundle.turnover_rate),
         }
 
     def _build_technical(self, bundle) -> Dict[str, Any]:
