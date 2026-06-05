@@ -148,7 +148,23 @@ docker compose up -d --build
 
 ## 截图预览
 
-> 截图待补充，可运行项目后自行体验：系统总览、采集中心、AI 智能中枢、量化选股、个股深度分析、工作流画布等 20+ 页面。
+### 系统总览
+![系统总览](screenshots/dashboard.png)
+
+### 采集中心
+![采集中心](screenshots/data-monitor.png)
+
+### 实时行情
+![实时行情](screenshots/market.png)
+
+### 板块流向热力图
+![板块流向](screenshots/sector-flow.png)
+
+### AI 智能中枢
+![AI智能中枢](screenshots/ai-dashboard.png)
+
+### 工作流管理
+![工作流管理](screenshots/workflow.png)
 
 ## TODO
 
