@@ -72,8 +72,12 @@ def create_workflow():
             enabled=data.get('enabled', True),
             created_at=datetime.now().isoformat(),
             updated_at=datetime.now().isoformat(),
+<<<<<<< HEAD
             tags=data.get('tags', []),
             workflow_type=data.get('workflow_type', '')
+=======
+            tags=data.get('tags', [])
+>>>>>>> d27c0f8200ca764be0cab3143211a08f31bf91ad
         )
 
         if workflow_storage.save_workflow(workflow):
@@ -153,8 +157,13 @@ def run_workflow(workflow_id):
 
         # Pre-flight checks
         nodes_list = [n.to_dict() if hasattr(n, 'to_dict') else n for n in workflow.nodes]
+<<<<<<< HEAD
         is_special = getattr(workflow, 'workflow_type', '') in ('quant_multi_factor', 'peg_momentum')
         if not nodes_list and not is_special:
+=======
+        is_quant = getattr(workflow, 'workflow_type', '') == 'quant_multi_factor'
+        if not nodes_list and not is_quant:
+>>>>>>> d27c0f8200ca764be0cab3143211a08f31bf91ad
             return jsonify({'success': False, 'error': '工作流步骤为空，请先编辑工作流添加节点'}), 400
 
         has_ai_node = any(n.get('type') == 'ai_agent' for n in nodes_list)
@@ -265,15 +274,24 @@ def run_workflow(workflow_id):
                     WorkflowSSE.cleanup(exec_id)
             return execute_in_background
 
+<<<<<<< HEAD
         # Dispatch to specialized executor based on workflow_type
         wf_type = getattr(workflow, 'workflow_type', '')
         mining_weight = params.get('mining_weight', 0.20)
         if wf_type == 'quant_multi_factor':
+=======
+        # Dispatch to quantitative multi-factor executor if workflow_type matches
+        if getattr(workflow, 'workflow_type', '') == 'quant_multi_factor':
+>>>>>>> d27c0f8200ca764be0cab3143211a08f31bf91ad
             def make_quant_runner(exec_id):
                 def run():
                     try:
                         from modules.workflow.quant_executor import QuantMultiFactorExecutor
+<<<<<<< HEAD
                         executor = QuantMultiFactorExecutor(workflow_id, exec_id, make_progress_callback(exec_id), mining_weight)
+=======
+                        executor = QuantMultiFactorExecutor(workflow_id, exec_id, make_progress_callback(exec_id))
+>>>>>>> d27c0f8200ca764be0cab3143211a08f31bf91ad
                         result = executor.execute()
                         if result.get('success'):
                             execution_storage.complete_execution(exec_id, result)
@@ -293,6 +311,7 @@ def run_workflow(workflow_id):
                 return run
 
             thread = threading.Thread(target=make_quant_runner(execution_id), daemon=True)
+<<<<<<< HEAD
         elif wf_type == 'peg_momentum':
             def make_peg_runner(exec_id):
                 def run():
@@ -318,6 +337,8 @@ def run_workflow(workflow_id):
                 return run
 
             thread = threading.Thread(target=make_peg_runner(execution_id), daemon=True)
+=======
+>>>>>>> d27c0f8200ca764be0cab3143211a08f31bf91ad
         else:
             thread = threading.Thread(target=make_background_runner(execution_id), daemon=True)
         thread.start()
@@ -1054,6 +1075,7 @@ def get_node_types():
         'success': True,
         'data': node_types
     })
+<<<<<<< HEAD
 
 
 # ─────────── 因子缓存 ───────────
@@ -2034,3 +2056,5 @@ def get_weight_presets():
     except Exception as e:
         logger.error(f"Weight presets failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+=======
+>>>>>>> d27c0f8200ca764be0cab3143211a08f31bf91ad

@@ -28,11 +28,19 @@ __pycache__/
 
 # Playwright / verification artifacts
 .playwright-mcp/
+screenshots
 *.png
+<<<<<<< HEAD
+=======
+!screenshots/*.png
+>>>>>>> d27c0f8200ca764be0cab3143211a08f31bf91ad
 
 # Deploy artifacts
 *.tar.gz
 deploy.sh
+<<<<<<< HEAD
 
 console-errors.json
 
+=======
+>>>>>>> d27c0f8200ca764be0cab3143211a08f31bf91ad

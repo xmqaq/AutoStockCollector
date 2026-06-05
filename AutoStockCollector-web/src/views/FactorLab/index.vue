@@ -249,8 +249,7 @@
                     </el-button>
                   </div>
                   <div :style="{ height: expandedChart === hi + '-q' ? '400px' : '200px' }">
-                    <v-chart :option="quintileChartOption(h.compositeTable[0])" autoresize style="height:100%;width:100%"
-                             @click="onChartClick('quintile', h, $event)" />
+                    <v-chart :option="quintileChartOption(h.compositeTable[0])" autoresize style="height:100%;width:100%" />
                   </div>
                 </div>
                 <div class="bt-chart-box" :class="{ 'bt-chart-expanded': expandedChart === hi + '-fic' }">
@@ -261,8 +260,7 @@
                     </el-button>
                   </div>
                   <div :style="{ height: expandedChart === hi + '-fic' ? '400px' : '200px' }">
-                    <v-chart :option="factorICChartOption(h.factorTable)" autoresize style="height:100%;width:100%"
-                             @click="onChartClick('factorIC', h, $event)" />
+                    <v-chart :option="factorICChartOption(h.factorTable)" autoresize style="height:100%;width:100%" />
                   </div>
                 </div>
               </div>
