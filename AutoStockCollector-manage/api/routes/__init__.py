@@ -28,12 +28,10 @@ def _normalize_code(code: str) -> str:
     return normalize_stock_code_flexible(code)
 
 
-# ============================================================================
-# 实时数据补全：百度估值 + Sina K线
+# =====================================================================# 实时数据补全：百度估值 + Sina K线
 # 数据库里的 stock_info 来自 cninfo（无 PE/PB/总市值），kline 来自腾讯（无 volume）
 # 在路由层用 AKShare 接口补齐
-# ============================================================================
-_realtime_cache: Dict[str, tuple] = {}  # key -> (timestamp, value)
+# =====================================================================_realtime_cache: Dict[str, tuple] = {}  # key -> (timestamp, value)
 _cache_lock = threading.Lock()
 _CACHE_TTL = 60.0  # 秒
 
@@ -846,14 +844,11 @@ def ai_pick_run():
             PickerEngine().run(strategy=strategy, top_n=top_n, candidate_pool=candidate_pool)
         except Exception as e:
             logger.error(f"AI pick run failed: {e}")
-<<<<<<< HEAD
             try:
                 from modules.ai.engines.picker import _update_progress
                 _update_progress(0, f"选股失败: {e}", is_running=False)
             except Exception:
                 pass
-=======
->>>>>>> d27c0f8200ca764be0cab3143211a08f31bf91ad
         finally:
             _pick_running = False
 
@@ -1022,7 +1017,6 @@ def ai_pick_results():
     """读最近一次选股结果（缓存）。"""
     try:
         doc = _latest_pick_result()
-<<<<<<< HEAD
         if doc and doc.get("picks"):
             for pick in doc["picks"]:
                 scores = pick.get("scores")
@@ -1035,8 +1029,6 @@ def ai_pick_results():
                     if scores:
                         scores["composite"] = pick.get("composite", 50)
                         pick["scores"] = scores
-=======
->>>>>>> d27c0f8200ca764be0cab3143211a08f31bf91ad
         return jsonify({"success": True, "data": doc})
     except Exception as e:
         logger.error(f"AI pick results failed: {e}")

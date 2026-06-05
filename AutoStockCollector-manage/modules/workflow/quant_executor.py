@@ -25,31 +25,21 @@ class QuantMultiFactorExecutor:
         self,
         workflow_id: str,
         execution_id: str = "",
-<<<<<<< HEAD
         progress_callback: Optional[ProgressCallback] = None,
         mining_weight: float = 0.20,
-=======
-        progress_callback: Optional[ProgressCallback] = None
->>>>>>> d27c0f8200ca764be0cab3143211a08f31bf91ad
     ):
         self.workflow_id = workflow_id
         self.execution_id = execution_id
         self.progress_callback = progress_callback
-<<<<<<< HEAD
         self.mining_weight = mining_weight
-=======
->>>>>>> d27c0f8200ca764be0cab3143211a08f31bf91ad
 
         self.stock_info: Dict[str, Dict] = {}
         self.financial_data: Dict[str, List[Dict]] = defaultdict(list)
         self.kline_data: Dict[str, List[Dict]] = defaultdict(list)
         self.fund_flow_data: Dict[str, List[Dict]] = defaultdict(list)
-<<<<<<< HEAD
         self.margin_data: Dict[str, List[Dict]] = defaultdict(list)
         self.dragon_data: Dict[str, List[Dict]] = defaultdict(list)
         self.news_data: Dict[str, List[Dict]] = defaultdict(list)
-=======
->>>>>>> d27c0f8200ca764be0cab3143211a08f31bf91ad
 
         self.total_analyzed = 0
         self.after_filter = 0
@@ -87,7 +77,6 @@ class QuantMultiFactorExecutor:
             self.after_filter = len(valid_codes)
             self._report("step2", "硬性条件过滤", f"过滤后剩余 {self.after_filter} 只进入评分", 25)
 
-<<<<<<< HEAD
             # --- Step 2.5 — 因子挖掘（新增） ---
             self._report("step2_5", "因子挖掘", "计算波动率/反转/量价/融资融券/龙虎榜/情感因子...", 25)
             mining_scores = self._step2_5_factor_mining(valid_codes)
@@ -95,10 +84,6 @@ class QuantMultiFactorExecutor:
 
             # --- Step 3 ---
             self._report("step3", "基本面评分", "计算ROE / 营收 / 净利润 / 负债率...", 28)
-=======
-            # --- Step 3 ---
-            self._report("step3", "基本面评分", "计算ROE / 营收 / 净利润 / 负债率...", 27)
->>>>>>> d27c0f8200ca764be0cab3143211a08f31bf91ad
             fundamental_scores = self._step3_fundamental_scoring(valid_codes)
             self._report("step3", "基本面评分", "基本面评分完成", 40)
 
@@ -121,11 +106,7 @@ class QuantMultiFactorExecutor:
             self._report("step7", "汇总排名输出", "计算综合评分并排名...", 84)
             results = self._step7_aggregate(
                 valid_codes, fundamental_scores, technical_scores,
-<<<<<<< HEAD
                 fund_flow_scores, valuation_scores, mining_scores
-=======
-                fund_flow_scores, valuation_scores
->>>>>>> d27c0f8200ca764be0cab3143211a08f31bf91ad
             )
             self._report("step7", "汇总排名输出", f"Top30筛选完成，共分析 {self.total_analyzed} 只", 100)
 
@@ -199,11 +180,7 @@ class QuantMultiFactorExecutor:
         cutoff = datetime.now() - timedelta(days=90)
         self.kline_data = defaultdict(list)
         cursor = db['kline'].find(
-<<<<<<< HEAD
             {'$expr': {'$gte': ['$date', cutoff]}},
-=======
-            {'date': {'$gte': cutoff}},
->>>>>>> d27c0f8200ca764be0cab3143211a08f31bf91ad
             {'code': 1, 'date': 1, 'close': 1, 'volume': 1,
              'high': 1, 'low': 1, 'open': 1, '_id': 0}
         ).sort('date', 1)
@@ -230,7 +207,6 @@ class QuantMultiFactorExecutor:
         logger.info(f"Step1: loaded {total_flow} fund_flow records")
         self._report("step1", "初始化股票池", f"已加载 {total_flow} 条资金流向数据", 13)
 
-<<<<<<< HEAD
         # 5. Margin data – latest 20 per code
         codes_in = list(self.stock_info.keys())
         self.margin_data = defaultdict(list)
@@ -273,8 +249,6 @@ class QuantMultiFactorExecutor:
         logger.info(f"Step1: loaded {total_news} news records")
         self._report("step1", "初始化股票池", "额外数据加载完成（融资融券/龙虎榜/新闻）", 15)
 
-=======
->>>>>>> d27c0f8200ca764be0cab3143211a08f31bf91ad
 
     # ------------------------------------------------------------------ #
     # Step 2 – Hard filter (in-memory)
@@ -329,7 +303,6 @@ class QuantMultiFactorExecutor:
         return valid
 
     # ------------------------------------------------------------------ #
-<<<<<<< HEAD
     # Step 2.5 – Factor mining（替代人工特征工程）
     # ------------------------------------------------------------------ #
 
@@ -383,8 +356,6 @@ class QuantMultiFactorExecutor:
         return composite
 
     # ------------------------------------------------------------------ #
-=======
->>>>>>> d27c0f8200ca764be0cab3143211a08f31bf91ad
     # Step 3 – Fundamental scoring (weight 30%)
     # ------------------------------------------------------------------ #
 
@@ -699,22 +670,16 @@ class QuantMultiFactorExecutor:
         technical: Dict[str, float],
         fund_flow: Dict[str, float],
         valuation: Dict[str, float],
-<<<<<<< HEAD
         mining_scores: Dict[str, float] = None,
     ) -> List[Dict[str, Any]]:
         scored: List[Dict[str, Any]] = []
         mining_scores = mining_scores or {}
-=======
-    ) -> List[Dict[str, Any]]:
-        scored: List[Dict[str, Any]] = []
->>>>>>> d27c0f8200ca764be0cab3143211a08f31bf91ad
 
         for code in codes:
             f = fundamental.get(code, 50.0)
             t = technical.get(code, 50.0)
             ff = fund_flow.get(code, 50.0)
             v = valuation.get(code, 50.0)
-<<<<<<< HEAD
             m = mining_scores.get(code, 50.0)
 
             w = self.mining_weight
@@ -725,15 +690,6 @@ class QuantMultiFactorExecutor:
                 v * 0.17 * (1 - w)
             )
             total = total + m * w
-=======
-
-            total = (
-                f * 0.33 +
-                t * 0.28 +
-                ff * 0.22 +
-                v * 0.17
-            )
->>>>>>> d27c0f8200ca764be0cab3143211a08f31bf91ad
 
             info = self.stock_info.get(code, {})
             records = self.financial_data.get(code, [])
@@ -766,10 +722,7 @@ class QuantMultiFactorExecutor:
                 'technical_score': round(t, 1),
                 'fund_flow_score': round(ff, 1),
                 'valuation_score': round(v, 1),
-<<<<<<< HEAD
                 'mining_score': round(m, 1),
-=======
->>>>>>> d27c0f8200ca764be0cab3143211a08f31bf91ad
                 'industry': info.get('所属行业', '') or '',
                 'market_cap_yi': cap_yi,
                 'pe': round(pe, 1) if pe is not None else None,
@@ -777,11 +730,7 @@ class QuantMultiFactorExecutor:
                 'roe': round(roe, 1) if roe is not None else None,
                 'revenue_growth': rev_growth,
                 'debt_ratio': round(debt_ratio, 1) if debt_ratio is not None else None,
-<<<<<<< HEAD
                 'reason': self._build_reason(f, t, ff, v, m),
-=======
-                'reason': self._build_reason(f, t, ff, v),
->>>>>>> d27c0f8200ca764be0cab3143211a08f31bf91ad
             })
 
         scored.sort(key=lambda x: x['total_score'], reverse=True)
@@ -790,20 +739,13 @@ class QuantMultiFactorExecutor:
             item['rank'] = i + 1
         return top30
 
-<<<<<<< HEAD
     def _build_reason(self, f: float, t: float, ff: float, v: float, m: float = 50.0) -> str:
-=======
-    def _build_reason(self, f: float, t: float, ff: float, v: float) -> str:
->>>>>>> d27c0f8200ca764be0cab3143211a08f31bf91ad
         mapping = [
             (f, "基本面优秀（ROE高/营收增长）"),
             (t, "技术面强势（均线多头/MACD金叉）"),
             (ff, "主力资金持续流入"),
             (v, "估值较低（PE/PB处于低位）"),
-<<<<<<< HEAD
             (m, "衍生因子强（波动/动量/融资/情感）"),
-=======
->>>>>>> d27c0f8200ca764be0cab3143211a08f31bf91ad
         ]
         mapping.sort(key=lambda x: x[0], reverse=True)
         parts = [desc for score_val, desc in mapping[:2] if score_val >= 65]

@@ -154,7 +154,6 @@ class PickerEngine:
     def run(self, strategy: str = "default", top_n: int = 10,
             candidate_pool: int = 50, use_cache: bool = True) -> Dict[str, Any]:
 
-<<<<<<< HEAD
         try:
             return self._run_internal(strategy, top_n, candidate_pool, use_cache)
         except Exception as e:
@@ -165,8 +164,6 @@ class PickerEngine:
     def _run_internal(self, strategy: str, top_n: int,
                       candidate_pool: int, use_cache: bool) -> Dict[str, Any]:
 
-=======
->>>>>>> d27c0f8200ca764be0cab3143211a08f31bf91ad
         _update_progress(5, "正在加载股票池...")
         universe = self.dal.list_universe()
         if not universe:
