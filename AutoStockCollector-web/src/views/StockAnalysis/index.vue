@@ -67,6 +67,7 @@
     </el-card>
 
     <p v-if="result" class="sa-disclaimer">{{ result.disclaimer }}</p>
+  </div>
   <div class="da-page">
     <!-- 搜索栏 -->
     <div class="da-toolbar">
@@ -259,16 +260,6 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { aiServiceApi, type AIAnalysisResult, type AIAdviceResult } from '@/api/ai'
-
-const route = useRoute()
-const code = ref('')
-const loading = ref(false)
-const adviceLoading = ref(false)
-const result = ref<AIAnalysisResult | null>(null)
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -311,8 +302,11 @@ const cost = ref<number | undefined>()
 const position = ref<number | undefined>()
 
 const dims = [
-  { key: 'technical' as const, label: '技术面' },
   { key: 'fundamental' as const, label: '基本面' },
+  { key: 'technical' as const, label: '技术面' },
+  { key: 'fund_flow' as const, label: '资金面' },
+  { key: 'valuation' as const, label: '估值面' },
+]
 const klineChartRef = ref<InstanceType<typeof VChart> | null>(null)
 
 const scoreDims = [
@@ -322,7 +316,6 @@ const scoreDims = [
   { key: 'valuation' as const, label: '估值面' },
 ]
 
-function scoreColor(v: number): string {
 const priceChangeClass = computed(() => {
   const pct = data.value?.price_info?.price_change_pct
   if (pct == null) return ''
