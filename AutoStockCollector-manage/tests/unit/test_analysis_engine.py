@@ -17,8 +17,11 @@ class TestAnalysisEngine(unittest.TestCase):
             code="SH600519", name="贵州茅台",
             closes=[20.0] + [15.0] * 4 + [10.0] * 15,
             volumes=[3000.0] + [1000.0] * 9,
-            pe=15.0, pb=2.0, ps=0,
+            pe=15.0, pb=2.0,
             main_net_inflow=1e7,
+            revenue_growth=15.0, profit_growth=12.0,
+            gross_margin=70.0, debt_ratio=30.0,
+            industry="白酒",
             financial={"roe": 0.18}, news=[], dragon_tiger=[], margin=[],
         )
 
@@ -41,12 +44,8 @@ class TestAnalysisEngine(unittest.TestCase):
         self.assertEqual(result["code"], "SH600519")
         self.assertEqual(result["name"], "贵州茅台")
         scores = result["scores"]
-        self.assertIn("technical", scores)
-        self.assertIn("fundamental", scores)
-        self.assertIn("fund_flow", scores)
-        self.assertIn("sentiment", scores)
-        self.assertIn("composite", scores)
-        # technical_dim = trend_score×0.7 + volume_score×0.3；只验证范围，不写死数值
+        for k in ("technical", "fundamental", "fund_flow", "valuation", "composite"):
+            self.assertIn(k, scores)
         self.assertGreater(scores["technical"], 50.0)
 
     def test_llm_summary_included_and_sanitized(self):

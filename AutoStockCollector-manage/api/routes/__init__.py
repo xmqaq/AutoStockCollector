@@ -846,6 +846,11 @@ def ai_pick_run():
             PickerEngine().run(strategy=strategy, top_n=top_n, candidate_pool=candidate_pool)
         except Exception as e:
             logger.error(f"AI pick run failed: {e}")
+            try:
+                from modules.ai.engines.picker import _update_progress
+                _update_progress(0, f"选股失败: {e}", is_running=False)
+            except Exception:
+                pass
         finally:
             _pick_running = False
 
@@ -1014,6 +1019,18 @@ def ai_pick_results():
     """读最近一次选股结果（缓存）。"""
     try:
         doc = _latest_pick_result()
+        if doc and doc.get("picks"):
+            for pick in doc["picks"]:
+                scores = pick.get("scores")
+                if (not scores or not all(k in scores for k in ("fundamental", "technical", "fund_flow", "valuation"))) and pick.get("score_details"):
+                    sd = pick["score_details"]
+                    scores = {}
+                    for dim in ("fundamental", "technical", "fund_flow", "valuation"):
+                        if dim in sd:
+                            scores[dim] = sd[dim].get("score", 0)
+                    if scores:
+                        scores["composite"] = pick.get("composite", 50)
+                        pick["scores"] = scores
         return jsonify({"success": True, "data": doc})
     except Exception as e:
         logger.error(f"AI pick results failed: {e}")

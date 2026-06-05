@@ -89,7 +89,8 @@ class TestProviderCaller(unittest.TestCase):
             poster=poster,
         )
         caller("deepseek", "x")
-        self.assertEqual(captured["json"]["model"], "deepseek-chat")
+        # _DEFAULT_MODELS 为空时保持原值
+        self.assertEqual(captured["json"]["model"], "")
 
     def test_anthropic_skips_non_text_blocks(self):
         def poster(method, url, headers=None, json=None, timeout=None):

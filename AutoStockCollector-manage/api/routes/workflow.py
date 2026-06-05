@@ -72,7 +72,8 @@ def create_workflow():
             enabled=data.get('enabled', True),
             created_at=datetime.now().isoformat(),
             updated_at=datetime.now().isoformat(),
-            tags=data.get('tags', [])
+            tags=data.get('tags', []),
+            workflow_type=data.get('workflow_type', '')
         )
 
         if workflow_storage.save_workflow(workflow):
@@ -152,8 +153,8 @@ def run_workflow(workflow_id):
 
         # Pre-flight checks
         nodes_list = [n.to_dict() if hasattr(n, 'to_dict') else n for n in workflow.nodes]
-        is_quant = getattr(workflow, 'workflow_type', '') == 'quant_multi_factor'
-        if not nodes_list and not is_quant:
+        is_special = getattr(workflow, 'workflow_type', '') in ('quant_multi_factor', 'peg_momentum')
+        if not nodes_list and not is_special:
             return jsonify({'success': False, 'error': '工作流步骤为空，请先编辑工作流添加节点'}), 400
 
         has_ai_node = any(n.get('type') == 'ai_agent' for n in nodes_list)
@@ -264,8 +265,9 @@ def run_workflow(workflow_id):
                     WorkflowSSE.cleanup(exec_id)
             return execute_in_background
 
-        # Dispatch to quantitative multi-factor executor if workflow_type matches
-        if getattr(workflow, 'workflow_type', '') == 'quant_multi_factor':
+        # Dispatch to specialized executor based on workflow_type
+        wf_type = getattr(workflow, 'workflow_type', '')
+        if wf_type == 'quant_multi_factor':
             def make_quant_runner(exec_id):
                 def run():
                     try:
@@ -290,6 +292,31 @@ def run_workflow(workflow_id):
                 return run
 
             thread = threading.Thread(target=make_quant_runner(execution_id), daemon=True)
+        elif wf_type == 'peg_momentum':
+            def make_peg_runner(exec_id):
+                def run():
+                    try:
+                        from modules.workflow.peg_momentum_executor import PegMomentumExecutor
+                        executor = PegMomentumExecutor(workflow_id, exec_id, make_progress_callback(exec_id))
+                        result = executor.execute()
+                        if result.get('success'):
+                            execution_storage.complete_execution(exec_id, result)
+                            workflow_storage.update_last_run(workflow_id)
+                            WorkflowSSE.publish(exec_id, 'complete', {'status': 'completed', 'result': result})
+                        else:
+                            err = result.get('error', 'Unknown error')
+                            execution_storage.fail_execution(exec_id, err)
+                            WorkflowSSE.publish(exec_id, 'error', {'status': 'failed', 'error': err})
+                    except Exception as e:
+                        import traceback
+                        logger.error(f"PegMomentum execution failed: {e}\n{traceback.format_exc()}")
+                        execution_storage.fail_execution(exec_id, str(e))
+                        WorkflowSSE.publish(exec_id, 'error', {'status': 'failed', 'error': str(e)})
+                    finally:
+                        WorkflowSSE.cleanup(exec_id)
+                return run
+
+            thread = threading.Thread(target=make_peg_runner(execution_id), daemon=True)
         else:
             thread = threading.Thread(target=make_background_runner(execution_id), daemon=True)
         thread.start()

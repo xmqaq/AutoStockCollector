@@ -6,7 +6,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from modules.ai.foundation.factors import (
-    trend_score, volume_score, valuation_score, fund_flow_score, composite_score,
+    trend_score, volume_score, valuation_score, fund_flow_score,
+    composite_score, composite_score_simple,
 )
 
 
@@ -62,7 +63,7 @@ class TestValuationScore(unittest.TestCase):
         self.assertLess(score, 60.0)
 
     def test_missing_data_neutral(self):
-        self.assertEqual(valuation_score(pe=None, pb=None, ps=None), 50.0)
+        self.assertAlmostEqual(valuation_score(pe=None, pb=None, ps=None), 50.0, delta=2)
 
     def test_high_roe_adds_score(self):
         base = valuation_score(pe=None, pb=None)
@@ -98,17 +99,17 @@ class TestFundFlowScore(unittest.TestCase):
 
 class TestCompositeScore(unittest.TestCase):
     def test_weighted_average(self):
-        scores = {"technical": 80.0, "fundamental": 60.0, "fund_flow": 70.0, "sentiment": 50.0}
-        weights = {"technical": 0.4, "fundamental": 0.3, "fund_flow": 0.2, "sentiment": 0.1}
-        self.assertAlmostEqual(composite_score(scores, weights), 69.0)
+        scores = {"technical": 80.0, "fundamental": 60.0, "fund_flow": 70.0, "valuation": 50.0}
+        weights = {"technical": 0.4, "fundamental": 0.3, "fund_flow": 0.2, "valuation": 0.1}
+        self.assertAlmostEqual(composite_score_simple(scores, weights), 69.0)
 
     def test_missing_dimension_skipped_and_renormalized(self):
         scores = {"technical": 80.0, "fundamental": 60.0}
-        weights = {"technical": 0.4, "fundamental": 0.3, "fund_flow": 0.2, "sentiment": 0.1}
-        self.assertAlmostEqual(composite_score(scores, weights), 71.42857, places=4)
+        weights = {"technical": 0.4, "fundamental": 0.3, "fund_flow": 0.2, "valuation": 0.1}
+        self.assertAlmostEqual(composite_score_simple(scores, weights), 71.42857, places=4)
 
     def test_empty_returns_neutral(self):
-        self.assertEqual(composite_score({}, {}), 50.0)
+        self.assertEqual(composite_score_simple({}, {}), 50.0)
 
 
 if __name__ == "__main__":

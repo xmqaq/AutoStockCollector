@@ -19,10 +19,12 @@ def _make_dal():
     info = MagicMock()
     info.get_by_code.return_value = {"code": "SH600519", "name": "贵州茅台", "pe": 15.0, "pb": 2.0, "ps": 1.0}
     fund = MagicMock()
-    fund.get_latest_flow.return_value = {"main_net_inflow": 5e6}
+    fund.get_latest_flow.return_value = {"main_net_inflow": 5e6, "price": 20.0}
+    fin = MagicMock()
+    fin.find_one.return_value = {"code": "SH600519", "基本每股收益": 15.0, "每股净资产": 70.0, "roe": 28.5}
     return StockDAL(
         kline_storage=kline, info_storage=info, fund_flow_storage=fund,
-        news_storage=MagicMock(), financial_storage=MagicMock(),
+        news_storage=MagicMock(), financial_storage=fin,
         dragon_tiger_storage=MagicMock(), margin_storage=MagicMock(),
     )
 
@@ -50,12 +52,13 @@ class TestGetFactorInputs(unittest.TestCase):
         self.assertEqual(fi.code, "SH600519")
         self.assertEqual(fi.closes, [20.0, 15.0])
         self.assertEqual(fi.volumes, [3000.0, 1000.0])
-        self.assertEqual(fi.pe, 15.0)
+        self.assertAlmostEqual(fi.pe, 20.0 / 15.0, places=2)  # close=20 / eps=15
         self.assertEqual(fi.main_net_inflow, 5e6)
 
     def test_missing_info_safe(self):
         dal = _make_dal()
         dal.info_storage.get_by_code.return_value = None
+        dal.financial_storage.find_one.return_value = {}
         fi = dal.get_factor_inputs("SH600519")
         self.assertIsNone(fi.pe)
 

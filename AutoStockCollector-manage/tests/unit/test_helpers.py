@@ -147,7 +147,8 @@ class TestDateRange(unittest.TestCase):
         dr = DateRange("2024-01-01", "2024-01-07")
         trading_days = dr.trading_days_only()
 
-        self.assertEqual(len(trading_days), 5)
+        # 2024-01-01 元旦休市，实际交易日 = 1月2-5日共4天
+        self.assertEqual(len(trading_days), 4)
 
 
 if __name__ == "__main__":

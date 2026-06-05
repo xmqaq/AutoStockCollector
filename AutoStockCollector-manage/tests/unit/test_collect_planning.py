@@ -2,22 +2,19 @@
 import unittest
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from api.routes import _build_history_tasks, RANGE_TYPES, _compute_update_latest_tasks
+from api.routes import _build_history_tasks, RANGE_TYPES, SNAPSHOT_TYPES, CATALOG_TYPES, _compute_update_latest_tasks
 
 
 class TestBuildHistoryTasks(unittest.TestCase):
-    def test_history_only_contains_range_types(self):
+    def test_history_only_contains_all_types(self):
         tasks = _build_history_tasks("2025-01-01", "2025-12-31")
         types = {t["task_type"] for t in tasks}
-        # 历史采集只应包含区间类，不含快照/名录类
-        self.assertEqual(types, set(RANGE_TYPES))
-        self.assertNotIn("news", types)
-        self.assertNotIn("fund_flow", types)
-        self.assertNotIn("sector", types)
-        self.assertNotIn("stock_info", types)
+        all_types = set(RANGE_TYPES + SNAPSHOT_TYPES + CATALOG_TYPES)
+        self.assertEqual(types, all_types)
 
     def test_history_passes_dates_to_range_types(self):
         tasks = _build_history_tasks("2025-01-01", "2025-12-31", ["kline"])
@@ -25,11 +22,10 @@ class TestBuildHistoryTasks(unittest.TestCase):
         self.assertEqual(tasks[0]["params"]["start_date"], "2025-01-01")
         self.assertEqual(tasks[0]["params"]["end_date"], "2025-12-31")
 
-    def test_history_task_types_filter_ignores_snapshot(self):
-        # 即使显式传入快照类，也不应产出
+    def test_history_task_types_respects_filter(self):
         tasks = _build_history_tasks("2025-01-01", "2025-12-31", ["kline", "news"])
         types = {t["task_type"] for t in tasks}
-        self.assertEqual(types, {"kline"})
+        self.assertEqual(types, {"kline", "news"})
 
 
 class TestComputeUpdateLatest(unittest.TestCase):
@@ -49,39 +45,45 @@ class TestComputeUpdateLatest(unittest.TestCase):
         base.update(overrides)
         return base
 
-    def test_range_type_resumes_from_next_day(self):
+    @patch("api.routes._get_effective_end_date", side_effect=lambda x: x)
+    def test_range_type_resumes_from_next_day(self, _mock_eff):
         tasks, skipped = _compute_update_latest_tasks(self._stats(), ["kline"], self.TODAY)
         self.assertEqual(len(tasks), 1)
         self.assertEqual(tasks[0]["task_type"], "kline")
         self.assertEqual(tasks[0]["params"]["start_date"], "2026-05-21")  # date_to + 1
         self.assertEqual(tasks[0]["params"]["end_date"], self.TODAY)
 
-    def test_range_type_already_latest_is_skipped(self):
+    @patch("api.routes._get_effective_end_date", side_effect=lambda x: x)
+    def test_range_type_already_latest_is_skipped(self, _mock_eff):
         # dragon_tiger date_to == today，应跳过
         tasks, skipped = _compute_update_latest_tasks(self._stats(), ["dragon_tiger"], self.TODAY)
         self.assertEqual(tasks, [])
         self.assertIn("dragon_tiger", skipped)
 
-    def test_range_type_no_data_uses_one_year_lookback(self):
+    @patch("api.routes._get_effective_end_date", side_effect=lambda x: x)
+    def test_range_type_no_data_uses_one_year_lookback(self, _mock_eff):
         tasks, skipped = _compute_update_latest_tasks(self._stats(), ["margin"], self.TODAY)
         self.assertEqual(len(tasks), 1)
         self.assertEqual(tasks[0]["params"]["start_date"], "2025-05-29")  # today - 365d
         self.assertEqual(tasks[0]["params"]["end_date"], self.TODAY)
 
-    def test_snapshot_type_has_no_dates(self):
+    @patch("api.routes._get_effective_end_date", side_effect=lambda x: x)
+    def test_snapshot_type_has_no_dates(self, _mock_eff):
         tasks, skipped = _compute_update_latest_tasks(self._stats(), ["news", "fund_flow", "sector"], self.TODAY)
         types = {t["task_type"] for t in tasks}
         self.assertEqual(types, {"news", "fund_flow", "sector"})
         for t in tasks:
             self.assertNotIn("start_date", t["params"])
         news = next(t for t in tasks if t["task_type"] == "news")
-        self.assertEqual(news["params"]["limit"], 500)
+        self.assertEqual(news["params"].get("max_pages"), 5)
 
-    def test_catalog_type_uses_incremental_mode(self):
+    @patch("api.routes._get_effective_end_date", side_effect=lambda x: x)
+    def test_catalog_type_uses_incremental_mode(self, _mock_eff):
         tasks, skipped = _compute_update_latest_tasks(self._stats(), ["stock_info"], self.TODAY)
         self.assertEqual(tasks[0]["params"], {"mode": "incremental"})
 
-    def test_default_selects_all_eight_types(self):
+    @patch("api.routes._get_effective_end_date", side_effect=lambda x: x)
+    def test_default_selects_all_eight_types(self, _mock_eff):
         tasks, skipped = _compute_update_latest_tasks(self._stats(), None, self.TODAY)
         handled = {t["task_type"] for t in tasks} | set(skipped)
         self.assertEqual(handled, set(RANGE_TYPES + ["news", "fund_flow", "sector", "stock_info"]))
