@@ -25,16 +25,21 @@ class QuantMultiFactorExecutor:
         self,
         workflow_id: str,
         execution_id: str = "",
-        progress_callback: Optional[ProgressCallback] = None
+        progress_callback: Optional[ProgressCallback] = None,
+        mining_weight: float = 0.20,
     ):
         self.workflow_id = workflow_id
         self.execution_id = execution_id
         self.progress_callback = progress_callback
+        self.mining_weight = mining_weight
 
         self.stock_info: Dict[str, Dict] = {}
         self.financial_data: Dict[str, List[Dict]] = defaultdict(list)
         self.kline_data: Dict[str, List[Dict]] = defaultdict(list)
         self.fund_flow_data: Dict[str, List[Dict]] = defaultdict(list)
+        self.margin_data: Dict[str, List[Dict]] = defaultdict(list)
+        self.dragon_data: Dict[str, List[Dict]] = defaultdict(list)
+        self.news_data: Dict[str, List[Dict]] = defaultdict(list)
 
         self.total_analyzed = 0
         self.after_filter = 0
@@ -72,8 +77,13 @@ class QuantMultiFactorExecutor:
             self.after_filter = len(valid_codes)
             self._report("step2", "硬性条件过滤", f"过滤后剩余 {self.after_filter} 只进入评分", 25)
 
+            # --- Step 2.5 — 因子挖掘（新增） ---
+            self._report("step2_5", "因子挖掘", "计算波动率/反转/量价/融资融券/龙虎榜/情感因子...", 25)
+            mining_scores = self._step2_5_factor_mining(valid_codes)
+            self._report("step2_5", "因子挖掘", "因子挖掘完成", 27)
+
             # --- Step 3 ---
-            self._report("step3", "基本面评分", "计算ROE / 营收 / 净利润 / 负债率...", 27)
+            self._report("step3", "基本面评分", "计算ROE / 营收 / 净利润 / 负债率...", 28)
             fundamental_scores = self._step3_fundamental_scoring(valid_codes)
             self._report("step3", "基本面评分", "基本面评分完成", 40)
 
@@ -96,7 +106,7 @@ class QuantMultiFactorExecutor:
             self._report("step7", "汇总排名输出", "计算综合评分并排名...", 84)
             results = self._step7_aggregate(
                 valid_codes, fundamental_scores, technical_scores,
-                fund_flow_scores, valuation_scores
+                fund_flow_scores, valuation_scores, mining_scores
             )
             self._report("step7", "汇总排名输出", f"Top30筛选完成，共分析 {self.total_analyzed} 只", 100)
 
@@ -170,7 +180,7 @@ class QuantMultiFactorExecutor:
         cutoff = datetime.now() - timedelta(days=90)
         self.kline_data = defaultdict(list)
         cursor = db['kline'].find(
-            {'date': {'$gte': cutoff}},
+            {'$expr': {'$gte': ['$date', cutoff]}},
             {'code': 1, 'date': 1, 'close': 1, 'volume': 1,
              'high': 1, 'low': 1, 'open': 1, '_id': 0}
         ).sort('date', 1)
@@ -196,6 +206,48 @@ class QuantMultiFactorExecutor:
         total_flow = sum(len(v) for v in self.fund_flow_data.values())
         logger.info(f"Step1: loaded {total_flow} fund_flow records")
         self._report("step1", "初始化股票池", f"已加载 {total_flow} 条资金流向数据", 13)
+
+        # 5. Margin data – latest 20 per code
+        codes_in = list(self.stock_info.keys())
+        self.margin_data = defaultdict(list)
+        cursor = db['margin_data'].find(
+            {'code': {'$in': codes_in}},
+            {'code': 1, 'date': 1, 'margin_balance': 1, 'short_balance': 1,
+             'margin_buy': 1, 'margin_repay': 1, '_id': 0}
+        ).sort('date', -1)
+        for r in cursor:
+            c = r.get('code')
+            if c and len(self.margin_data[c]) < 20:
+                self.margin_data[c].append(r)
+        total_margin = sum(len(v) for v in self.margin_data.values())
+        logger.info(f"Step1: loaded {total_margin} margin records")
+
+        # 6. Dragon-tiger data – latest 10 per code
+        self.dragon_data = defaultdict(list)
+        cursor = db['dragon_tiger'].find(
+            {'code': {'$in': codes_in}},
+            {'code': 1, 'date': 1, '龙虎榜净买': 1, '买入额': 1, '卖出额': 1, '_id': 0}
+        ).sort('date', -1)
+        for r in cursor:
+            c = r.get('code')
+            if c and len(self.dragon_data[c]) < 10:
+                self.dragon_data[c].append(r)
+        total_dragon = sum(len(v) for v in self.dragon_data.values())
+        logger.info(f"Step1: loaded {total_dragon} dragon_tiger records")
+
+        # 7. News sentiment – latest 5 per code
+        self.news_data = defaultdict(list)
+        cursor = db['news'].find(
+            {'code': {'$in': codes_in}},
+            {'code': 1, 'publish_date': 1, 'sentiment': 1, '_id': 0}
+        ).sort('publish_date', -1)
+        for r in cursor:
+            c = r.get('code')
+            if c and len(self.news_data[c]) < 5:
+                self.news_data[c].append(r)
+        total_news = sum(len(v) for v in self.news_data.values())
+        logger.info(f"Step1: loaded {total_news} news records")
+        self._report("step1", "初始化股票池", "额外数据加载完成（融资融券/龙虎榜/新闻）", 15)
 
 
     # ------------------------------------------------------------------ #
@@ -249,6 +301,59 @@ class QuantMultiFactorExecutor:
         self._report("step2", "硬性条件过滤", f"市值过滤：排除 {cap_excluded} 只（总市值<20亿）", 21)
         self._report("step2", "硬性条件过滤", f"过滤后剩余：{len(valid)} 只股票进入评分阶段", 23)
         return valid
+
+    # ------------------------------------------------------------------ #
+    # Step 2.5 – Factor mining（替代人工特征工程）
+    # ------------------------------------------------------------------ #
+
+    def _step2_5_factor_mining(self, codes: List[str]) -> Dict[str, float]:
+        from .factor_miner import FactorMiner, FactorCacheService
+
+        # 优先读缓存
+        cache = FactorCacheService()
+        cached = cache.get_cache(codes, max_age_hours=24)
+        hit_rate = len(cached) / max(len(codes), 1)
+
+        if hit_rate >= 0.8:
+            composite = FactorMiner.composite_mining_score(
+                {c: cached.get(c, {}) for c in codes}, codes
+            )
+            logger.info(f"Factor mining: cache hit {len(cached)}/{len(codes)} ({hit_rate:.0%}), using cached")
+            return composite
+
+        logger.info(f"Factor mining: cache hit {len(cached)}/{len(codes)} ({hit_rate:.0%}), computing live...")
+
+        industries = {}
+        market_caps = {}
+        for code in codes:
+            info = self.stock_info.get(code, {})
+            industries[code] = info.get('所属行业', '') or '未知'
+            raw_cap = (info.get('总市值') or info.get('total_mv') or 0)
+            try:
+                market_caps[code] = float(str(raw_cap).replace(',', ''))
+            except (ValueError, TypeError):
+                market_caps[code] = 0
+
+        miner = FactorMiner(industries=industries, market_caps=market_caps)
+
+        fundamental_values = {c: self._calc_fundamental(self.financial_data.get(c, [])) for c in codes}
+        valuation_values = {c: self._calc_valuation(self.stock_info.get(c, {})) for c in codes}
+
+        mining_scores = miner.mine_all(
+            codes,
+            self.kline_data,
+            self.margin_data,
+            self.dragon_data,
+            self.news_data,
+            self.fund_flow_data,
+            fundamental_values,
+            valuation_values,
+        )
+        composite = FactorMiner.composite_mining_score(mining_scores, codes)
+
+        logger.info(f"Factor mining done for {len(codes)} stocks, "
+                    f"score range: {min(composite.values()):.1f}~{max(composite.values()):.1f}")
+        return composite
 
     # ------------------------------------------------------------------ #
     # Step 3 – Fundamental scoring (weight 30%)
@@ -565,21 +670,26 @@ class QuantMultiFactorExecutor:
         technical: Dict[str, float],
         fund_flow: Dict[str, float],
         valuation: Dict[str, float],
+        mining_scores: Dict[str, float] = None,
     ) -> List[Dict[str, Any]]:
         scored: List[Dict[str, Any]] = []
+        mining_scores = mining_scores or {}
 
         for code in codes:
             f = fundamental.get(code, 50.0)
             t = technical.get(code, 50.0)
             ff = fund_flow.get(code, 50.0)
             v = valuation.get(code, 50.0)
+            m = mining_scores.get(code, 50.0)
 
+            w = self.mining_weight
             total = (
-                f * 0.33 +
-                t * 0.28 +
-                ff * 0.22 +
-                v * 0.17
+                f * 0.33 * (1 - w) +
+                t * 0.28 * (1 - w) +
+                ff * 0.22 * (1 - w) +
+                v * 0.17 * (1 - w)
             )
+            total = total + m * w
 
             info = self.stock_info.get(code, {})
             records = self.financial_data.get(code, [])
@@ -612,6 +722,7 @@ class QuantMultiFactorExecutor:
                 'technical_score': round(t, 1),
                 'fund_flow_score': round(ff, 1),
                 'valuation_score': round(v, 1),
+                'mining_score': round(m, 1),
                 'industry': info.get('所属行业', '') or '',
                 'market_cap_yi': cap_yi,
                 'pe': round(pe, 1) if pe is not None else None,
@@ -619,7 +730,7 @@ class QuantMultiFactorExecutor:
                 'roe': round(roe, 1) if roe is not None else None,
                 'revenue_growth': rev_growth,
                 'debt_ratio': round(debt_ratio, 1) if debt_ratio is not None else None,
-                'reason': self._build_reason(f, t, ff, v),
+                'reason': self._build_reason(f, t, ff, v, m),
             })
 
         scored.sort(key=lambda x: x['total_score'], reverse=True)
@@ -628,12 +739,13 @@ class QuantMultiFactorExecutor:
             item['rank'] = i + 1
         return top30
 
-    def _build_reason(self, f: float, t: float, ff: float, v: float) -> str:
+    def _build_reason(self, f: float, t: float, ff: float, v: float, m: float = 50.0) -> str:
         mapping = [
             (f, "基本面优秀（ROE高/营收增长）"),
             (t, "技术面强势（均线多头/MACD金叉）"),
             (ff, "主力资金持续流入"),
             (v, "估值较低（PE/PB处于低位）"),
+            (m, "衍生因子强（波动/动量/融资/情感）"),
         ]
         mapping.sort(key=lambda x: x[0], reverse=True)
         parts = [desc for score_val, desc in mapping[:2] if score_val >= 65]

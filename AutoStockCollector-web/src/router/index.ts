@@ -123,6 +123,12 @@ const router = createRouter({
           component: () => import('@/views/Workflow/index.vue'),
           meta: { title: '工作流管理' },
         },
+        {
+          path: 'factor-lab',
+          name: 'FactorLab',
+          component: () => import('@/views/FactorLab/index.vue'),
+          meta: { title: '因子平台' },
+        },
       ],
     },
   ],

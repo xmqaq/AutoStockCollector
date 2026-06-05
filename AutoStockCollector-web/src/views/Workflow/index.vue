@@ -614,10 +614,27 @@
             <template #default="{ row }">{{ row.roe ?? '-' }}</template>
           </el-table-column>
           <el-table-column prop="reason" label="选股理由" min-width="180" show-overflow-tooltip />
+          <el-table-column label="因子分析" width="80" align="center">
+            <template #default="{ row }">
+              <el-button type="primary" size="small" text @click="openFactorRadar(row)">
+                <el-icon><View /></el-icon>
+              </el-button>
+            </template>
+          </el-table-column>
         </el-table>
       </div>
       <template #footer>
         <el-button @click="showQuantResultDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 因子雷达图 dialog -->
+    <el-dialog v-model="showFactorRadarDialog" :title="'因子分析 — ' + (factorRadarStock?.name || '')" width="500px" top="10vh">
+      <div v-if="factorRadarStock" style="height:380px">
+        <VChart :option="factorRadarOptions" autoresize style="height:100%;width:100%" />
+      </div>
+      <template #footer>
+        <el-button @click="showFactorRadarDialog = false">关闭</el-button>
       </template>
     </el-dialog>
   </div>
@@ -634,6 +651,12 @@ import {
 import { workflowApi, type Workflow, type WorkflowResult, type WorkflowTemplate, type WorkflowExecution } from '@/api/workflow'
 import WorkflowCanvas from '@/components/WorkflowCanvas/index.vue'
 import { fmtDateTime } from '@/utils/format'
+import VChart from 'vue-echarts'
+import { use } from 'echarts/core'
+import { RadarChart } from 'echarts/charts'
+import { RadarComponent, TooltipComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+use([RadarChart, RadarComponent, TooltipComponent, CanvasRenderer])
 
 const loading = ref(false)
 const activeTab = ref('list')
@@ -655,6 +678,37 @@ let pollingTimer: number | null = null
 
 const showQuantResultDialog = ref(false)
 const quantResult = ref<any>(null)
+
+const showFactorRadarDialog = ref(false)
+const factorRadarStock = ref<any>(null)
+const factorRadarOptions = computed(() => {
+  const s = factorRadarStock.value
+  if (!s) return {}
+  const dims = [
+    { name: '基本面', value: s.fundamental_score ?? 50 },
+    { name: '技术面', value: s.technical_score ?? 50 },
+    { name: '资金面', value: s.fund_flow_score ?? 50 },
+    { name: '估值面', value: s.valuation_score ?? 50 },
+    { name: '衍生因子', value: s.mining_score ?? 50 },
+  ]
+  return {
+    tooltip: { trigger: 'item' as const },
+    radar: {
+      indicator: dims.map(d => ({ name: d.name, max: 100 })),
+      center: ['50%', '55%'],
+      radius: '65%',
+      axisName: { color: '#606266', fontSize: 13 },
+      splitArea: { areaStyle: { color: ['rgba(64,158,255,0.02)', 'rgba(64,158,255,0.05)'] } },
+    },
+    series: [{
+      type: 'radar',
+      data: [{ value: dims.map(d => d.value), name: s.name || s.code }],
+      areaStyle: { color: 'rgba(64,158,255,0.2)' },
+      lineStyle: { color: '#409EFF', width: 2 },
+      itemStyle: { color: '#409EFF' },
+    }],
+  }
+})
 
 const loadingExecutions = ref(false)
 const allExecutions = ref<any[]>([])
@@ -1318,6 +1372,11 @@ function formatResult(text: string): string {
   return text
     .replace(/\n/g, '<br>')
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+}
+
+function openFactorRadar(row: any) {
+  factorRadarStock.value = row
+  showFactorRadarDialog.value = true
 }
 
 onMounted(async () => {

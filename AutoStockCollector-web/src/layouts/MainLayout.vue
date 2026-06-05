@@ -150,6 +150,14 @@ const menuGroups: MenuGroup[] = [
     ],
   },
   {
+    key: 'factor-lab',
+    label: '因子平台',
+    icon: Operation,
+    children: [
+      { key: '/factor-lab', label: '因子平台', icon: Operation },
+    ],
+  },
+  {
     key: 'watchlist',
     label: '自选股',
     path: '/watchlist',

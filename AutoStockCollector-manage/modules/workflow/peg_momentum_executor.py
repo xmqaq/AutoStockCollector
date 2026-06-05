@@ -18,8 +18,8 @@ logger = get_logger(__name__)
 
 
 class PegMomentumExecutor(QuantMultiFactorExecutor):
-    def __init__(self, workflow_id, execution_id="", progress_callback=None):
-        super().__init__(workflow_id, execution_id, progress_callback)
+    def __init__(self, workflow_id, execution_id="", progress_callback=None, mining_weight=0.20):
+        super().__init__(workflow_id, execution_id, progress_callback, mining_weight)
         self.kline_days = 30
 
     def _step1_load_data(self):
@@ -81,15 +81,60 @@ class PegMomentumExecutor(QuantMultiFactorExecutor):
                 self.fund_flow_data[code].append(r)
         logger.info(f"Loaded fund_flow data")
 
-    def _step7_aggregate(self, codes, fundamental, technical, fund_flow, valuation):
+        # 5. Margin data – latest 20 per code
+        codes_in = list(self.stock_info.keys())
+        self.margin_data = defaultdict(list)
+        cursor = db['margin_data'].find(
+            {'code': {'$in': codes_in}},
+            {'code': 1, 'date': 1, 'margin_balance': 1, 'short_balance': 1,
+             'margin_buy': 1, 'margin_repay': 1, '_id': 0}
+        ).sort('date', -1)
+        for r in cursor:
+            c = r.get('code')
+            if c and len(self.margin_data[c]) < 20:
+                self.margin_data[c].append(r)
+        total_margin = sum(len(v) for v in self.margin_data.values())
+        logger.info(f"Loaded {total_margin} margin records")
+
+        # 6. Dragon-tiger data – latest 10 per code
+        self.dragon_data = defaultdict(list)
+        cursor = db['dragon_tiger'].find(
+            {'code': {'$in': codes_in}},
+            {'code': 1, 'date': 1, '龙虎榜净买': 1, '买入额': 1, '卖出额': 1, '_id': 0}
+        ).sort('date', -1)
+        for r in cursor:
+            c = r.get('code')
+            if c and len(self.dragon_data[c]) < 10:
+                self.dragon_data[c].append(r)
+        total_dragon = sum(len(v) for v in self.dragon_data.values())
+        logger.info(f"Loaded {total_dragon} dragon_tiger records")
+
+        # 7. News sentiment – latest 5 per code
+        self.news_data = defaultdict(list)
+        cursor = db['news'].find(
+            {'code': {'$in': codes_in}},
+            {'code': 1, 'publish_date': 1, 'sentiment': 1, '_id': 0}
+        ).sort('publish_date', -1)
+        for r in cursor:
+            c = r.get('code')
+            if c and len(self.news_data[c]) < 5:
+                self.news_data[c].append(r)
+        total_news = sum(len(v) for v in self.news_data.values())
+        logger.info(f"Loaded {total_news} news records")
+
+    def _step7_aggregate(self, codes, fundamental, technical, fund_flow, valuation, mining_scores=None):
+        mining_scores = mining_scores or {}
         scored: List[Dict[str, Any]] = []
         for code in codes:
             f = fundamental.get(code, 50.0)
             t = technical.get(code, 50.0)
             ff = fund_flow.get(code, 50.0)
             v = valuation.get(code, 50.0)
+            m = mining_scores.get(code, 50.0)
 
-            total = f * 0.35 + t * 0.25 + ff * 0.20 + v * 0.20
+            w = self.mining_weight
+            total = f * 0.35 * (1 - w) + t * 0.25 * (1 - w) + ff * 0.20 * (1 - w) + v * 0.20 * (1 - w)
+            total = total + m * w
 
             info = self.stock_info.get(code, {})
             records = self.financial_data.get(code, [])
@@ -126,6 +171,7 @@ class PegMomentumExecutor(QuantMultiFactorExecutor):
                 'technical_score': round(t, 1),
                 'fund_flow_score': round(ff, 1),
                 'valuation_score': round(v, 1),
+                'mining_score': round(m, 1),
                 'industry': info.get('所属行业', '') or '',
                 'market_cap_yi': cap_yi,
                 'pe': round(pe_val, 1) if pe_val is not None else None,
