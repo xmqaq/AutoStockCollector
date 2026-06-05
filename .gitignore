@@ -4,7 +4,6 @@
 # Keep these
 !README.md
 !LICENSE.md
-!FRONTEND.md
 
 
 # Logs
@@ -33,3 +32,4 @@ __pycache__/
 
 # Deploy artifacts
 *.tar.gz
+deploy.sh
