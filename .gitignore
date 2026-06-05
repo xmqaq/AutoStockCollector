@@ -33,3 +33,6 @@ __pycache__/
 # Deploy artifacts
 *.tar.gz
 deploy.sh
+
+console-errors.json
+
