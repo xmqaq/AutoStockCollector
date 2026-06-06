@@ -135,6 +135,12 @@ const router = createRouter({
           component: () => import('@/views/FactorLab/index.vue'),
           meta: { title: '因子平台' },
         },
+        {
+          path: 'todo',
+          name: 'Todo',
+          component: () => import('@/views/Todo/index.vue'),
+          meta: { title: '待办事项' },
+        },
       ],
     },
   ],

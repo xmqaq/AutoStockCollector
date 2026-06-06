@@ -86,6 +86,7 @@ import {
   Wallet,
   Search,
   Operation,
+  EditPen,
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -163,6 +164,12 @@ const menuGroups: MenuGroup[] = [
     label: '自选股',
     path: '/watchlist',
     icon: StarFilled,
+  },
+  {
+    key: 'todo',
+    label: '待办事项',
+    path: '/todo',
+    icon: EditPen,
   },
 ]
 
