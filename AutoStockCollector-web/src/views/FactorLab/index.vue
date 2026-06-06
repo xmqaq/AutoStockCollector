@@ -604,6 +604,7 @@ const weightSum = computed(() => factors.value.reduce((s, f) => s + (f._weight |
 const weightSumAlertClass = computed(() =>
   Math.abs(weightSum.value - weightTarget.value) < 0.01 ? 'weight-ok' : 'weight-alert'
 )
+const allGroups = computed(() => [...new Set(factors.value.map(f => f.group).filter(Boolean))])
 const filteredFactors = computed(() => {
   let list = filterGroup.value ? factors.value.filter(f => f.group === filterGroup.value) : factors.value
   if (showValidOnly.value) {
@@ -952,7 +953,7 @@ async function computeDistributions() {
     const dist: Record<string, any> = {}
     const factorNames = Object.keys(rows[0].factors || {})
     for (const name of factorNames) {
-      const vals = rows.map(r => r.factors[name]).filter((v: any) => v !== undefined && v !== null) as number[]
+      const vals = rows.map((r: any) => r.factors[name]).filter((v: any) => v !== undefined && v !== null) as number[]
       if (vals.length === 0) continue
       const sorted = [...vals].sort((a, b) => a - b)
       const mean = vals.reduce((s, v) => s + v, 0) / vals.length
@@ -1259,20 +1260,20 @@ function getPrevEntry(h: any): any {
   return idx < btHistory.value.length - 1 ? btHistory.value[idx + 1] : null
 }
 
-function getPrevMetric(h: any, ri: number, key: string): number {
+function getPrevMetric(h: any, ri: string | number, key: string): number {
   const prev = getPrevEntry(h)
   if (!prev?.compositeTable?.[ri]) return 0
   return prev.compositeTable[ri][key] ?? 0
 }
 
-function getTrendArrow(h: any, ri: number, key: string): string {
+function getTrendArrow(h: any, ri: string | number, key: string): string {
   const cur = h.compositeTable[ri]?.[key] ?? 0
   const prev = getPrevMetric(h, ri, key)
   if (prev === 0) return ''
   return cur >= prev ? '↑' : '↓'
 }
 
-function getTrendClass(h: any, ri: number, key: string): string {
+function getTrendClass(h: any, ri: string | number, key: string): string {
   const cur = h.compositeTable[ri]?.[key] ?? 0
   const prev = getPrevMetric(h, ri, key)
   if (prev === 0) return ''

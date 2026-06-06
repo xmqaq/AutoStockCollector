@@ -81,14 +81,14 @@ class TestTradeEngine(unittest.TestCase):
 
     def test_buy_deducts_cash_and_commission(self):
         engine = self._make_engine()
-        engine._get_price = MagicMock(return_value=10.0)
+        engine.get_current_price = MagicMock(return_value=(10.0, 'realtime'))
         engine._get_name = MagicMock(return_value="测试股票")
         engine._trades.insert_one = MagicMock()
         acct = self._make_account_mock(cash=100000.0)
 
         record = engine.buy("default", "SH600000", 500, {}, acct)
 
-        # amount=5000, commission=5, total_cost=5005
+        # amount=5000, commission=max(5, 5000*0.0003)=5, total_cost=5005
         self.assertAlmostEqual(record["cash_after"], 94995.0, places=2)
         self.assertEqual(record["action"], "buy")
         self.assertEqual(record["shares"], 500)
@@ -96,7 +96,7 @@ class TestTradeEngine(unittest.TestCase):
 
     def test_buy_raises_when_insufficient_cash(self):
         engine = self._make_engine()
-        engine._get_price = MagicMock(return_value=10.0)
+        engine.get_current_price = MagicMock(return_value=(10.0, 'realtime'))
         engine._get_name = MagicMock(return_value="测试股票")
         acct = self._make_account_mock(cash=100.0)  # only 100, need 5005
 
@@ -106,7 +106,7 @@ class TestTradeEngine(unittest.TestCase):
 
     def test_buy_raises_when_price_unavailable(self):
         engine = self._make_engine()
-        engine._get_price = MagicMock(return_value=0.0)
+        engine.get_current_price = MagicMock(return_value=(0.0, 'none'))
         engine._get_name = MagicMock(return_value="测试股票")
         acct = self._make_account_mock()
 
@@ -116,25 +116,25 @@ class TestTradeEngine(unittest.TestCase):
 
     def test_sell_adds_proceeds_to_cash(self):
         engine = self._make_engine()
-        engine._get_price = MagicMock(return_value=12.0)
-        engine.get_positions = MagicMock(return_value=[
-            {"code": "SH600000", "name": "测试股票", "shares": 500}
-        ])
+        engine.get_current_price = MagicMock(return_value=(12.0, 'realtime'))
+        engine.get_positions = MagicMock(return_value=([
+            {"code": "SH600000", "name": "测试股票", "shares": 500, "avg_cost": 10.0}
+        ], False))
         engine._trades.insert_one = MagicMock()
         acct = self._make_account_mock(cash=50000.0)
 
         record = engine.sell("default", "SH600000", 300, {}, acct)
 
-        # amount=3600, commission=3.6, proceeds=3596.4
-        self.assertAlmostEqual(record["cash_after"], 53596.4, places=1)
+        # amount=3600, stamp_tax=3.6, commission=max(5, 3600*0.0003)=5, total_fee=8.6
+        self.assertAlmostEqual(record["cash_after"], 50000.0 + 3600 - 8.6, places=1)
         self.assertEqual(record["action"], "sell")
 
     def test_sell_raises_when_shares_insufficient(self):
         engine = self._make_engine()
-        engine._get_price = MagicMock(return_value=10.0)
-        engine.get_positions = MagicMock(return_value=[
+        engine.get_current_price = MagicMock(return_value=(10.0, 'realtime'))
+        engine.get_positions = MagicMock(return_value=([
             {"code": "SH600000", "name": "测试股票", "shares": 100}
-        ])
+        ], False))
         acct = self._make_account_mock()
 
         with self.assertRaises(ValueError) as ctx:
@@ -143,8 +143,8 @@ class TestTradeEngine(unittest.TestCase):
 
     def test_sell_raises_when_no_position(self):
         engine = self._make_engine()
-        engine._get_price = MagicMock(return_value=10.0)
-        engine.get_positions = MagicMock(return_value=[])
+        engine.get_current_price = MagicMock(return_value=(10.0, 'realtime'))
+        engine.get_positions = MagicMock(return_value=([], False))
         acct = self._make_account_mock()
 
         with self.assertRaises(ValueError) as ctx:
@@ -162,9 +162,10 @@ class TestTradeEngine(unittest.TestCase):
                 "buy_amount": 10000.0,
             }
         ])
-        engine._get_price = MagicMock(return_value=11.0)
+        engine.get_current_price = MagicMock(return_value=(11.0, 'realtime'))
+        engine._get_yesterday_close = MagicMock(return_value=10.5)
 
-        positions = engine.get_positions("default")
+        positions, _ = engine.get_positions("default")
 
         self.assertEqual(len(positions), 1)
         self.assertEqual(positions[0]["shares"], 700)
@@ -181,9 +182,10 @@ class TestTradeEngine(unittest.TestCase):
                 "buy_amount": 5000.0,
             }
         ])
-        engine._get_price = MagicMock(return_value=10.0)
+        engine.get_current_price = MagicMock(return_value=(10.0, 'realtime'))
+        engine._get_yesterday_close = MagicMock(return_value=10.0)
 
-        positions = engine.get_positions("default")
+        positions, _ = engine.get_positions("default")
         self.assertEqual(len(positions), 0)
 
 

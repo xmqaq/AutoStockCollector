@@ -21,6 +21,7 @@ def _make_dal():
     info = MagicMock()
     info.get_by_code.return_value = {"code": "SH600519", "name": "贵州茅台"}
     fund = MagicMock()
+    fund.find_many.return_value = [{"code": "SH600519", "main_net_inflow": 1e7}]
     fund.get_latest_flow.return_value = {"code": "SH600519", "main_net_inflow": 1e7}
     news = MagicMock()
     news.get_latest_news.return_value = [{"title": "利好消息", "publish_date": "2026-05-28"}]
