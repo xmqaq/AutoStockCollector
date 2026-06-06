@@ -138,6 +138,7 @@ const menuGroups: MenuGroup[] = [
       { key: '/stock-analysis', label: '个股深度分析', icon: Search },
       { key: '/ai-keys', label: 'AI Key管理', icon: Key },
       { key: '/ai-agents', label: 'AI Agent管理', icon: MagicStick },
+      { key: '/debate', label: '多空辩论', icon: MagicStick },
     ],
   },
   {

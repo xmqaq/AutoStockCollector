@@ -495,3 +495,59 @@ export const agentApi = {
   },
 }
 
+// ── 多空辩论 + 风险管控 ──────────────────────────────
+export interface DebateAgentState {
+  status: 'idle' | 'running' | 'completed' | 'error'
+  progress: number
+  result?: {
+    content: string
+    score?: number
+    stance: 'bullish' | 'bearish' | 'verdict'
+  }
+  error?: string
+}
+
+export interface DebateTask {
+  task_id: string
+  code: string
+  status: string
+  debate: {
+    bull: DebateAgentState
+    bear: DebateAgentState
+    judge: DebateAgentState
+  }
+  final_verdict?: FinalVerdict
+}
+
+export interface FinalVerdict {
+  code: string
+  bullScore: number
+  bearScore: number
+  tendency: string
+  riskLevel: string
+  recommendation: string
+  bullArgument: string
+  bearArgument: string
+  judgeVerdict: string
+  generatedAt: string
+}
+
+export const debateApi = {
+  start(params: { code: string }) {
+    return client.post('/api/v1/ai/debate', params)
+  },
+  stream(params: { code: string }) {
+    return fetch('/api/v1/ai/debate/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    })
+  },
+  progress(taskId: string) {
+    return client.get(`/api/v1/ai/debate/${taskId}`)
+  },
+  list() {
+    return client.get('/api/v1/ai/debate-tasks')
+  },
+}
+

@@ -15,6 +15,7 @@ declare module 'vue' {
     AlertNotification: typeof import('./src/components/AlertNotification/index.vue')['default']
     AnalysisProgress: typeof import('./src/components/AnalysisProgress/index.vue')['default']
     BatchPick: typeof import('./src/components/BatchPick/index.vue')['default']
+    DebatePanel: typeof import('./src/components/DebatePanel/index.vue')['default']
     ElAlert: typeof import('element-plus/es')['ElAlert']
     ElAside: typeof import('element-plus/es')['ElAside']
     ElBadge: typeof import('element-plus/es')['ElBadge']

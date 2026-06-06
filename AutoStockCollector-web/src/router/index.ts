@@ -118,6 +118,12 @@ const router = createRouter({
           meta: { title: '多Agent分析' },
         },
         {
+          path: 'debate',
+          name: 'Debate',
+          component: () => import('@/views/Debate/index.vue'),
+          meta: { title: '多空辩论' },
+        },
+        {
           path: 'workflow',
           name: 'Workflow',
           component: () => import('@/views/Workflow/index.vue'),
