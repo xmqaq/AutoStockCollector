@@ -1,16 +1,8 @@
 # AutoStockCollector
 
-<<<<<<< HEAD
 一站式 A 股 AI 量化分析系统 —— 全自动数据采集 · 智能数据治理 · 多模型 AI 决策 · 量化回测 · 可视化工作流
 
 [![CI](https://github.com/xmqaq/AutoStockCollector/actions/workflows/ci.yml/badge.svg)](https://github.com/xmqaq/AutoStockCollector/actions/workflows/ci.yml)
-
-=======
-[![CI](https://github.com/xmqaq/AutoStockCollector/actions/workflows/ci.yml/badge.svg)](https://github.com/xmqaq/AutoStockCollector/actions/workflows/ci.yml)
-
-一站式 A 股 AI 量化分析系统 —— 全自动数据采集 · 智能数据治理 · 多模型 AI 决策 · 量化回测 · 可视化工作流
-
->>>>>>> d27c0f8200ca764be0cab3143211a08f31bf91ad
 > **免责声明**：本项目所有数据、AI 分析结论、选股策略与回测结果仅用于量化技术研究与学习参考，不构成任何投资建议。股市风险极高，使用者所有实盘交易风险自行承担。
 
 ## 功能概览
@@ -147,7 +139,6 @@ docker compose up -d --build
 - **结果缓存**：同日同标的同策略结果去重复用，控制成本
 
 ### 数据校验体系
-<<<<<<< HEAD
 
 - 时序连续性校验（基于交易日历）
 - 核心字段完整性校验
@@ -181,57 +172,4 @@ docker compose up -d --build
 2. 前端构建通过：`cd AutoStockCollector-web && pnpm build`
 
 ## License
-
-=======
-
-- 时序连续性校验（基于交易日历）
-- 核心字段完整性校验
-- 数据合法性校验（极值/负数/重复过滤）
-- 完整度评分 + 闭环复核
-
-## 截图预览
-
-### 系统总览
-![系统总览](screenshots/dashboard.png)
-
-### 采集中心
-![采集中心](screenshots/data-monitor.png)
-
-### 实时行情
-![实时行情](screenshots/market.png)
-
-### 板块流向热力图
-![板块流向](screenshots/sector-flow.png)
-
-### AI 智能中枢
-![AI智能中枢](screenshots/ai-dashboard.png)
-
-### 工作流管理
-![工作流管理](screenshots/workflow.png)
-
-## TODO
-
-以下是后续计划的方向，欢迎贡献：
-
-- [ ] **实盘券商对接** — 对接券商 API（如 QMT/XtQuant），打通从选股到自动下单的完整链路
-- [ ] **多智能体辩论** — 多个 AI Agent 从不同立场（多头/空头/风控）辩论同一标的，综合输出共识结论
-- [ ] **AI 因子挖掘** — 利用大模型自动发现新的量化因子，替代人工特征工程
-- [ ] **向量行情对标** — 基于历史 K 线形态的向量相似度检索，找到当前走势的历史类比
-- [ ] **WebSocket 实时推送** — 盘中行情、异动告警、任务进度改为 WebSocket 推送，替代轮询
-- [ ] **用户认证与多租户** — 增加登录体系和权限隔离，支持多用户独立使用
-- [ ] **移动端适配** — 响应式布局或独立小程序，方便盘中手机查看
-- [ ] **策略回测可视化** — 回测结果的收益曲线、交易记录可视化展示，目前仅有数据输出
-- [ ] **更多数据源接入** — 支持 Tushare、JQData 等付费数据源，提升数据质量和覆盖面
-- [ ] **通知告警** — 集成企业微信/钉钉/Telegram 推送，异动和策略信号实时通知
-
-## 贡献
-
-欢迎提交 Issue 和 Pull Request。提交前请确保：
-
-1. 后端测试通过：`python -m unittest discover -s AutoStockCollector-manage/tests -v`
-2. 前端构建通过：`cd AutoStockCollector-web && pnpm build`
-
-## License
-
->>>>>>> d27c0f8200ca764be0cab3143211a08f31bf91ad
 MIT
