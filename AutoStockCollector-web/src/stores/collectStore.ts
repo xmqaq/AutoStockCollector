@@ -10,11 +10,10 @@ export const useCollectStore = defineStore('collect', () => {
   const loading = ref(false)
   const overallPercent = ref(0)
 
-  // 已有数据（含 not_started 但 DB 有记录）都算完成
+  // DB 有数据且健康状态不是 error 就算完成（不受历史任务 failed 状态影响）
   const completedCount = computed(() => {
     return progressList.value.filter(p =>
-      p.status === 'completed' ||
-      (p.status === 'not_started' && (p.record_count || 0) > 0)
+      (p.record_count || 0) > 0 && (p as any).health !== 'error'
     ).length
   })
 
