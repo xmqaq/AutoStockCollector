@@ -28,10 +28,12 @@ def _normalize_code(code: str) -> str:
     return normalize_stock_code_flexible(code)
 
 
-# =====================================================================# 实时数据补全：百度估值 + Sina K线
+# =====================================================================
+# 实时数据补全：百度估值 + Sina K线
 # 数据库里的 stock_info 来自 cninfo（无 PE/PB/总市值），kline 来自腾讯（无 volume）
 # 在路由层用 AKShare 接口补齐
-# =====================================================================_realtime_cache: Dict[str, tuple] = {}  # key -> (timestamp, value)
+# =====================================================================
+_realtime_cache: Dict[str, tuple] = {}  # key -> (timestamp, value)
 _cache_lock = threading.Lock()
 _CACHE_TTL = 60.0  # 秒
 
