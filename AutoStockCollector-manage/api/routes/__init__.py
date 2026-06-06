@@ -419,15 +419,15 @@ def _map_financial_record(r: dict) -> dict:
         "code": r.get("code", ""),
         "report_date": str(report_date)[:10],
         "net_profit": r.get("net_profit") or r.get("净利润") or r.get("净利润(元)") or 0,
-        "revenue":    r.get("revenue")    or r.get("营业收入") or r.get("营业总收入(元)") or 0,
+        "revenue":    r.get("revenue")    or r.get("营业总收入") or r.get("营业收入") or r.get("营业总收入(元)") or 0,
         "roe":        r.get("roe")        or r.get("ROE") or r.get("净资产收益率") or 0,
         "roa":        r.get("roa")        or r.get("ROA") or r.get("总资产收益率") or 0,
-        "eps":        r.get("eps")        or r.get("EPS") or r.get("每股收益") or 0,
+        "eps":        r.get("eps")        or r.get("EPS") or r.get("基本每股收益") or r.get("每股收益") or 0,
         "bps":        r.get("bps")        or r.get("BPS") or r.get("每股净资产") or 0,
         **{k: v for k, v in r.items() if k not in (
             "code", "report_date", "net_profit", "revenue", "roe", "roa", "eps", "bps",
-            "报告期", "日期", "净利润", "净利润(元)", "营业收入", "营业总收入(元)",
-            "ROE", "净资产收益率", "ROA", "总资产收益率", "EPS", "每股收益", "BPS", "每股净资产"
+            "报告期", "日期", "净利润", "净利润(元)", "营业收入", "营业总收入", "营业总收入(元)",
+            "ROE", "净资产收益率", "ROA", "总资产收益率", "EPS", "基本每股收益", "每股收益", "BPS", "每股净资产"
         )},
     }
 
