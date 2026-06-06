@@ -112,17 +112,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue'
+import { todoApi, type TodoItem } from '@/api/todo'
 
-interface TodoItem {
-  id: string
-  text: string
-  category: 'todo' | 'plan' | 'suggestion'
-  done: boolean
-  createdAt: string
-  updatedAt: string
-}
-
-const STORAGE_KEY = 'opencode-todo-items'
 const filterLabels: Record<string, string> = {
   todo: '待办事项',
   plan: '下一步计划',
@@ -157,43 +148,41 @@ function tagType(cat: string) {
   }
 }
 
-function load() {
+async function load() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) todos.value = JSON.parse(raw)
-  } catch { todos.value = [] }
+    const res = await todoApi.list()
+    todos.value = res.data?.data || []
+  } catch {
+    todos.value = []
+  }
 }
 
-function save() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(todos.value))
-}
-
-function addTodo() {
+async function addTodo() {
   const text = newText.value.trim()
   if (!text) return
-  const now = new Date().toLocaleString('zh-CN')
-  todos.value.unshift({
-    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-    text,
-    category: newCategory.value,
-    done: false,
-    createdAt: now,
-    updatedAt: now,
-  })
-  save()
-  newText.value = ''
-  showAdd.value = false
+  try {
+    const res = await todoApi.create({ text, category: newCategory.value })
+    if (res.data?.data) {
+      todos.value.unshift(res.data.data)
+    }
+    newText.value = ''
+    showAdd.value = false
+  } catch { /* ignore */ }
 }
 
-function toggleDone(item: TodoItem) {
-  item.done = !item.done
-  item.updatedAt = new Date().toLocaleString('zh-CN')
-  save()
+async function toggleDone(item: TodoItem) {
+  const next = !item.done
+  try {
+    await todoApi.update(item.id, { done: next })
+    item.done = next
+  } catch { /* ignore */ }
 }
 
-function remove(id: string) {
-  todos.value = todos.value.filter(t => t.id !== id)
-  save()
+async function remove(id: string) {
+  try {
+    await todoApi.remove(id)
+    todos.value = todos.value.filter(t => t.id !== id)
+  } catch { /* ignore */ }
 }
 
 function startEdit(item: TodoItem) {
@@ -206,15 +195,18 @@ function startEdit(item: TodoItem) {
   })
 }
 
-function confirmEdit() {
+async function confirmEdit() {
   if (!editingId.value) return
   const item = todos.value.find(t => t.id === editingId.value)
   if (item) {
     const text = editText.value.trim()
-    if (text) item.text = text
-    item.category = editCategory.value
-    item.updatedAt = new Date().toLocaleString('zh-CN')
-    save()
+    const updates: Partial<Pick<TodoItem, 'text' | 'category'>> = { category: editCategory.value }
+    if (text) updates.text = text
+    try {
+      await todoApi.update(item.id, updates)
+      if (text) item.text = text
+      item.category = editCategory.value
+    } catch { /* ignore */ }
   }
   editingId.value = null
 }

@@ -125,6 +125,7 @@ def register_routes(app):
     from api.routes.market import market_bp
     from api.routes.ai_agent import ai_agent_bp
     from api.routes.workflow import workflow_bp
+    from api.routes.todo import todo_bp
     
     app.register_blueprint(api_bp)
     app.register_blueprint(ai_advanced_bp)
@@ -133,6 +134,7 @@ def register_routes(app):
     app.register_blueprint(market_bp)
     app.register_blueprint(ai_agent_bp)
     app.register_blueprint(workflow_bp)
+    app.register_blueprint(todo_bp)
 
     @app.route("/health", methods=["GET"])
     def health_check():
