@@ -550,6 +550,19 @@ class NewsStorage(MongoStorage):
             )
         return self.insert_one(news)
 
+    def get_latest_publish_date(self, channel_name: str) -> Optional[str]:
+        """获取指定频道最新一条新闻的 publish_date，用于增量采集截止判断"""
+        try:
+            doc = self.collection.find_one(
+                {"channel_name": channel_name,
+                 "publish_date": {"$exists": True, "$nin": [None, ""]}},
+                sort=[("publish_date", -1)],
+                projection={"publish_date": 1, "_id": 0},
+            )
+            return doc["publish_date"] if doc else None
+        except Exception:
+            return None
+
     def save_news_batch(self, records: List[Dict[str, Any]]) -> Tuple[int, int]:
         valid = [r for r in records if r.get("title")]
         if not valid:

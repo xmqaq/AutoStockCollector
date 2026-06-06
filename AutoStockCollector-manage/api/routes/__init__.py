@@ -1950,13 +1950,12 @@ def get_data_gaps():
     daily_types = {
         "kline":        "kline",
         "dragon_tiger": "dragon_tiger",
-        "fund_flow":    "fund_flow",
+        # fund_flow 是快照接口（仅当日实时），不支持历史回补，不参与缺口检测
         "margin":       "margin_data",
     }
     daily_date_fields = {
         "kline":        "date",
         "dragon_tiger": "上榜日",
-        "fund_flow":    "date",
         "margin":       "date",
     }
 

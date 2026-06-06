@@ -9,7 +9,7 @@ import re
 import time
 import threading
 import requests
-from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from bs4 import BeautifulSoup
 from core.storage.mongo_storage import NewsStorage
 from utils.logger import get_logger
@@ -214,6 +214,18 @@ class NewsManager:
             logger.debug(f"获取第{page}页失败: {e}")
             return []
 
+    @staticmethod
+    def _is_old_news(publish_date: str | None, cutoff: str | None) -> bool:
+        """判断新闻是否早于截止时间（已采集过）。
+        两端都有精确时间时按时间比较；任一方只有日期则只比较日期部分，
+        同日新闻不跳过（靠 upsert 去重），避免因时间精度不同误跳。
+        """
+        if not cutoff or not publish_date:
+            return False
+        if len(publish_date) >= 19 and len(cutoff) >= 19:
+            return publish_date < cutoff
+        return publish_date[:10] < cutoff[:10]
+
     def collect_channel(
         self,
         cid: str,
@@ -222,70 +234,54 @@ class NewsManager:
         max_pages: int = 100,
         with_content: bool = True
     ) -> int:
-        """采集指定频道的新闻（多线程并行）"""
-        # 1. 并行获取所有页面
-        logger.info(f"[{channel_name}] 开始并行获取{max_pages}页列表...")
-        
-        page_records_map = {}
-        _per_page_timeout = 20      # 单页超时（秒），略大于 requests timeout=15
-        _total_timeout = max_pages * _per_page_timeout + 10
-        executor = ThreadPoolExecutor(max_workers=min(self.max_workers, 8))
-        try:
-            future_to_page = {
-                executor.submit(self._fetch_page, cid, page): page
-                for page in range(1, max_pages + 1)
-            }
+        """采集指定频道的新闻（增量模式：基于 DB 最新 publish_date 跳过旧新闻，按需停止翻页）"""
+        cutoff = self.storage.get_latest_publish_date(channel_name)
+        if cutoff:
+            logger.info(f"[{channel_name}] 增量采集，DB 最新: {cutoff}")
+        else:
+            logger.info(f"[{channel_name}] 首次采集，获取{max_pages}页")
 
-            try:
-                for future in as_completed(future_to_page, timeout=_total_timeout):
-                    page = future_to_page[future]
-                    try:
-                        records = future.result()
-                        if records:
-                            page_records_map[page] = records
-                        else:
-                            # 没有数据，取消未完成的任务
-                            for f in future_to_page:
-                                if not f.done():
-                                    f.cancel()
-                            break
-                    except Exception as e:
-                        logger.debug(f"第{page}页异常: {e}")
-            except TimeoutError:
-                logger.warning(f"[{channel_name}] 页面采集超时（总超时 {_total_timeout}s），已收到 {len(page_records_map)} 页")
-        finally:
-            executor.shutdown(wait=False)  # 不阻塞等待仍在运行的线程
-        
-        if not page_records_map:
-            logger.warning(f"[{channel_name}] 无数据")
-            return 0
-        
-        # 2. 按页顺序合并记录
         all_records = []
         article_urls = []
-        
-        for page in sorted(page_records_map.keys()):
-            page_records = page_records_map[page]
-            
+
+        # 逐页采集，整页无新内容时停止翻页
+        for page in range(1, max_pages + 1):
+            page_records = self._fetch_page(cid, page)
+            if not page_records:
+                break
+
+            new_on_page = 0
             for record in page_records:
+                if self._is_old_news(record.get("publish_date"), cutoff):
+                    continue
+
                 record["news_type"] = news_type
                 record["channel_name"] = channel_name
                 record["source"] = "新浪财经"
                 record["_collect_at"] = datetime.now()
                 record["_uid"] = f"{channel_name}_{record['title'][:40]}_{record['url'][-40:]}"
-                
+
                 if with_content and ".shtml" in record["url"]:
                     article_urls.append(record["url"])
-                
+
                 all_records.append(record)
-            
-            logger.info(f"[{channel_name}] 第{page}页: {len(page_records)}条")
-        
-        # 3. 并行获取所有文章的正文和发布时间
+                new_on_page += 1
+
+            logger.info(f"[{channel_name}] 第{page}页: {new_on_page}条新增")
+
+            if new_on_page == 0:
+                logger.info(f"[{channel_name}] 第{page}页全部为已有新闻，停止翻页")
+                break
+
+        if not all_records:
+            logger.info(f"[{channel_name}] 无新增新闻")
+            return 0
+
+        # 并行获取新文章的正文和发布时间
         if with_content and article_urls:
             logger.info(f"[{channel_name}] 并行获取{len(article_urls)}篇文章正文...")
             content_results = self._fetch_articles_batch(article_urls)
-            
+
             for record in all_records:
                 if record["url"] in content_results:
                     content, article_date = content_results[record["url"]]
@@ -294,17 +290,14 @@ class NewsManager:
                         record["summary"] = content[:200]
                     if article_date:
                         record["article_date"] = article_date
-                        # 同步到 publish_date，避免 publish_date 为空字符串
                         if not record.get("publish_date"):
                             record["publish_date"] = article_date
-        
-        # 4. 批量保存，返回实际写入数（去重后）
-        if all_records:
-            inserted, updated = self.storage.save_news_batch(all_records)
-            saved = inserted + updated
-            logger.info(f"[{channel_name}] 采集 {len(all_records)} 条，写入 {saved} 条（新增{inserted}/更新{updated}）")
-            return saved
-        return 0
+
+        # 批量保存
+        inserted, updated = self.storage.save_news_batch(all_records)
+        saved = inserted + updated
+        logger.info(f"[{channel_name}] 新增 {len(all_records)} 条，写入 {saved} 条（新增{inserted}/更新{updated}）")
+        return saved
 
     def collect_all_channels(
         self,

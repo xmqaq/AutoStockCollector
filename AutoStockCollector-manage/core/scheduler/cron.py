@@ -579,7 +579,7 @@ def start_daily_jobs() -> None:
         _make_job("K线增量 16:05",       job_kline_incremental,   "daily", 16, 5,  task_type="kline"),
         _make_job("龙虎榜 16:10",         job_dragon_tiger,        "daily", 16, 10, task_type="dragon_tiger"),
         _make_job("资金流向 16:15",       job_fund_flow,           "daily", 16, 15, task_type="fund_flow"),
-        _make_job("融资融券 20:00",       job_margin,              "daily", 20,  0, task_type="margin"),
+        _make_job("融资融券 21:30",       job_margin,              "daily", 21, 30, task_type="margin"),
         _make_job("板块数据 16:25",       job_sector,              "daily", 16, 25, task_type="sector"),
         _make_job("新闻增量 整点",        job_news_incremental,    "hourly", 0,  0,  task_type="news"),
         _make_job("股票信息 周一09:00",   job_stock_info_weekly,   "daily",  9,  0,  task_type="stock_info"),
