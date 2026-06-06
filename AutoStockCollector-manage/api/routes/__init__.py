@@ -469,16 +469,17 @@ def get_news():
     news_type = request.args.get("type")
     channel_name = request.args.get("channel")
     is_breaking = request.args.get("breaking")
-    limit = int(request.args.get("limit", 100))
+    limit = int(request.args.get("limit", 20))
+    skip = int(request.args.get("skip", 0))
     code = request.args.get("code", "").strip()
 
     breaking_filter = None
     if is_breaking is not None:
         breaking_filter = is_breaking.lower() in ("true", "1", "yes")
 
-    # 按股票代码/关键词搜索（全文匹配标题和内容）
+    storage = NewsStorage()
+
     if code:
-        storage = NewsStorage()
         bare = code[2:] if code[:2] in ("SH", "SZ") else code
         query = {"$or": [
             {"title": {"$regex": bare, "$options": "i"}},
@@ -486,24 +487,44 @@ def get_news():
         ]}
         if news_type:
             query["news_type"] = news_type
-        records = storage.find_many(query, sort=[("publish_date", -1), ("_updated_at", -1)], limit=limit)
+        total = storage.count_documents(query)
+        records = storage.find_many(
+            query,
+            projection={"content": 0},
+            sort=[("publish_date", -1), ("_updated_at", -1)],
+            skip=skip,
+            limit=limit,
+        )
         for r in records:
             r.pop("_id", None)
             r.pop("_updated_at", None)
             r.pop("_collect_at", None)
-        return jsonify({"success": True, "count": len(records), "data": records})
+        return jsonify({"success": True, "total": total, "count": len(records), "data": records})
 
-    manager = NewsManager()
-    records = manager.get_news(
-        news_type=news_type,
-        channel_name=channel_name,
-        is_breaking=breaking_filter,
-        limit=limit
+    filter_doc: Dict = {}
+    if news_type:
+        filter_doc["news_type"] = news_type
+    if channel_name:
+        filter_doc["channel_name"] = channel_name
+    if breaking_filter is not None:
+        filter_doc["is_breaking"] = breaking_filter
+
+    total = storage.count_documents(filter_doc)
+    records = storage.find_many(
+        filter_doc,
+        projection={"content": 0},
+        sort=[("publish_date", -1), ("_updated_at", -1)],
+        skip=skip,
+        limit=limit,
     )
-    manager.close()
+    for r in records:
+        r.pop("_id", None)
+        r.pop("_updated_at", None)
+        r.pop("_collect_at", None)
 
     return jsonify({
         "success": True,
+        "total": total,
         "count": len(records),
         "data": records
     })

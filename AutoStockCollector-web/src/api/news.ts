@@ -6,6 +6,7 @@ export interface NewsParams {
   channel?: string
   breaking?: boolean
   limit?: number
+  skip?: number
 }
 
 export interface NewsCategory {

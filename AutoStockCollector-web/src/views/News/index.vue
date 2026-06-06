@@ -24,7 +24,7 @@
           style="width:160px"
           clearable
         />
-        <el-button type="primary" size="small" @click="loadNews">
+        <el-button type="primary" size="small" @click="handleSearch">
           <el-icon><Search /></el-icon> 查询
         </el-button>
       </div>
@@ -51,13 +51,13 @@
     <!-- News list -->
     <el-card shadow="never" class="section-card" v-loading="loading">
       <template #header>
-        <span>新闻舆情（共 {{ stats?.total ?? newsList.length }} 条）</span>
+        <span>新闻舆情（共 {{ totalCount }} 条）</span>
       </template>
       <el-empty v-if="newsList.length === 0 && !loading" description="暂无新闻数据" />
       <div v-else class="news-list">
         <el-collapse>
           <el-collapse-item
-            v-for="(news, idx) in paginatedNews"
+            v-for="(news, idx) in newsList"
             :key="idx"
             :name="idx"
           >
@@ -90,11 +90,11 @@
           </el-collapse-item>
         </el-collapse>
         <el-pagination
-          v-if="newsList.length > pageSize"
+          v-if="totalCount > pageSize"
           v-model:current-page="currentPage"
           v-model:page-size="pageSize"
-          :page-sizes="[20, 50, 100, 200]"
-          :total="newsList.length"
+          :page-sizes="[20, 50, 100]"
+          :total="totalCount"
           layout="total, sizes, prev, pager, next"
           background
           class="table-pagination"
@@ -105,7 +105,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { newsApi } from '@/api/news'
 import dayjs from 'dayjs'
 import type { NewsRecord } from '@/types'
@@ -158,22 +158,36 @@ const codeFilter = ref('')
 const typeFilter = ref('')
 const categories = ref<NewsCategory[]>([])
 const stats = ref<NewsStats | null>(null)
+const totalCount = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(20)
 
-const paginatedNews = computed(() =>
-  newsList.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value)
-)
-watch(newsList, () => { currentPage.value = 1 })
+watch(currentPage, () => loadNews())
+watch(pageSize, () => {
+  if (currentPage.value !== 1) {
+    currentPage.value = 1
+  } else {
+    loadNews()
+  }
+})
+
+function handleSearch() {
+  if (currentPage.value !== 1) {
+    currentPage.value = 1
+  } else {
+    loadNews()
+  }
+}
 
 async function loadNews() {
   loading.value = true
   try {
-    // 用 stats.total 作为动态 limit，保证拉取全量数据；无统计时兜底 2000
-    const limit = stats.value?.total || 2000
-    const params: Record<string, any> = { limit }
+    const params: Record<string, any> = {
+      limit: pageSize.value,
+      skip: (currentPage.value - 1) * pageSize.value,
+    }
     if (codeFilter.value) {
-      params.code = codeFilter.value.trim()   // 关键词搜索，后端做正则匹配
+      params.code = codeFilter.value.trim()
     }
     if (typeFilter.value) {
       params.type = typeFilter.value
@@ -181,6 +195,7 @@ async function loadNews() {
     const res = await newsApi.getNews(params)
     const data = res.data?.data || res.data || []
     newsList.value = Array.isArray(data) ? data : []
+    totalCount.value = res.data?.total ?? newsList.value.length
   } catch {
     newsList.value = []
   } finally {
@@ -206,10 +221,9 @@ async function loadStats() {
   }
 }
 
-onMounted(async () => {
-  await loadCategories()
-  await loadStats()   // 先拿总数
-  await loadNews()    // 再用总数作为 limit 全量拉取
+onMounted(() => {
+  Promise.all([loadCategories(), loadStats()])
+  loadNews()
 })
 </script>
 
