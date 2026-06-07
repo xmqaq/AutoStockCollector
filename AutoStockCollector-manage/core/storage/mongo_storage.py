@@ -496,7 +496,9 @@ class NewsStorage(MongoStorage):
         self.create_index([("channel_name", 1)])
         self.create_index([("is_breaking", 1)])
         self.create_index([("source", 1)])
-        self.create_index([("publish_date", -1)])
+        # 复合索引匹配列表查询的排序键 (publish_date, _updated_at)，
+        # 使排序走 IXSCAN 而非阻塞式内存 SORT；其 publish_date 前缀同时覆盖单字段排序/过滤。
+        self.create_index([("publish_date", -1), ("_updated_at", -1)])
 
     def get_latest_news(
         self,
