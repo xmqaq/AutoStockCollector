@@ -7,7 +7,9 @@ from typing import Any, Callable, Dict, List, Optional
 
 _DEFAULT_MODELS: Dict[str, str] = {}
 
-_TIMEOUT = 60
+# (connect, read) 秒。connect 上限避免 TCP 握手阶段无限挂起；read 为单次响应等待上限。
+# 选股深度评分另有 30s 墙钟硬超时（见 picker.py），此处为底层兜底。
+_TIMEOUT = (10, 60)
 
 
 def _default_key_loader(provider: str) -> Optional[Dict[str, Any]]:

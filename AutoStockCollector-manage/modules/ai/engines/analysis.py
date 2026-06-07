@@ -19,6 +19,31 @@ class AnalysisEngine:
         self.router = router
 
     def analyze(self, code: str, use_cache: bool = True) -> Dict[str, Any]:
+        bundle, scores, comp_details = self._compute_factors(code)
+
+        prompt = self._build_prompt(bundle, scores)
+        schema = {"summary": "str", "recommendation": "str", "risk_factors": "list"}
+        llm_result = self.router.chat(prompt, schema=schema, use_cache=use_cache, task_type="stock_analysis")
+
+        llm_payload: Optional[Dict[str, Any]] = None
+        source = "factor"
+        if llm_result.success and llm_result.data:
+            data = llm_result.data
+            summary, _ = sanitize_text(str(data.get("summary", "")))
+            recommendation, _ = sanitize_text(str(data.get("recommendation", "")))
+            risks = [sanitize_text(str(r))[0] for r in (data.get("risk_factors") or [])]
+            llm_payload = {"summary": summary, "recommendation": recommendation, "risk_factors": risks}
+            source = "llm"
+
+        return self._build_result(bundle, scores, comp_details, llm_payload, source)
+
+    def analyze_factor_only(self, code: str) -> Dict[str, Any]:
+        """纯因子评分，不调用 LLM。供选股深度评分在 LLM 超时/失败时兜底，避免阻塞或丢股票。"""
+        bundle, scores, comp_details = self._compute_factors(code)
+        return self._build_result(bundle, scores, comp_details, None, "factor")
+
+    def _compute_factors(self, code: str):
+        """计算各维度因子得分（无 LLM）。返回 (bundle, scores, comp_details)。"""
         bundle = self.dal.get_stock_bundle(code)
 
         # closes/volumes 在 bundle 中是倒序（新→旧），技术面需要正序
@@ -61,21 +86,10 @@ class AnalysisEngine:
             "valuation":   val_s,
             "composite":   comp,
         }
+        return bundle, scores, comp_details
 
-        prompt = self._build_prompt(bundle, scores)
-        schema = {"summary": "str", "recommendation": "str", "risk_factors": "list"}
-        llm_result = self.router.chat(prompt, schema=schema, use_cache=use_cache, task_type="stock_analysis")
-
-        llm_payload: Optional[Dict[str, Any]] = None
-        source = "factor"
-        if llm_result.success and llm_result.data:
-            data = llm_result.data
-            summary, _ = sanitize_text(str(data.get("summary", "")))
-            recommendation, _ = sanitize_text(str(data.get("recommendation", "")))
-            risks = [sanitize_text(str(r))[0] for r in (data.get("risk_factors") or [])]
-            llm_payload = {"summary": summary, "recommendation": recommendation, "risk_factors": risks}
-            source = "llm"
-
+    def _build_result(self, bundle, scores, comp_details,
+                      llm_payload: Optional[Dict[str, Any]], source: str) -> Dict[str, Any]:
         current_price = bundle.realtime_price or (bundle.closes[0] if bundle.closes else None)
         return {
             "code": bundle.code,

@@ -75,6 +75,19 @@
           <span v-else class="ap-source-tag ap-tag-factor">因子</span>
         </template>
       </el-table-column>
+      <el-table-column label="操作建议" width="80" align="center">
+        <template #default="{ row }">
+          <span class="ap-action-tag" :class="actionClass(row)">{{ getAction(row) }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="建议仓位" width="90" align="center">
+        <template #default="{ row }">
+          <el-tooltip v-if="getPosition(row) !== '--'" content="分散配置，总仓位建议不超过60%" placement="top">
+            <span class="ap-position">{{ getPosition(row) }}</span>
+          </el-tooltip>
+          <span v-else class="ap-na">--</span>
+        </template>
+      </el-table-column>
       <el-table-column width="36" align="center" class-name="ap-col-expand">
         <template #default="{ row }">
           <svg class="ap-expand-svg" :class="{ 'is-expanded': expandedCode === row.code }" viewBox="0 0 12 12" width="12" height="12">
@@ -232,6 +245,50 @@ function dimWarnings(dim: any): string[] {
   return Object.entries(dim.items)
     .filter(([k, v]) => k.endsWith('_warning') && typeof v === 'string')
     .map(([, v]) => v as string)
+}
+
+// ── 操作建议 / 建议仓位（基于综合分、风险警告、估值分自动推导）──
+function pickHasWarning(pick: AIPick): boolean {
+  const details = pick.score_details
+  if (!details) return false
+  for (const dim of Object.values(details)) {
+    const items = (dim as any)?.details
+    if (!items) continue
+    for (const [k, v] of Object.entries(items)) {
+      if (k.endsWith('_warning') && typeof v === 'string' && v) return true
+    }
+  }
+  return false
+}
+
+function getAction(pick: AIPick): string {
+  const composite = pick.composite ?? pick.scores?.composite ?? 0
+  const hasWarning = pickHasWarning(pick)
+  const valuation = pick.scores?.valuation ?? 50
+  if (hasWarning && composite < 82) return '观望'
+  if (valuation <= 20 && composite >= 80) return '谨慎关注'  // 高分但估值极低
+  if (composite >= 80 && !hasWarning) return '建议关注'
+  if (composite >= 75 && !hasWarning) return '可以关注'
+  return '观望'
+}
+
+function getPosition(pick: AIPick): string {
+  const action = getAction(pick)
+  const composite = pick.composite ?? pick.scores?.composite ?? 0
+  if (action === '谨慎关注') return '5%以内'
+  if (action === '建议关注') return composite >= 80 ? '10-15%' : '5-10%'
+  if (action === '可以关注') return '5-10%'
+  return '--'  // 观望
+}
+
+const ACTION_CLASS: Record<string, string> = {
+  '建议关注': 'ap-action-green',
+  '可以关注': 'ap-action-lightgreen',
+  '谨慎关注': 'ap-action-orange',
+  '观望': 'ap-action-gray',
+}
+function actionClass(pick: AIPick): string {
+  return ACTION_CLASS[getAction(pick)] || 'ap-action-gray'
 }
 
 function formatItemName(key: string): string {
@@ -393,6 +450,21 @@ onBeforeUnmount(stopProgressPolling)
 }
 .ap-tag-ai { color: #60a0f0; background: rgba(96,160,240,0.12); }
 .ap-tag-factor { color: #a0a060; background: rgba(160,160,96,0.12); }
+
+.ap-action-tag {
+  display: inline-block;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 3px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.ap-action-green { color: #3aa856; background: rgba(82,196,26,0.14); }
+.ap-action-lightgreen { color: #7cc98a; background: rgba(82,196,26,0.07); }
+.ap-action-orange { color: #e8912a; background: rgba(250,173,20,0.14); }
+.ap-action-gray { color: #909098; background: rgba(144,144,152,0.12); }
+.ap-position { font-size: 12px; color: #5a7af0; cursor: default; white-space: nowrap; }
 .ap-expand-svg {
   color: #606080;
   transition: transform 0.2s;

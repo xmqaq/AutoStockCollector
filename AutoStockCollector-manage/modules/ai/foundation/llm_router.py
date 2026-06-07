@@ -42,12 +42,33 @@ class LLMRouter:
         except Exception:
             return []
 
-    def _default_caller(self, provider: str, prompt: str) -> str:
-        """读 ai_keys 配置，经 ProviderCaller 调用对应厂商。"""
+    def _default_caller(self, provider: str, prompt: str,
+                        messages: Optional[List[Dict[str, Any]]] = None) -> str:
+        """读 ai_keys 配置，经 ProviderCaller 调用对应厂商。
+
+        传入 messages 时按多轮对话格式发送（携带历史上下文），否则按单条 prompt。
+        """
         from modules.ai.foundation.llm_caller import ProviderCaller
         if not hasattr(self, "_provider_caller"):
             self._provider_caller = ProviderCaller()
-        return self._provider_caller(provider, prompt)
+        return self._provider_caller(provider, prompt, messages=messages)
+
+    def _caller_accepts_messages(self) -> bool:
+        """检测注入/默认 caller 是否支持 messages 参数（缓存结果）。
+
+        测试里注入的 2 参 caller(provider, prompt) 不支持，走单 prompt 路径，保持兼容。
+        """
+        if not hasattr(self, "_caller_msgs_ok"):
+            import inspect
+            try:
+                params = inspect.signature(self.caller).parameters.values()
+                self._caller_msgs_ok = any(
+                    p.name == "messages" or p.kind == inspect.Parameter.VAR_KEYWORD
+                    for p in params
+                )
+            except (TypeError, ValueError):
+                self._caller_msgs_ok = False
+        return self._caller_msgs_ok
 
     def _build_prompt(self, prompt: str, schema: Optional[Dict[str, Any]]) -> str:
         if not schema:
@@ -82,9 +103,13 @@ class LLMRouter:
                 )
 
         last_error = ""
+        send_messages = messages if (messages and self._caller_accepts_messages()) else None
         for provider in self.providers:
             try:
-                raw = self.caller(provider, full_prompt)
+                if send_messages is not None:
+                    raw = self.caller(provider, full_prompt, messages=send_messages)
+                else:
+                    raw = self.caller(provider, full_prompt)
                 if schema:
                     data = self._parse_json(raw)
                     if data is None:
