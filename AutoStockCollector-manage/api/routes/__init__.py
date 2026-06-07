@@ -2643,12 +2643,37 @@ def smart_pick():
 
 @api_bp.route("/sector", methods=["GET"])
 def get_sector_list():
+    from datetime import datetime, timedelta
     from core.storage.mongo_storage import BlockStorage
 
     storage = BlockStorage()
-    # 取全部记录，按名字去重：优先保留 block_type=="industry" 的记录，
+    # 板块数据按天累积（每日采集追加一份快照），随时间无限增长。
+    # 这里只取「最近一次快照」：先用 _updated_at 索引拿到最新时间，
+    # 再过滤到该时间往前 26h 内（覆盖最近一轮采集），并用 projection 只取必要字段，
+    # 把全表扫描（O(历史天数)）降为常量级。无 _updated_at 时回退为全量。
+    PROJECTION = {
+        "name": 1, "行业": 1, "block_name": 1,
+        "net_flow": 1, "净额": 1, "成交额": 1,
+        "change_rate": 1, "行业-涨跌幅": 1, "涨跌幅": 1,
+        "block_type": 1,
+    }
+    latest = storage.find_many(
+        {}, projection={"_updated_at": 1}, sort=[("_updated_at", -1)], limit=1
+    )
+    filter_doc: dict = {}
+    if latest and latest[0].get("_updated_at"):
+        cutoff = latest[0]["_updated_at"]
+        if isinstance(cutoff, str):
+            try:
+                cutoff = datetime.fromisoformat(cutoff.replace("Z", ""))
+            except ValueError:
+                cutoff = None
+        if cutoff is not None:
+            filter_doc = {"_updated_at": {"$gte": cutoff - timedelta(hours=26)}}
+
+    # 按名字去重：优先保留 block_type=="industry" 的记录，
     # 相同名字出现多次时取 change_rate 绝对值最大的（数据更新鲜）
-    records = storage.find_many({})
+    records = storage.find_many(filter_doc, projection=PROJECTION)
 
     seen_names: dict = {}
     for r in records:
