@@ -26,11 +26,13 @@ class LLMRouter:
         providers: Optional[List[str]] = None,
         caller: Optional[Callable[[str, str], str]] = None,
         cache_ttl_hours: int = 6,
+        memory_synthesizer=None,
     ):
         self.providers = providers or self._load_providers_from_keys()
         self.caller = caller or self._default_caller
         self._cache: Dict[str, Dict[str, Any]] = {}
         self._cache_ttl = timedelta(hours=cache_ttl_hours)
+        self.memory_synthesizer = memory_synthesizer
 
     def _load_providers_from_keys(self) -> List[str]:
         """从 ai_keys 读 enabled 的 provider，按 priority 升序。失败返回空。"""
@@ -78,6 +80,50 @@ class LLMRouter:
 
     def _cache_key(self, prompt: str) -> str:
         return hashlib.md5(prompt.encode("utf-8")).hexdigest()
+
+    def _inject_memory(self, prompt: str, user_id: str = None,
+                        stock_code: str = None) -> str:
+        """注入用户记忆到 prompt"""
+        if not self.memory_synthesizer or not user_id:
+            return prompt
+        try:
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            context = loop.run_until_complete(
+                self.memory_synthesizer.synthesize(user_id, stock_code)
+            )
+            loop.close()
+            if context:
+                from modules.memory.prompt_injector import PromptInjector
+                return PromptInjector.inject(prompt, context)
+        except Exception:
+            pass
+        return prompt
+
+    def chat_with_memory(
+        self,
+        prompt: str,
+        user_id: str = None,
+        stock_code: str = None,
+        schema: Optional[Dict[str, Any]] = None,
+        use_cache: bool = True,
+        task_type: str = "general",
+        temperature: float = 0.7,
+        max_tokens: int = 2000,
+        messages: Optional[List[Dict[str, Any]]] = None,
+    ) -> LLMResult:
+        """带用户记忆增强的 LLM 调用"""
+        enhanced = self._inject_memory(prompt, user_id, stock_code)
+        return self.chat(
+            prompt=enhanced,
+            schema=schema,
+            use_cache=use_cache,
+            task_type=task_type,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            messages=messages,
+        )
 
     def chat(
         self,

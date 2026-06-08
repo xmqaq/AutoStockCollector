@@ -22,6 +22,7 @@ _BUILTIN: Dict[str, Dict] = {
     "doubao":    {"name": "字节豆包",             "base_url": "https://ark.cn-beijing.volces.com/api/v3",            "priority": 8},
     "mistral":   {"name": "Mistral AI",          "base_url": "https://api.mistral.ai/v1",                           "priority": 9},
     "minimax":   {"name": "MiniMax",             "base_url": "https://api.minimaxi.com/v1",                         "priority": 10},
+    "agnes":     {"name": "Agnes AI",            "base_url": "https://apihub.agnes-ai.com/v1",                      "priority": 11},
 }
 
 

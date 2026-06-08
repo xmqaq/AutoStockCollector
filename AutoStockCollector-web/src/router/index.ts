@@ -70,6 +70,12 @@ const router = createRouter({
           meta: { title: 'AI Agent管理' },
         },
         {
+          path: 'memory-settings',
+          name: 'MemorySettings',
+          component: () => import('@/views/MemorySettings/index.vue'),
+          meta: { title: '记忆设置' },
+        },
+        {
           path: 'dragon-tiger',
           name: 'DragonTiger',
           component: () => import('@/views/DragonTiger/index.vue'),
