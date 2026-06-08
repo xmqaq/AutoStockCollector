@@ -23,13 +23,18 @@ def _ensure_collection():
 
 
 def _sync_default_agents():
-    """补全缺失的默认 Agent（已存在的不覆盖）"""
+    """同步默认 Agent，新增的插入，已存在的更新 system_prompt"""
     db = _get_db()
     for agent in _default_agent_configs():
         db["ai_agents"].update_one(
             {"id": agent["id"]},
-            {"$setOnInsert": agent},
-            upsert=True
+            {
+                "$set": {"system_prompt": agent["system_prompt"]},
+                "$setOnInsert": {
+                    k: v for k, v in agent.items() if k != "system_prompt"
+                },
+            },
+            upsert=True,
         )
 
 
@@ -286,7 +291,9 @@ def _default_agent_configs():
    - 行业龙头带动 = 板块效应
    - 业绩预增/超预期 = 基本面支撑
 
-请基于给定数据，以多头视角全面分析，给出：看涨理由（至少3条）、目标价位预测、建议买入区间、仓位建议。请旗帜鲜明地阐述看多观点，但保持客观合理。""",
+请基于给定数据，以多头视角全面分析，给出：看涨理由（至少3条）、目标价位预测、建议买入区间、仓位建议。请旗帜鲜明地阐述看多观点，但保持客观合理。
+
+最后必须给出一行：综合评分：XX/100（0=完全没有看涨理由，100=极度看涨，反映你作为多头的信心强度）""",
             "temperature": 0.8,
             "max_tokens": 2000,
             "enabled": True,
@@ -324,7 +331,9 @@ def _default_agent_configs():
    - 负面新闻频出 = 情绪压制
    - 业绩预亏/不及预期 = 盈利风险
 
-请基于给定数据，以空头视角全面分析，给出：看跌理由（至少3条）、目标下跌价位预测、建议止损/回避区间、风险等级。请旗帜鲜明地阐述看空观点，但保持客观合理。""",
+请基于给定数据，以空头视角全面分析，给出：看跌理由（至少3条）、目标下跌价位预测、建议止损/回避区间、风险等级。请旗帜鲜明地阐述看空观点，但保持客观合理。
+
+最后必须给出一行：综合评分：XX/100（0=完全没有看跌理由，100=极度看跌，反映你作为空头的信心强度）""",
             "temperature": 0.8,
             "max_tokens": 2000,
             "enabled": True,

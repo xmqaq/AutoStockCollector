@@ -425,9 +425,16 @@ def _fetch_all_stock_data(code: str) -> Dict[str, Any]:
         fund_storage = FundFlowStorage()
         result["fund_flow_data"] = fund_storage.get_latest_flow(code) or {}
         news_storage = NewsStorage()
-        result["news_data"] = list(news_storage.find_many(
-            {"related_codes": code}, sort=[("published_at", -1)], limit=10
+        bare_code = code[2:] if code[:2] in ("SH", "SZ") else code
+        stock_news = list(news_storage.find_many(
+            {"code": {"$in": [code, bare_code]}},
+            sort=[("publish_date", -1)], limit=10
         ))
+        if not stock_news:
+            stock_news = list(news_storage.find_many(
+                {}, sort=[("publish_date", -1)], limit=10
+            ))
+        result["news_data"] = stock_news
         financial_storage = FinancialStorage()
         fin_records = list(financial_storage.find_many(
             {"code": code}, sort=[("report_date", -1)], limit=1
@@ -451,13 +458,9 @@ def _format_stock_data_text(data: Dict[str, Any]) -> str:
     fd = data.get("fund_flow_data", {}) or {}
     nd = data.get("news_data", []) or []
     md = data.get("margin_data", []) or []
+    fin = data.get("financial_data", {}) or {}
 
     stock_name = si.get("name", "未知")
-    closes = [k.get("close") for k in kd if k.get("close")]
-    highs = [k.get("high") for k in kd if k.get("high")]
-    lows = [k.get("low") for k in kd if k.get("low")]
-    volumes = [k.get("volume") for k in kd if k.get("volume")]
-    amounts = [k.get("amount") for k in kd if k.get("amount")]
 
     pe = si.get("pe") or si.get("pe_ttm") or "暂无"
     pb = si.get("pb") or "暂无"
@@ -466,16 +469,60 @@ def _format_stock_data_text(data: Dict[str, Any]) -> str:
     roe = si.get("roe") or "暂无"
     total_shares = si.get("total_shares") or si.get("总股本", "暂无")
 
-    main_net = fd.get("main_net_inflow") or fd.get("main_net_inflow_5d") or "暂无"
-    retail_net = fd.get("retail_net_inflow") or "暂无"
-    total_amount_flow = fd.get("total_amount") or "暂无"
+    def _kget(row, *keys):
+        for k in keys:
+            v = row.get(k)
+            if v is not None and v != "":
+                return v
+        return ""
 
-    news_titles = [n.get("title", "") for n in nd[:5] if isinstance(n, dict)]
-    top_news = "\n".join(f"  - {t}" for t in news_titles if t) or "  暂无"
+    kline_text = ""
+    for k in kd[:15]:
+        d = _kget(k, "date", "日期")
+        c = _kget(k, "close", "收盘", "收盘价")
+        h = _kget(k, "high", "最高", "最高价")
+        lo = _kget(k, "low", "最低", "最低价")
+        v = _kget(k, "volume", "成交量")
+        a = _kget(k, "amount", "成交额")
+        kline_text += f"  {d}  收盘:{c}  最高:{h}  最低:{lo}  成交量:{v}  成交额:{a}\n"
+
+    main_net = fd.get("main_net_inflow") or fd.get("净额") or "暂无"
+    retail_net = fd.get("retail_net_inflow") or "暂无"
+    total_amount_flow = fd.get("total_amount") or fd.get("成交额") or "暂无"
+    turnover = fd.get("turnover_rate") or fd.get("换手率") or "暂无"
+    change_pct = fd.get("change_pct") or fd.get("涨跌幅") or "暂无"
+
+    def _get_fin(keys):
+        for k in keys:
+            v = fin.get(k)
+            if v is not None and str(v).strip():
+                return v
+        return "暂无"
+
+    rev_growth = _get_fin(["revenue_growth", "营业总收入同比增长率", "营业收入同比增长率", "营业收入增长率"])
+    profit_growth = _get_fin(["profit_growth", "净利润同比增长率", "净利润增长率"])
+    gross_margin = _get_fin(["gross_margin", "销售毛利率", "毛利率"])
+    debt_ratio = _get_fin(["debt_ratio", "资产负债率"])
+    revenue = _get_fin(["营业总收入", "营业收入", "revenue"])
+    net_profit = _get_fin(["净利润", "归属母公司股东的净利润", "net_profit"])
+    report_date = _get_fin(["report_date", "报告期"])
+
+    news_lines = []
+    for n in nd[:8]:
+        if isinstance(n, dict):
+            title = n.get("title", "")
+            pub = n.get("publish_date", "")
+            src = n.get("source", "")
+            if title:
+                news_lines.append(f"  - [{pub}] {title}（{src}）" if pub else f"  - {title}")
+    top_news = "\n".join(news_lines) or "  暂无"
 
     margin_text = ""
-    for m in md[:3]:
-        margin_text += f"  - 日期:{m.get('date','')} 融资余额:{m.get('margin_balance','暂无')} 融券余额:{m.get('short_balance','暂无')}\n"
+    for m in md[:5]:
+        date_val = m.get("date", "")
+        mb = m.get("margin_balance") or m.get("融资余额") or m.get("融资余额(元)") or "暂无"
+        sb = m.get("short_balance") or m.get("融券余额") or m.get("融券余额(元)") or "暂无"
+        margin_text += f"  - 日期:{date_val} 融资余额:{mb} 融券余额:{sb}\n"
 
     return f"""
 【股票基本信息】
@@ -483,21 +530,28 @@ def _format_stock_data_text(data: Dict[str, Any]) -> str:
 - 市盈率(PE)：{pe} 市净率(PB)：{pb} ROE：{roe}
 - 总市值：{market_cap} 总股本：{total_shares}
 
-【技术面数据（最新10日）】
-- 收盘价：{closes[:10] if closes else '暂无'}
-- 最高价：{highs[:10] if highs else '暂无'}
-- 最低价：{lows[:10] if lows else '暂无'}
-- 成交量：{volumes[:10] if volumes else '暂无'}
+【K线行情（最新15日，按日期降序）】
+{kline_text if kline_text.strip() else '  暂无数据'}
+
+【财务数据（报告期：{report_date}）】
+- 营业总收入：{revenue}
+- 净利润：{net_profit}
+- 营收同比增长率：{rev_growth}
+- 净利润同比增长率：{profit_growth}
+- 销售毛利率：{gross_margin}
+- 资产负债率：{debt_ratio}
 
 【资金流向】
 - 主力净流入：{main_net}
 - 散户净流入：{retail_net}
 - 总成交额：{total_amount_flow}
+- 换手率：{turnover}
+- 涨跌幅：{change_pct}
 
-【融资融券】
-{margin_text if margin_text else '  暂无数据'}
+【融资融券（最近5日）】
+{margin_text if margin_text.strip() else '  暂无数据'}
 
-【最新新闻】
+【最新新闻与舆情】
 {top_news}
 """
 
@@ -515,26 +569,25 @@ def _calculate_debate_factors(data: Dict[str, Any]) -> Dict[str, Any]:
     fd = data.get("fund_flow_data", {}) or {}
     fin = data.get("financial_data", {}) or {}
 
-    closes = [float(k["close"]) for k in kd if k.get("close")]
-    amounts = [float(k["amount"]) for k in kd if k.get("amount")]
+    # kd 按 date DESC 排列，technical_score 要求正序（旧→新），需要反转
+    kd_asc = list(reversed(kd))
+
+    def _kval(row, *keys):
+        for k in keys:
+            v = row.get(k)
+            if v is not None:
+                try:
+                    return float(v)
+                except (ValueError, TypeError):
+                    pass
+        return None
+
+    closes = [v for k in kd_asc if (v := _kval(k, "close", "收盘", "收盘价")) is not None]
+    amounts = [v for k in kd_asc if (v := _kval(k, "amount", "成交额")) is not None]
     industry = si.get("industry") or si.get("所属行业", "")
     pe = si.get("pe") or si.get("pe_ttm")
     pb = si.get("pb")
     roe = si.get("roe")
-    try:
-        roe = float(roe) if roe is not None else None
-    except (ValueError, TypeError):
-        roe = None
-
-    try:
-        pe = float(pe) if pe is not None else None
-    except (ValueError, TypeError):
-        pe = None
-
-    try:
-        pb = float(pb) if pb is not None else None
-    except (ValueError, TypeError):
-        pb = None
 
     def _safe_float(v, default=None):
         if v is None:
@@ -544,14 +597,25 @@ def _calculate_debate_factors(data: Dict[str, Any]) -> Dict[str, Any]:
         except (ValueError, TypeError):
             return default
 
-    revenue_growth = _safe_float(fin.get("revenue_growth") or fin.get("营业收入增长率"))
-    profit_growth = _safe_float(fin.get("profit_growth") or fin.get("净利润增长率"))
-    gross_margin = _safe_float(fin.get("gross_margin") or fin.get("毛利率"))
-    debt_ratio = _safe_float(fin.get("debt_ratio") or fin.get("资产负债率"))
+    roe = _safe_float(roe)
+    pe = _safe_float(pe)
+    pb = _safe_float(pb)
 
-    main_net = _safe_float(fd.get("main_net_inflow"))
-    total_amount_flow = _safe_float(fd.get("total_amount"))
-    turnover_rate = _safe_float(fd.get("turnover_rate"))
+    def _get_first_float(*keys):
+        for k in keys:
+            v = _safe_float(fin.get(k))
+            if v is not None:
+                return v
+        return None
+
+    revenue_growth = _get_first_float("revenue_growth", "营业总收入同比增长率", "营业收入同比增长率", "营业收入增长率")
+    profit_growth = _get_first_float("profit_growth", "净利润同比增长率", "净利润增长率")
+    gross_margin = _get_first_float("gross_margin", "销售毛利率", "毛利率")
+    debt_ratio = _get_first_float("debt_ratio", "资产负债率")
+
+    main_net = _safe_float(fd.get("main_net_inflow") or fd.get("净额"))
+    total_amount_flow = _safe_float(fd.get("total_amount") or fd.get("成交额"))
+    turnover_rate = _safe_float(fd.get("turnover_rate") or fd.get("换手率"))
 
     dim_scores: Dict[str, Any] = {}
 
@@ -731,7 +795,7 @@ def debate_stream():
             doc = db["ai_agents"].find_one({"id": agent_id}, {"_id": 0})
             name = doc["name"] if doc else agent_id
             content = base_results.get(agent_id, "")
-            truncated = content[:600] if content else "（无数据）"
+            truncated = content[:1500] if content else "（无数据）"
             base_context_parts.append(f"【{name}】\n{truncated}")
 
         base_context = "\n\n".join(base_context_parts)
@@ -753,7 +817,11 @@ def debate_stream():
 【6位基础分析师观点】
 {base_context}
 
-请综合以上原始数据、量化因子和基础分析观点，从多头视角进行全面辩论。"""
+请综合以上原始数据、量化因子和基础分析观点，从多头视角进行全面辩论。
+
+【重要】你必须在回答的最后一行单独给出综合评分，格式严格为：
+综合评分：XX/100
+其中XX是0-100的整数（0=完全没有看涨理由，100=极度看涨）。这一行前后不要有其他文字。"""
                 for progress in range(20, 51, 10):
                     yield f"data: {_json.dumps({'event': 'progress', 'agent': 'bull', 'progress': progress})}\n\n"
 
@@ -768,7 +836,7 @@ def debate_stream():
             logger.error(f"Bull analysis failed: {e}")
             yield f"data: {_json.dumps({'event': 'bull:error', 'data': str(e)})}\n\n"
 
-        bull_score = _extract_debate_score(bull_full) if bull_full else 60
+        bull_score = _extract_debate_score(bull_full) if bull_full else 50
         yield f"data: {_json.dumps({'event': 'bull:done', 'score': bull_score, 'fullContent': bull_full})}\n\n"
 
         # ── 步骤2: 空头分析师 ──
@@ -785,7 +853,11 @@ def debate_stream():
 【6位基础分析师观点】
 {base_context}
 
-请综合以上原始数据、量化因子和基础分析观点，从空头视角进行全面辩论。"""
+请综合以上原始数据、量化因子和基础分析观点，从空头视角进行全面辩论。
+
+【重要】你必须在回答的最后一行单独给出综合评分，格式严格为：
+综合评分：XX/100
+其中XX是0-100的整数（0=完全没有看跌理由，100=极度看跌）。这一行前后不要有其他文字。"""
                 for progress in range(50, 71, 10):
                     yield f"data: {_json.dumps({'event': 'progress', 'agent': 'bear', 'progress': progress})}\n\n"
 
@@ -800,7 +872,7 @@ def debate_stream():
             logger.error(f"Bear analysis failed: {e}")
             yield f"data: {_json.dumps({'event': 'bear:error', 'data': str(e)})}\n\n"
 
-        bear_score = _extract_debate_score(bear_full) if bear_full else 60
+        bear_score = _extract_debate_score(bear_full) if bear_full else 50
         yield f"data: {_json.dumps({'event': 'bear:done', 'score': bear_score, 'fullContent': bear_full})}\n\n"
 
         # ── 步骤3: 辩论裁判 + 风险管控 ──
@@ -841,7 +913,7 @@ def debate_stream():
         yield f"data: {_json.dumps({'event': 'judge:done', 'fullContent': judge_full})}\n\n"
 
         # ── 最终裁决 ──
-        verdict = _build_final_verdict(code, bull_full, bear_full, judge_full)
+        verdict = _build_final_verdict(code, bull_score, bear_score, bull_full, bear_full, judge_full)
         yield f"data: {_json.dumps({'event': 'verdict', 'data': verdict})}\n\n"
 
     return Response(
@@ -856,25 +928,56 @@ def debate_stream():
 
 
 def _extract_debate_score(text: str) -> int:
-    """从分析文本中提取评分"""
+    """从分析文本末尾提取评分，避免匹配引用的量化因子数字"""
     import re
-    match = re.search(r'评分[：:]\s*(\d+(?:\.\d+)?)', text)
-    if match:
-        return min(100, max(0, int(float(match.group(1)))))
-    return 60
+    tail = text[-600:] if len(text) > 600 else text
+
+    high_priority = [
+        r'综合评分[：:]\s*(\d+(?:\.\d+)?)\s*(?:/\s*100)?',
+        r'(?:综合)?信心[指度][数标]?[：:]\s*(\d+(?:\.\d+)?)',
+    ]
+    for pat in high_priority:
+        matches = list(re.finditer(pat, tail))
+        if matches:
+            val = int(float(matches[-1].group(1)))
+            if 0 <= val <= 100:
+                return val
+
+    low_priority = [
+        r'(?:得分|打分)[：:]\s*(\d+(?:\.\d+)?)',
+        r'(\d+(?:\.\d+)?)\s*/\s*100',
+    ]
+    for pat in low_priority:
+        matches = list(re.finditer(pat, tail))
+        if matches:
+            val = int(float(matches[-1].group(1)))
+            if 0 <= val <= 100:
+                return val
+
+    return 50
 
 
-def _build_final_verdict(code: str, bull_text: str, bear_text: str, judge_text: str) -> Dict:
-    """构建最终裁决结果"""
-    bull_score = _extract_debate_score(bull_text) if bull_text else 60
-    bear_score = _extract_debate_score(bear_text) if bear_text else 60
+def _build_final_verdict(
+    code: str, bull_score: int, bear_score: int,
+    bull_text: str, bear_text: str, judge_text: str,
+) -> Dict:
+    """构建最终裁决结果。
 
-    total = bull_score + bear_score
-    bull_weight = bull_score / total if total > 0 else 0.5
+    bull_score: 多头信心 (0-100, 越高越看涨)
+    bear_score: 空头信心 (0-100, 越高越看跌)
 
-    if bull_weight >= 0.6:
+    统一到看涨尺度后比较：
+      bull_bullish = bull_score       (多头说看涨 78 → 78)
+      bear_bullish = 100 - bear_score (空头说看跌 72 → 看涨 28)
+    """
+    bull_bullish = bull_score
+    bear_bullish = 100 - bear_score
+
+    net = (bull_bullish + bear_bullish) / 2
+
+    if net >= 55:
         tendency = "偏多"
-    elif bull_weight <= 0.4:
+    elif net <= 45:
         tendency = "偏空"
     else:
         tendency = "中性震荡"
@@ -885,12 +988,17 @@ def _build_final_verdict(code: str, bull_text: str, bear_text: str, judge_text: 
         if judge_text and kw in judge_text:
             risk_level = "高"
             break
-    if judge_text and ("低风险" in judge_text or "风险较低" in judge_text):
-        risk_level = "低"
+    if not any(kw in (judge_text or "") for kw in risk_keywords):
+        if judge_text and ("低风险" in judge_text or "风险较低" in judge_text):
+            risk_level = "低"
+        elif judge_text and ("中高风险" in judge_text or "🔥🔥🔥" in judge_text):
+            risk_level = "中高"
+        elif judge_text and ("中低风险" in judge_text or "风险中低" in judge_text):
+            risk_level = "中低"
 
-    if bull_score > bear_score + 10:
+    if net >= 60:
         recommendation = "买入"
-    elif bear_score > bull_score + 10:
+    elif net <= 40:
         recommendation = "回避"
     else:
         recommendation = "观望"

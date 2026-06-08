@@ -110,7 +110,7 @@
               </el-tag>
             </div>
           </div>
-          <div v-if="agent.status !== 'idle'" class="agent-live-text">{{ agent.content }}<span v-if="agent.status === 'running'" class="cursor-blink">▌</span></div>
+          <div v-if="agent.status !== 'idle'" class="agent-live-text md-content" v-html="renderMd(agent.content) + (agent.status === 'running' ? '<span class=\'cursor-blink\'>▌</span>' : '')"></div>
         </div>
       </div>
     </el-card>
@@ -149,7 +149,7 @@
                 信心指数: {{ debateStore.bull.score }}
               </span>
             </div>
-            <div ref="bullContentRef" class="content-text">{{ debateStore.bull.content }}</div>
+            <div ref="bullContentRef" class="content-text md-content" v-html="renderMd(debateStore.bull.content)"></div>
           </div>
           <div v-if="debateStore.bull.error" class="debater-error">
             <el-icon color="#f56c6c"><Warning /></el-icon>
@@ -186,7 +186,7 @@
                 信心指数: {{ debateStore.bear.score }}
               </span>
             </div>
-            <div ref="bearContentRef" class="content-text">{{ debateStore.bear.content }}</div>
+            <div ref="bearContentRef" class="content-text md-content" v-html="renderMd(debateStore.bear.content)"></div>
           </div>
           <div v-if="debateStore.bear.error" class="debater-error">
             <el-icon color="#f56c6c"><Warning /></el-icon>
@@ -209,7 +209,7 @@
       <div v-if="debateStore.judge.status === 'running'" class="judge-streaming">
         <el-progress :percentage="debateStore.judge.progress" :stroke-width="6" status="warning" />
         <p class="judge-hint">裁判正在审阅多空双方论点...</p>
-        <div class="content-text judge-text">{{ debateStore.judge.content }}</div>
+        <div class="content-text judge-text md-content" v-html="renderMd(debateStore.judge.content)"></div>
       </div>
 
       <div v-if="debateStore.verdict" class="verdict-panel">
@@ -239,7 +239,7 @@
         </div>
 
         <el-divider>裁判裁决</el-divider>
-        <div class="content-text judge-text full">{{ debateStore.verdict.judgeVerdict }}</div>
+        <div class="content-text judge-text full md-content" v-html="renderMd(debateStore.verdict.judgeVerdict)"></div>
       </div>
     </el-card>
 
@@ -253,10 +253,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted } from 'vue'
+import { ref, watch, nextTick, onMounted, computed } from 'vue'
 import { MagicStick, Warning, Loading, CircleCheck, User, MoreFilled } from '@element-plus/icons-vue'
 import { useDebateStore } from '@/stores/debateStore'
 import { watchlistApi } from '@/api/watchlist'
+import { marked } from 'marked'
+
+marked.setOptions({ breaks: true, gfm: true })
+
+function renderMd(text: string): string {
+  if (!text) return ''
+  return marked.parse(text) as string
+}
 
 const debateStore = useDebateStore()
 
@@ -526,7 +534,6 @@ onMounted(() => {
   font-size: 12px;
   color: #c0c4cc;
   line-height: 1.6;
-  white-space: pre-wrap;
   word-break: break-word;
   max-height: 260px;
   overflow-y: auto;
@@ -792,7 +799,6 @@ onMounted(() => {
   font-size: 11px;
   color: #c0c4cc;
   line-height: 1.5;
-  white-space: pre-wrap;
   word-break: break-word;
   background: #1a1a1a;
   border-radius: 4px;
@@ -850,5 +856,50 @@ onMounted(() => {
   color: #e5eaf3;
   font-size: 14px;
   font-weight: 600;
+}
+
+.md-content :deep(strong) {
+  color: #e5eaf3;
+  font-weight: 600;
+}
+
+.md-content :deep(h1),
+.md-content :deep(h2),
+.md-content :deep(h3),
+.md-content :deep(h4) {
+  color: #e5eaf3;
+  margin: 8px 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.md-content :deep(h3) { font-size: 13px; }
+.md-content :deep(h4) { font-size: 12px; }
+
+.md-content :deep(p) {
+  margin: 4px 0;
+}
+
+.md-content :deep(ul),
+.md-content :deep(ol) {
+  padding-left: 18px;
+  margin: 4px 0;
+}
+
+.md-content :deep(li) {
+  margin: 2px 0;
+}
+
+.md-content :deep(hr) {
+  border: none;
+  border-top: 1px solid #3c3c3c;
+  margin: 8px 0;
+}
+
+.md-content :deep(code) {
+  background: #2c2c2c;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 11px;
 }
 </style>
