@@ -271,7 +271,7 @@
                 <div v-if="signal.key_factors?.length" class="signal-tags">
                   <el-tag v-for="(f, i) in signal.key_factors.slice(0, 3)" :key="i" size="small" type="info">{{ f }}</el-tag>
                 </div>
-                <el-button size="small" text type="primary" @click.stop="showDetail(signal)">详情</el-button>
+                <el-button size="small" text type="primary" @click.stop="showDetail({ ...signal, id: `phi-${signal.agent_id}`, source: 'philosophy' })">详情</el-button>
               </div>
             </div>
           </div>
