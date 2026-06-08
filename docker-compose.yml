@@ -4,8 +4,8 @@ services:
     container_name: stock-backend
     restart: unless-stopped
     env_file: ./AutoStockCollector-manage/.env
-    ports:
-      - "5555:5555"
+    expose:
+      - "5555"
 
   frontend:
     build: ./AutoStockCollector-web
