@@ -12,6 +12,6 @@ services:
     container_name: stock-frontend
     restart: unless-stopped
     ports:
-      - "8888:80"
+      - "65489:80"
     depends_on:
       - backend
