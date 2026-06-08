@@ -128,6 +128,8 @@ def register_routes(app):
     from api.routes.ai_agent import ai_agent_bp
     from api.routes.workflow import workflow_bp
     from api.routes.todo import todo_bp
+    from api.routes.memory import memory_bp
+    from api.routes.philosophy import philosophy_bp
     
     app.register_blueprint(api_bp)
     app.register_blueprint(ai_advanced_bp)
@@ -137,6 +139,8 @@ def register_routes(app):
     app.register_blueprint(ai_agent_bp)
     app.register_blueprint(workflow_bp)
     app.register_blueprint(todo_bp)
+    app.register_blueprint(memory_bp)
+    app.register_blueprint(philosophy_bp)
 
     @app.route("/health", methods=["GET"])
     def health_check():
@@ -2927,6 +2931,22 @@ def _build_agent_context(agent_id: str, bundle, scores: dict) -> str:
         lines.append(
             f"各维度评分 — 技术：{scores.get('trend', '?')}  基本面：{scores.get('valuation', '?')}"
             f"  资金：{scores.get('fund_flow', '?')}  综合：{scores.get('composite', '?')}"
+        )
+        for n in (bundle.news or [])[:3]:
+            lines.append(f"新闻：{n.get('title', '')}")
+
+    elif agent_id in ("bull_analyst", "bear_analyst", "debate_judge"):
+        lines.append(f"近10日收盘价：{[round(c, 2) for c in closes[:10]] if closes else '暂无'}")
+        lines.append(f"近10日成交量：{[round(v, 0) for v in volumes[:10]] if volumes else '暂无'}")
+        lines.append(f"PE：{bundle.pe or '暂无'}  PB：{bundle.pb or '暂无'}  ROE：{bundle.roe or '暂无'}")
+        lines.append(f"负债率：{bundle.debt_ratio or '暂无'}  毛利率：{bundle.gross_margin or '暂无'}")
+        lines.append(f"营收同比：{bundle.revenue_growth or '暂无'}  净利同比：{bundle.profit_growth or '暂无'}")
+        if bundle.main_net_inflow is not None:
+            sign = "+" if bundle.main_net_inflow >= 0 else ""
+            lines.append(f"主力净流入：{sign}{bundle.main_net_inflow / 1e8:.2f}亿元")
+        lines.append(
+            f"综合评分：{scores.get('composite', '暂无')}"
+            f"（技术{scores.get('trend', '?')} 基本面{scores.get('valuation', '?')} 资金{scores.get('fund_flow', '?')}）"
         )
         for n in (bundle.news or [])[:3]:
             lines.append(f"新闻：{n.get('title', '')}")

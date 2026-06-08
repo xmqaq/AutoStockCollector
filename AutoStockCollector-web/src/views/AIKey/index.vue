@@ -244,6 +244,7 @@ const PRESETS = [
   { value: 'mistral',   label: 'Mistral AI',              provider: 'mistral',   base_url: 'https://api.mistral.ai/v1',                         color: '#f87c56' },
   { value: 'minimax',   label: 'MiniMax',                 provider: 'minimax',   base_url: 'https://api.minimax.io/v1/text/chatcompletion_v2',  color: '#00d4aa' },
   { value: 'cohere',    label: 'Cohere',                  provider: 'cohere',    base_url: 'https://api.cohere.com/v1',                         color: '#39594d' },
+  { value: 'agnes',     label: 'Agnes AI',               provider: 'agnes',     base_url: 'https://apihub.agnes-ai.com/v1',                    color: '#8B5CF6' },
   { value: 'custom',    label: '自定义接口',               provider: '',          base_url: '',                                                  color: '#666688' },
 ]
 

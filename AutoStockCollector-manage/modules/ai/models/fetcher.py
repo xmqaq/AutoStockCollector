@@ -77,6 +77,7 @@ class ModelListFetcher:
         'mistral': 'https://api.mistral.ai/v1/models',
         'qwen': 'https://dashscope.aliyuncs.com/compatible-mode/v1/models',
         'minimax': 'https://api.minimaxi.com/v1/models',
+        'agnes': 'https://apihub.agnes-ai.com/v1/models',
     }
 
     def __init__(self, cache_ttl_seconds: int = 3600, timeout: int = 10):

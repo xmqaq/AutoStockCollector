@@ -551,3 +551,85 @@ export const debateApi = {
   },
 }
 
+// ── 投资哲学 Agent ──────────────────────────────
+export interface PhilosophyAgent {
+  id: string
+  name: string
+  school: string
+  school_label?: string
+  description: string
+  enabled?: boolean
+}
+
+export interface PhilosophyAgentDetail {
+  agent_id: string
+  name: string
+  archetype: string
+  description: string
+  system_prompt: string
+  temperature: number
+  max_tokens: number
+  risk_tolerance: number
+  holding_horizon: string
+  weight_dimensions: Record<string, number>
+}
+
+export interface PhilosophySignal {
+  agent_id: string
+  agent_name: string
+  philosophy?: string
+  archetype?: string
+  score: number
+  action: string
+  confidence: number
+  reasoning: string
+  signals: string[]
+  key_factors?: string[]
+  risk_warnings?: string[]
+}
+
+export interface PhilosophyConsensus {
+  tendency: number
+  consensus_level: number
+  confidence: number
+  high_conviction: boolean
+  positive_count: number
+  negative_count: number
+}
+
+export interface PhilosophyVerdict {
+  code: string
+  agent_signals: PhilosophySignal[]
+  consensus: PhilosophyConsensus
+}
+
+export const philosophyApi = {
+  listAgents() {
+    return client.get('/api/v1/ai/philosophy/agents')
+  },
+  stream(params: { code: string; agents: string[] }) {
+    return fetch('/api/v1/ai/philosophy/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    })
+  },
+  analyze(params: { code: string; agents: string[] }) {
+    return client.post('/api/v1/ai/philosophy/analyze', params)
+  },
+}
+
+// ── Research-Battle ──────────────────────────────
+export const researchBattleApi = {
+  stream(params: { code: string; num_rounds?: number; user_id?: string }) {
+    return fetch('/api/v1/ai/research-battle/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    })
+  },
+  quick(params: { code: string; num_rounds?: number; user_id?: string }) {
+    return client.post('/api/v1/ai/research-battle/quick', params)
+  },
+}
+
