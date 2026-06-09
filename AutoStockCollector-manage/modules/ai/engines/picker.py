@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
 from modules.ai.foundation import factors
-from modules.ai.content_risk import RISK_DISCLAIMER
+
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -210,7 +210,7 @@ class PickerEngine:
         universe = self.dal.list_universe()
         if not universe:
             _update_progress(100, "选股完成（无可用股票）", is_running=False)
-            result = {"strategy": strategy, "picks": [], "timestamp": datetime.now().isoformat(), "disclaimer": RISK_DISCLAIMER}
+            result = {"strategy": strategy, "picks": [], "timestamp": datetime.now().isoformat()}
             self.result_saver(dict(result))
             return result
 
@@ -285,7 +285,7 @@ class PickerEngine:
             "candidate_count": len(candidates),
             "universe_count": total_u,
             "timestamp": datetime.now().isoformat(),
-            "disclaimer": RISK_DISCLAIMER,
+
         }
         self.result_saver(dict(result))
         _update_progress(100, "选股完成", is_running=False)

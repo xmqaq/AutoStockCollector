@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 
 from modules.ai.foundation import factors
 from modules.ai.foundation.dal import StockDAL, _parse_pct, _parse_amount_yuan
-from modules.ai.content_risk import sanitize_text, RISK_DISCLAIMER
+from modules.ai.content_risk import sanitize_text
 
 
 def _safe_round(v, n=2):
@@ -54,7 +54,7 @@ class DeepAnalysisService:
             "scores": scores,
             "news": news,
             "analysis_time": _dt.now(beijing).strftime("%Y-%m-%d %H:%M"),
-            "disclaimer": RISK_DISCLAIMER,
+
         }
 
     def ai_report(self, code: str, data: Optional[Dict] = None) -> Dict[str, Any]:
@@ -88,12 +88,12 @@ class DeepAnalysisService:
                 "content": content,
                 "provider": result.provider,
                 "from_cache": result.from_cache,
-                "disclaimer": RISK_DISCLAIMER,
+
             }
         return {
             "success": False,
             "error": result.error or "所有AI服务暂不可用",
-            "disclaimer": RISK_DISCLAIMER,
+
         }
 
     def _build_basic_info(self, code: str, bundle) -> Dict[str, Any]:
@@ -433,9 +433,6 @@ RSI(14)：{_v(te.get('rsi14'))}
 
 ## 估值分析
 （基于PE/PB，结合行业特点判断估值是否合理）
-
-## 风险提示
-（列出2-3个主要风险点，要具体不要泛泛）
 
 ## 综合评级
 给出：强烈关注/适度关注/中性观望/谨慎回避 四选一

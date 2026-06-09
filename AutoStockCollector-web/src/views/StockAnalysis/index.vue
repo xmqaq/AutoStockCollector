@@ -478,10 +478,10 @@ async function runAIReport() {
     if (res.data?.success) {
       aiReport.value = res.data.data
     } else {
-      aiReport.value = { success: false, error: res.data?.data?.error || res.data?.error || 'AI服务暂不可用', disclaimer: '' }
+      aiReport.value = { success: false, error: res.data?.data?.error || res.data?.error || 'AI服务暂不可用' }
     }
   } catch {
-    aiReport.value = { success: false, error: 'AI请求失败，请检查网络或API配置', disclaimer: '' }
+    aiReport.value = { success: false, error: 'AI请求失败，请检查网络或API配置' }
   } finally {
     aiLoading.value = false
   }

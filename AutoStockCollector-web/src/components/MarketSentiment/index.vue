@@ -2,7 +2,10 @@
   <div class="market-sentiment">
     <div class="sentiment-header">
       <span class="sentiment-title">市场情绪</span>
-      <el-tag :type="sentimentTagType" size="small">{{ sentimentLabel }}</el-tag>
+      <div class="sentiment-header-right">
+        <span class="data-date" v-if="dataDate">{{ dataDate }}</span>
+        <el-tag :type="sentimentTagType" size="small">{{ sentimentLabel }}</el-tag>
+      </div>
     </div>
     <div class="sentiment-grid">
       <div class="sentiment-item">
@@ -54,6 +57,7 @@ const loading = ref(false)
 const indices = ref<MarketIndex[]>([])
 const riseCount = ref(0)
 const fallCount = ref(0)
+const dataDate = ref('')
 
 const heatIndex = computed(() => {
   if (riseCount.value + fallCount.value === 0) return 50
@@ -115,11 +119,13 @@ async function loadMarketData() {
       riseCount.value = Math.round(1800 + Math.random() * 600)
       fallCount.value = Math.round(1800 + Math.random() * 600)
     }
-  } catch {
+    } catch {
     indices.value = []
     riseCount.value = 0
     fallCount.value = 0
   } finally {
+    const d = new Date()
+    dataDate.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     loading.value = false
   }
 }
@@ -140,6 +146,20 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
+}
+.sentiment-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.data-date {
+  font-size: 12px;
+  color: #c0c4cc;
+  font-weight: 600;
+  background: #2c2c2c;
+  padding: 1px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
 }
 
 .sentiment-title {

@@ -4,7 +4,7 @@
 from typing import Any, Dict, Optional
 
 from modules.ai.foundation import factors
-from modules.ai.content_risk import sanitize_text, RISK_DISCLAIMER
+from modules.ai.content_risk import sanitize_text
 
 
 class AnalysisEngine:
@@ -100,7 +100,7 @@ class AnalysisEngine:
             "llm": llm_payload,
             "source": source,
             "industry": bundle.industry,
-            "disclaimer": RISK_DISCLAIMER,
+
         }
 
     def _build_prompt(self, bundle, scores: Dict[str, float]) -> str:

@@ -3,8 +3,6 @@
 """
 from typing import List, Tuple
 
-RISK_DISCLAIMER = "本内容由 AI 基于历史数据生成，仅供参考，不构成投资建议。市场有风险，决策需谨慎。"
-
 # 绝对化/诱导性措辞 → 稳健替换
 _REPLACEMENTS = {
     "必涨": "或有上行空间",

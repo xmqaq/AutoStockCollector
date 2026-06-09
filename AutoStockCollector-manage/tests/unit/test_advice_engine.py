@@ -16,7 +16,7 @@ class TestAdviceEngine(unittest.TestCase):
             "code": "SH600519", "name": "贵州茅台",
             "scores": {"composite": composite, "technical": 80.0},
             "current_price": 20.0, "source": "llm",
-            "llm": {"summary": "偏强"}, "disclaimer": "仅供参考",
+            "llm": {"summary": "偏强"},
         }
 
     def _engine(self, llm_success=True, llm_text="可逢低关注，注意控制仓位"):
@@ -58,11 +58,6 @@ class TestAdviceEngine(unittest.TestCase):
         result = engine.advise("SH600519")
         self.assertEqual(result["source"], "rule")
         self.assertIn(result["advice"]["action"], ["回避", "观望", "减仓"])
-
-    def test_disclaimer_present(self):
-        engine, _, _ = self._engine()
-        result = engine.advise("SH600519")
-        self.assertIn("参考", result["disclaimer"])
 
     def test_buy_zone_and_stop_loss_sanitized(self):
         from unittest.mock import MagicMock

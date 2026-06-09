@@ -1012,9 +1012,7 @@ class RuleEngineFallback:
                 f"MA5：{ma5:.2f}",
                 f"MA20：{ma20:.2f}"
             ],
-            "risk_factors": [
-                "规则引擎分析，结果仅供参考" if score < 60 else "建议结合市场情况综合判断"
-            ],
+            "risk_factors": [],
             "support_levels": [round(ma20 * 0.95, 2)],
             "resistance_levels": [round(ma20 * 1.05, 2)],
             "stop_loss": round(current_price * 0.95, 2),

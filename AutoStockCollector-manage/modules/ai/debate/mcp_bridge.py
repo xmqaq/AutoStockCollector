@@ -74,9 +74,13 @@ class MCPBridge:
 # ==================== 注册 A 股专用 MCP 工具 ====================
 
 
+def _strip_code(code: str) -> str:
+    return code[2:] if code[:2] in ("SH", "SZ") else code
+
 def _analyze_dragon_tiger(code: str = "", date: str = "") -> Dict:
     """龙虎榜席位分析"""
     try:
+        code = _strip_code(code)
         from core.storage.mongo_storage import DragonTigerStorage
         storage = DragonTigerStorage()
         query = {}
@@ -95,6 +99,7 @@ def _analyze_dragon_tiger(code: str = "", date: str = "") -> Dict:
 def _analyze_sentiment(code: str = "") -> Dict:
     """新闻舆情分析"""
     try:
+        code = _strip_code(code)
         from core.storage.mongo_storage import NewsStorage
         storage = NewsStorage()
         query = {"code": code} if code else {}
@@ -122,6 +127,7 @@ def _analyze_fund_flow(code: str = "") -> Dict:
 def _analyze_financial(code: str = "") -> Dict:
     """财务数据分析"""
     try:
+        code = _strip_code(code)
         from core.storage.mongo_storage import FinancialStorage
         storage = FinancialStorage()
         records = list(storage.collection.find(
@@ -137,6 +143,7 @@ def _analyze_financial(code: str = "") -> Dict:
 def _get_kline_trend(code: str = "", days: int = 60) -> Dict:
     """K线趋势分析"""
     try:
+        code = _strip_code(code)
         from core.storage.mongo_storage import KlineStorage
         storage = KlineStorage()
         records = list(storage.collection.find(
@@ -151,13 +158,19 @@ def _get_kline_trend(code: str = "", days: int = 60) -> Dict:
         return {"error": str(e), "records": []}
 
 
-def _get_capital_flow() -> Dict:
+def _get_capital_flow(**kwargs) -> Dict:
     """全市场资金流向"""
     try:
         from core.storage.mongo_storage import FundFlowStorage
         storage = FundFlowStorage()
-        latest = storage.find_one({"main_net_inflow": {"$exists": True}}, sort=[("date", -1)])
-        return {"date": latest.get("date"), "market_flow": "positive" if latest and latest.get("main_net_inflow", 0) > 0 else "negative"}
+        import pymongo
+        latest = storage.collection.find_one(
+            {"main_net_inflow": {"$exists": True}},
+            sort=[("date", pymongo.DESCENDING)]
+        )
+        if latest is None:
+            return {"error": "No capital flow data available"}
+        return {"date": latest.get("date"), "market_flow": "positive" if latest.get("main_net_inflow", 0) > 0 else "negative"}
     except Exception as e:
         return {"error": str(e)}
 

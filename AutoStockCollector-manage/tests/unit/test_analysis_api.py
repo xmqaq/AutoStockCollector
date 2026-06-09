@@ -17,7 +17,7 @@ class TestAnalysisAPI(unittest.TestCase):
         fake_result = {
             "code": "SH600519", "name": "贵州茅台",
             "scores": {"composite": 72.0}, "source": "llm",
-            "llm": {"summary": "稳健"}, "disclaimer": "仅供参考",
+            "llm": {"summary": "稳健"},
         }
         with patch("api.routes.AnalysisEngine") as MockEngine:
             MockEngine.return_value.analyze.return_value = fake_result

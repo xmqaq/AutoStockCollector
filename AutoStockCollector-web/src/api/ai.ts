@@ -329,7 +329,6 @@ export interface DeepAnalysisData {
   scores: DeepScores
   news: DeepNewsItem[]
   analysis_time: string
-  disclaimer: string
 }
 
 export interface AIReportResult {
@@ -338,7 +337,6 @@ export interface AIReportResult {
   provider?: string
   from_cache?: boolean
   error?: string
-  disclaimer: string
 }
 
 // ── 第二期一体化 AI 服务（旧接口保留兼容） ──────────────────────────────
@@ -357,7 +355,6 @@ export interface AIAnalysisResult {
   current_price: number | null
   llm: { summary: string; recommendation: string; risk_factors: string[] } | null
   source: 'llm' | 'factor'
-  disclaimer: string
 }
 
 export interface AIAdvice {
@@ -375,7 +372,6 @@ export interface AIAdviceResult {
   current_price: number | null
   advice: AIAdvice
   source: 'llm' | 'rule'
-  disclaimer: string
 }
 
 export interface AIPick {
@@ -396,7 +392,6 @@ export interface AIPickResult {
   candidate_count?: number
   universe_count?: number
   timestamp: string
-  disclaimer: string
 }
 
 export const deepAnalysisApi = {

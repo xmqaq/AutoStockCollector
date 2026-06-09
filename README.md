@@ -3,7 +3,6 @@
 一站式 A 股 AI 量化分析系统 —— 全自动数据采集 · 智能数据治理 · 多模型 AI 决策 · 量化回测 · 可视化工作流
 
 [![CI](https://github.com/xmqaq/AutoStockCollector/actions/workflows/ci.yml/badge.svg)](https://github.com/xmqaq/AutoStockCollector/actions/workflows/ci.yml)
-> **免责声明**：本项目所有数据、AI 分析结论、选股策略与回测结果仅用于量化技术研究与学习参考，不构成任何投资建议。股市风险极高，使用者所有实盘交易风险自行承担。
 
 ## 功能概览
 

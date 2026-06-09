@@ -55,9 +55,6 @@
       <!-- Page content -->
       <el-main class="main-content">
         <router-view />
-        <div class="disclaimer">
-          免责声明：本系统数据仅供参考，不构成任何投资建议。股市有风险，入市需谨慎。
-        </div>
       </el-main>
 
       <!-- AI Chat Float Button -->
@@ -140,7 +137,6 @@ const menuGroups: MenuGroup[] = [
       { key: '/ai-keys', label: 'AI Key管理', icon: Key },
       { key: '/ai-agents', label: 'AI Agent管理', icon: MagicStick },
       { key: '/multi-agent', label: '多Agent分析', icon: MagicStick },
-      { key: '/debate', label: '多空辩论', icon: MagicStick },
       { key: '/memory-settings', label: '记忆设置', icon: Operation },
     ],
   },
@@ -335,14 +331,5 @@ onUnmounted(() => {
   min-height: 0;
 }
 
-.disclaimer {
-  margin-top: 24px;
-  padding: 12px 16px;
-  background: #1a1a1a;
-  border: 1px solid #2c2c2c;
-  border-radius: 4px;
-  font-size: 12px;
-  color: #606266;
-  text-align: center;
-}
+
 </style>

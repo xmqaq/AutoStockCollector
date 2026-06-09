@@ -14,7 +14,7 @@ class TestAdvicePickerAPI(unittest.TestCase):
         self.client = self.app.test_client()
 
     def test_advice_endpoint(self):
-        fake = {"code": "SH600519", "advice": {"action": "关注"}, "source": "llm", "disclaimer": "仅供参考"}
+        fake = {"code": "SH600519", "advice": {"action": "关注"}, "source": "llm"}
         with patch("api.routes.AdviceEngine") as MockEng:
             MockEng.return_value.advise.return_value = fake
             resp = self.client.post("/api/v1/ai/stock/600519/advice", json={"cost": 18.0, "position": 0.3})

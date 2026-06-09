@@ -1,9 +1,9 @@
 """买卖参考建议引擎。复用 AnalysisEngine 结果 + 持仓上下文 → LLM 操作建议 → 风控。
-LLM 失败时按综合分降级为规则建议。所有输出标注仅供参考。
+LLM 失败时按综合分降级为规则建议。
 """
 from typing import Any, Dict, Optional
 
-from modules.ai.content_risk import sanitize_text, RISK_DISCLAIMER
+from modules.ai.content_risk import sanitize_text
 
 
 class AdviceEngine:
@@ -52,7 +52,7 @@ class AdviceEngine:
             "current_price": analysis.get("current_price"),
             "advice": advice,
             "source": source,
-            "disclaimer": RISK_DISCLAIMER,
+
         }
 
     def _build_prompt(self, analysis: Dict[str, Any], cost: Optional[float], position: Optional[float]) -> str:

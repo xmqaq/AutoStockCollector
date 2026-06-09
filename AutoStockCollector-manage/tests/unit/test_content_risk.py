@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from modules.ai.content_risk import sanitize_text, RISK_DISCLAIMER
+from modules.ai.content_risk import sanitize_text
 
 
 class TestSanitizeText(unittest.TestCase):
@@ -33,11 +33,6 @@ class TestSanitizeText(unittest.TestCase):
         text, hits = sanitize_text(None)
         self.assertEqual(text, "")
         self.assertEqual(hits, [])
-
-    def test_disclaimer_is_nonempty_string(self):
-        self.assertIsInstance(RISK_DISCLAIMER, str)
-        self.assertIn("参考", RISK_DISCLAIMER)
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -502,17 +502,7 @@
             title="投资提示"
             type="info"
             :closable="false"
-            show-icon
-          >
-            <template #default>
-              <ul class="tips-list">
-                <li>以上选股结果仅供参考，不构成任何投资建议</li>
-                <li>股市有风险，投资需谨慎，请根据自身风险承受能力决策</li>
-                <li>建议结合市场环境和个人研究，理性投资</li>
-                <li>止损价和目标价仅为参考，实际操作需灵活应对</li>
-              </ul>
-            </template>
-          </el-alert>
+          />
         </div>
       </div>
       <template #footer>
@@ -523,13 +513,7 @@
     <!-- 量化多因子选股结果对话框 -->
     <el-dialog v-model="showQuantResultDialog" title="量化多因子选股 — 筛选结果" width="1200px" top="2vh">
       <div v-if="quantResult" class="quant-result">
-        <el-alert
-          title="本结果仅供参考，不构成投资建议。股市有风险，投资需谨慎。"
-          type="warning"
-          :closable="false"
-          show-icon
-          style="margin-bottom:16px"
-        />
+
 
         <!-- Summary -->
         <div class="quant-summary">

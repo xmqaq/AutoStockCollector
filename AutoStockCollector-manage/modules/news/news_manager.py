@@ -215,7 +215,7 @@ class NewsManager:
             return []
 
     @staticmethod
-    def _is_old_news(publish_date: str | None, cutoff: str | None) -> bool:
+    def _is_old_news(publish_date: Optional[str], cutoff: Optional[str]) -> bool:
         """判断新闻是否早于截止时间（已采集过）。
         两端都有精确时间时按时间比较；任一方只有日期则只比较日期部分，
         同日新闻不跳过（靠 upsert 去重），避免因时间精度不同误跳。

@@ -62,11 +62,5 @@ class TestAnalysisEngine(unittest.TestCase):
         self.assertIsNone(result["llm"])
         self.assertIn("composite", result["scores"])
 
-    def test_disclaimer_always_present(self):
-        engine, _, _ = self._engine()
-        result = engine.analyze("SH600519")
-        self.assertIn("参考", result["disclaimer"])
-
-
 if __name__ == "__main__":
     unittest.main()

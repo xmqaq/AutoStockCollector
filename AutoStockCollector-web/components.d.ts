@@ -13,9 +13,13 @@ declare module 'vue' {
   export interface GlobalComponents {
     AIChatFloat: typeof import('./src/components/AIChatFloat/index.vue')['default']
     AlertNotification: typeof import('./src/components/AlertNotification/index.vue')['default']
+    AnalysisPipeline: typeof import('./src/components/MultiAgentPanel/AnalysisPipeline.vue')['default']
     AnalysisProgress: typeof import('./src/components/AnalysisProgress/index.vue')['default']
     BatchPick: typeof import('./src/components/BatchPick/index.vue')['default']
+    DataCollectionPanel: typeof import('./src/components/MultiAgentPanel/DataCollectionPanel.vue')['default']
+    DebateArena: typeof import('./src/components/MultiAgentPanel/DebateArena.vue')['default']
     DebatePanel: typeof import('./src/components/DebatePanel/index.vue')['default']
+    DecisionBoard: typeof import('./src/components/MultiAgentPanel/DecisionBoard.vue')['default']
     ElAlert: typeof import('element-plus/es')['ElAlert']
     ElAside: typeof import('element-plus/es')['ElAside']
     ElBadge: typeof import('element-plus/es')['ElBadge']
@@ -81,11 +85,13 @@ declare module 'vue' {
     PhilosophyPanel: typeof import('./src/components/PhilosophyPanel/index.vue')['default']
     ProfitChart: typeof import('./src/components/ProfitChart/index.vue')['default']
     ProgressTable: typeof import('./src/components/ProgressTable/index.vue')['default']
+    ResearcherAnalysis: typeof import('./src/components/MultiAgentPanel/ResearcherAnalysis.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SectorHeatmap: typeof import('./src/components/SectorHeatmap/index.vue')['default']
     SentimentTrend: typeof import('./src/components/SentimentTrend/index.vue')['default']
     StockSearch: typeof import('./src/components/StockSearch/index.vue')['default']
+    VerdictCard: typeof import('./src/components/MultiAgentPanel/VerdictCard.vue')['default']
     WorkflowCanvas: typeof import('./src/components/WorkflowCanvas/index.vue')['default']
   }
   export interface GlobalDirectives {
