@@ -130,6 +130,7 @@ def register_routes(app):
     from api.routes.todo import todo_bp
     from api.routes.memory import memory_bp
     from api.routes.philosophy import philosophy_bp
+    from api.routes.signals import signals_bp
     
     app.register_blueprint(api_bp)
     app.register_blueprint(ai_advanced_bp)
@@ -141,6 +142,7 @@ def register_routes(app):
     app.register_blueprint(todo_bp)
     app.register_blueprint(memory_bp)
     app.register_blueprint(philosophy_bp)
+    app.register_blueprint(signals_bp)
 
     @app.route("/health", methods=["GET"])
     def health_check():

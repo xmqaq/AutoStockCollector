@@ -50,6 +50,55 @@ class Settings:
         "max_tokens": 4096,
     }
 
+    # Deep/Quick/Routing LLM 分级策略
+    LLM_TIERS = {
+        "deep": {
+            "description": "复杂推理：synthesis, judge, portfolio_manager",
+            "temperature": 0.5,
+            "max_tokens": 4096,
+            "cost_multiplier": 1.0,
+        },
+        "quick": {
+            "description": "例行分析：analyst agents, backtest",
+            "temperature": 0.3,
+            "max_tokens": 1024,
+            "cost_multiplier": 0.15,
+        },
+        "routing": {
+            "description": "分类决策：涨跌/买卖判断",
+            "temperature": 0.1,
+            "max_tokens": 256,
+            "cost_multiplier": 0.05,
+        },
+    }
+
+    # Agent → Tier 映射
+    AGENT_TIER_MAP = {
+        "portfolio_manager": "deep",
+        "debate_judge": "deep",
+        "research_manager": "deep",
+        "market_analyst": "quick",
+        "technical_analyst": "quick",
+        "sentiment_analyst": "quick",
+        "fund_analyst": "quick",
+        "fundamental_analyst": "quick",
+        "risk_analyst": "quick",
+        "bull_analyst": "quick",
+        "bear_analyst": "quick",
+        "signal_classifier": "routing",
+        "risk_level": "routing",
+        "recommendation": "routing",
+    }
+
+    # 上下文压缩配置
+    COMPRESSION_CONFIG = {
+        "enabled": True,
+        "threshold": 0.8,
+        "max_tokens": 128000,
+        "layer1_max_trim": 5000,
+        "layer3_llm_model": "quick",
+    }
+
     BACKTEST_CONFIG = {
         "default_cash": 1000000,
         "default_commission": 0.001,

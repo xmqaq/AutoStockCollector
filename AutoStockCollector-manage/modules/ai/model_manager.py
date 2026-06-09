@@ -459,67 +459,7 @@ class PromptVersionManager:
             ]
 
 
-class AsyncCallProcessor:
-    def __init__(self, max_workers: int = 3):
-        self._queue: Queue = Queue()
-        self._results: Dict[str, Any] = {}
-        self._max_workers = max_workers
-        self._running = False
-        self._workers: List[threading.Thread] = []
-
-    def submit(
-        self,
-        call_id: str,
-        func: Callable,
-        *args,
-        **kwargs
-    ):
-        self._queue.put((call_id, func, args, kwargs))
-        self._results[call_id] = {"status": "pending", "result": None, "error": None}
-
-    def get_result(self, call_id: str, timeout: float = 60.0) -> Any:
-        start = time.time()
-
-        while time.time() - start < timeout:
-            if call_id in self._results:
-                result = self._results[call_id]
-                if result["status"] == "completed":
-                    if result["error"]:
-                        raise Exception(result["error"])
-                    return result["result"]
-                elif result["status"] == "failed":
-                    raise Exception(result["error"])
-            time.sleep(0.1)
-
-        raise TimeoutError(f"Call {call_id} timed out")
-
-    def start(self):
-        self._running = True
-        for i in range(self._max_workers):
-            t = threading.Thread(target=self._worker, daemon=True)
-            t.start()
-            self._workers.append(t)
-        logger.info(f"Started {self._max_workers} async workers")
-
-    def stop(self):
-        self._running = False
-        for t in self._workers:
-            t.join(timeout=5)
-        self._workers.clear()
-
-    def _worker(self):
-        while self._running:
-            try:
-                call_id, func, args, kwargs = self._queue.get(timeout=1)
-                try:
-                    result = func(*args, **kwargs)
-                    self._results[call_id] = {"status": "completed", "result": result, "error": None}
-                except Exception as e:
-                    self._results[call_id] = {"status": "failed", "result": None, "error": str(e)}
-            except Empty:
-                continue
-            except Exception as e:
-                logger.error(f"Worker error: {e}")
+# AsyncCallProcessor removed — replaced by LangGraph ThreadPoolExecutor in orchestration/graph.py
 
 
 class ModelManager:
@@ -547,8 +487,6 @@ class ModelManager:
             self._cost_usage: Dict[str, float] = defaultdict(float)
 
             self._prompt_manager = PromptVersionManager()
-            self._async_processor = AsyncCallProcessor(max_workers=3)
-            self._async_processor.start()
 
             self._init_models()
 
@@ -881,7 +819,6 @@ class ModelManager:
         logger.info("Token statistics cleared")
 
     def shutdown(self):
-        self._async_processor.stop()
         logger.info("ModelManager shutdown")
 
 

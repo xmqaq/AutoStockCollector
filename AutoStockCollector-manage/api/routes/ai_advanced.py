@@ -9,6 +9,9 @@ from typing import Dict, List, Any, Optional
 import threading
 import time
 import uuid
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 ai_advanced_bp = Blueprint("ai_advanced", __name__, url_prefix="/api/v1/ai")
 
@@ -754,7 +757,7 @@ def debate_stream():
         yield f"data: {_json.dumps({'event': 'factor:done', 'data': factor_results})}\n\n"
 
         # ═══════════════════════════════════════════
-        # 阶段3: 6位基础分析师
+        # 阶段3: 6位基础分析师 (使用LangGraph编排)
         # ═══════════════════════════════════════════
         enriched_context = f"{stock_data_text}\n\n{factor_text}"
 
@@ -1040,90 +1043,52 @@ def research_battle_stream():
     normalized = _normalize_code(code)
 
     def generate():
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
         try:
-            from modules.ai.debate.research_env import ResearchEnvironment
-            from modules.ai.debate.battle_env import BattleEnvironment
-            from modules.ai.foundation.llm_router import LLMRouter
+            from modules.ai.orchestration.graph import create_trading_graph
+            from modules.ai.orchestration.signal_processing import extract_final_verdict
 
-            router = LLMRouter()
+            graph = create_trading_graph()
+            result = graph.run(normalized)
+            verdict = result.get("verdict", {})
 
-            yield f"data: {_json.dumps({'type': 'start', 'data': {'code': normalized}})}\n\n"
+            yield f"data: {_json.dumps({'type': 'research:start', 'data': {'code': normalized}})}\n\n"
 
-            yield f"data: {_json.dumps({'type': 'research:start'})}\n\n"
+            for aid, out in result.get("analyst_outputs", {}).items():
+                agent_payload = {
+                    "agent_id": aid,
+                    "agent_name": out.get("agent_name", aid),
+                    "signal": out.get("signal", "neutral"),
+                    "confidence": out.get("confidence", 0),
+                    "key_findings": [out.get("content", "")[:200]],
+                    "evidence": {},
+                    "raw_analysis": out.get("content", ""),
+                }
+                yield f"data: {_json.dumps({'type': 'research:agent_done', 'data': agent_payload})}\n\n"
 
-            research_env = ResearchEnvironment(router=router)
-            agents = research_env.get_agent_list()
-
-            ag = _json.dumps({'type': 'research:agents', 'data': {'agents': agents}})
-            yield f"data: {ag}\n\n"
-
-            reports = loop.run_until_complete(
-                research_env.run_research(normalized)
-            )
-
-            for aid, report in reports.items():
-                rd = _json.dumps({'type': 'research:agent_done', 'data': report.to_dict()})
-                yield f"data: {rd}\n\n"
-
-            rdd = _json.dumps({'type': 'research:done', 'data': {'report_count': len(reports)}})
-            yield f"data: {rdd}\n\n"
-
-            yield f"data: {_json.dumps({'type': 'battle:start', 'data': {'rounds': num_rounds}})}\n\n"
-
-            battle_env = BattleEnvironment(router=router)
-            result = loop.run_until_complete(
-                battle_env.run(reports, num_rounds=num_rounds)
-            )
-
-            for i, debate_round in enumerate(result.rounds):
-                args_data = [
-                    {'agent_id': a.agent_id, 'agent_name': a.agent_name,
-                     'stance': a.stance, 'argument': a.argument}
-                    for a in debate_round.arguments
-                ]
-                bd = _json.dumps({
-                    'type': 'battle:round_done',
-                    'data': {'round': i + 1, 'arguments': args_data},
-                })
-                yield f"data: {bd}\n\n"
-
-            yield f"data: {_json.dumps({'type': 'battle:done'})}\n\n"
-
-            yield f"data: {_json.dumps({'type': 'judge:start'})}\n\n"
-
-            verdict = {
-                "final_tendency": result.final_tendency,
-                "consensus_level": result.consensus_level,
-                "confidence": result.confidence,
-                "winning_side": result.winning_side,
-                "key_insights": result.key_insights,
-                "risk_flags": result.risk_flags,
-            }
+            yield f"data: {_json.dumps({'type': 'battle:start', 'data': {'code': normalized}})}\n\n"
+            yield f"data: {_json.dumps({'type': 'judge:start', 'data': {}})}\n\n"
 
             yield f"data: {_json.dumps({'type': 'judge:done', 'data': verdict})}\n\n"
-
             yield f"data: {_json.dumps({'type': 'verdict', 'data': verdict})}\n\n"
             yield f"data: {_json.dumps({'type': 'done'})}\n\n"
 
             try:
                 from modules.memory.synthesizer import MemorySynthesizer
                 syn = MemorySynthesizer()
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
                 loop.run_until_complete(syn.on_analysis_complete(
                     user_id, normalized, "research_battle",
-                    result.winning_side,
-                    f"共识度{result.consensus_level:.0%}，倾向{result.winning_side}",
+                    verdict.get("tendency", "neutral"),
+                    f"倾向{verdict.get('tendency', '中性')}",
                 ))
+                loop.close()
             except Exception:
                 pass
 
         except Exception as e:
             logger.error(f"Research-Battle failed: {e}")
             yield f"data: {_json.dumps({'type': 'error', 'data': str(e)})}\n\n"
-        finally:
-            loop.close()
 
     return Response(
         generate(),
@@ -1136,18 +1101,75 @@ def research_battle_stream():
     )
 
 
-@ai_advanced_bp.route("/research-battle/quick", methods=["POST"])
-def research_battle_quick():
-    """Research-Battle 快速分析（非流式）"""
-    import asyncio
-    from modules.ai.debate.research_env import ResearchEnvironment
-    from modules.ai.debate.battle_env import BattleEnvironment
-    from modules.ai.foundation.llm_router import LLMRouter
+@ai_advanced_bp.route("/orchestrate", methods=["POST"])
+def orchestrate_analysis():
+    """LangGraph 统一分析入口"""
+    from modules.ai.orchestration.graph import create_trading_graph
+    from modules.ai.reflection.decision_logger import DecisionLogger
 
     data = request.get_json() or {}
     code = data.get("code", "")
-    num_rounds = int(data.get("num_rounds", 3))
-    user_id = data.get("user_id", "default")
+    if not code:
+        return jsonify({"error": "code is required"}), 400
+
+    normalized = _normalize_code(code)
+    try:
+        graph = create_trading_graph()
+        result = graph.run(normalized)
+
+        decision_logger = DecisionLogger()
+        decision_logger.log_decision(result.get("run_id", ""), normalized, result.get("final_decision", {}))
+
+        return jsonify({"success": True, "data": result})
+    except Exception as e:
+        logger.error(f"Orchestration failed: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@ai_advanced_bp.route("/orchestrate/stream", methods=["POST"])
+def orchestrate_analysis_stream():
+    """LangGraph 统一分析入口（SSE流式）"""
+    from flask import Response
+    import json as _json
+    from modules.ai.orchestration.graph import create_trading_graph
+
+    data = request.get_json() or {}
+    code = data.get("code", "")
+    if not code:
+        return jsonify({"error": "code is required"}), 400
+    normalized = _normalize_code(code)
+
+    def generate():
+        try:
+            graph = create_trading_graph()
+            result = graph.run(normalized)
+
+            for event in result.get("events", []):
+                yield f"data: {_json.dumps({'event': event.get('event'), 'data': event.get('data')})}\n\n"
+
+            from modules.ai.reflection.decision_logger import DecisionLogger
+            DecisionLogger().log_decision(result.get("run_id", ""), normalized, result.get("final_decision", {}))
+
+            verdict = result.get("verdict", {})
+            yield f"data: {_json.dumps({'event': 'graph:complete', 'data': {'verdict': verdict}})}\n\n"
+            yield f"data: {_json.dumps({'event': 'done'})}\n\n"
+        except Exception as e:
+            yield f"data: {_json.dumps({'event': 'error', 'data': str(e)})}\n\n"
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+    )
+
+
+@ai_advanced_bp.route("/research-battle/quick", methods=["POST"])
+def research_battle_quick():
+    """Research-Battle 快速分析（非流式，使用 LangGraph 编排）"""
+    from modules.ai.orchestration.graph import create_trading_graph
+
+    data = request.get_json() or {}
+    code = data.get("code", "")
 
     if not code:
         return jsonify({"error": "code is required"}), 400
@@ -1155,35 +1177,12 @@ def research_battle_quick():
     normalized = _normalize_code(code)
 
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-        router = LLMRouter()
-        research_env = ResearchEnvironment(router=router)
-        reports = loop.run_until_complete(
-            research_env.run_research(normalized)
-        )
-
-        battle_env = BattleEnvironment(router=router)
-        result = loop.run_until_complete(
-            battle_env.run(reports, num_rounds=num_rounds)
-        )
-        loop.close()
+        graph = create_trading_graph()
+        result = graph.run(normalized)
 
         return jsonify({
             "success": True,
-            "data": {
-                "code": normalized,
-                "reports": {k: v.to_dict() for k, v in reports.items()},
-                "battle_result": {
-                    "final_tendency": result.final_tendency,
-                    "consensus_level": result.consensus_level,
-                    "confidence": result.confidence,
-                    "winning_side": result.winning_side,
-                    "key_insights": result.key_insights,
-                    "risk_flags": result.risk_flags,
-                },
-            },
+            "data": result,
         })
     except Exception as e:
         logger.error(f"Research-Battle quick failed: {e}")

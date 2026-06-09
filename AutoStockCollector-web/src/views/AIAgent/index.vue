@@ -99,6 +99,35 @@
           </el-table>
         </el-card>
       </el-tab-pane>
+      <el-tab-pane label="技能库" name="skills">
+        <el-card shadow="never" class="section-card">
+          <template #header>
+            <div class="card-header">
+              <span>AI 技能定义 (SKILL.md)</span>
+              <el-button size="small" type="primary" @click="loadSkills" :loading="skillsLoading">刷新</el-button>
+            </div>
+          </template>
+          <div v-if="skillsLoading" style="text-align:center;padding:40px">
+            <el-icon class="is-loading" :size="24"><Loading /></el-icon>
+          </div>
+          <div v-else-if="skills.length === 0" style="text-align:center;padding:40px;color:#909399">暂无技能</div>
+          <div v-else class="skill-grid">
+            <div
+              v-for="s in skills"
+              :key="s.name"
+              :class="['skill-card', { active: selectedSkill === s.name }]"
+              @click="showSkill(s.name)"
+            >
+              <div class="skill-name">{{ s.name }}</div>
+              <div class="skill-desc">{{ s.description }}</div>
+              <div class="skill-meta">
+                <el-tag size="small">{{ s.category }}</el-tag>
+                <span v-if="s.tools" class="skill-tools">{{ s.tools }}</span>
+              </div>
+            </div>
+          </div>
+        </el-card>
+      </el-tab-pane>
     </el-tabs>
 
     <!-- Add/Edit Dialog -->
@@ -213,14 +242,28 @@
         </div>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="showSkillDetail" title="技能详情" width="700px">
+      <template v-if="skillDetail">
+        <div class="detail-section">
+          <div class="detail-label">名称</div>
+          <div class="detail-content">{{ skillDetail.name }}</div>
+        </div>
+        <div class="detail-section">
+          <div class="detail-label">内容</div>
+          <pre class="skill-content">{{ skillDetail.content }}</pre>
+        </div>
+      </template>
+      <template #footer><el-button @click="showSkillDetail = false">关闭</el-button></template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { aiAgentApi, type AIAgent, philosophyApi, type PhilosophyAgentDetail } from '@/api/ai'
-import { Plus } from '@element-plus/icons-vue'
+import { aiAgentApi, type AIAgent, philosophyApi, type PhilosophyAgentDetail, skillApi } from '@/api/ai'
+import { Plus, Loading } from '@element-plus/icons-vue'
 
 const activeTab = ref('general')
 
@@ -240,6 +283,35 @@ const philosophyAgents = ref<PhilosophyAgentDetail[]>([])
 const philosophyLoading = ref(false)
 const showPhilosophyDetail = ref(false)
 const philosophyDetail = ref<PhilosophyAgentDetail | null>(null)
+
+const skills = ref<any[]>([])
+const skillsLoading = ref(false)
+const showSkillDetail = ref(false)
+const selectedSkill = ref('')
+const skillDetail = ref<{ name: string; content: string } | null>(null)
+
+async function loadSkills() {
+  skillsLoading.value = true
+  try {
+    const res = await skillApi.list()
+    skills.value = res.data?.data || res.data || []
+  } catch {
+    skills.value = []
+  } finally {
+    skillsLoading.value = false
+  }
+}
+
+async function showSkill(name: string) {
+  selectedSkill.value = name
+  try {
+    const res = await skillApi.get(name)
+    skillDetail.value = res.data?.data || null
+    showSkillDetail.value = true
+  } catch {
+    skillDetail.value = null
+  }
+}
 
 const defaultForm = (): Partial<AIAgent> => ({
   id: '',
@@ -400,6 +472,7 @@ function viewPhilosophyDetail(agent: PhilosophyAgentDetail) {
 onMounted(() => {
   loadAgents()
   loadPhilosophyAgents()
+  loadSkills()
 })
 </script>
 
@@ -536,5 +609,22 @@ onMounted(() => {
   max-height: 300px;
   overflow-y: auto;
   white-space: pre-wrap;
+}
+.skill-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.skill-card {
+  background: #2c2c2c; border-radius: 8px; padding: 16px;
+  border: 1px solid #3c3c3c; cursor: pointer; transition: all 0.2s;
+}
+.skill-card:hover { border-color: #409eff; }
+.skill-card.active { border-color: #409eff; box-shadow: 0 0 8px rgba(64,158,255,0.3); }
+.skill-name { font-size: 15px; font-weight: 600; color: #e5eaf3; margin-bottom: 6px; }
+.skill-desc { font-size: 12px; color: #909399; line-height: 1.5; margin-bottom: 8px; }
+.skill-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.skill-tools { font-size: 11px; color: #606266; }
+.skill-content {
+  font-size: 12px; color: #c0c4cc; line-height: 1.6;
+  background: #1a1a1a; border-radius: 4px; padding: 16px;
+  max-height: 500px; overflow-y: auto; white-space: pre-wrap;
+  font-family: 'SF Mono', Menlo, monospace;
 }
 </style>

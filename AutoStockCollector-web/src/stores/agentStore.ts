@@ -49,7 +49,6 @@ export const useAgentStore = defineStore('agent', () => {
   } | null>(null)
 
   const aggregatedResult = ref<AggregatedResult | null>(null)
-  const useRealApi = ref(true)
 
   const activeAgents = computed(() => agents.value.filter(a => a.status !== 'idle'))
   const completedAgents = computed(() => agents.value.filter(a => a.status === 'completed'))
@@ -83,11 +82,7 @@ export const useAgentStore = defineStore('agent', () => {
 
     const analysisAgents = agents.value.filter(a => a.role !== 'commander')
 
-    if (useRealApi.value) {
-      await runRealAnalysis(analysisAgents, code)
-    } else {
-      runMockAnalysis(analysisAgents)
-    }
+    await runRealAnalysis(analysisAgents, code)
   }
 
   async function runRealAnalysis(analysisAgents: AgentState[], code: string) {
@@ -176,80 +171,7 @@ export const useAgentStore = defineStore('agent', () => {
     }
   }
 
-  function runMockAnalysis(analysisAgents: AgentState[]) {
-    analysisAgents.forEach((agent, index) => {
-      setTimeout(() => {
-        agent.status = 'analyzing'
-        agent.progress = 0
-
-        simulateProgress(agent.id)
-      }, index * 200)
-    })
-  }
-
-  function simulateProgress(agentId: string) {
-    const interval = setInterval(() => {
-      const agent = agents.value.find(a => a.id === agentId)
-      if (!agent || agent.status !== 'analyzing') {
-        clearInterval(interval)
-        return
-      }
-
-      agent.progress += Math.random() * 15 + 5
-      if (agent.progress >= 100) {
-        agent.progress = 100
-        agent.status = 'completed'
-        agent.completedAt = Date.now()
-        agent.result = generateMockResult(agent.role)
-        clearInterval(interval)
-
-        if (isAllCompleted.value) {
-          aggregateResults()
-        }
-      }
-    }, 300)
-  }
-
-  function generateMockResult(role: AgentState['role']): AgentResult {
-    const results: Record<string, AgentResult> = {
-      market: {
-        score: 70 + Math.random() * 20,
-        conclusion: '市场环境偏暖，流动性充裕',
-        signals: ['北向资金净流入', '市场情绪转暖'],
-        metrics: { marketHeat: 65, trendStrength: 70 },
-        recommendation: '可适当加仓',
-      },
-      technical: {
-        score: 60 + Math.random() * 25,
-        conclusion: 'K线形态良好，均线多头排列',
-        signals: ['MACD金叉', 'RSI处于强势区间'],
-        metrics: { rsi: 58, macd: 72, maAlignment: 85 },
-        recommendation: '技术面买入信号',
-      },
-      fund: {
-        score: 65 + Math.random() * 20,
-        conclusion: '主力资金净流入，机构持仓增加',
-        signals: ['大单净买入', '持续3日资金净流入'],
-        metrics: { mainFlow: 8500, superFlow: 3200, netInflowRate: 15 },
-        recommendation: '资金面支撑股价',
-      },
-      sentiment: {
-        score: 55 + Math.random() * 25,
-        conclusion: '舆情偏正面，机构评级上调',
-        signals: ['研报看好', '业绩预增'],
-        metrics: { sentimentScore: 68, positiveRatio: 72, newsCount: 15 },
-        recommendation: '舆情面利好',
-      },
-      risk: {
-        score: 50 + Math.random() * 30,
-        conclusion: '风险可控，注意高位回调',
-        signals: ['PE偏高', '换手率较高'],
-        metrics: { riskLevel: 45, volatility: 28, beta: 1.2 },
-        recommendation: '注意控制仓位',
-      },
-    }
-    return results[role] || { score: 60 }
-  }
+  // Mock analysis removed — replaced by LangGraph orchestration via orchestrationStore
 
   function aggregateResults() {
     const commander = agents.value.find(a => a.role === 'commander')
@@ -326,10 +248,6 @@ export const useAgentStore = defineStore('agent', () => {
     return agents.value.find(a => a.role === role)
   }
 
-  function setUseRealApi(useReal: boolean) {
-    useRealApi.value = useReal
-  }
-
   return {
     agents,
     currentTask,
@@ -338,11 +256,9 @@ export const useAgentStore = defineStore('agent', () => {
     completedAgents,
     isAllCompleted,
     overallProgress,
-    useRealApi,
     resetAgents,
     startTask,
     getAgentByRole,
-    setUseRealApi,
   }
 })
 

@@ -81,6 +81,33 @@ class LLMRouter:
     def _cache_key(self, prompt: str) -> str:
         return hashlib.md5(prompt.encode("utf-8")).hexdigest()
 
+    def _get_tier_config(self, tier: str = "quick") -> Dict[str, Any]:
+        from config.settings import Settings
+        tiers = getattr(Settings, "LLM_TIERS", {})
+        config = tiers.get(tier, tiers.get("quick", {}))
+        return {
+            "temperature": config.get("temperature", 0.3),
+            "max_tokens": config.get("max_tokens", 1024),
+        }
+
+    def chat_deep(self, prompt: str, **kwargs) -> LLMResult:
+        tier_cfg = self._get_tier_config("deep")
+        kwargs.setdefault("temperature", tier_cfg["temperature"])
+        kwargs.setdefault("max_tokens", tier_cfg["max_tokens"])
+        return self.chat(prompt, **kwargs)
+
+    def chat_quick(self, prompt: str, **kwargs) -> LLMResult:
+        tier_cfg = self._get_tier_config("quick")
+        kwargs.setdefault("temperature", tier_cfg["temperature"])
+        kwargs.setdefault("max_tokens", tier_cfg["max_tokens"])
+        return self.chat(prompt, **kwargs)
+
+    def chat_routing(self, prompt: str, **kwargs) -> LLMResult:
+        tier_cfg = self._get_tier_config("routing")
+        kwargs.setdefault("temperature", tier_cfg["temperature"])
+        kwargs.setdefault("max_tokens", tier_cfg["max_tokens"])
+        return self.chat(prompt, **kwargs)
+
     def _inject_memory(self, prompt: str, user_id: str = None,
                         stock_code: str = None) -> str:
         """注入用户记忆到 prompt"""
@@ -134,8 +161,14 @@ class LLMRouter:
         temperature: float = 0.7,
         max_tokens: int = 2000,
         messages: Optional[List[Dict[str, Any]]] = None,
+        tier: Optional[str] = None,
     ) -> LLMResult:
         """调用 LLM。传入 messages 时以多轮对话格式发送，跳过缓存（对话有上下文，不宜缓存）。"""
+        if tier:
+            tier_cfg = self._get_tier_config(tier)
+            temperature = tier_cfg.get("temperature", temperature)
+            max_tokens = tier_cfg.get("max_tokens", max_tokens)
+
         full_prompt = self._build_prompt(prompt, schema)
         use_cache = use_cache and not messages
         key = self._cache_key(full_prompt)
