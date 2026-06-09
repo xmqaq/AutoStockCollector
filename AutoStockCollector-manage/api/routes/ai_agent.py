@@ -926,6 +926,33 @@ def save_agent_history():
     })
 
 
+@ai_agent_bp.route("/skills", methods=["GET"])
+def list_skills():
+    """列出所有可用技能"""
+    from modules.ai.skills.registry import skill_registry
+    skills = skill_registry.list_skills()
+    return jsonify({"success": True, "count": len(skills), "data": skills})
+
+
+@ai_agent_bp.route("/skills/<skill_name>", methods=["GET"])
+def get_skill(skill_name: str):
+    """获取单个技能完整内容"""
+    from modules.ai.skills.registry import skill_registry
+    content = skill_registry.get_skill(skill_name)
+    if not content:
+        return jsonify({"error": "Skill not found"}), 404
+    return jsonify({"success": True, "data": {"name": skill_name, "content": content}})
+
+
+@ai_agent_bp.route("/reflections/<stock_code>", methods=["GET"])
+def get_reflections(stock_code: str):
+    """获取某支股票的反思记录"""
+    from modules.ai.reflection.evaluator import ReflectionEvaluator
+    evaluator = ReflectionEvaluator()
+    reflection = evaluator.get_reflection_for_stock(stock_code)
+    return jsonify({"success": True, "data": reflection})
+
+
 @ai_agent_bp.route("/<agent_id>/analyze", methods=["POST"])
 def analyze_with_agent(agent_id: str):
     """使用指定 Agent 分析股票"""

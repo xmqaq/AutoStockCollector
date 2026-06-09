@@ -527,22 +527,31 @@ export interface FinalVerdict {
   generatedAt: string
 }
 
-export const debateApi = {
-  start(params: { code: string }) {
-    return client.post('/api/v1/ai/debate', params)
+export const orchestrationApi = {
+  analyze(params: { code: string }) {
+    return client.post('/api/v1/ai/orchestrate', params)
   },
-  stream(params: { code: string }) {
-    return fetch('/api/v1/ai/debate/stream', {
+  analyzeStream(params: { code: string }) {
+    return fetch('/api/v1/ai/orchestrate/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
     })
   },
-  progress(taskId: string) {
-    return client.get(`/api/v1/ai/debate/${taskId}`)
+}
+
+export const reflectionApi = {
+  getForStock(code: string) {
+    return client.get(`/api/v1/ai-agents/reflections/${code}`)
   },
+}
+
+export const skillApi = {
   list() {
-    return client.get('/api/v1/ai/debate-tasks')
+    return client.get('/api/v1/ai-agents/skills')
+  },
+  get(name: string) {
+    return client.get(`/api/v1/ai-agents/skills/${name}`)
   },
 }
 

@@ -84,6 +84,7 @@ import {
   Search,
   Operation,
   EditPen,
+  Bell,
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -137,6 +138,8 @@ const menuGroups: MenuGroup[] = [
       { key: '/ai-keys', label: 'AI Key管理', icon: Key },
       { key: '/ai-agents', label: 'AI Agent管理', icon: MagicStick },
       { key: '/multi-agent', label: '多Agent分析', icon: MagicStick },
+      { key: '/signals', label: 'Agent 信号源', icon: Bell },
+      { key: '/reflections', label: '决策反思', icon: EditPen },
       { key: '/memory-settings', label: '记忆设置', icon: Operation },
     ],
   },

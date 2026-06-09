@@ -141,6 +141,18 @@ const router = createRouter({
           component: () => import('@/views/Todo/index.vue'),
           meta: { title: '待办事项' },
         },
+        {
+          path: 'signals',
+          name: 'Signals',
+          component: () => import('@/views/Signals/index.vue'),
+          meta: { title: 'Agent 信号源' },
+        },
+        {
+          path: 'reflections',
+          name: 'Reflections',
+          component: () => import('@/views/Reflections/index.vue'),
+          meta: { title: '决策反思' },
+        },
       ],
     },
   ],
