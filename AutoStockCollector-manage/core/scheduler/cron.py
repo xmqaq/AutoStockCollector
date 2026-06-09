@@ -74,10 +74,11 @@ def get_all_cron_run_counts() -> dict:
 
 
 def _persist_schedule():
-    """将当前调度状态写入 MongoDB，服务重启后可恢复。"""
+    """将当前调度状态写入 MongoDB，服务重启后可恢复。
+    使用 upsert 逐条更新，避免 delete_many+insert_many 的竞态和 duplicate key 错误。
+    """
     try:
         col = _get_cron_collection()
-        col.delete_many({})
         with _jobs_lock:
             if not _registered_jobs:
                 return
@@ -89,25 +90,33 @@ def _persist_schedule():
                 "next_run": j["next_run"].isoformat(),
                 "task_type": j.get("task_type", ""),
             } for j in _registered_jobs]
-        col.insert_many(docs)
+        for doc in docs:
+            col.replace_one({"label": doc["label"]}, doc, upsert=True)
     except Exception as e:
         logger.warning(f"[cron] persist schedule failed: {e}")
 
 
 def _restore_next_run():
-    """从 MongoDB 恢复各任务的 next_run，使重启后调度状态不丢失。"""
+    """从 MongoDB 恢复各任务的 next_run，使重启后调度状态不丢失。
+    如果恢复的时间已经过去，则重新计算下次执行时间，防止加载到陈旧值。
+    """
     try:
         col = _get_cron_collection()
         saved = {doc["label"]: doc for doc in col.find({})}
         if not saved:
             return
+        now = datetime.datetime.now()
         with _jobs_lock:
             restored = 0
             for job in _registered_jobs:
                 entry = saved.get(job["label"])
                 if entry:
                     try:
-                        job["next_run"] = datetime.datetime.fromisoformat(entry["next_run"])
+                        saved_time = datetime.datetime.fromisoformat(entry["next_run"])
+                        if saved_time > now:
+                            job["next_run"] = saved_time
+                        else:
+                            _advance_next_run(job)
                         restored += 1
                     except Exception:
                         pass
@@ -203,6 +212,8 @@ def get_cron_status() -> list:
                 if success == 0:
                     if task_type == "dragon_tiger":
                         last_msg = "今日无龙虎榜数据（非触发日）"
+                    elif task_type == "news":
+                        last_msg = "该时段暂无新闻"
                     else:
                         last_msg = "今日无数据"
                 else:
@@ -261,16 +272,47 @@ def _is_weekday() -> bool:
     return datetime.datetime.now().weekday() < 5
 
 
+_STALE_TASK_SECONDS = 3600
+
+
 def _is_task_running(task_type: str) -> bool:
+    """检查是否有同类型任务正在运行。
+    超过 _STALE_TASK_SECONDS 的 running 任务视为僵尸，不阻塞新任务。
+    """
     try:
         from core.scheduler.scheduler import scheduler
+        now_ts = time.time()
         tasks = scheduler.list_tasks(limit=200)
-        return any(
-            t.get("task_type") == task_type and t.get("status") in ("running", "pending")
-            for t in tasks
-        )
+        for t in tasks:
+            if t.get("task_type") != task_type:
+                continue
+            if t.get("status") not in ("running", "pending"):
+                continue
+            create_iso = t.get("start_time") or t.get("create_time")
+            if create_iso:
+                try:
+                    create_dt = datetime.datetime.fromisoformat(str(create_iso).replace("Z", "+00:00"))
+                    if create_dt.tzinfo:
+                        create_dt = create_dt.replace(tzinfo=None)
+                    elapsed = now_ts - create_dt.timestamp()
+                    if elapsed > _STALE_TASK_SECONDS:
+                        _cancel_stale_task(scheduler, t.get("task_id"), elapsed)
+                        continue
+                except Exception:
+                    pass
+            return True
+        return False
     except Exception:
         return False
+
+
+def _cancel_stale_task(sched, task_id: str, elapsed: float) -> None:
+    """将超时的僵尸任务标记为 cancelled，释放后续触发。"""
+    try:
+        sched.cancel_task(task_id)
+        logger.warning(f"[cron] 自动取消僵尸任务 {task_id}（已运行 {elapsed:.0f}s）")
+    except Exception as e:
+        logger.debug(f"[cron] 取消僵尸任务 {task_id} 失败: {e}")
 
 
 def _trigger_task(task_type: str, params: dict, label: str = "") -> None:
@@ -285,9 +327,11 @@ def _trigger_task(task_type: str, params: dict, label: str = "") -> None:
         scheduler.start_task(task_id)
         logger.info(f"[cron] {_label} 任务已触发: {task_id}")
         _record_result(_label, ok=True, msg=f"triggered: {task_id}")
+        _persist_cron_status(task_type, datetime.datetime.now().isoformat(), None, "任务已触发")
     except Exception as e:
         logger.error(f"[cron] {_label} 触发失败: {e}")
         _record_result(_label, ok=False, msg=str(e))
+        _persist_cron_status(task_type, datetime.datetime.now().isoformat(), False, str(e)[:100])
 
 
 def _today() -> str:
@@ -539,12 +583,12 @@ def _scheduler_loop() -> None:
 
             if due:
                 for job in due:
+                    with _jobs_lock:
+                        _advance_next_run(job)
                     try:
                         job["handler"]()
                     except Exception as e:
                         logger.warning(f"[cron] {job['label']} 执行异常: {e}")
-                    with _jobs_lock:
-                        _advance_next_run(job)
                 _persist_schedule()
 
         except Exception as e:
@@ -556,8 +600,14 @@ def _scheduler_loop() -> None:
 # ─── 启动函数 ─────────────────────────────────────────────────────────────────
 
 def start_daily_jobs() -> None:
-    """启动后台 daemon 线程，注册所有定时任务。幂等（重复调用只启动一次）。"""
+    """启动后台 daemon 线程，注册所有定时任务。幂等（重复调用只启动一次）。
+    Flask debug reloader 下，主进程（无 WERKZEUG_RUN_MAIN）不启动调度线程，
+    只有子进程（WERKZEUG_RUN_MAIN=true）启动，防止双进程重复触发。
+    """
     global _started
+    if _os.environ.get("WERKZEUG_RUN_MAIN") is None and _os.environ.get("FLASK_DEBUG", "").lower() in ("true", "1"):
+        logger.info("[cron] Flask reloader 主进程，跳过调度线程启动")
+        return
     with _schedule_lock:
         if _started:
             return

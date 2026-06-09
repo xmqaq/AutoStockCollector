@@ -1195,28 +1195,43 @@ class TaskScheduler:
     def _on_task_done(self, task_id: str, future: Future):
         """Future 回调：处理异常 + 将终态同步到 cron_job_status（独立于任务历史）"""
         exc = future.exception()
-        if exc:
-            logger.error(f"Task {task_id} future raised: {exc}")
-
         task = self._tasks.get(task_id)
-        if task and task.status in (TaskStatus.COMPLETED, TaskStatus.FAILED):
-            try:
-                from core.scheduler.cron import _persist_cron_status, _fmt_task_time
-                last_run = _fmt_task_time(task.end_time or task.start_time)
-                if task.status == TaskStatus.COMPLETED:
-                    last_ok = True
-                    if task.success == 0:
-                        last_msg = "今日无数据" if task.task_type != "dragon_tiger" else "今日无龙虎榜数据（非触发日）"
+
+        if exc and task and task.status == TaskStatus.RUNNING:
+            task.fail(str(exc))
+
+        if not task:
+            return
+
+        terminal = {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}
+        if task.status not in terminal:
+            return
+
+        try:
+            from core.scheduler.cron import _persist_cron_status, _fmt_task_time
+            last_run = _fmt_task_time(task.end_time or task.start_time or datetime.now())
+            if task.status == TaskStatus.COMPLETED:
+                last_ok = True
+                if task.success == 0:
+                    if task.task_type == "news":
+                        last_msg = "该时段暂无新闻"
+                    elif task.task_type == "dragon_tiger":
+                        last_msg = "今日无龙虎榜数据（非触发日）"
                     else:
-                        last_msg = f"成功{task.success}条"
-                        if task.failed > 0:
-                            last_msg += f"，失败{task.failed}条"
+                        last_msg = "今日无数据"
                 else:
-                    last_ok = False
-                    last_msg = (task.error_message or "任务失败")[:80]
-                _persist_cron_status(task.task_type, last_run, last_ok, last_msg, inc_count=True)
-            except Exception as e:
-                logger.debug(f"[cron-status] sync failed for {task_id}: {e}")
+                    last_msg = f"成功{task.success}条"
+                    if task.failed > 0:
+                        last_msg += f"，失败{task.failed}条"
+            elif task.status == TaskStatus.CANCELLED:
+                last_ok = None
+                last_msg = "任务已取消"
+            else:
+                last_ok = False
+                last_msg = (task.error_message or "任务失败")[:80]
+            _persist_cron_status(task.task_type, last_run, last_ok, last_msg, inc_count=True)
+        except Exception as e:
+            logger.debug(f"[cron-status] sync failed for {task_id}: {e}")
 
     # ------------------------------------------------------------------ #
     # 调度器主循环（可选启动，若需要自动拉起 pending 任务）                     #
