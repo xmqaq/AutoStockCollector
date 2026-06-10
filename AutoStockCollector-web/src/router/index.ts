@@ -36,16 +36,6 @@ const router = createRouter({
           meta: { title: '实时行情' },
         },
         {
-          path: 'ai-analysis',
-          redirect: '/ai-dashboard',
-        },
-        {
-          path: 'ai-dashboard',
-          name: 'AIDashboard',
-          component: () => import('@/views/AIDashboard/index.vue'),
-          meta: { title: 'AI分析仪表盘' },
-        },
-        {
           path: 'stock-analysis',
           name: 'StockAnalysis',
           component: () => import('@/views/StockAnalysis/index.vue'),

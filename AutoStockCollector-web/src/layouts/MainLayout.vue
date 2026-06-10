@@ -132,7 +132,6 @@ const menuGroups: MenuGroup[] = [
     label: 'AI智能',
     icon: MagicStick,
     children: [
-      { key: '/ai-dashboard', label: 'AI智能中枢', icon: MagicStick },
       { key: '/ai-picker', label: '量化选股', icon: TrendCharts },
       { key: '/stock-analysis', label: '个股深度分析', icon: Search },
       { key: '/ai-keys', label: 'AI Key管理', icon: Key },
