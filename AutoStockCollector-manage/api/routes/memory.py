@@ -1,6 +1,7 @@
 """年轮记忆系统 API 端点"""
 import json
 from datetime import datetime
+from utils.helpers import beijing_now
 from typing import Any, Dict
 from flask import Blueprint, request, jsonify
 from utils.logger import get_logger
@@ -94,7 +95,7 @@ def add_holding():
         user_id=data.get("user_id", "default"),
         code=data["code"],
         stock_name=data.get("stock_name", ""),
-        buy_date=data.get("buy_date", datetime.now().strftime("%Y-%m-%d")),
+        buy_date=data.get("buy_date", beijing_now().strftime("%Y-%m-%d")),
         buy_price=float(data["buy_price"]),
         shares=int(data["shares"]),
         reason=data.get("reason", ""),

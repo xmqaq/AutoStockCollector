@@ -11,7 +11,7 @@ market_bp = Blueprint("market", __name__, url_prefix="/api/v1/market")
 
 
 def _normalize_code(code: str) -> str:
-    from utils.helpers import normalize_stock_code_flexible
+    from utils.helpers import normalize_stock_code_flexible, beijing_now
     return normalize_stock_code_flexible(code)
 
 
@@ -166,7 +166,7 @@ def detect_signals(code: str):
             "type": "neutral",
             "strength": "弱",
             "price": 0,
-            "time": datetime.now().isoformat(),
+            "time": beijing_now().isoformat(),
             "reasons": ["数据不足，无法生成信号"]
         })
 
@@ -213,7 +213,7 @@ def detect_signals(code: str):
         "type": final_signal,
         "strength": strength,
         "price": current_price,
-        "time": datetime.now().isoformat(),
+        "time": beijing_now().isoformat(),
         "reasons": all_reasons[:5]
     })
 
@@ -273,7 +273,7 @@ def save_signal():
         "strength": strength,
         "price": price,
         "reasons": reasons,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": beijing_now().isoformat()
     }
 
     db = DatabaseConfig.get_database()

@@ -1,5 +1,6 @@
 """情境记忆 - 用户中期行为历史"""
 from datetime import datetime, timedelta
+from utils.helpers import beijing_now
 from typing import Any, Dict, List, Optional
 from config.database import DatabaseConfig
 from modules.memory.models import (
@@ -32,9 +33,9 @@ class EpisodicMemory:
 
     def save_profile(self, profile: UserProfile):
         doc = profile.to_dict()
-        doc["updated_at"] = datetime.now().isoformat()
+        doc["updated_at"] = beijing_now().isoformat()
         if not doc.get("created_at"):
-            doc["created_at"] = datetime.now().isoformat()
+            doc["created_at"] = beijing_now().isoformat()
         self.db[self.COLLECTION_USER].update_one(
             {"user_id": profile.user_id},
             {"$set": doc},
@@ -42,7 +43,7 @@ class EpisodicMemory:
         )
 
     def update_profile(self, user_id: str, updates: Dict[str, Any]):
-        updates["updated_at"] = datetime.now().isoformat()
+        updates["updated_at"] = beijing_now().isoformat()
         self.db[self.COLLECTION_USER].update_one(
             {"user_id": user_id},
             {"$set": updates},
@@ -148,7 +149,7 @@ class EpisodicMemory:
     # ==================== 清理 ====================
 
     def cleanup_expired(self):
-        cutoff = (datetime.now() - timedelta(
+        cutoff = (beijing_now() - timedelta(
             days=self.config.episodic_retention_days
         )).isoformat()
         for coll in [self.COLLECTION_HOLDINGS, self.COLLECTION_ANALYSES]:

@@ -3,6 +3,7 @@
 """
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+from utils.helpers import beijing_now
 import pandas as pd
 import akshare as ak
 from .base import BaseCollector, ProgressTracker
@@ -29,7 +30,7 @@ class FundFlowCollector(BaseCollector):
         返回约5000+条，每条含 code(SH/SZ格式)、date、流入资金、流出资金、净额、成交额。
         """
         if date is None:
-            date = datetime.now().strftime("%Y-%m-%d")
+            date = beijing_now().strftime("%Y-%m-%d")
 
         try:
             df = ak.stock_fund_flow_individual(symbol="即时")
@@ -43,7 +44,7 @@ class FundFlowCollector(BaseCollector):
 
         df = df.copy()
         df["date"] = date
-        df["_updated_at"] = datetime.now()
+        df["_updated_at"] = beijing_now()
 
         if "股票代码" in df.columns:
             df["code"] = df["股票代码"].apply(self._bare_to_full_code)
@@ -169,7 +170,7 @@ class DragonTigerCollector(BaseCollector):
             return d.replace("-", "") if d else d
 
         s = _fmt(start_date) or _fmt(date) or "20260101"
-        e = _fmt(end_date) or _fmt(date) or datetime.now().strftime("%Y%m%d")
+        e = _fmt(end_date) or _fmt(date) or beijing_now().strftime("%Y%m%d")
 
         try:
             df = ak.stock_lhb_detail_em(start_date=s, end_date=e)
@@ -177,7 +178,7 @@ class DragonTigerCollector(BaseCollector):
             if df is None or df.empty:
                 return []
 
-            df["_updated_at"] = datetime.now()
+            df["_updated_at"] = beijing_now()
 
             records = self.normalize_dataframe(df)
             if records:
@@ -208,7 +209,7 @@ class DragonTigerCollector(BaseCollector):
                 return []
 
             df["code"] = code
-            df["_updated_at"] = datetime.now()
+            df["_updated_at"] = beijing_now()
 
             return self.normalize_dataframe(df, code)
 
@@ -254,7 +255,7 @@ class MarginCollector(BaseCollector):
                 "short_balance": df.iloc[0].get("融券余额", 0),
                 "short_sell": df.iloc[0].get("融券卖出量", 0),
                 "short_repay": df.iloc[0].get("融券偿还量", 0),
-                "_updated_at": datetime.now()
+                "_updated_at": beijing_now()
             }
 
         except Exception as e:
@@ -271,7 +272,7 @@ class MarginCollector(BaseCollector):
                 df = df.copy()
                 df["market"] = "sh"
                 df["date"] = date_fmt
-                df["_updated_at"] = datetime.now()
+                df["_updated_at"] = beijing_now()
                 if "标的证券代码" in df.columns:
                     df["code"] = df["标的证券代码"].apply(
                         lambda c: f"SH{str(c).strip().zfill(6)}"
@@ -292,7 +293,7 @@ class MarginCollector(BaseCollector):
                 df = df.copy()
                 df["market"] = "sz"
                 df["date"] = date_fmt
-                df["_updated_at"] = datetime.now()
+                df["_updated_at"] = beijing_now()
                 if "证券代码" in df.columns:
                     df["code"] = df["证券代码"].apply(
                         lambda c: f"SZ{str(c).strip().zfill(6)}"
@@ -341,7 +342,7 @@ class MarginCollector(BaseCollector):
             df = ak.stock_margin_detail_sina(symbol=symbol)
             if df is not None and not df.empty:
                 df["code"] = code
-                df["_updated_at"] = datetime.now()
+                df["_updated_at"] = beijing_now()
                 records.extend(self.normalize_dataframe(df, code))
         except Exception as e:
             logger.warning(f"No margin data for {code}: {e}")
@@ -353,7 +354,7 @@ class MarginCollector(BaseCollector):
                 if not code_data.empty:
                     code_data = code_data.copy()
                     code_data["code"] = code
-                    code_data["_updated_at"] = datetime.now()
+                    code_data["_updated_at"] = beijing_now()
                     records.extend(code_data.to_dict("records"))
         except Exception as e:
             logger.warning(f"No SZ margin data for {code}: {e}")
@@ -477,7 +478,7 @@ class BlockCollector(BaseCollector):
                     "name": row.get("名称", ""),
                     "block_code": block_code,
                     "block_type": block_type,
-                    "_updated_at": datetime.now()
+                    "_updated_at": beijing_now()
                 })
 
             return records

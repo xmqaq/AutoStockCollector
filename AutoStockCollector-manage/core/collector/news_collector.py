@@ -4,6 +4,7 @@
 from __future__ import annotations
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+from utils.helpers import beijing_now
 import pandas as pd
 import akshare as ak
 from .base import BaseCollector, ProgressTracker
@@ -76,7 +77,7 @@ class NewsCollector(BaseCollector):
                         "source": str(row.get(next((k for k, v in col_map.items() if v == "source"), ""), "")),
                         "url": str(row.get(next((k for k, v in col_map.items() if v == "url"), ""), "")),
                         "news_type": "general",
-                        "_updated_at": datetime.now(),
+                        "_updated_at": beijing_now(),
                     }
                     records.append(record)
 
@@ -119,7 +120,7 @@ class NewsCollector(BaseCollector):
                         "source": row.get("文章来源", ""),
                         "url": row.get("新闻链接", ""),
                         "news_type": "stock",
-                        "_updated_at": datetime.now()
+                        "_updated_at": beijing_now()
                     }
                     all_records.append(record)
 
@@ -163,7 +164,7 @@ class NewsCollector(BaseCollector):
                     continue
 
                 df["code"] = code
-                df["_updated_at"] = datetime.now()
+                df["_updated_at"] = beijing_now()
                 records = self.normalize_dataframe(df, code)
                 all_records.extend(records)
 
@@ -197,7 +198,7 @@ class NewsCollector(BaseCollector):
                     "url": row.get("新闻链接", ""),
                     "plate_code": plate_code,
                     "news_type": "plate",
-                    "_updated_at": datetime.now()
+                    "_updated_at": beijing_now()
                 }
                 records.append(record)
 
@@ -219,12 +220,12 @@ class SentimentCollector(BaseCollector):
                 return None
 
             sentiment = {
-                "date": datetime.now().strftime("%Y-%m-%d"),
+                "date": beijing_now().strftime("%Y-%m-%d"),
                 "上涨家数": df.iloc[0].get("上涨家数", 0),
                 "下跌家数": df.iloc[0].get("下跌家数", 0),
                 "平盘家数": df.iloc[0].get("平盘家数", 0),
                 "总成交额": df.iloc[0].get("总成交额", 0),
-                "_updated_at": datetime.now()
+                "_updated_at": beijing_now()
             }
 
             return sentiment
@@ -259,8 +260,8 @@ class SentimentCollector(BaseCollector):
                     "name": row.get("股票名称", ""),
                     "change_percent": row.get("涨跌幅", 0),
                     "hot_score": row.get("关注指数", 0),
-                    "date": date or datetime.now().strftime("%Y-%m-%d"),
-                    "_updated_at": datetime.now()
+                    "date": date or beijing_now().strftime("%Y-%m-%d"),
+                    "_updated_at": beijing_now()
                 }
                 records.append(record)
 

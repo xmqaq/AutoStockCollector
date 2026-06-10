@@ -3,6 +3,7 @@ AI Agent 管理相关接口
 """
 from flask import Blueprint, request, jsonify
 from datetime import datetime
+from utils.helpers import beijing_now
 from typing import Dict, Any
 
 ai_agent_bp = Blueprint("ai_agent", __name__, url_prefix="/api/v1/ai-agents")
@@ -26,7 +27,7 @@ def _sync_default_agents():
     """同步默认 Agent 配置（覆盖 system_prompt/description/role 等关键字段，保留用户新增的 agent）"""
     db = _get_db()
     for agent in _default_agent_configs():
-        agent["updated_at"] = datetime.now().isoformat()
+        agent["updated_at"] = beijing_now().isoformat()
         db["ai_agents"].update_one(
             {"id": agent["id"]},
             {"$set": {k: v for k, v in agent.items() if k != "created_at"}},
@@ -79,8 +80,8 @@ def _default_agent_configs():
             "max_tokens": 2000,
             "enabled": True,
             "priority": 1,
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat()
+            "created_at": beijing_now().isoformat(),
+            "updated_at": beijing_now().isoformat()
         },
         {
             "id": "technical_analyst",
@@ -117,8 +118,8 @@ def _default_agent_configs():
             "max_tokens": 1500,
             "enabled": True,
             "priority": 2,
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat()
+            "created_at": beijing_now().isoformat(),
+            "updated_at": beijing_now().isoformat()
         },
         {
             "id": "fund_analyst",
@@ -152,8 +153,8 @@ def _default_agent_configs():
             "max_tokens": 1500,
             "enabled": True,
             "priority": 3,
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat()
+            "created_at": beijing_now().isoformat(),
+            "updated_at": beijing_now().isoformat()
         },
         {
             "id": "fundamental_analyst",
@@ -191,8 +192,8 @@ def _default_agent_configs():
             "max_tokens": 2000,
             "enabled": True,
             "priority": 4,
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat()
+            "created_at": beijing_now().isoformat(),
+            "updated_at": beijing_now().isoformat()
         },
         {
             "id": "risk_analyst",
@@ -230,8 +231,8 @@ def _default_agent_configs():
             "max_tokens": 1500,
             "enabled": True,
             "priority": 5,
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat()
+            "created_at": beijing_now().isoformat(),
+            "updated_at": beijing_now().isoformat()
         },
         {
             "id": "sentiment_analyst",
@@ -265,8 +266,8 @@ def _default_agent_configs():
             "max_tokens": 1500,
             "enabled": True,
             "priority": 6,
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat()
+            "created_at": beijing_now().isoformat(),
+            "updated_at": beijing_now().isoformat()
         },
         {
             "id": "bull_analyst",
@@ -308,8 +309,8 @@ def _default_agent_configs():
             "max_tokens": 2000,
             "enabled": True,
             "priority": 7,
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat()
+            "created_at": beijing_now().isoformat(),
+            "updated_at": beijing_now().isoformat()
         },
         {
             "id": "bear_analyst",
@@ -352,8 +353,8 @@ def _default_agent_configs():
             "max_tokens": 2000,
             "enabled": True,
             "priority": 8,
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat()
+            "created_at": beijing_now().isoformat(),
+            "updated_at": beijing_now().isoformat()
         },
         {
             "id": "debate_judge",
@@ -395,8 +396,8 @@ def _default_agent_configs():
             "max_tokens": 2500,
             "enabled": True,
             "priority": 9,
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat()
+            "created_at": beijing_now().isoformat(),
+            "updated_at": beijing_now().isoformat()
         }
     ]
 
@@ -436,8 +437,8 @@ def create_agent():
         "max_tokens": data.get("max_tokens", 2000),
         "enabled": data.get("enabled", True),
         "priority": data.get("priority", 99),
-        "created_at": datetime.now().isoformat(),
-        "updated_at": datetime.now().isoformat()
+        "created_at": beijing_now().isoformat(),
+        "updated_at": beijing_now().isoformat()
     }
     
     db["ai_agents"].insert_one(agent)
@@ -473,7 +474,7 @@ def update_agent(agent_id: str):
         if field in data:
             update_fields[field] = data[field]
     
-    update_fields["updated_at"] = datetime.now().isoformat()
+    update_fields["updated_at"] = beijing_now().isoformat()
     
     db["ai_agents"].update_one({"id": agent_id}, {"$set": update_fields})
     updated = db["ai_agents"].find_one({"id": agent_id}, {"_id": 0})
@@ -915,7 +916,7 @@ def save_agent_history():
         "recommendation": data.get("recommendation"),
         "provider": data.get("provider", ""),
         "duration_ms": data.get("duration_ms", 0),
-        "created_at": datetime.now().isoformat()
+        "created_at": beijing_now().isoformat()
     }
 
     result = db["ai_analysis_history"].insert_one(record)

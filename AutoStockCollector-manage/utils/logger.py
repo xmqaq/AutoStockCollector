@@ -7,6 +7,7 @@ import logging
 import time
 from logging.handlers import TimedRotatingFileHandler
 from datetime import datetime, timedelta
+from utils.helpers import beijing_now
 from pathlib import Path
 from typing import Optional
 
@@ -92,7 +93,7 @@ def clean_old_logs(days: Optional[int] = None):
     if days is None:
         days = LogManager.RETENTION_DAYS["normal"]
 
-    cutoff = datetime.now() - timedelta(days=days)
+    cutoff = beijing_now() - timedelta(days=days)
 
     for log_file in LogManager._log_dir.glob("*.log*"):
         if log_file.is_file():

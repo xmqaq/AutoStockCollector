@@ -9,6 +9,7 @@ PEG+动量精选策略执行引擎
 """
 from typing import List, Dict, Any, Optional, Callable
 from datetime import datetime, timedelta
+from utils.helpers import beijing_now
 from collections import defaultdict
 from config.database import DatabaseConfig
 from modules.workflow.quant_executor import QuantMultiFactorExecutor
@@ -54,7 +55,7 @@ class PegMomentumExecutor(QuantMultiFactorExecutor):
         logger.info(f"Loaded financial data")
         self._report("step1", "初始化股票池", f"已加载财务数据", 7)
 
-        cutoff = datetime.now() - timedelta(days=self.kline_days)
+        cutoff = beijing_now() - timedelta(days=self.kline_days)
         self.kline_data = defaultdict(list)
         cursor = db['kline'].find(
             {'date': {'$gte': cutoff}},

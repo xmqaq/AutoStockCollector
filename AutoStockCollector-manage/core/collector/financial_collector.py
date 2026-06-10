@@ -3,6 +3,7 @@
 """
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+from utils.helpers import beijing_now
 import pandas as pd
 import akshare as ak
 from .base import BaseCollector
@@ -29,7 +30,7 @@ class FinancialCollector(BaseCollector):
             codes = self.get_all_stock_codes()
 
         if end_year is None:
-            end_year = datetime.now().year
+            end_year = beijing_now().year
         if start_year is None:
             start_year = end_year - 5
 
@@ -73,7 +74,7 @@ class FinancialCollector(BaseCollector):
         if end_date and end_year is None:
             end_year = int(end_date[:4])
         if end_year is None:
-            end_year = datetime.now().year
+            end_year = beijing_now().year
         if start_year is None:
             start_year = end_year - 5
 
@@ -99,7 +100,7 @@ class FinancialCollector(BaseCollector):
 
             df["code"] = code
             df["report_type"] = report_type
-            df["_updated_at"] = datetime.now()
+            df["_updated_at"] = beijing_now()
 
             records = self.normalize_dataframe(df, code)
             logger.debug(f"{code}: {len(records)} financial records ({start_year}~{end_year})")
@@ -154,7 +155,7 @@ class FinancialCollector(BaseCollector):
             for _, row in df.iterrows():
                 info[row["item"]] = row["value"]
 
-            info["_updated_at"] = datetime.now()
+            info["_updated_at"] = beijing_now()
 
             return info
 
@@ -192,7 +193,7 @@ class DividendCollector(BaseCollector):
                 return None
 
             df["code"] = code
-            df["_updated_at"] = datetime.now()
+            df["_updated_at"] = beijing_now()
 
             return self.normalize_dataframe(df, code)
 

@@ -6,7 +6,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 from core.storage.mongo_storage import WatchlistStorage, KlineStorage, StockInfoStorage
 from utils.logger import get_logger
-from utils.helpers import normalize_stock_code
+from utils.helpers import normalize_stock_code, beijing_now
 
 
 logger = get_logger(__name__)
@@ -131,7 +131,7 @@ class WatchlistManager:
             "group_id": group_id,
             "name": name,
             "description": description,
-            "create_time": datetime.now()
+            "create_time": beijing_now()
         }
 
         try:
@@ -198,8 +198,8 @@ class WatchlistManager:
         code: str,
         days: int = 30
     ) -> List[Dict[str, Any]]:
-        end_date = datetime.now().strftime("%Y-%m-%d")
-        start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+        end_date = beijing_now().strftime("%Y-%m-%d")
+        start_date = (beijing_now() - timedelta(days=days)).strftime("%Y-%m-%d")
 
         snapshots = self.kline_storage.find_many(
             {"code": code, "date": {"$gte": start_date, "$lte": end_date}},

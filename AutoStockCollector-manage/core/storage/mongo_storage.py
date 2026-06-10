@@ -11,7 +11,7 @@ from pymongo.collection import Collection
 from pymongo.errors import BulkWriteError, DuplicateKeyError
 from config.database import DatabaseConfig
 from utils.logger import get_logger
-from utils.helpers import chunk_list
+from utils.helpers import chunk_list, beijing_now
 
 
 logger = get_logger(__name__)
@@ -103,7 +103,7 @@ class MongoStorage:
         for doc in documents:
             filter_doc = {k: doc[k] for k in key_fields if k in doc}
             update_doc = {k: v for k, v in doc.items() if k not in key_fields}
-            update_doc["_updated_at"] = datetime.now()
+            update_doc["_updated_at"] = beijing_now()
 
             operations.append(
                 UpdateOne(
@@ -463,7 +463,7 @@ class StockInfoStorage(MongoStorage):
         return record
 
     def save_stock_info(self, info: Dict[str, Any]) -> bool:
-        info["_updated_at"] = datetime.now()
+        info["_updated_at"] = beijing_now()
         return self.upsert_one({"code": info["code"]}, info)
 
 
@@ -648,8 +648,8 @@ class TaskStorage(MongoStorage):
             "total": 0,
             "success": 0,
             "failed": 0,
-            "create_time": datetime.now(),
-            "update_time": datetime.now()
+            "create_time": beijing_now(),
+            "update_time": beijing_now()
         }
         return self.insert_one(task_doc)
 
@@ -661,7 +661,7 @@ class TaskStorage(MongoStorage):
     ) -> bool:
         update_doc = {
             "status": status,
-            "update_time": datetime.now()
+            "update_time": beijing_now()
         }
         update_doc.update(kwargs)
         return self.update_one({"task_id": task_id}, update_doc) > 0
@@ -702,7 +702,7 @@ class WatchlistStorage(MongoStorage):
             "code": code,
             "group_id": group_id,
             "priority": priority,
-            "add_time": datetime.now(),
+            "add_time": beijing_now(),
             "enabled": True
         }
         return self.upsert_one(

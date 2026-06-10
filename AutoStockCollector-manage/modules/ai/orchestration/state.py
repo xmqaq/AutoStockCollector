@@ -1,4 +1,5 @@
 from datetime import datetime
+from utils.helpers import beijing_now
 from typing import Any, Dict, List, Optional, Literal
 import operator
 
@@ -115,4 +116,4 @@ class TradingState:
         self.stream_events = []
 
     def add_event(self, event_type: str, data: Dict[str, Any]):
-        self.stream_events.append({"event": event_type, "data": data, "timestamp": datetime.now().isoformat()})
+        self.stream_events.append({"event": event_type, "data": data, "timestamp": beijing_now().isoformat()})

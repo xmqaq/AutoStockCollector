@@ -5,6 +5,7 @@
 from typing import Dict, List, Any, Optional, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
+from utils.helpers import beijing_now
 from enum import Enum
 from threading import Thread, Lock
 from queue import Queue
@@ -80,7 +81,7 @@ class AsyncTaskQueue:
             params=params,
             status=TaskStatus.PENDING,
             total=params.get("total", 0),
-            created_at=datetime.now()
+            created_at=beijing_now()
         )
 
         with self._lock:
@@ -108,14 +109,14 @@ class AsyncTaskQueue:
                 task.completed += completed
                 task.failed += failed
                 task.progress = progress
-                task.updated_at = datetime.now()
+                task.updated_at = beijing_now()
 
     def cancel_task(self, task_id: str) -> bool:
         with self._lock:
             task = self._tasks.get(task_id)
             if task and task.status == TaskStatus.PENDING:
                 task.status = TaskStatus.CANCELLED
-                task.updated_at = datetime.now()
+                task.updated_at = beijing_now()
                 logger.info(f"Task {task_id} cancelled")
                 return True
         return False
@@ -153,15 +154,15 @@ class AsyncTaskQueue:
                     continue
 
                 task.status = TaskStatus.RUNNING
-                task.started_at = datetime.now()
-                task.updated_at = datetime.now()
+                task.started_at = beijing_now()
+                task.updated_at = beijing_now()
 
                 try:
                     result = self._execute_task(task)
 
                     task.result = result
                     task.status = TaskStatus.COMPLETED
-                    task.completed_at = datetime.now()
+                    task.completed_at = beijing_now()
 
                     if task.total > 0:
                         task.progress = 1.0
@@ -171,10 +172,10 @@ class AsyncTaskQueue:
                 except Exception as e:
                     task.status = TaskStatus.FAILED
                     task.error = str(e)
-                    task.completed_at = datetime.now()
+                    task.completed_at = beijing_now()
                     logger.error(f"Task {task_id} failed: {e}")
 
-                task.updated_at = datetime.now()
+                task.updated_at = beijing_now()
 
                 if callback:
                     try:
@@ -279,7 +280,7 @@ class AsyncTaskQueue:
 
                 task.completed = i + 1
                 task.progress = (i + 1) / len(codes)
-                task.updated_at = datetime.now()
+                task.updated_at = beijing_now()
 
             except Exception as e:
                 task.failed += 1

@@ -11,6 +11,7 @@
 """
 from typing import List, Dict, Any, Optional, Callable
 from datetime import datetime, timedelta
+from utils.helpers import beijing_now
 from collections import defaultdict
 from config.database import DatabaseConfig
 from utils.logger import get_logger
@@ -62,7 +63,7 @@ class QuantMultiFactorExecutor:
 
     def execute(self) -> Dict[str, Any]:
         logger.info(f"QuantMultiFactorExecutor starting for workflow {self.workflow_id}")
-        start_time = datetime.now()
+        start_time = beijing_now()
 
         try:
             # --- Step 1 ---
@@ -110,7 +111,7 @@ class QuantMultiFactorExecutor:
             )
             self._report("step7", "汇总排名输出", f"Top30筛选完成，共分析 {self.total_analyzed} 只", 100)
 
-            duration = (datetime.now() - start_time).total_seconds()
+            duration = (beijing_now() - start_time).total_seconds()
             logger.info(f"QuantMultiFactorExecutor finished in {duration:.1f}s, top30 selected from {self.after_filter} stocks")
             return {
                 "success": True,
@@ -119,7 +120,7 @@ class QuantMultiFactorExecutor:
                 "result_count": len(results),
                 "duration": duration,
                 "results": results,
-                "execution_time": datetime.now().isoformat(),
+                "execution_time": beijing_now().isoformat(),
                 "total_analyzed": self.total_analyzed,
                 "after_filter": self.after_filter,
             }
@@ -127,13 +128,13 @@ class QuantMultiFactorExecutor:
         except Exception as e:
             import traceback
             logger.error(f"QuantMultiFactorExecutor error: {e}\n{traceback.format_exc()}")
-            duration = (datetime.now() - start_time).total_seconds()
+            duration = (beijing_now() - start_time).total_seconds()
             return {
                 "success": False,
                 "workflow_id": self.workflow_id,
                 "error": str(e),
                 "duration": duration,
-                "execution_time": datetime.now().isoformat(),
+                "execution_time": beijing_now().isoformat(),
             }
 
     # ------------------------------------------------------------------ #
@@ -177,7 +178,7 @@ class QuantMultiFactorExecutor:
         self._report("step1", "初始化股票池", f"已加载 {total_fin} 条财务数据（最近4季度）", 7)
 
         # 3. Kline – recent 90 days, sorted ascending
-        cutoff = datetime.now() - timedelta(days=90)
+        cutoff = beijing_now() - timedelta(days=90)
         self.kline_data = defaultdict(list)
         cursor = db['kline'].find(
             {'$expr': {'$gte': ['$date', cutoff]}},
@@ -255,7 +256,7 @@ class QuantMultiFactorExecutor:
     # ------------------------------------------------------------------ #
 
     def _step2_hard_filter(self) -> List[str]:
-        today = datetime.now().date()
+        today = beijing_now().date()
         ipo_cutoff = today - timedelta(days=180)
         st_excluded = ipo_excluded = cap_excluded = 0
         valid: List[str] = []

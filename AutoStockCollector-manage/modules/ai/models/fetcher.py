@@ -4,6 +4,7 @@ AI模型列表拉取模块
 """
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
+from utils.helpers import beijing_now
 import threading
 import requests
 from utils.logger import get_logger
@@ -31,7 +32,7 @@ class ModelCache:
             if cached_time is None:
                 return None
 
-            if datetime.now() - cached_time > timedelta(seconds=self._ttl_seconds):
+            if beijing_now() - cached_time > timedelta(seconds=self._ttl_seconds):
                 del self._cache[provider.lower()]
                 return None
 
@@ -42,7 +43,7 @@ class ModelCache:
         with self._lock:
             self._cache[provider.lower()] = {
                 'models': models,
-                '_cached_at': datetime.now()
+                '_cached_at': beijing_now()
             }
 
     def invalidate(self, provider: Optional[str] = None) -> None:
@@ -59,7 +60,7 @@ class ModelCache:
         with self._lock:
             for key, entry in self._cache.items():
                 cached_time = entry.get('_cached_at')
-                if cached_time and datetime.now() - cached_time <= timedelta(seconds=self._ttl_seconds):
+                if cached_time and beijing_now() - cached_time <= timedelta(seconds=self._ttl_seconds):
                     result[key] = entry.get('models', [])
         return result
 

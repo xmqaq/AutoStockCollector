@@ -5,6 +5,7 @@
 """
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+from utils.helpers import beijing_now
 import re
 import time
 import threading
@@ -201,7 +202,7 @@ class NewsManager:
                         "title": title,
                         "url": href,
                         "publish_date": publish_date,
-                        "_updated_at": datetime.now(),
+                        "_updated_at": beijing_now(),
                     }
                     records.append(record)
                     
@@ -258,7 +259,7 @@ class NewsManager:
                 record["news_type"] = news_type
                 record["channel_name"] = channel_name
                 record["source"] = "新浪财经"
-                record["_collect_at"] = datetime.now()
+                record["_collect_at"] = beijing_now()
                 record["_uid"] = f"{channel_name}_{record['title'][:40]}_{record['url'][-40:]}"
 
                 if with_content and ".shtml" in record["url"]:
@@ -441,7 +442,7 @@ class NewsManager:
                     continue
                 # 财新接口无时间字段，文章页 JS 防爬不可靠，只存日期
                 m = re.search(r"/(\d{4}-\d{2}-\d{2})/", url)
-                publish_date = m.group(1) if m else datetime.now().strftime("%Y-%m-%d")
+                publish_date = m.group(1) if m else beijing_now().strftime("%Y-%m-%d")
                 title = (summary[:38] + "…") if len(summary) > 38 else summary
                 records.append({
                     "title": title,
@@ -452,7 +453,7 @@ class NewsManager:
                     "news_type": "research",
                     "channel_name": tag,
                     "source": "财新",
-                    "_collect_at": datetime.now(),
+                    "_collect_at": beijing_now(),
                 })
             if records:
                 inserted, updated = self.storage.save_news_batch(records)

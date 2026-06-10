@@ -7,6 +7,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from utils.helpers import beijing_now
 from typing import Any, Callable, Dict, List, Optional
 
 
@@ -175,7 +176,7 @@ class LLMRouter:
 
         if use_cache and key in self._cache:
             entry = self._cache[key]
-            if datetime.now() - entry["ts"] < self._cache_ttl:
+            if beijing_now() - entry["ts"] < self._cache_ttl:
                 return LLMResult(
                     success=True, provider=entry["provider"],
                     data=entry["data"], raw=entry["raw"], from_cache=True,
@@ -200,7 +201,7 @@ class LLMRouter:
                 if use_cache:
                     self._cache[key] = {
                         "provider": provider, "data": data,
-                        "raw": raw, "ts": datetime.now(),
+                        "raw": raw, "ts": beijing_now(),
                     }
                 return LLMResult(success=True, provider=provider, data=data, raw=raw)
             except Exception as e:
@@ -248,7 +249,7 @@ class LLMRouter:
             db["ai_call_history"].insert_one({
                 "provider": provider, "task_type": task_type,
                 "success": success, "error": error,
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": beijing_now().isoformat(),
             })
         except Exception:
             pass

@@ -1,4 +1,5 @@
 from datetime import datetime
+from utils.helpers import beijing_now
 from typing import Dict, List, Optional
 from flask import Blueprint, request, jsonify
 from config.database import get_collection
@@ -31,7 +32,7 @@ def publish_signal():
         "price": data.get("price"),
         "confidence": data.get("confidence", 0.5),
         "reasoning": data.get("reasoning", ""),
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": beijing_now().isoformat(),
         "expiry": data.get("expiry", ""),
         "status": "active",
     }
@@ -75,7 +76,7 @@ def get_signal(signal_id: str):
 def expire_signal(signal_id: str):
     result = _get_collection().update_one(
         {"signal_id": signal_id},
-        {"$set": {"status": "expired", "expired_at": datetime.now().isoformat()}},
+        {"$set": {"status": "expired", "expired_at": beijing_now().isoformat()}},
     )
     if result.modified_count == 0:
         return jsonify({"error": "Signal not found"}), 404

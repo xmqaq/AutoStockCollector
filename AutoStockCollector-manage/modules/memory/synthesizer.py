@@ -72,11 +72,12 @@ class MemorySynthesizer:
         """分析完成后记录历史"""
         from modules.memory.models import AnalysisHistory
         from datetime import datetime
+        from utils.helpers import beijing_now
 
         self.episodic.record_analysis(AnalysisHistory(
             user_id=user_id,
             code=code,
-            analysis_date=datetime.now().strftime("%Y-%m-%d %H:%M"),
+            analysis_date=beijing_now().strftime("%Y-%m-%d %H:%M"),
             analysis_type=analysis_type,
             verdict=verdict,
             recommendation=recommendation,

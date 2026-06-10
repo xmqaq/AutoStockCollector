@@ -1,4 +1,5 @@
 from datetime import datetime
+from utils.helpers import beijing_now
 from typing import Optional, Dict, Any
 
 
@@ -17,7 +18,7 @@ class PaperAccount:
 
     def init(self, initial_capital: float, user_id: str = "default") -> Dict[str, Any]:
         self._db["trade_records"].delete_many({"user_id": user_id})
-        now = datetime.now().isoformat()
+        now = beijing_now().isoformat()
         doc = {
             "user_id": user_id,
             "initial_capital": initial_capital,
@@ -31,5 +32,5 @@ class PaperAccount:
     def update_cash(self, user_id: str, new_balance: float) -> None:
         self._col.update_one(
             {"user_id": user_id},
-            {"$set": {"cash_balance": new_balance, "updated_at": datetime.now().isoformat()}},
+            {"$set": {"cash_balance": new_balance, "updated_at": beijing_now().isoformat()}},
         )

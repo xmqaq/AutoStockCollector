@@ -4,6 +4,7 @@
 from dataclasses import dataclass, field, asdict
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
+from utils.helpers import beijing_now
 from enum import Enum
 import json
 from core.storage.mongo_storage import MongoStorage
@@ -272,7 +273,7 @@ class WorkflowStorage(MongoStorage):
         super().__init__("workflow")
 
     def save_workflow(self, workflow: Workflow) -> bool:
-        workflow.updated_at = datetime.now().isoformat()
+        workflow.updated_at = beijing_now().isoformat()
         if not workflow.created_at:
             workflow.created_at = workflow.updated_at
         return self.upsert_one({"id": workflow.id}, workflow.to_dict())
@@ -305,7 +306,7 @@ class WorkflowStorage(MongoStorage):
             result = self.collection.update_one(
                 {"id": workflow_id},
                 {
-                    "$set": {"last_run_at": datetime.now().isoformat()},
+                    "$set": {"last_run_at": beijing_now().isoformat()},
                     "$inc": {"run_count": 1}
                 }
             )
@@ -379,7 +380,7 @@ class WorkflowExecutionStorage(MongoStorage):
                 "status": ExecutionStatus.COMPLETED.value,
                 "progress": 100,
                 "result": result,
-                "finished_at": datetime.now().isoformat()
+                "finished_at": beijing_now().isoformat()
             }
         ) > 0
 
@@ -391,7 +392,7 @@ class WorkflowExecutionStorage(MongoStorage):
                 "status": ExecutionStatus.FAILED.value,
                 "error": error,
                 "current_step": f"执行失败: {short_error}",
-                "finished_at": datetime.now().isoformat()
+                "finished_at": beijing_now().isoformat()
             }
         ) > 0
 
@@ -400,7 +401,7 @@ class WorkflowExecutionStorage(MongoStorage):
             {"id": execution_id},
             {
                 "status": ExecutionStatus.CANCELLED.value,
-                "finished_at": datetime.now().isoformat()
+                "finished_at": beijing_now().isoformat()
             }
         ) > 0
 
@@ -413,7 +414,7 @@ class WorkflowExecutionStorage(MongoStorage):
                     "paused_node_idx": node_idx,
                     "paused_codes": codes,
                     "current_step": f"已暂停（将从第 {node_idx + 1} 步继续）",
-                    "finished_at": datetime.now().isoformat()
+                    "finished_at": beijing_now().isoformat()
                 }}
             )
             return result.modified_count > 0
@@ -462,7 +463,7 @@ class WorkflowExecutionStorage(MongoStorage):
         return self.delete_many({"id": {"$in": execution_ids}})
 
     def cleanup_stale_executions(self, max_age_minutes: int = 30) -> int:
-        cutoff = (datetime.now() - timedelta(minutes=max_age_minutes)).isoformat()
+        cutoff = (beijing_now() - timedelta(minutes=max_age_minutes)).isoformat()
         try:
             result = self.collection.update_many(
                 {"status": {"$in": [ExecutionStatus.RUNNING.value, ExecutionStatus.PENDING.value]},
@@ -471,7 +472,7 @@ class WorkflowExecutionStorage(MongoStorage):
                     "status": ExecutionStatus.FAILED.value,
                     "error": f"执行超时（超过{max_age_minutes}分钟），已自动终止",
                     "current_step": f"执行失败: 超时自动终止",
-                    "finished_at": datetime.now().isoformat()
+                    "finished_at": beijing_now().isoformat()
                 }}
             )
             return result.modified_count
@@ -485,7 +486,7 @@ class WorkflowTemplateStorage(MongoStorage):
         super().__init__("workflow_template")
 
     def save_template(self, template: WorkflowTemplate) -> bool:
-        template.updated_at = datetime.now().isoformat()
+        template.updated_at = beijing_now().isoformat()
         if not template.created_at:
             template.created_at = template.updated_at
         return self.upsert_one({"id": template.id}, template.to_dict())

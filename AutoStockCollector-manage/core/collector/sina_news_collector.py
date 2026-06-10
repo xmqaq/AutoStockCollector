@@ -5,6 +5,7 @@
 from __future__ import annotations
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
+from utils.helpers import beijing_now
 from enum import Enum
 import requests
 from bs4 import BeautifulSoup
@@ -182,9 +183,9 @@ class SinaNewsCollector(BaseCollector):
                         "news_type": channel,
                         "channel_name": channel_info["name"],
                         "source": "新浪财经",
-                        "publish_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        "_updated_at": datetime.now(),
-                        "_collect_at": datetime.now()
+                        "publish_date": beijing_now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "_updated_at": beijing_now(),
+                        "_collect_at": beijing_now()
                     }
                     records.append(record)
 
@@ -226,7 +227,7 @@ class SinaNewsCollector(BaseCollector):
                             href = "https:" + href
 
                         time_elem = item.find("span", class_="time")
-                        publish_date = time_elem.get_text(strip=True) if time_elem else datetime.now().strftime("%Y-%m-%d")
+                        publish_date = time_elem.get_text(strip=True) if time_elem else beijing_now().strftime("%Y-%m-%d")
 
                         record = {
                             "title": title,
@@ -235,8 +236,8 @@ class SinaNewsCollector(BaseCollector):
                             "channel_name": channel["name"],
                             "source": "新浪财经",
                             "publish_date": publish_date,
-                            "_updated_at": datetime.now(),
-                            "_collect_at": datetime.now()
+                            "_updated_at": beijing_now(),
+                            "_collect_at": beijing_now()
                         }
                         all_records.append(record)
 
@@ -284,10 +285,10 @@ class SinaNewsCollector(BaseCollector):
                         "news_type": "breaking",
                         "channel_name": "突发",
                         "source": "新浪财经",
-                        "publish_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "publish_date": beijing_now().strftime("%Y-%m-%d %H:%M:%S"),
                         "is_breaking": True,
-                        "_updated_at": datetime.now(),
-                        "_collect_at": datetime.now()
+                        "_updated_at": beijing_now(),
+                        "_collect_at": beijing_now()
                     }
                     records.append(record)
 
@@ -328,8 +329,8 @@ class SinaNewsCollector(BaseCollector):
                         "source": "新浪财经",
                         "publish_date": item.get("ctime", ""),
                         "datetime": item.get("ctime", ""),
-                        "_updated_at": datetime.now(),
-                        "_collect_at": datetime.now()
+                        "_updated_at": beijing_now(),
+                        "_collect_at": beijing_now()
                     }
                     records.append(record)
 

@@ -4,6 +4,7 @@
 """
 from typing import Dict, List, Any, Optional
 from datetime import datetime
+from utils.helpers import beijing_now
 from utils.logger import get_logger
 
 
@@ -74,7 +75,7 @@ class AISelectorAPI:
                 "total_screened": len(codes),
                 "selected_count": len(results),
                 "results": [r.to_dict() for r in results],
-                "timestamp": datetime.now().isoformat()
+                "timestamp": beijing_now().isoformat()
             }
 
         except Exception as e:
@@ -106,7 +107,7 @@ class AISelectorAPI:
             "success": True,
             "total_screened": len(codes),
             "strategies": all_results,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": beijing_now().isoformat()
         }
 
     def analyze(
@@ -145,7 +146,7 @@ class AISelectorAPI:
             return {"error": f"Unknown analysis type: {analysis_type}"}
 
         analysis["success"] = True
-        analysis["timestamp"] = datetime.now().isoformat()
+        analysis["timestamp"] = beijing_now().isoformat()
         return analysis
 
     def _comprehensive_analysis(
@@ -372,7 +373,7 @@ class AISelectorAPI:
 
             result["success"] = True
             result["signal_type"] = signal_type
-            result["timestamp"] = datetime.now().isoformat()
+            result["timestamp"] = beijing_now().isoformat()
             return result
 
         except Exception as e:

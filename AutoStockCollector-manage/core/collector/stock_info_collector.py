@@ -3,6 +3,7 @@
 """
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+from utils.helpers import beijing_now
 import pandas as pd
 import akshare as ak
 from .base import BaseCollector
@@ -87,7 +88,7 @@ class StockInfoCollector(BaseCollector):
                         for col in df.columns:
                             info[col.lower()] = df.iloc[0][col]
 
-                    info["_updated_at"] = datetime.now()
+                    info["_updated_at"] = beijing_now()
                     return info
 
             except Exception as e:

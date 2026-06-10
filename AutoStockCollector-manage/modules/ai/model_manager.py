@@ -7,6 +7,7 @@ import time
 import threading
 from typing import List, Dict, Any, Optional, Callable
 from datetime import datetime, timedelta
+from utils.helpers import beijing_now
 from queue import Queue, Empty
 from dataclasses import dataclass, field
 from collections import defaultdict
@@ -66,8 +67,8 @@ class BaseModelAdapter:
         self._daily_count = 0
         self._hourly_tokens = 0
         self._daily_tokens = 0
-        self._last_hour_reset = datetime.now()
-        self._last_day_reset = datetime.now()
+        self._last_hour_reset = beijing_now()
+        self._last_day_reset = beijing_now()
         self._lock = threading.Lock()
 
     def call(self, prompt: str) -> str:
@@ -90,7 +91,7 @@ class BaseModelAdapter:
             raise
 
     def _check_and_reset_counters(self):
-        now = datetime.now()
+        now = beijing_now()
 
         if (now - self._last_hour_reset).total_seconds() >= 3600:
             with self._lock:
@@ -384,7 +385,7 @@ class PromptVersionManager:
                 name=name,
                 prompt_text=prompt_text,
                 version=version,
-                created_at=datetime.now(),
+                created_at=beijing_now(),
                 description=description
             )
 
@@ -604,7 +605,7 @@ class ModelManager:
 
         if use_cache and cache_key in self._result_cache:
             cached = self._result_cache[cache_key]
-            if datetime.now() - cached["timestamp"] < self._cache_ttl:
+            if beijing_now() - cached["timestamp"] < self._cache_ttl:
                 logger.info(f"Returning cached result for prompt")
                 return cached["response"]
 
@@ -665,7 +666,7 @@ class ModelManager:
             if use_cache:
                 self._result_cache[cache_key] = {
                     "response": response,
-                    "timestamp": datetime.now()
+                    "timestamp": beijing_now()
                 }
 
             return response
@@ -730,7 +731,7 @@ class ModelManager:
         call = ModelCall(
             model_name=model_name,
             prompt=prompt[:500],
-            timestamp=datetime.now(),
+            timestamp=beijing_now(),
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             total_tokens=total_tokens,
@@ -755,7 +756,7 @@ class ModelManager:
             "error": error,
             "response_time": response_time,
             "cost": cost,
-            "timestamp": datetime.now()
+            "timestamp": beijing_now()
         })
 
     def get_model_stats(self) -> Dict[str, Any]:
@@ -956,7 +957,7 @@ class RuleEngineFallback:
             "target_price": round(current_price * 1.10, 2),
             "summary": f"基于规则引擎的量化分析，{recommendation}",
             "analysis_method": "rule_engine_fallback",
-            "analyzed_at": datetime.now().isoformat()
+            "analyzed_at": beijing_now().isoformat()
         }
 
         return json.dumps(response, ensure_ascii=False)
@@ -976,7 +977,7 @@ class RuleEngineFallback:
             "target_price": 0,
             "summary": "规则引擎分析，数据不足，建议观望",
             "analysis_method": "rule_engine_fallback",
-            "analyzed_at": datetime.now().isoformat()
+            "analyzed_at": beijing_now().isoformat()
         }
         return json.dumps(response, ensure_ascii=False)
 

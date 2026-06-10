@@ -5,6 +5,7 @@
 from typing import Dict, List, Any, Optional, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from utils.helpers import beijing_now
 from threading import Lock
 import json
 import hashlib
@@ -60,7 +61,7 @@ class BaseLLMAdapter:
 
 class ClaudeAdapter(BaseLLMAdapter):
     def chat(self, prompt: str, schema: Optional[Dict[str, Any]] = None) -> LLMResponse:
-        start_time = datetime.now()
+        start_time = beijing_now()
 
         try:
             import anthropic
@@ -95,7 +96,7 @@ class ClaudeAdapter(BaseLLMAdapter):
             output_tokens = response.usage.output_tokens
             total_tokens = input_tokens + output_tokens
             cost = total_tokens * self.cost_per_token
-            response_time = (datetime.now() - start_time).total_seconds()
+            response_time = (beijing_now() - start_time).total_seconds()
 
             return LLMResponse(
                 content=content,
@@ -117,7 +118,7 @@ class ClaudeAdapter(BaseLLMAdapter):
                 output_tokens=0,
                 total_tokens=0,
                 cost=0,
-                response_time=(datetime.now() - start_time).total_seconds(),
+                response_time=(beijing_now() - start_time).total_seconds(),
                 success=False,
                 error=str(e)
             )
@@ -125,7 +126,7 @@ class ClaudeAdapter(BaseLLMAdapter):
 
 class OpenAIAdapter(BaseLLMAdapter):
     def chat(self, prompt: str, schema: Optional[Dict[str, Any]] = None) -> LLMResponse:
-        start_time = datetime.now()
+        start_time = beijing_now()
 
         try:
             from openai import OpenAI
@@ -160,7 +161,7 @@ class OpenAIAdapter(BaseLLMAdapter):
             output_tokens = response.usage.completion_tokens if hasattr(response.usage, 'completion_tokens') else 0
             total_tokens = input_tokens + output_tokens
             cost = total_tokens * self.cost_per_token
-            response_time = (datetime.now() - start_time).total_seconds()
+            response_time = (beijing_now() - start_time).total_seconds()
 
             return LLMResponse(
                 content=content,
@@ -182,7 +183,7 @@ class OpenAIAdapter(BaseLLMAdapter):
                 output_tokens=0,
                 total_tokens=0,
                 cost=0,
-                response_time=(datetime.now() - start_time).total_seconds(),
+                response_time=(beijing_now() - start_time).total_seconds(),
                 success=False,
                 error=str(e)
             )
@@ -194,7 +195,7 @@ class QwenAdapter(BaseLLMAdapter):
         self.base_url = base_url
 
     def chat(self, prompt: str, schema: Optional[Dict[str, Any]] = None) -> LLMResponse:
-        start_time = datetime.now()
+        start_time = beijing_now()
 
         try:
             from openai import OpenAI
@@ -229,7 +230,7 @@ class QwenAdapter(BaseLLMAdapter):
             output_tokens = response.usage.completion_tokens if hasattr(response.usage, 'completion_tokens') else 0
             total_tokens = input_tokens + output_tokens
             cost = total_tokens * self.cost_per_token
-            response_time = (datetime.now() - start_time).total_seconds()
+            response_time = (beijing_now() - start_time).total_seconds()
 
             return LLMResponse(
                 content=content,
@@ -251,7 +252,7 @@ class QwenAdapter(BaseLLMAdapter):
                 output_tokens=0,
                 total_tokens=0,
                 cost=0,
-                response_time=(datetime.now() - start_time).total_seconds(),
+                response_time=(beijing_now() - start_time).total_seconds(),
                 success=False,
                 error=str(e)
             )
@@ -317,7 +318,7 @@ class LLMRouter:
 
         if use_cache and cache_key in self._cache:
             cached = self._cache[cache_key]
-            if datetime.now() - cached["timestamp"] < self._cache_ttl:
+            if beijing_now() - cached["timestamp"] < self._cache_ttl:
                 logger.debug("Returning cached LLM response")
                 cached_response = cached["response"]
                 cached_response.cached = True
@@ -352,7 +353,7 @@ class LLMRouter:
             if use_cache:
                 self._cache[cache_key] = {
                     "response": response,
-                    "timestamp": datetime.now()
+                    "timestamp": beijing_now()
                 }
 
         return response

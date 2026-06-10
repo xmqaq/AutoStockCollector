@@ -3,6 +3,7 @@
 """
 from flask import Blueprint, request, jsonify, Response, stream_with_context
 from datetime import datetime
+from utils.helpers import beijing_now
 import uuid
 import threading
 from modules.workflow import (
@@ -70,8 +71,8 @@ def create_workflow():
             nodes=[WorkflowNode.from_dict(n) if isinstance(n, dict) else n for n in data.get('nodes', [])],
             edges=[WorkflowEdge.from_dict(e) if isinstance(e, dict) else e for e in data.get('edges', [])],
             enabled=data.get('enabled', True),
-            created_at=datetime.now().isoformat(),
-            updated_at=datetime.now().isoformat(),
+            created_at=beijing_now().isoformat(),
+            updated_at=beijing_now().isoformat(),
             tags=data.get('tags', []),
             workflow_type=data.get('workflow_type', '')
         )
@@ -112,7 +113,7 @@ def update_workflow(workflow_id):
         if 'tags' in data:
             workflow.tags = data['tags']
 
-        workflow.updated_at = datetime.now().isoformat()
+        workflow.updated_at = beijing_now().isoformat()
 
         if workflow_storage.save_workflow(workflow):
             return jsonify({
@@ -174,7 +175,7 @@ def run_workflow(workflow_id):
             stale = False
             try:
                 started_dt = datetime.fromisoformat(existing.started_at)
-                if (datetime.now() - started_dt).total_seconds() > 600:
+                if (beijing_now() - started_dt).total_seconds() > 600:
                     stale = True
             except Exception:
                 stale = True  # unparseable timestamp → treat as stale
@@ -199,7 +200,7 @@ def run_workflow(workflow_id):
             current_node='',
             current_step='准备执行...',
             steps=[],
-            started_at=datetime.now().isoformat()
+            started_at=beijing_now().isoformat()
         )
         execution_storage.create_execution(execution)
 
@@ -223,7 +224,7 @@ def run_workflow(workflow_id):
                     'step': step,
                     'progress': progress,
                     'detail': detail or {},
-                    'timestamp': datetime.now().isoformat()
+                    'timestamp': beijing_now().isoformat()
                 }
                 execution_storage.update_progress(
                     exec_id, progress, node_id, step, step_data
@@ -467,7 +468,7 @@ def resume_execution_route(workflow_id, execution_id):
                 step_data = {
                     'node_id': node_id, 'node_label': node_label, 'step': step,
                     'progress': progress, 'detail': detail or {},
-                    'timestamp': datetime.now().isoformat()
+                    'timestamp': beijing_now().isoformat()
                 }
                 execution_storage.update_progress(exec_id, progress, node_id, step, step_data)
             return progress_callback
@@ -635,8 +636,8 @@ def create_template():
             is_public=data.get('is_public', True),
             owner_id=data.get('owner_id'),
             category=data.get('category', 'custom'),
-            created_at=datetime.now().isoformat(),
-            updated_at=datetime.now().isoformat()
+            created_at=beijing_now().isoformat(),
+            updated_at=beijing_now().isoformat()
         )
 
         if template_storage.save_template(template):
@@ -676,7 +677,7 @@ def update_template(template_id):
         if 'category' in data:
             template.category = data['category']
 
-        template.updated_at = datetime.now().isoformat()
+        template.updated_at = beijing_now().isoformat()
 
         if template_storage.save_template(template):
             return jsonify({
@@ -1138,7 +1139,7 @@ def start_factor_score():
                 from modules.workflow.factor_miner import FactorEngine, FactorRegistry, DataStore
 
                 _score_update(tid, 5, '正在扫描全市场股票列表...')
-                end = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                end = beijing_now().replace(hour=0, minute=0, second=0, microsecond=0)
                 start = end - timedelta(days=90)
                 trade_date = end - timedelta(days=days_back)
 
@@ -1332,7 +1333,7 @@ def start_factor_ic_test():
                 import numpy as np
                 from modules.workflow.factor_miner import FactorEngine, FactorRegistry, DataStore
 
-                test_date = (datetime.now() - timedelta(days=days_ago)).replace(
+                test_date = (beijing_now() - timedelta(days=days_ago)).replace(
                     hour=0, minute=0, second=0, microsecond=0)
                 cutoff = test_date - timedelta(days=60)
 
@@ -1541,7 +1542,7 @@ def compute_factor_scores():
     from collections import defaultdict
     from modules.workflow.factor_miner import FactorEngine, FactorRegistry, DataStore
 
-    end = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    end = beijing_now().replace(hour=0, minute=0, second=0, microsecond=0)
     start = end - timedelta(days=90)
     trade_date = end - timedelta(days=days_back)
 
@@ -1635,7 +1636,7 @@ def start_factor_correlation():
                 import numpy as np
                 from modules.workflow.factor_miner import FactorEngine, FactorRegistry, DataStore
 
-                end = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                end = beijing_now().replace(hour=0, minute=0, second=0, microsecond=0)
                 start = end - timedelta(days=90)
                 trade_date = end - timedelta(days=days_back)
 
@@ -1783,7 +1784,7 @@ def compute_factor_correlation():
     import numpy as np
     from modules.workflow.factor_miner import FactorEngine, FactorRegistry, DataStore
 
-    end = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    end = beijing_now().replace(hour=0, minute=0, second=0, microsecond=0)
     start = end - timedelta(days=90)
     trade_date = end - timedelta(days=days_back)
 
@@ -1858,7 +1859,7 @@ def compute_factor_effectiveness():
         import numpy as np
         from modules.workflow.factor_miner import FactorEngine, FactorRegistry, DataStore
 
-        end = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        end = beijing_now().replace(hour=0, minute=0, second=0, microsecond=0)
         start = end - timedelta(days=90)
         test_date = end - timedelta(days=days_back)
 
@@ -1947,7 +1948,7 @@ def get_weight_presets():
         import numpy as np
         from modules.workflow.factor_miner import FactorEngine, FactorRegistry, DataStore
 
-        end = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        end = beijing_now().replace(hour=0, minute=0, second=0, microsecond=0)
         start = end - timedelta(days=90)
         test_date = end - timedelta(days=days_back)
 

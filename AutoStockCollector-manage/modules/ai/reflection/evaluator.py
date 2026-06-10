@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from utils.helpers import beijing_now
 from typing import Any, Dict, Optional
 from config.database import get_collection
 from utils.logger import get_logger
@@ -18,7 +19,7 @@ class ReflectionEvaluator:
         except (ValueError, TypeError):
             return None
 
-        now = datetime.now()
+        now = beijing_now()
         days_elapsed = (now - decision_time).days
         if days_elapsed < 1:
             return None

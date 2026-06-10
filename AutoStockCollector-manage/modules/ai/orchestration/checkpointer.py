@@ -1,5 +1,6 @@
 import json
 from datetime import datetime
+from utils.helpers import beijing_now
 from typing import Any, Dict, Optional
 from config.database import get_collection
 from utils.logger import get_logger
@@ -17,7 +18,7 @@ class MongoCheckpointer:
                 {"run_id": run_id},
                 {"$set": {
                     "state": state,
-                    "updated_at": datetime.now().isoformat(),
+                    "updated_at": beijing_now().isoformat(),
                 }},
                 upsert=True,
             )

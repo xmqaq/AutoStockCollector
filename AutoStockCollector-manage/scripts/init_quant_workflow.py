@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from modules.workflow.models import Workflow, WorkflowStorage
 from datetime import datetime
+from utils.helpers import beijing_now
 
 
 OLD_WORKFLOW_NAMES = [
@@ -30,7 +31,7 @@ NEW_WORKFLOW = {
 
 def main():
     storage = WorkflowStorage()
-    now = datetime.now().isoformat()
+    now = beijing_now().isoformat()
 
     # 1. Delete old workflows by name
     all_workflows = storage.list_workflows()

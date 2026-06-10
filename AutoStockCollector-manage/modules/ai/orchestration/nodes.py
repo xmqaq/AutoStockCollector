@@ -1,5 +1,6 @@
 import json
 from datetime import datetime
+from utils.helpers import beijing_now
 from typing import Any, Dict, List, Optional
 from modules.ai.orchestration.state import TradingState, AnalystOutput, DebateEntry, RiskEntry
 from modules.ai.foundation.llm_router import LLMRouter
@@ -262,7 +263,7 @@ def create_portfolio_manager_node():
                 "bull_score": state.bull_score,
                 "bear_score": state.bear_score,
                 "confidence": state.trader_confidence,
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": beijing_now().isoformat(),
             }
             state.add_event("graph:node_stream", {"node_id": "portfolio_manager", "content": decision_text[:300]})
         except Exception as e:

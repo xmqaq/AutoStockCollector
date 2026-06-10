@@ -6,6 +6,7 @@ import uuid
 import threading
 from enum import Enum
 from datetime import datetime
+from utils.helpers import beijing_now
 from typing import Any, Dict, Optional
 
 from utils.logger import get_logger
@@ -48,7 +49,7 @@ class ChainLogger:
                 "task_id": task_id,
                 "task_type": task_type,
                 "params": params,
-                "start_time": datetime.now().isoformat(),
+                "start_time": beijing_now().isoformat(),
                 "api_calls": [],
                 "success": None,
             }
@@ -69,7 +70,7 @@ class ChainLogger:
             chain = self._chains.get(request_id)
             if chain:
                 chain["success"] = success
-                chain["end_time"] = datetime.now().isoformat()
+                chain["end_time"] = beijing_now().isoformat()
                 if stats:
                     chain["stats"] = stats
                 if error_message:
@@ -104,7 +105,7 @@ class ChainLogger:
             "params": params,
             "duration_ms": round(duration * 1000, 2),
             "success": success,
-            "time": datetime.now().isoformat(),
+            "time": beijing_now().isoformat(),
         }
         if error:
             call["error"] = error

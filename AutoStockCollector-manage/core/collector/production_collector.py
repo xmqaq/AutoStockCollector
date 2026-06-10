@@ -6,6 +6,7 @@ import sys
 import time
 from pathlib import Path
 from datetime import datetime
+from utils.helpers import beijing_now
 from typing import Dict, Any, Optional
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -261,7 +262,7 @@ class ProductionDataCollector:
     def run_full_collection(self):
         logger.info("=" * 80)
         logger.info("开始生产级数据采集调度")
-        logger.info(f"时间: {datetime.now()}")
+        logger.info(f"时间: {beijing_now()}")
         logger.info("=" * 80)
 
         codes = self.get_all_stock_codes()
@@ -275,7 +276,7 @@ class ProductionDataCollector:
         results["kline"] = self.collect_kline_data(
             codes,
             "2026-05-01",
-            datetime.now().strftime("%Y-%m-%d")
+            beijing_now().strftime("%Y-%m-%d")
         )
 
         results["fund_flow"] = self.collect_fund_flow_data(codes)

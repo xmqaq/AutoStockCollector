@@ -4,6 +4,7 @@ AI Key 管理模块
 """
 from typing import Dict, Any, List, Optional
 from datetime import datetime
+from utils.helpers import beijing_now
 from config.database import DatabaseConfig
 from utils.logger import get_logger
 
@@ -85,7 +86,7 @@ class AIKeyManager:
             "name": name,
             "enabled": enabled,
             "priority": priority,
-            "updated_at": datetime.now().isoformat(),
+            "updated_at": beijing_now().isoformat(),
         }
         if api_key:
             doc["api_key"] = api_key

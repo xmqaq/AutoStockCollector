@@ -5,6 +5,7 @@
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional, Callable
 from datetime import datetime, date
+from utils.helpers import beijing_now
 from enum import Enum
 import time
 import pandas as pd
@@ -167,7 +168,7 @@ class BaseCollector(ABC):
         if code and "code" not in df.columns:
             df["code"] = code
 
-        df["_updated_at"] = datetime.now()
+        df["_updated_at"] = beijing_now()
 
         df.columns = [c.lower().strip() for c in df.columns]
 

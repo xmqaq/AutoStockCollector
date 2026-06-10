@@ -4,6 +4,7 @@
 结果入 ai_pick_results 集合缓存。dal/analysis_engine/result_saver 注入便于测试。
 """
 from datetime import datetime
+from utils.helpers import beijing_now
 from typing import Any, Callable, Dict, List, Optional
 
 from modules.ai.foundation import factors
@@ -24,7 +25,7 @@ def _update_progress(progress: int, status: str, is_running: bool = True,
             "progress": progress,
             "status": status,
             "is_running": is_running,
-            "updated_at": datetime.now(),
+            "updated_at": beijing_now(),
         }
         if extra:
             doc.update(extra)
@@ -210,7 +211,7 @@ class PickerEngine:
         universe = self.dal.list_universe()
         if not universe:
             _update_progress(100, "选股完成（无可用股票）", is_running=False)
-            result = {"strategy": strategy, "picks": [], "timestamp": datetime.now().isoformat()}
+            result = {"strategy": strategy, "picks": [], "timestamp": beijing_now().isoformat()}
             self.result_saver(dict(result))
             return result
 
@@ -284,7 +285,7 @@ class PickerEngine:
             "ai_summary": ai_summary,
             "candidate_count": len(candidates),
             "universe_count": total_u,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": beijing_now().isoformat(),
 
         }
         self.result_saver(dict(result))

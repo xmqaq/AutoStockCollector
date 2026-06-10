@@ -101,8 +101,9 @@ class PromptInjector:
         if ctx.last_interaction:
             try:
                 from datetime import datetime
+                from utils.helpers import beijing_now
                 last_dt = datetime.fromisoformat(ctx.last_interaction)
-                now = datetime.now()
+                now = beijing_now()
                 delta_hours = (now - last_dt).total_seconds() / 3600
                 if delta_hours < 1:
                     parts.append("- 上次交互：刚刚")

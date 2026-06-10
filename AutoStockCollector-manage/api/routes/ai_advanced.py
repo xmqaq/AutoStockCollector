@@ -22,7 +22,7 @@ def _get_db():
 
 
 def _normalize_code(code: str) -> str:
-    from utils.helpers import normalize_stock_code_flexible
+    from utils.helpers import normalize_stock_code_flexible, beijing_now
     return normalize_stock_code_flexible(code)
 
 
@@ -30,7 +30,7 @@ def _save_batch_task_to_db(task_id: str, task_data: Dict):
     """保存批量任务到MongoDB"""
     db = _get_db()
     task_data["task_id"] = task_id
-    task_data["updated_at"] = datetime.now().isoformat()
+    task_data["updated_at"] = beijing_now().isoformat()
 
     existing = db["batch_tasks"].find_one({"task_id": task_id})
     if existing:
@@ -39,7 +39,7 @@ def _save_batch_task_to_db(task_id: str, task_data: Dict):
             {"$set": task_data}
         )
     else:
-        task_data["created_at"] = datetime.now().isoformat()
+        task_data["created_at"] = beijing_now().isoformat()
         db["batch_tasks"].insert_one(task_data)
 
 
@@ -56,7 +56,7 @@ def _save_multi_agent_task_to_db(task_id: str, task_data: Dict):
     """保存多Agent任务到MongoDB"""
     db = _get_db()
     task_data["task_id"] = task_id
-    task_data["updated_at"] = datetime.now().isoformat()
+    task_data["updated_at"] = beijing_now().isoformat()
 
     existing = db["multi_agent_tasks"].find_one({"task_id": task_id})
     if existing:
@@ -65,7 +65,7 @@ def _save_multi_agent_task_to_db(task_id: str, task_data: Dict):
             {"$set": task_data}
         )
     else:
-        task_data["created_at"] = datetime.now().isoformat()
+        task_data["created_at"] = beijing_now().isoformat()
         db["multi_agent_tasks"].insert_one(task_data)
 
 
@@ -148,7 +148,7 @@ def _simulate_batch_analysis(task_id: str, codes: List[str], analysis_type: str)
     """模拟批量分析任务"""
     task_data = {
         "status": "running",
-        "started_at": datetime.now().isoformat()
+        "started_at": beijing_now().isoformat()
     }
     _save_batch_task_to_db(task_id, task_data)
 
@@ -179,7 +179,7 @@ def _simulate_batch_analysis(task_id: str, codes: List[str], analysis_type: str)
     task_data = {
         "status": "completed",
         "completed": len(codes),
-        "completed_at": datetime.now().isoformat()
+        "completed_at": beijing_now().isoformat()
     }
     _save_batch_task_to_db(task_id, task_data)
 
@@ -273,7 +273,7 @@ def _simulate_multi_agent_analysis(task_id: str, code: str, analysis_type: str):
     """模拟多Agent协作分析"""
     task_data = {
         "status": "running",
-        "started_at": datetime.now().isoformat()
+        "started_at": beijing_now().isoformat()
     }
     _save_multi_agent_task_to_db(task_id, task_data)
 
@@ -320,13 +320,13 @@ def _simulate_multi_agent_analysis(task_id: str, code: str, analysis_type: str):
         "agentResults": [
             {"name": "市场分析师", "role": "market", "score": 70, "conclusion": "偏多", "recommendation": "买入"},
         ],
-        "generatedAt": datetime.now().isoformat(),
+        "generatedAt": beijing_now().isoformat(),
     }
 
     task_data = {
         "status": "completed",
         "aggregated_result": aggregated,
-        "completed_at": datetime.now().isoformat()
+        "completed_at": beijing_now().isoformat()
     }
     _save_multi_agent_task_to_db(task_id, task_data)
 
@@ -1016,7 +1016,7 @@ def _build_final_verdict(
         "bullArgument": bull_text[:500] if bull_text else "",
         "bearArgument": bear_text[:500] if bear_text else "",
         "judgeVerdict": judge_text[:800] if judge_text else "",
-        "generatedAt": datetime.now().isoformat()
+        "generatedAt": beijing_now().isoformat()
     }
 
 

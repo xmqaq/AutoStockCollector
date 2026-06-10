@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from modules.workflow import WorkflowTemplate, WorkflowNode, WorkflowEdge, WorkflowTemplateStorage
 from datetime import datetime
+from utils.helpers import beijing_now
 import uuid
 
 
@@ -181,7 +182,7 @@ def init_default_templates():
             print(f"Template '{tmpl_data['name']}' already exists, skipping...")
             continue
 
-        now = datetime.now().isoformat()
+        now = beijing_now().isoformat()
         template = WorkflowTemplate(
             id=tmpl_data['id'],
             name=tmpl_data['name'],

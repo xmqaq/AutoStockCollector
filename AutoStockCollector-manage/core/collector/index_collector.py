@@ -4,6 +4,7 @@
 """
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+from utils.helpers import beijing_now
 import akshare as ak
 from .base import BaseCollector
 from config.database import get_collection
@@ -68,7 +69,7 @@ class IndexCollector:
         return {
             "index_code": code,
             "component_count": len(components),
-            "updated_at": datetime.now().isoformat(),
+            "updated_at": beijing_now().isoformat(),
         }
 
     def _collect_index_components(self, index_code: str) -> bool:
@@ -88,7 +89,7 @@ class IndexCollector:
                 try:
                     self.collection.update_many(
                         {"index_code": index_code},
-                        {"$set": {"updated_at": datetime.now()}},
+                        {"$set": {"updated_at": beijing_now()}},
                     )
                     self.collection.delete_many({"index_code": index_code})
                     self.collection.insert_many(records)
@@ -108,7 +109,7 @@ class IndexCollector:
             "stock_code": self._normalize_stock_code(row.get("品种代码", "")),
             "stock_name": row.get("品种名称", ""),
             "weight": self._parse_weight(row.get("权重", "0")),
-            "updated_at": datetime.now()
+            "updated_at": beijing_now()
         }
 
     def _normalize_stock_code(self, code: str) -> str:

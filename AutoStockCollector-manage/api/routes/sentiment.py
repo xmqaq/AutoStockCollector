@@ -17,7 +17,7 @@ def _get_db():
 
 
 def _normalize_code(code: str) -> str:
-    from utils.helpers import normalize_stock_code_flexible
+    from utils.helpers import normalize_stock_code_flexible, beijing_now
     return normalize_stock_code_flexible(code)
 
 
@@ -29,7 +29,7 @@ def _get_real_sentiment_trend(code: str, days: int = 30) -> List[Dict]:
     db = _get_db()
     code = _normalize_code(code)
 
-    cutoff_date = datetime.now() - timedelta(days=days)
+    cutoff_date = beijing_now() - timedelta(days=days)
 
     news_list = list(db["news"].find(
         {"code": code, "datetime": {"$gte": cutoff_date.isoformat()}},
@@ -172,7 +172,7 @@ def _generate_mock_sentiment_trend(days: int = 30) -> List[Dict]:
     result = []
     score = 60
     for i in range(days):
-        date = datetime.now() - timedelta(days=days - i - 1)
+        date = beijing_now() - timedelta(days=days - i - 1)
         score += random.uniform(-5, 5)
         score = max(20, min(90, score))
         result.append({
@@ -189,7 +189,7 @@ def _generate_mock_events() -> List[Dict]:
     """生成模拟事件数据"""
     events = [
         {
-            "date": (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d"),
+            "date": (beijing_now() - timedelta(days=1)).strftime("%Y-%m-%d"),
             "type": "positive",
             "type_label": "利好",
             "title": "业绩预增公告",
@@ -197,7 +197,7 @@ def _generate_mock_events() -> List[Dict]:
             "impact": 4,
         },
         {
-            "date": (datetime.now() - timedelta(days=5)).strftime("%Y-%m-%d"),
+            "date": (beijing_now() - timedelta(days=5)).strftime("%Y-%m-%d"),
             "type": "neutral",
             "type_label": "中性",
             "title": "行业政策发布",
@@ -205,7 +205,7 @@ def _generate_mock_events() -> List[Dict]:
             "impact": 2,
         },
         {
-            "date": (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d"),
+            "date": (beijing_now() - timedelta(days=10)).strftime("%Y-%m-%d"),
             "type": "negative",
             "type_label": "利空",
             "title": "高管减持",
@@ -213,7 +213,7 @@ def _generate_mock_events() -> List[Dict]:
             "impact": 3,
         },
         {
-            "date": (datetime.now() - timedelta(days=15)).strftime("%Y-%m-%d"),
+            "date": (beijing_now() - timedelta(days=15)).strftime("%Y-%m-%d"),
             "type": "positive",
             "type_label": "利好",
             "title": "订单公告",
@@ -352,7 +352,7 @@ def get_news_sentiment():
                 "title": f"新闻标题 {i + 1}",
                 "sentiment": sentiment,
                 "sentiment_score": 70 if sentiment == "positive" else (50 if sentiment == "neutral" else 30),
-                "datetime": (datetime.now() - timedelta(hours=i * 2)).isoformat(),
+                "datetime": (beijing_now() - timedelta(hours=i * 2)).isoformat(),
                 "source": "财经网",
             })
 

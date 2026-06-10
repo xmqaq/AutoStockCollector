@@ -118,7 +118,7 @@ def get_trading_days(start_date: str, end_date: str) -> List[str]:
 
 def get_latest_trading_day(before_date: Optional[datetime] = None) -> datetime:
     if before_date is None:
-        before_date = datetime.now()
+        before_date = beijing_now()
 
     current = before_date
     for _ in range(10):

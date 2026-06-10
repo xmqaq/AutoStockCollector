@@ -10,7 +10,7 @@ from core.storage.mongo_storage import (
     KlineStorage, StockInfoStorage, FinancialStorage, NewsStorage, FundFlowStorage
 )
 from utils.logger import get_logger
-from utils.helpers import get_trading_days, parse_date, format_date
+from utils.helpers import get_trading_days, parse_date, format_date, beijing_now
 
 
 logger = get_logger(__name__)
@@ -62,7 +62,7 @@ class DataValidator:
     @property
     def trading_calendar(self) -> List[str]:
         if self._trading_calendar is None:
-            today = datetime.now()
+            today = beijing_now()
             past = (today - timedelta(days=365)).strftime("%Y-%m-%d")
             self._trading_calendar = get_trading_days(past, today.strftime("%Y-%m-%d"))
         return self._trading_calendar
@@ -173,7 +173,7 @@ class DataValidator:
             result.set_completeness(0.0)
             return result
 
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = beijing_now().strftime("%Y-%m-%d")
         recent_count = sum(
             1 for r in records
             if r.get("publish_date", "").startswith(today)

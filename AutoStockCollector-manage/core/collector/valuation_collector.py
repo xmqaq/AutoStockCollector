@@ -7,6 +7,7 @@
 """
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+from utils.helpers import beijing_now
 import requests
 from core.storage.mongo_storage import ValuationStorage
 from utils.logger import get_logger
@@ -85,7 +86,7 @@ class ValuationCollector:
         if not diff:
             return []
 
-        now = datetime.now()
+        now = beijing_now()
         records = []
         for item in diff:
             bare = str(item.get("f12", ""))

@@ -1,5 +1,6 @@
 """工作记忆 - 短期会话上下文"""
 from datetime import datetime, timedelta
+from utils.helpers import beijing_now
 from typing import Dict, List, Optional, Any
 from modules.memory.models import SessionContext, MemoryConfig
 
@@ -15,20 +16,20 @@ class WorkingMemory:
         if user_id not in self._sessions:
             self._sessions[user_id] = SessionContext(
                 user_id=user_id,
-                last_interaction=datetime.now(),
+                last_interaction=beijing_now(),
                 current_stock=None,
                 conversation_history=[],
                 pending_actions=[],
             )
         else:
             ctx = self._sessions[user_id]
-            ctx.last_interaction = datetime.now()
+            ctx.last_interaction = beijing_now()
             self._cleanup_old_history(ctx)
         return self._sessions[user_id]
 
     def update_last_interaction(self, user_id: str, stock_code: Optional[str] = None):
         ctx = self.get_or_create(user_id)
-        ctx.last_interaction = datetime.now()
+        ctx.last_interaction = beijing_now()
         if stock_code:
             ctx.current_stock = stock_code
 
@@ -36,7 +37,7 @@ class WorkingMemory:
         ctx = self.get_or_create(user_id)
         ctx.conversation_history.append({
             "role": role, "content": content,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": beijing_now().isoformat(),
         })
         self._cleanup_old_history(ctx)
 
@@ -47,7 +48,7 @@ class WorkingMemory:
     def get_session(self, user_id: str) -> Optional[SessionContext]:
         ctx = self._sessions.get(user_id)
         if ctx and ctx.last_interaction:
-            elapsed = datetime.now() - ctx.last_interaction
+            elapsed = beijing_now() - ctx.last_interaction
             if elapsed.total_seconds() > self.config.working_ttl_minutes * 60:
                 self.clear_session(user_id)
                 return None

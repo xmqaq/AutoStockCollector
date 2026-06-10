@@ -2,6 +2,7 @@
 
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
+from utils.helpers import beijing_now
 from collections import defaultdict
 from config.database import DatabaseConfig
 from utils.logger import get_logger
@@ -43,7 +44,7 @@ class FactorCacheService:
         Returns:
             缓存命中数据（仅有缓存的股票和因子）
         """
-        cutoff = datetime.now() - timedelta(hours=max_age_hours)
+        cutoff = beijing_now() - timedelta(hours=max_age_hours)
         cursor = self.db[CACHE_COLLECTION].find(
             {
                 'code': {'$in': codes},
@@ -75,7 +76,7 @@ class FactorCacheService:
         Returns:
             写入/更新的记录数
         """
-        now = datetime.now()
+        now = beijing_now()
         ops = []
         for code, factors in factors_map.items():
             doc = {
@@ -114,7 +115,7 @@ class FactorCacheService:
             'latest_update': latest_time,
             'factor_count': len(_FACTOR_FIELDS),
             'stale_hours': (
-                (datetime.now() - latest_time).total_seconds() / 3600
+                (beijing_now() - latest_time).total_seconds() / 3600
                 if latest_time else None
             ),
         }
@@ -127,7 +128,7 @@ class FactorCacheService:
 
     def clear_cache(self, older_than_days: int = 7) -> int:
         """清理过期缓存。"""
-        cutoff = datetime.now() - timedelta(days=older_than_days)
+        cutoff = beijing_now() - timedelta(days=older_than_days)
         result = self.db[CACHE_COLLECTION].delete_many(
             {'computed_at': {'$lt': cutoff}}
         )

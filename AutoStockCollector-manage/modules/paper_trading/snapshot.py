@@ -1,4 +1,5 @@
 from datetime import datetime
+from utils.helpers import beijing_now
 from typing import Any, Dict, List, Optional
 
 
@@ -22,7 +23,7 @@ class PortfolioSnapshot:
         profit_amount = net_value - initial
         profit_pct = (profit_amount / initial * 100) if initial > 0 else 0
 
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = beijing_now().strftime("%Y-%m-%d")
         doc = {
             "user_id": user_id,
             "date": today,
@@ -37,7 +38,7 @@ class PortfolioSnapshot:
                  "price": p["current_price"], "market_value": p["market_value"]}
                 for p in positions
             ],
-            "updated_at": datetime.now().isoformat(),
+            "updated_at": beijing_now().isoformat(),
         }
         self._col.update_one(
             {"user_id": user_id, "date": today},
@@ -57,7 +58,7 @@ class PortfolioSnapshot:
         return docs
 
     def has_today(self, user_id: str = "default") -> bool:
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = beijing_now().strftime("%Y-%m-%d")
         return self._col.find_one({"user_id": user_id, "date": today}) is not None
 
     def ensure_today(self, user_id: str, account, engine) -> None:

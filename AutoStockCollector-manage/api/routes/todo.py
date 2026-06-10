@@ -4,6 +4,7 @@
 """
 from flask import Blueprint, request, jsonify
 from datetime import datetime
+from utils.helpers import beijing_now
 from typing import Optional
 import uuid
 
@@ -44,7 +45,7 @@ def create_todo():
     if category not in ("todo", "plan", "suggestion"):
         category = "todo"
 
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now = beijing_now().strftime("%Y-%m-%d %H:%M:%S")
     doc = {
         "id": str(uuid.uuid4()),
         "text": text,
@@ -80,7 +81,7 @@ def update_todo(todo_id: str):
     if not updates:
         return jsonify({"success": False, "error": "no fields to update"}), 400
 
-    updates["updatedAt"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    updates["updatedAt"] = beijing_now().strftime("%Y-%m-%d %H:%M:%S")
     db["todo"].update_one({"id": todo_id}, {"$set": updates})
 
     doc = db["todo"].find_one({"id": todo_id})

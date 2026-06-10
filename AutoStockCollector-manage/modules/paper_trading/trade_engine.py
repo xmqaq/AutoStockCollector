@@ -1,4 +1,5 @@
 from datetime import datetime, time as dtime
+from utils.helpers import beijing_now
 from typing import Any, Dict, List, Optional, Tuple
 
 COMMISSION_RATE = 0.0003
@@ -7,7 +8,7 @@ STAMP_TAX_RATE = 0.001
 
 
 def is_trading_time() -> bool:
-    now = datetime.now()
+    now = beijing_now()
     if now.weekday() >= 5:
         return False
     t = now.time()
@@ -198,7 +199,7 @@ class TradeEngine:
             "ai_signal": ai_signal,
             "cash_before": cash,
             "cash_after": cash_after,
-            "traded_at": datetime.now().isoformat(),
+            "traded_at": beijing_now().isoformat(),
         }
         self._trades.insert_one(record)
         account.update_cash(user_id, cash_after)
@@ -259,7 +260,7 @@ class TradeEngine:
             "ai_signal": ai_signal,
             "cash_before": cash,
             "cash_after": cash_after,
-            "traded_at": datetime.now().isoformat(),
+            "traded_at": beijing_now().isoformat(),
         }
         self._trades.insert_one(record)
         account.update_cash(user_id, cash_after)

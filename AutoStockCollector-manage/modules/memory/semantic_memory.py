@@ -1,5 +1,6 @@
 """长期知识库 - 自动挖掘用户投资规律"""
 from datetime import datetime
+from utils.helpers import beijing_now
 from typing import Any, Dict, List, Optional
 from collections import Counter, defaultdict
 from config.database import DatabaseConfig
@@ -71,7 +72,7 @@ class SemanticMemory:
                     description=f"你在{sector}行业的历史胜率高达{winrate:.0%}（{wins}/{len(sector_trades_list)}）",
                     conditions={"sector": sector, "min_samples": len(sector_trades_list)},
                     confidence=round(winrate, 2),
-                    discovered_at=datetime.now().isoformat(),
+                    discovered_at=beijing_now().isoformat(),
                 ))
             elif winrate <= 0.35:
                 patterns.append(InvestmentPattern(
@@ -80,7 +81,7 @@ class SemanticMemory:
                     description=f"你在{sector}行业的胜率较低（{winrate:.0%}），建议谨慎参与",
                     conditions={"sector": sector, "min_samples": len(sector_trades_list)},
                     confidence=round(1 - winrate, 2),
-                    discovered_at=datetime.now().isoformat(),
+                    discovered_at=beijing_now().isoformat(),
                 ))
         return patterns
 
@@ -115,7 +116,7 @@ class SemanticMemory:
                         description=f"你的{label}持仓表现最佳（胜率{winrate:.0%}，总盈亏{total_pnl:+.0f}）",
                         conditions={"horizon": label, "winrate": winrate, "total_pnl": total_pnl},
                         confidence=round(max(winrate, 0.5), 2),
-                        discovered_at=datetime.now().isoformat(),
+                        discovered_at=beijing_now().isoformat(),
                     ))
         return patterns
 
@@ -143,7 +144,7 @@ class SemanticMemory:
                     description=f"基于「{reason}」的买入策略成功率{winrate:.0%}，平均收益{avg_return:.1f}",
                     conditions={"signal_pattern": reason, "winrate": winrate, "avg_return": avg_return},
                     confidence=round(winrate, 2),
-                    discovered_at=datetime.now().isoformat(),
+                    discovered_at=beijing_now().isoformat(),
                 ))
         return patterns
 

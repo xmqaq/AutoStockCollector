@@ -24,7 +24,7 @@ CATALOG_TYPES = ["stock_info"]                                   # 全量名录
 
 def _normalize_code(code: str) -> str:
     """统一股票代码格式，支持多种输入格式"""
-    from utils.helpers import normalize_stock_code_flexible
+    from utils.helpers import normalize_stock_code_flexible, beijing_now
     return normalize_stock_code_flexible(code)
 
 
@@ -166,7 +166,7 @@ def register_routes(app):
     def health_check():
         return jsonify({
             "status": "ok",
-            "timestamp": datetime.now().isoformat()
+            "timestamp": beijing_now().isoformat()
         })
 
     @app.errorhandler(404)
@@ -1119,7 +1119,7 @@ def get_cron_status():
             "success": True,
             "jobs": jobs,
             "has_alert": has_alert,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": beijing_now().isoformat(),
         })
     except Exception as e:
         return jsonify({"success": False, "error": str(e), "jobs": []}), 200
@@ -1239,7 +1239,7 @@ def collect_news():
     with_content = data.get("with_content", False)
 
     manager = NewsManager()
-    start_time = datetime.now()
+    start_time = beijing_now()
 
     results = manager.collect(
         channels=channels,
@@ -1248,7 +1248,7 @@ def collect_news():
     )
 
     total_collected = sum(results.values())
-    elapsed = (datetime.now() - start_time).total_seconds()
+    elapsed = (beijing_now() - start_time).total_seconds()
     manager.close()
     
     return jsonify({
@@ -1271,13 +1271,13 @@ def collect_stock_info():
     collector = StockInfoCollector()
     storage = StockInfoStorage()
 
-    start_time = datetime.now()
+    start_time = beijing_now()
     if codes:
         records = collector.collect(codes=codes[:20])
     else:
         records = collector.collect(codes=None)
 
-    elapsed = (datetime.now() - start_time).total_seconds()
+    elapsed = (beijing_now() - start_time).total_seconds()
     return jsonify({
         "success": True,
         "collected_count": len(records) if records else 0,
@@ -1299,9 +1299,9 @@ def collect_financial():
 
     collector = FinancialCollector()
 
-    start_time = datetime.now()
+    start_time = beijing_now()
     records = collector.collect(codes=codes[:5], report_type=report_type)
-    elapsed = (datetime.now() - start_time).total_seconds()
+    elapsed = (beijing_now() - start_time).total_seconds()
 
     return jsonify({
         "success": True,
@@ -1323,9 +1323,9 @@ def collect_fund_flow():
 
     collector = FundFlowCollector()
 
-    start_time = datetime.now()
+    start_time = beijing_now()
     records = collector.collect(codes=codes[:5])
-    elapsed = (datetime.now() - start_time).total_seconds()
+    elapsed = (beijing_now() - start_time).total_seconds()
 
     return jsonify({
         "success": True,
@@ -1343,9 +1343,9 @@ def collect_dragon_tiger():
 
     collector = DragonTigerCollector()
 
-    start_time = datetime.now()
+    start_time = beijing_now()
     records = collector.collect(date=date)
-    elapsed = (datetime.now() - start_time).total_seconds()
+    elapsed = (beijing_now() - start_time).total_seconds()
 
     return jsonify({
         "success": True,
@@ -1360,9 +1360,9 @@ def collect_sector():
 
     collector = FundFlowCollector()
 
-    start_time = datetime.now()
+    start_time = beijing_now()
     df = collector.collect_sector_flow()
-    elapsed = (datetime.now() - start_time).total_seconds()
+    elapsed = (beijing_now() - start_time).total_seconds()
 
     records = df.to_dict("records") if df is not None and not df.empty else []
     return jsonify({
@@ -1385,9 +1385,9 @@ def collect_dividend():
 
     collector = DividendCollector()
 
-    start_time = datetime.now()
+    start_time = beijing_now()
     records = collector.collect(codes=codes[:5])
-    elapsed = (datetime.now() - start_time).total_seconds()
+    elapsed = (beijing_now() - start_time).total_seconds()
 
     return jsonify({
         "success": True,
@@ -1431,7 +1431,7 @@ def clear_collections():
     return jsonify({
         "success": True,
         "deleted": results,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": beijing_now().isoformat()
     })
 
 
@@ -1462,7 +1462,7 @@ def clear_single_collection():
             "data_type": data_type,
             "collection": coll_name,
             "deleted_count": result.deleted_count,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": beijing_now().isoformat()
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1535,7 +1535,7 @@ def start_history_collection():
         "started": started,
         "failed": failed,
         "total_started": len(started),
-        "timestamp": datetime.now().isoformat()
+        "timestamp": beijing_now().isoformat()
     })
 
 
@@ -1570,7 +1570,7 @@ def _compute_update_latest_tasks(stats: dict, task_types=None, today: str = None
 
     already_collected = already_collected or set()
     if today is None:
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = beijing_now().strftime("%Y-%m-%d")
     effective_end = _get_effective_end_date(today)
 
     all_types = RANGE_TYPES + SNAPSHOT_TYPES + CATALOG_TYPES
@@ -1659,7 +1659,7 @@ def start_update_latest():
         "skipped": skipped,
         "failed": failed,
         "total_started": len(started),
-        "timestamp": datetime.now().isoformat()
+        "timestamp": beijing_now().isoformat()
     })
 
 
@@ -1870,7 +1870,7 @@ def progress_all():
     coll_stats = _get_collection_stats(db)
 
     all_tasks = scheduler.list_tasks(limit=500)
-    now = datetime.now()
+    now = beijing_now()
 
     target_types = ["kline", "stock_info", "financial", "news",
                     "fund_flow", "dragon_tiger", "sector", "margin"]
@@ -1988,7 +1988,7 @@ def get_data_gaps():
     with _gaps_cache_lock:
         if _gaps_cache and (time.time() - _gaps_cache_at) < _GAPS_TTL:
             return jsonify({"success": True, "data": _gaps_cache, "cached": True,
-                            "timestamp": datetime.now().isoformat()})
+                            "timestamp": beijing_now().isoformat()})
 
     from config.database import DatabaseConfig
     db = DatabaseConfig.get_database()
@@ -2117,7 +2117,7 @@ def get_data_gaps():
         if db_quarters:
             db_min_q = min(db_quarters)[:4]
             db_max_q = max(db_quarters)[:4]
-            today_str = datetime.now().strftime("%Y-%m-%d")
+            today_str = beijing_now().strftime("%Y-%m-%d")
             # 只生成已经过去的季度（严格小于今天），未来季度财报尚不存在
             std_quarters = []
             for yr in range(int(db_min_q), int(db_max_q) + 1):
@@ -2144,7 +2144,7 @@ def get_data_gaps():
         _gaps_cache_at = time.time()
 
     return jsonify({"success": True, "data": result, "cached": False,
-                    "timestamp": datetime.now().isoformat()})
+                    "timestamp": beijing_now().isoformat()})
 
 
 def success_response(data: Any, message: str = "Success") -> Dict[str, Any]:
@@ -2152,7 +2152,7 @@ def success_response(data: Any, message: str = "Success") -> Dict[str, Any]:
         "success": True,
         "message": message,
         "data": data,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": beijing_now().isoformat()
     }
 
 
@@ -2160,7 +2160,7 @@ def error_response(message: str, code: int = 400) -> tuple:
     return jsonify({
         "success": False,
         "error": message,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": beijing_now().isoformat()
     }), code
 
 
@@ -2365,7 +2365,7 @@ def get_market_indices():
                     "success": True,
                     "count": len(indices),
                     "data": indices,
-                    "timestamp": datetime.now().isoformat(),
+                    "timestamp": beijing_now().isoformat(),
                     "source": source,
                 })
         except Exception as e:
@@ -2487,7 +2487,7 @@ def get_realtime_quotes():
                     "success": True,
                     "count": len(results),
                     "data": results,
-                    "timestamp": datetime.now().isoformat(),
+                    "timestamp": beijing_now().isoformat(),
                     "source": source,
                 })
         except Exception as e:
@@ -2529,7 +2529,7 @@ def get_minute_kline(code):
             "code": code,
             "count": len(records),
             "data": records,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": beijing_now().isoformat()
         })
     except Exception as e:
         logger.error(f"Failed to get minute kline for {code}: {e}")
@@ -2584,7 +2584,7 @@ def reorder_ai_keys():
         if provider and priority is not None:
             db["ai_keys"].update_one(
                 {"provider": provider},
-                {"$set": {"priority": priority, "updated_at": datetime.now().isoformat()}}
+                {"$set": {"priority": priority, "updated_at": beijing_now().isoformat()}}
             )
     return jsonify({"success": True, "updated": len(priorities)})
 

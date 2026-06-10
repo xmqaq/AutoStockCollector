@@ -1,4 +1,5 @@
 from datetime import datetime
+from utils.helpers import beijing_now
 from typing import Any, Dict, Optional
 from config.database import get_collection
 from utils.logger import get_logger
@@ -20,7 +21,7 @@ class DecisionLogger:
             "bear_score": decision.get("bear_score"),
             "confidence": decision.get("confidence"),
             "predicted_direction": "bullish",
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": beijing_now().isoformat(),
             "evaluated": False,
         }
         if decision.get("bull_score", 50) > decision.get("bear_score", 50):

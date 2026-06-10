@@ -4,6 +4,7 @@ K线行情数据采集器
 """
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
+from utils.helpers import beijing_now
 import pandas as pd
 import akshare as ak
 from .base import BaseCollector, ProgressTracker
@@ -106,12 +107,12 @@ class KlineCollector(BaseCollector):
 
         try:
             if end_date is None:
-                end_date = datetime.now().strftime("%Y%m%d")
+                end_date = beijing_now().strftime("%Y%m%d")
             else:
                 end_date = end_date.replace("-", "")
 
             if start_date is None:
-                start_date = (datetime.now() - timedelta(days=365)).strftime("%Y%m%d")
+                start_date = (beijing_now() - timedelta(days=365)).strftime("%Y%m%d")
             else:
                 start_date = start_date.replace("-", "")
 
@@ -209,7 +210,7 @@ class KlineCollector(BaseCollector):
         if latest_date:
             start_date = (datetime.strptime(latest_date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y%m%d")
         else:
-            start_date = (datetime.now() - timedelta(days=365)).strftime("%Y%m%d")
+            start_date = (beijing_now() - timedelta(days=365)).strftime("%Y%m%d")
 
         return self.collect_single(
             code,
@@ -280,7 +281,7 @@ class KlineCollector(BaseCollector):
                 "change": row.iloc[0]["涨跌幅"],
                 "volume": row.iloc[0]["成交量"],
                 "amount": row.iloc[0]["成交额"],
-                "_updated_at": datetime.now()
+                "_updated_at": beijing_now()
             }
 
         except Exception as e:
@@ -300,9 +301,9 @@ class IndexKlineCollector(KlineCollector):
 
         try:
             if end_date is None:
-                end_date = datetime.now().strftime("%Y%m%d")
+                end_date = beijing_now().strftime("%Y%m%d")
             if start_date is None:
-                start_date = (datetime.now() - timedelta(days=365)).strftime("%Y%m%d")
+                start_date = (beijing_now() - timedelta(days=365)).strftime("%Y%m%d")
 
             df = ak.stock_zh_index_daily(symbol=symbol)
 
@@ -328,9 +329,9 @@ class FundKlineCollector(KlineCollector):
     ) -> Optional[List[Dict[str, Any]]]:
         try:
             if end_date is None:
-                end_date = datetime.now().strftime("%Y%m%d")
+                end_date = beijing_now().strftime("%Y%m%d")
             if start_date is None:
-                start_date = (datetime.now() - timedelta(days=365)).strftime("%Y%m%d")
+                start_date = (beijing_now() - timedelta(days=365)).strftime("%Y%m%d")
 
             df = ak.fund_open_fund_info_em(
                 fund=code,

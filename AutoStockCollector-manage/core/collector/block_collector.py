@@ -3,6 +3,7 @@
 """
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+from utils.helpers import beijing_now
 import pandas as pd
 import akshare as ak
 from .base import BaseCollector
@@ -78,7 +79,7 @@ class BlockCollector(BaseCollector):
                             "总市值": row.get("总市值", 0),
                             "成交额": row.get("成交额", 0),
                             "block_type": "industry",
-                            "_updated_at": datetime.now()
+                            "_updated_at": beijing_now()
                         })
                     return records
 
@@ -118,7 +119,7 @@ class BlockCollector(BaseCollector):
                             "总市值": row.get("总市值", 0),
                             "成交额": row.get("成交额", 0),
                             "block_type": "concept",
-                            "_updated_at": datetime.now()
+                            "_updated_at": beijing_now()
                         })
                     return records
 
@@ -152,7 +153,7 @@ class BlockCollector(BaseCollector):
                 "block_code": block_code,
                 "block_type": block_type,
                 "stocks": df.to_dict("records"),
-                "_updated_at": datetime.now()
+                "_updated_at": beijing_now()
             }
 
         except Exception as e:
@@ -183,7 +184,7 @@ class BlockCollector(BaseCollector):
                     "总市值": row.get("总市值", 0),
                     "成交额": row.get("成交额", 0),
                     "block_type": block_type,
-                    "_updated_at": datetime.now()
+                    "_updated_at": beijing_now()
                 })
 
             return records
@@ -205,7 +206,7 @@ class BlockCollector(BaseCollector):
                     "name": row.get("板块名称", ""),
                     "涨跌幅": row.get("涨跌幅", 0),
                     "hot_rank": row.get("当前排名", 0),
-                    "_updated_at": datetime.now()
+                    "_updated_at": beijing_now()
                 })
 
             return records
@@ -234,7 +235,7 @@ class RankCollector(BaseCollector):
 
     def collect_single(self, code: str, **kwargs) -> Optional[List[Dict[str, Any]]]:
         try:
-            records = self.collect_price_rank(datetime.now().strftime("%Y-%m-%d"))
+            records = self.collect_price_rank(beijing_now().strftime("%Y-%m-%d"))
             filtered = [r for r in records if r.get("code") == code]
             return filtered if filtered else None
         except Exception as e:
@@ -243,7 +244,7 @@ class RankCollector(BaseCollector):
 
     def collect_daily_rank(self, date: Optional[str] = None) -> List[Dict[str, Any]]:
         if date is None:
-            date = datetime.now().strftime("%Y-%m-%d")
+            date = beijing_now().strftime("%Y-%m-%d")
 
         data_sources = [
             ("stock_lhb_stock_statistic_em", {}),
@@ -278,7 +279,7 @@ class RankCollector(BaseCollector):
                         "code": code,
                         "name": row.get("名称", "") or row.get("股票名称", ""),
                         "date": date,
-                        "_updated_at": datetime.now()
+                        "_updated_at": beijing_now()
                     }
 
                     if "涨跌幅" in row.index:
@@ -325,7 +326,7 @@ class RankCollector(BaseCollector):
                     "换手率": row.get("换手率", 0),
                     "成交额": row.get("成交额", 0),
                     "date": date,
-                    "_updated_at": datetime.now()
+                    "_updated_at": beijing_now()
                 })
 
             return records
@@ -354,7 +355,7 @@ class RankCollector(BaseCollector):
                     "换手率": row.get("换手率", 0),
                     "涨跌幅": row.get("涨跌幅", 0),
                     "date": date,
-                    "_updated_at": datetime.now()
+                    "_updated_at": beijing_now()
                 })
 
             return records
@@ -384,7 +385,7 @@ class IPOCollector(BaseCollector):
                     "市盈率": row.get("发行市盈率", 0),
                     "申购日期": row.get("申购日期", ""),
                     "上市日期": row.get("上市日期", ""),
-                    "_updated_at": datetime.now()
+                    "_updated_at": beijing_now()
                 })
 
             return records
@@ -409,7 +410,7 @@ class IPOCollector(BaseCollector):
                     "收盘价": row.get("收盘价", 0),
                     "最高价": row.get("最高价", 0),
                     "最低价": row.get("最低价", 0),
-                    "_updated_at": datetime.now()
+                    "_updated_at": beijing_now()
                 })
 
             return records
@@ -432,7 +433,7 @@ class HolderCollector(BaseCollector):
                 return []
 
             df["code"] = code
-            df["_updated_at"] = datetime.now()
+            df["_updated_at"] = beijing_now()
 
             return self.normalize_dataframe(df, code)
 
@@ -449,7 +450,7 @@ class HolderCollector(BaseCollector):
                 return []
 
             df["code"] = code
-            df["_updated_at"] = datetime.now()
+            df["_updated_at"] = beijing_now()
 
             return self.normalize_dataframe(df, code)
 

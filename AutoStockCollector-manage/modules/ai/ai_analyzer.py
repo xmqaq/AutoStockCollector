@@ -5,6 +5,7 @@ AI智能分析模块 - 工业化重构版
 from typing import Dict, Any, Optional, List, Literal
 from dataclasses import dataclass, field
 from datetime import datetime
+from utils.helpers import beijing_now
 from enum import Enum
 import json
 from utils.logger import get_logger
@@ -259,7 +260,7 @@ class AIAnalyzer:
             result = self._llm_technical_analysis(code, technical)
             if result:
                 result["analysis_type"] = "technical"
-                result["analyzed_at"] = datetime.now().isoformat()
+                result["analyzed_at"] = beijing_now().isoformat()
                 self._save_analysis_result(code, "technical", result)
                 return result
 
@@ -268,7 +269,7 @@ class AIAnalyzer:
             "name": kline_data[0].get("name", "") if kline_data else "",
             "analysis_type": "technical",
             "data": technical.to_dict(),
-            "analyzed_at": datetime.now().isoformat(),
+            "analyzed_at": beijing_now().isoformat(),
             "analysis_method": "rule"
         }
 
@@ -283,7 +284,7 @@ class AIAnalyzer:
             result = self._llm_sentiment_analysis(code, sentiment, news_data)
             if result:
                 result["analysis_type"] = "sentiment"
-                result["analyzed_at"] = datetime.now().isoformat()
+                result["analyzed_at"] = beijing_now().isoformat()
                 self._save_analysis_result(code, "sentiment", result)
                 return result
 
@@ -291,7 +292,7 @@ class AIAnalyzer:
             "code": code,
             "analysis_type": "sentiment",
             "data": sentiment.to_dict(),
-            "analyzed_at": datetime.now().isoformat(),
+            "analyzed_at": beijing_now().isoformat(),
             "analysis_method": "rule"
         }
 
@@ -306,7 +307,7 @@ class AIAnalyzer:
             result = self._llm_fundamental_analysis(code, fundamental, stock_info)
             if result:
                 result["analysis_type"] = "fundamental"
-                result["analyzed_at"] = datetime.now().isoformat()
+                result["analyzed_at"] = beijing_now().isoformat()
                 self._save_analysis_result(code, "fundamental", result)
                 return result
 
@@ -315,7 +316,7 @@ class AIAnalyzer:
             "name": stock_info.get("name", "") if stock_info else "",
             "analysis_type": "fundamental",
             "data": fundamental.to_dict(),
-            "analyzed_at": datetime.now().isoformat(),
+            "analyzed_at": beijing_now().isoformat(),
             "analysis_method": "rule"
         }
 
@@ -902,7 +903,7 @@ class AIAnalyzer:
             "risk_factors": risk_factors,
             "support_levels": technical.support_levels,
             "resistance_levels": technical.resistance_levels,
-            "analyzed_at": datetime.now().isoformat(),
+            "analyzed_at": beijing_now().isoformat(),
             "analysis_method": "llm" if use_llm else "rule"
         }
 
@@ -1004,12 +1005,12 @@ class AIAnalyzer:
             {
                 "code": code,
                 "analysis_type": analysis_type,
-                "date": datetime.now().strftime("%Y-%m-%d")
+                "date": beijing_now().strftime("%Y-%m-%d")
             },
             {
                 "$set": {
                     "result": result,
-                    "updated_at": datetime.now()
+                    "updated_at": beijing_now()
                 }
             },
             upsert=True

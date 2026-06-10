@@ -2,6 +2,7 @@
 
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
+from utils.helpers import beijing_now
 from collections import defaultdict
 from config.database import DatabaseConfig
 from utils.logger import get_logger
@@ -58,7 +59,7 @@ class FactorCacheUpdater:
                 financial_data[c].append(r)
 
         logger.info(f"Loading kline ({self.kline_days}d, {len(codes_in)} stocks)...")
-        cutoff = datetime.now() - timedelta(days=self.kline_days)
+        cutoff = beijing_now() - timedelta(days=self.kline_days)
         kline_data = defaultdict(list)
 
         # 分批查询 kline 避免 $in 超长
@@ -153,7 +154,7 @@ class FactorCacheUpdater:
         Returns:
             {'saved': 写入数, 'failed': 失败数, 'total': 总股票数}
         """
-        start = datetime.now()
+        start = beijing_now()
         self.cache.ensure_index()
 
         raw = self._load_raw_data()
@@ -197,7 +198,7 @@ class FactorCacheUpdater:
             factors_map[code] = factors
 
         saved = self.cache.save_cache(factors_map)
-        duration = (datetime.now() - start).total_seconds()
+        duration = (beijing_now() - start).total_seconds()
 
         logger.info(
             f"Factor cache update complete: {saved}/{total} saved "
