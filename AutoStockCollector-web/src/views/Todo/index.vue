@@ -2,15 +2,15 @@
   <div class="todo-page">
     <div class="stats-bar">
       <div class="stat-item">
-        <span class="stat-num total">{{ todos.length }}</span>
+        <span class="stat-num total">{{ globalStats.total }}</span>
         <span class="stat-lbl">总计</span>
       </div>
       <div class="stat-item">
-        <span class="stat-num done">{{ doneCount }}</span>
+        <span class="stat-num done">{{ globalStats.done }}</span>
         <span class="stat-lbl">已完成</span>
       </div>
       <div class="stat-item">
-        <span class="stat-num pending">{{ pendingCount }}</span>
+        <span class="stat-num pending">{{ globalStats.pending }}</span>
         <span class="stat-lbl">待完成</span>
       </div>
       <el-progress
@@ -37,15 +37,15 @@
           <el-option label="意见建议" value="suggestion" />
         </el-select>
         <el-tag type="info" size="small">
-          {{ filteredTodos.length }} / {{ todos.length }}
+          {{ pagination.total }} / {{ globalStats.total }}
         </el-tag>
       </div>
 
-      <div v-if="filteredTodos.length === 0" class="empty-state">
+      <div v-if="items.length === 0" class="empty-state">
         暂无{{ filter === 'all' ? '' : `「${filterLabels[filter]}」` }}事项
       </div>
 
-      <div v-for="item in filteredTodos" :key="item.id" :class="['todo-item', { done: item.done }]">
+      <div v-for="item in items" :key="item.id" :class="['todo-item', { done: item.done }]">
         <el-checkbox :model-value="item.done" @change="toggleDone(item)" />
         <div class="todo-body" @click.stop="toggleDone(item)">
           <div class="todo-meta">
@@ -53,7 +53,9 @@
             <el-tag size="small" :type="item.done ? 'success' : 'warning'" effect="dark" style="border:0">
               {{ item.done ? '已完成' : '待完成' }}
             </el-tag>
-            <span class="todo-time">{{ item.updatedAt || item.createdAt }}</span>
+            <span class="todo-time">
+              <template v-if="item.submitterIp">{{ item.submitterIp }} · </template>{{ item.updatedAt || item.createdAt }}
+            </span>
           </div>
           <div
             v-if="editingId !== item.id"
@@ -65,7 +67,7 @@
           </div>
           <div v-else class="todo-edit-row">
             <el-input
-              ref="editInput"
+              :ref="(el: any) => el && setEditRef(item.id, el)"
               v-model="editText"
               size="small"
               @keyup.enter="confirmEdit"
@@ -80,6 +82,17 @@
           </div>
         </div>
         <el-button text size="small" type="danger" @click="remove(item.id)">删除</el-button>
+      </div>
+
+      <div class="pagination-bar">
+        <el-pagination
+          v-model:current-page="pagination.page"
+          v-model:page-size="pagination.pageSize"
+          :total="pagination.total"
+          :page-sizes="[10, 20, 50]"
+          layout="total, sizes, prev, pager, next"
+          @change="load"
+        />
       </div>
     </el-card>
 
@@ -111,7 +124,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { ElMessage } from 'element-plus'
 import { todoApi, type TodoItem } from '@/api/todo'
 
 const filterLabels: Record<string, string> = {
@@ -120,7 +134,7 @@ const filterLabels: Record<string, string> = {
   suggestion: '意见建议',
 }
 
-const todos = ref<TodoItem[]>([])
+const items = ref<TodoItem[]>([])
 const filter = ref('all')
 const showAdd = ref(false)
 const newText = ref('')
@@ -128,16 +142,20 @@ const newCategory = ref<'todo' | 'plan' | 'suggestion'>('todo')
 const editingId = ref<string | null>(null)
 const editText = ref('')
 const editCategory = ref<'todo' | 'plan' | 'suggestion'>('todo')
-const editInput = ref<HTMLInputElement>()
 
-const doneCount = computed(() => todos.value.filter(t => t.done).length)
-const pendingCount = computed(() => todos.value.filter(t => !t.done).length)
-const donePercent = computed(() => todos.value.length ? Math.round(doneCount.value / todos.value.length * 100) : 0)
+const editInputMap = new Map<string, any>()
+function setEditRef(id: string, el: any) {
+  editInputMap.set(id, el)
+}
 
-const filteredTodos = computed(() => {
-  if (filter.value === 'all') return todos.value
-  return todos.value.filter(t => t.category === filter.value)
-})
+const pagination = ref({ page: 1, pageSize: 20, total: 0 })
+const globalStats = ref({ total: 0, done: 0, pending: 0 })
+
+const donePercent = computed(() =>
+  globalStats.value.total
+    ? Math.round((globalStats.value.done / globalStats.value.total) * 100)
+    : 0
+)
 
 function tagType(cat: string) {
   switch (cat) {
@@ -150,39 +168,55 @@ function tagType(cat: string) {
 
 async function load() {
   try {
-    const res = await todoApi.list()
-    todos.value = res.data?.data || []
+    const res = await todoApi.list({
+      page: pagination.value.page,
+      pageSize: pagination.value.pageSize,
+      category: filter.value as 'todo' | 'plan' | 'suggestion' | 'all',
+    })
+    const payload = res.data
+    items.value = payload.data
+    pagination.value.total = payload.pagination.total
+    globalStats.value = payload.stats
   } catch {
-    todos.value = []
+    ElMessage.error('加载失败，请稍后重试')
   }
 }
+
+watch(filter, () => {
+  pagination.value.page = 1
+  load()
+})
 
 async function addTodo() {
   const text = newText.value.trim()
   if (!text) return
   try {
-    const res = await todoApi.create({ text, category: newCategory.value })
-    if (res.data?.data) {
-      todos.value.unshift(res.data.data)
-    }
+    await todoApi.create({ text, category: newCategory.value })
     newText.value = ''
     showAdd.value = false
-  } catch { /* ignore */ }
+    pagination.value.page = 1
+    await load()
+  } catch {
+    ElMessage.error('添加失败，请稍后重试')
+  }
 }
 
 async function toggleDone(item: TodoItem) {
-  const next = !item.done
   try {
-    await todoApi.update(item.id, { done: next })
-    item.done = next
-  } catch { /* ignore */ }
+    await todoApi.update(item.id, { done: !item.done })
+    await load()
+  } catch {
+    ElMessage.error('操作失败，请稍后重试')
+  }
 }
 
 async function remove(id: string) {
   try {
     await todoApi.remove(id)
-    todos.value = todos.value.filter(t => t.id !== id)
-  } catch { /* ignore */ }
+    await load()
+  } catch {
+    ElMessage.error('删除失败，请稍后重试')
+  }
 }
 
 function startEdit(item: TodoItem) {
@@ -190,23 +224,24 @@ function startEdit(item: TodoItem) {
   editText.value = item.text
   editCategory.value = item.category
   nextTick(() => {
-    const el = document.querySelector('.todo-edit-row .el-input__inner') as HTMLInputElement
-    el?.focus()
+    const inputComp = editInputMap.get(item.id)
+    inputComp?.focus?.() ?? inputComp?.input?.focus?.()
   })
 }
 
 async function confirmEdit() {
   if (!editingId.value) return
-  const item = todos.value.find(t => t.id === editingId.value)
+  const item = items.value.find(t => t.id === editingId.value)
   if (item) {
     const text = editText.value.trim()
     const updates: Partial<Pick<TodoItem, 'text' | 'category'>> = { category: editCategory.value }
     if (text) updates.text = text
     try {
       await todoApi.update(item.id, updates)
-      if (text) item.text = text
-      item.category = editCategory.value
-    } catch { /* ignore */ }
+      await load()
+    } catch {
+      ElMessage.error('保存失败，请稍后重试')
+    }
   }
   editingId.value = null
 }
@@ -363,5 +398,19 @@ onMounted(load)
 
 .todo-edit-row :deep(.el-select .el-input__wrapper) {
   background: #1a1a1a;
+}
+
+.pagination-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 12px;
+  border-top: 1px solid #2c2c2c;
+  margin-top: 8px;
+}
+
+.pagination-bar :deep(.el-pagination) {
+  --el-pagination-bg-color: transparent;
+  --el-pagination-button-bg-color: #2c2c2c;
+  --el-pagination-hover-color: #409eff;
 }
 </style>
