@@ -67,7 +67,7 @@
           </div>
           <div v-else class="todo-edit-row">
             <el-input
-              :ref="(el: any) => el && setEditRef(item.id, el)"
+              :ref="(el: any) => setEditRef(item.id, el)"
               v-model="editText"
               size="small"
               @keyup.enter="confirmEdit"
@@ -145,7 +145,11 @@ const editCategory = ref<'todo' | 'plan' | 'suggestion'>('todo')
 
 const editInputMap = new Map<string, any>()
 function setEditRef(id: string, el: any) {
-  editInputMap.set(id, el)
+  if (el) {
+    editInputMap.set(id, el)
+  } else {
+    editInputMap.delete(id)
+  }
 }
 
 const pagination = ref({ page: 1, pageSize: 20, total: 0 })
@@ -213,6 +217,9 @@ async function toggleDone(item: TodoItem) {
 async function remove(id: string) {
   try {
     await todoApi.remove(id)
+    if (items.value.length === 1 && pagination.value.page > 1) {
+      pagination.value.page -= 1
+    }
     await load()
   } catch {
     ElMessage.error('删除失败，请稍后重试')
@@ -230,8 +237,10 @@ function startEdit(item: TodoItem) {
 }
 
 async function confirmEdit() {
-  if (!editingId.value) return
-  const item = items.value.find(t => t.id === editingId.value)
+  const id = editingId.value
+  if (!id) return
+  editingId.value = null
+  const item = items.value.find(t => t.id === id)
   if (item) {
     const text = editText.value.trim()
     const updates: Partial<Pick<TodoItem, 'text' | 'category'>> = { category: editCategory.value }
@@ -243,7 +252,6 @@ async function confirmEdit() {
       ElMessage.error('保存失败，请稍后重试')
     }
   }
-  editingId.value = null
 }
 
 function cancelEdit() {
