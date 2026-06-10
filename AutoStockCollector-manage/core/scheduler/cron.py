@@ -422,7 +422,7 @@ def job_valuation_cache():
         return
     now = _now()
     hour_min = now.hour * 100 + now.minute
-    if hour_min < 925 or hour_min > 1535:
+    if hour_min < 925 or hour_min > 1502:
         return
     try:
         from core.collector.valuation_collector import ValuationCollector

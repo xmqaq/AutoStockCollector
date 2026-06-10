@@ -8,7 +8,9 @@
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from utils.helpers import beijing_now
-import requests
+import json
+import urllib.request
+import urllib.parse
 from core.storage.mongo_storage import ValuationStorage
 from utils.logger import get_logger
 
@@ -17,13 +19,15 @@ logger = get_logger(__name__)
 _EASTMONEY_URL = "https://push2.eastmoney.com/api/qt/ulist.np/get"
 _FIELDS = "f2,f3,f9,f12,f14,f20,f21,f23,f8,f10"
 _BATCH_SIZE = 200
+_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "Referer": "https://quote.eastmoney.com/",
+}
 
 
 class ValuationCollector:
     def __init__(self):
         self.storage = ValuationStorage()
-        self._session = requests.Session()
-        self._session.trust_env = False
 
     def collect(self, codes: Optional[List[str]] = None) -> int:
         if not codes:
@@ -72,12 +76,14 @@ class ValuationCollector:
             secids.append(f"{market}.{bare}")
 
         try:
-            resp = self._session.get(_EASTMONEY_URL, params={
+            qs = urllib.parse.urlencode({
                 "fltt": 2,
                 "fields": _FIELDS,
                 "secids": ",".join(secids),
-            }, timeout=15)
-            data = resp.json()
+            })
+            req = urllib.request.Request(f"{_EASTMONEY_URL}?{qs}", headers=_HEADERS)
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read())
         except Exception as e:
             logger.error(f"EastMoney valuation API failed: {e}")
             return []
