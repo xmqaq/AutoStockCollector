@@ -195,15 +195,20 @@
 
     <!-- 买入对话框（三种模式） -->
     <el-dialog v-model="showBuyDialog" :title="buyDialogTitle" width="520px" @close="resetBuyForm">
-      <div class="trade-dialog-header" v-if="buyCurrentPrice">
-        <span>当前价：<b>{{ buyCurrentPrice.toFixed(2) }}</b> 元</span>
-        <span :class="buyPriceType === 'realtime' ? 'indicator-live-text' : 'indicator-close-text'">
-          {{ buyPriceType === 'realtime' ? '实时' : '收盘价' }}
-        </span>
+      <div class="trade-dialog-header" v-if="buyPriceLoading || buyCurrentPrice || buyPriceError">
+        <span v-if="buyPriceLoading" class="price-loading">获取价格中...</span>
+        <span v-else-if="buyPriceError" class="text-fall">{{ buyPriceError }}</span>
+        <template v-else>
+          <span>当前价：<b>{{ buyCurrentPrice!.toFixed(2) }}</b> 元
+            <span :class="buyPriceType === 'realtime' ? 'indicator-live-text' : 'indicator-close-text'" style="margin-left: 6px">
+              {{ buyPriceType === 'realtime' ? '实时' : '收盘价' }}
+            </span>
+          </span>
+        </template>
       </div>
       <el-form label-width="100px">
         <el-form-item label="股票代码" v-if="!buyTargetPosition">
-          <el-input v-model="buyForm.code" placeholder="如 SH600000 或 603979" @blur="onBuyCodeBlur" />
+          <el-input v-model="buyForm.code" placeholder="如 SH600000 或 603979" @blur="onBuyCodeBlur" @keyup.enter="onBuyCodeBlur" />
         </el-form-item>
 
         <el-form-item label="买入方式">
@@ -259,19 +264,37 @@
         <!-- 确认信息 -->
         <el-divider v-if="buyConfirmShares > 0">确认信息</el-divider>
         <div class="confirm-block" v-if="buyConfirmShares > 0">
+          <template v-if="buyForm.mode === 'ratio'">
+            <div class="confirm-row"><span>目标仓位</span><span>{{ buyForm.targetRatio }}%</span></div>
+            <div class="confirm-row"><span>目标金额</span><span>{{ formatAmount(buyRatioTargetAmount) }}（净值{{ formatAmount(netValue) }}×{{ buyForm.targetRatio }}%）</span></div>
+            <div class="confirm-row" v-if="buyTargetPosition">
+              <span>当前持仓</span>
+              <span>{{ formatAmount(buyRatioCurrentHolding) }}（{{ buyTargetPosition.shares }}股×{{ buyTargetPosition.current_price.toFixed(2) }}元）</span>
+            </div>
+            <div class="confirm-row"><span>需买金额</span><span>{{ formatAmount(buyRatioNeedBuyAmount) }}</span></div>
+          </template>
           <div class="confirm-row"><span>买入数量</span><span>{{ buyConfirmShares }} 股</span></div>
           <div class="confirm-row"><span>买入金额</span><span>{{ formatAmount(buyConfirmAmount) }}</span></div>
           <div class="confirm-row"><span>预估手续费</span><span>约 {{ buyCommission.toFixed(2) }} 元（万三，最低5元）</span></div>
-          <div class="confirm-row"><span>买入后现金</span><span>{{ formatAmount((account?.cash_balance ?? 0) - buyConfirmAmount - buyCommission) }}</span></div>
+          <div class="confirm-row" :class="{ 'confirm-row-danger': buyCashInsufficient }">
+            <span>买入后现金</span>
+            <span :class="{ 'text-fall': buyCashInsufficient }">{{ formatAmount(buyAfterCash) }}</span>
+          </div>
           <div class="confirm-row" v-if="buyTargetPosition">
             <span>买入后该股仓位</span>
             <span>{{ buyAfterRatio.toFixed(1) }}%</span>
+          </div>
+          <div class="cash-warning" v-if="buyCashInsufficient">
+            <div class="cash-warning-text">⚠️ 可用现金不足，当前现金 {{ formatAmount(account?.cash_balance ?? 0) }}，还需 {{ formatAmount(Math.abs(buyAfterCash)) }}</div>
+            <div class="cash-warning-hint" v-if="buyMaxAffordableShares > 0">
+              最多可买 <a class="max-buy-link" @click="fillMaxAffordableShares">{{ buyMaxAffordableShares }} 股</a>（{{ formatAmount(buyMaxAffordableShares * (buyCurrentPrice ?? 0)) }}）
+            </div>
           </div>
         </div>
       </el-form>
       <template #footer>
         <el-button @click="showBuyDialog = false">取消</el-button>
-        <el-button type="primary" :loading="tradeLoading" :disabled="buyConfirmShares <= 0" @click="doConfirmBuy">
+        <el-button type="primary" :loading="tradeLoading" :disabled="buyConfirmShares <= 0 || buyCashInsufficient" @click="doConfirmBuy">
           确认买入
         </el-button>
       </template>
@@ -422,6 +445,8 @@ const navChartData = computed(() =>
 const buyTargetPosition = ref<PaperPosition | null>(null)
 const buyCurrentPrice = ref<number | null>(null)
 const buyPriceType = ref<string>('close')
+const buyPriceLoading = ref(false)
+const buyPriceError = ref('')
 const buyForm = ref({
   code: '',
   mode: 'shares' as 'shares' | 'amount' | 'ratio',
@@ -489,6 +514,30 @@ const buyAfterRatio = computed(() => {
     : 0
   return (existingValue + buyConfirmAmount.value) / netValue.value * 100
 })
+
+const buyAfterCash = computed(() =>
+  (account.value?.cash_balance ?? 0) - buyConfirmAmount.value - buyCommission.value
+)
+
+const buyCashInsufficient = computed(() =>
+  buyConfirmShares.value > 0 && buyAfterCash.value < 0
+)
+
+const buyMaxAffordableShares = computed(() => {
+  if (!buyCurrentPrice.value || buyCurrentPrice.value <= 0) return 0
+  const cash = account.value?.cash_balance ?? 0
+  const raw = Math.floor(cash / (buyCurrentPrice.value * 1.0003) / 100) * 100
+  return Math.max(0, raw)
+})
+
+const buyRatioCurrentHolding = computed(() => {
+  if (!buyTargetPosition.value) return 0
+  return buyTargetPosition.value.current_price * buyTargetPosition.value.shares
+})
+
+const buyRatioNeedBuyAmount = computed(() =>
+  buyRatioTargetAmount.value - buyRatioCurrentHolding.value
+)
 
 // --- Sell dialog state ---
 const sellTarget = ref<PaperPosition | null>(null)
@@ -646,6 +695,8 @@ function openBuyDialog(pos?: PaperPosition) {
   buyTargetPosition.value = pos ?? null
   buyCurrentPrice.value = pos?.current_price ?? null
   buyPriceType.value = pos?.price_type ?? 'close'
+  buyPriceLoading.value = false
+  buyPriceError.value = ''
   buyForm.value = {
     code: pos?.code ?? '',
     mode: 'shares',
@@ -659,28 +710,58 @@ function openBuyDialog(pos?: PaperPosition) {
 function resetBuyForm() {
   buyTargetPosition.value = null
   buyCurrentPrice.value = null
+  buyPriceLoading.value = false
+  buyPriceError.value = ''
+}
+
+function normalizeCode(code: string): string {
+  const c = code.trim().toUpperCase()
+  if (c.startsWith('SH') || c.startsWith('SZ')) return c
+  if (c.startsWith('6')) return 'SH' + c
+  if (c.startsWith('0') || c.startsWith('3')) return 'SZ' + c
+  return c
 }
 
 async function onBuyCodeBlur() {
-  const code = buyForm.value.code.trim()
-  if (!code) return
-  const result = await paperApi.getPrice(code)
-  if (result) {
-    buyCurrentPrice.value = result.price
-    buyPriceType.value = result.price_type
-  } else {
-    ElMessage.warning('无法获取该股票价格，请检查代码')
+  const raw = buyForm.value.code.trim()
+  if (!raw || raw.length < 6) return
+  const code = normalizeCode(raw)
+  buyForm.value.code = code
+
+  buyPriceLoading.value = true
+  buyPriceError.value = ''
+  buyCurrentPrice.value = null
+
+  try {
+    const result = await paperApi.getPrice(code)
+    if (result) {
+      buyCurrentPrice.value = result.price
+      buyPriceType.value = result.price_type
+      const existingPos = positions.value.find(p => p.code === code)
+      if (existingPos && !buyTargetPosition.value) {
+        buyTargetPosition.value = existingPos
+      }
+    } else {
+      buyPriceError.value = '未找到该股票，请确认代码'
+    }
+  } catch {
+    buyPriceError.value = '获取价格失败，请重试'
+  } finally {
+    buyPriceLoading.value = false
   }
+}
+
+function fillMaxAffordableShares() {
+  if (buyMaxAffordableShares.value <= 0) return
+  buyForm.value.mode = 'shares'
+  buyForm.value.shares = buyMaxAffordableShares.value
 }
 
 async function doConfirmBuy() {
   if (buyConfirmShares.value <= 0 || !buyCurrentPrice.value) return
-  const code = buyTargetPosition.value?.code ?? buyForm.value.code.trim()
+  const code = buyTargetPosition.value?.code ?? normalizeCode(buyForm.value.code.trim())
   if (!code) { ElMessage.warning('请输入股票代码'); return }
-  const totalCost = buyConfirmAmount.value + buyCommission.value
-  if (totalCost > (account.value?.cash_balance ?? 0)) {
-    ElMessage.warning('现金不足'); return
-  }
+  if (buyCashInsufficient.value) { ElMessage.warning('现金不足'); return }
   tradeLoading.value = true
   try {
     await paperApi.executeTrade({
@@ -813,4 +894,17 @@ onUnmounted(() => {
 }
 .confirm-row:last-child { border-bottom: none; }
 .confirm-row span:first-child { color: #909399; }
+.confirm-row-danger { background: rgba(245, 108, 108, 0.08); border-radius: 4px; padding: 6px 8px !important; }
+
+.price-loading { color: #909399; font-size: 13px; }
+
+.cash-warning {
+  margin-top: 8px; padding: 10px 12px;
+  background: rgba(245, 108, 108, 0.1); border: 1px solid rgba(245, 108, 108, 0.3);
+  border-radius: 4px;
+}
+.cash-warning-text { font-size: 13px; color: #f56c6c; }
+.cash-warning-hint { font-size: 12px; color: #e6a23c; margin-top: 6px; }
+.max-buy-link { color: #409eff; cursor: pointer; text-decoration: underline; }
+.max-buy-link:hover { color: #66b1ff; }
 </style>
