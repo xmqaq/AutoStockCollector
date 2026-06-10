@@ -15,6 +15,10 @@ logger = get_logger(__name__)
 
 _PROGRESS_KEY = "current"
 
+# Stage-1 硬过滤阈值
+_MIN_KLINE_BARS = 20      # K线少于该数（次新/长期停牌）不参与选股
+_MIN_AVG_AMOUNT = 3e7     # 近5日均成交额低于 3000万元 视为流动性不足（约全市场 p5 分位）
+
 
 def _update_progress(progress: int, status: str, is_running: bool = True,
                      extra: Optional[Dict] = None) -> None:
@@ -162,12 +166,24 @@ class PickerEngine:
             logger.warning(f"factor fallback failed for {code}: {e}")
             return None
 
+    @staticmethod
+    def _hard_filter(fi) -> Optional[str]:
+        """Stage-1 硬过滤。返回剔除原因，None 表示通过。"""
+        name = (fi.name or "").upper()
+        if "ST" in name or "退" in name:
+            return "st"
+        if len(fi.closes) < _MIN_KLINE_BARS:
+            return "insufficient_kline"
+        if fi.total_amount is not None and fi.total_amount < _MIN_AVG_AMOUNT:
+            return "low_liquidity"
+        return None
+
     def _screen_score(self, fi) -> float:
         """Stage-1 多因子初筛评分（无 LLM）。"""
         closes_asc = list(reversed(fi.closes))
         amounts_asc = list(reversed(fi.volumes))
 
-        fund_s, _ = factors.fundamental_score(
+        fund_s, fund_d = factors.fundamental_score(
             roe=fi.roe,
             revenue_growth=fi.revenue_growth,
             profit_growth=fi.profit_growth,
@@ -175,21 +191,22 @@ class PickerEngine:
             debt_ratio=fi.debt_ratio,
             industry=fi.industry,
         )
-        tech_s, _ = factors.technical_score(closes_asc, amounts_asc)
-        flow_s, _ = factors.fund_flow_detail_score(
+        tech_s, tech_d = factors.technical_score(closes_asc, amounts_asc)
+        flow_s, flow_d = factors.fund_flow_detail_score(
             main_net_inflow=fi.main_net_inflow,
             total_amount=fi.total_amount,
             turnover_rate=fi.turnover_rate,
         )
-        val_s, _ = factors.valuation_detail_score(
+        val_s, val_d = factors.valuation_detail_score(
             pe=fi.pe, pb=fi.pb, industry=fi.industry,
         )
 
+        # 透传各维度真实 data_available，K线不足/无资金数据时由 composite_score 重分配权重
         dim_scores = {
-            "fundamental": (fund_s, {"data_available": True}),
-            "technical":   (tech_s, {"data_available": True}),
-            "fund_flow":   (flow_s, {"data_available": fi.main_net_inflow is not None}),
-            "valuation":   (val_s, {"data_available": True}),
+            "fundamental": (fund_s, fund_d),
+            "technical":   (tech_s, tech_d),
+            "fund_flow":   (flow_s, flow_d),
+            "valuation":   (val_s, val_d),
         }
         comp, _ = factors.composite_score(dim_scores, factors.SCREEN_WEIGHTS)
         return comp
@@ -224,11 +241,16 @@ class PickerEngine:
         # ── Stage-1 初筛 ──
         screened: List[tuple] = []
         screen_failures = 0
+        filtered: Dict[str, int] = {"st": 0, "insufficient_kline": 0, "low_liquidity": 0}
         report_interval = max(1, total_u // 20)  # 每5%报告一次
         for i, code in enumerate(universe):
             try:
-                fi = self.dal.get_factor_inputs(code, kline_limit=30)
-                screened.append((code, self._screen_score(fi)))
+                fi = self.dal.get_factor_inputs(code, kline_limit=60)
+                reason = self._hard_filter(fi)
+                if reason:
+                    filtered[reason] += 1
+                else:
+                    screened.append((code, self._screen_score(fi)))
             except Exception as e:
                 screen_failures += 1
                 if screen_failures <= 5:
@@ -242,10 +264,13 @@ class PickerEngine:
             logger.error(
                 f"Stage-1: {screen_failures}/{total_u} stocks failed screening, "
                 "结果不可信，请检查数据层/取数逻辑")
+        filtered_count = sum(filtered.values())
         screened.sort(key=lambda x: x[1], reverse=True)
         candidates = [c for c, _ in screened[:candidate_pool]]
-        _update_progress(45, f"初筛完成，候选 {len(candidates)} 只，开始深度评分...")
-        logger.info(f"Stage-1 done: {len(candidates)} candidates from {len(screened)} screened, {screen_failures} failed")
+        _update_progress(45, f"初筛完成，剔除 {filtered_count} 只(ST/次新/低流动性)，候选 {len(candidates)} 只，开始深度评分...")
+        logger.info(
+            f"Stage-1 done: {len(candidates)} candidates from {len(screened)} screened, "
+            f"filtered={filtered}, {screen_failures} failed")
 
         # ── Stage-2 深度评分 ──
         # 每只股票的 LLM 深研有 30s 硬性墙钟超时（ThreadPoolExecutor），
@@ -293,6 +318,8 @@ class PickerEngine:
             "ai_summary": ai_summary,
             "candidate_count": len(candidates),
             "universe_count": total_u,
+            "filtered_count": filtered_count,
+            "filtered_detail": filtered,
             "timestamp": beijing_now().isoformat(),
 
         }

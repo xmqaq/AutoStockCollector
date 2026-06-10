@@ -76,6 +76,17 @@ class TestGetFactorInputs(unittest.TestCase):
         self.assertEqual(fi.pb, 8.5)
         self.assertEqual(fi.roe, 30.1)
 
+    def test_factor_inputs_name_from_valuation_cache(self):
+        """name 优先取估值缓存（5分钟刷新，带最新 ST 标记），用于硬过滤。"""
+        dal = _make_dal()
+        valuation = MagicMock()
+        valuation.get_by_code.return_value = {
+            "code": "SH600053", "name": "*ST九鼎", "pe_dynamic": 22.0, "pb": 8.5, "roe": 5.0,
+        }
+        dal.valuation_storage = valuation
+        fi = dal.get_factor_inputs("SH600053")
+        self.assertEqual(fi.name, "*ST九鼎")
+
     def test_cached_roe_only_no_unbound_error(self):
         """缓存只有 ROE（PE/PB 缺）时同样不应崩。"""
         dal = _make_dal()

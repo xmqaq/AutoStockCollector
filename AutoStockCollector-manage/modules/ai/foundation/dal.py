@@ -86,6 +86,7 @@ class StockDataBundle:
 class FactorInputs:
     """选股打分所需的轻量数据。"""
     code: str
+    name: str = ""
     closes: List[float] = field(default_factory=list)
     volumes: List[float] = field(default_factory=list)
     pe: Optional[float] = None
@@ -207,14 +208,15 @@ class StockDAL:
         """从 stock_valuation 缓存读取 PE/PB/ROE/总市值。
         缓存由 ValuationCollector 每5分钟刷新，避免每次分析都调外部 API。
         """
-        result: Dict[str, Optional[float]] = {
-            "pe": None, "pb": None, "roe": None, "total_mv": None,
+        result: Dict[str, Any] = {
+            "pe": None, "pb": None, "roe": None, "total_mv": None, "name": None,
         }
         if self.valuation_storage is None:
             return result
         try:
             cached = self.valuation_storage.get_by_code(code)
             if cached:
+                result["name"] = cached.get("name")
                 result["pe"] = cached.get("pe_dynamic")
                 result["pb"] = cached.get("pb")
                 result["roe"] = cached.get("roe")
@@ -651,6 +653,10 @@ class StockDAL:
         pb: Optional[float] = cached_val.get("pb")
         roe: Optional[float] = cached_val.get("roe")
 
+        # name 优先取估值缓存（5分钟刷新，带最新 ST/退市标记），用于硬过滤
+        name = (cached_val.get("name") or fund.get("name")
+                or info.get("name") or info.get("A股简称") or "")
+
         price = fund.get("price")
         if price is not None:
             price = float(price)
@@ -689,6 +695,7 @@ class StockDAL:
 
         return FactorInputs(
             code=code,
+            name=name,
             closes=closes,
             volumes=volumes,
             pe=pe,
