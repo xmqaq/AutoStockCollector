@@ -467,7 +467,14 @@ class StockDAL:
 
         industry = info.get("所属行业", "")
 
-        # 实时价优先级：腾讯行情 > fund_flow.price > fund_flow旧字段 > kline 最新收盘
+        # 实时价优先级：估值缓存 > 腾讯行情 > fund_flow.price > kline 最新收盘
+        _val_price = None
+        try:
+            _val_doc = self.valuation_storage.get_by_code(code) if self.valuation_storage else None
+            if _val_doc and _val_doc.get("price") is not None:
+                _val_price = float(_val_doc["price"])
+        except Exception:
+            pass
         _ff_price = (
             fund.get("price")
             or fund.get("最新价")
@@ -475,7 +482,8 @@ class StockDAL:
             or fund.get("成交价格")
         )
         realtime_price = (
-            self._fetch_realtime_price(code)
+            _val_price
+            or self._fetch_realtime_price(code)
             or (float(_ff_price) if _ff_price is not None else None)
             or (closes[0] if closes else None)
         )

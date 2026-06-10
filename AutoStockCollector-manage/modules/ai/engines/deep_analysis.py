@@ -99,8 +99,11 @@ class DeepAnalysisService:
     def _build_basic_info(self, code: str, bundle) -> Dict[str, Any]:
         info = self.dal.info_storage.get_by_code(code) or {}
         bare = StockDAL._strip_market_prefix(code)
-        ttm_val = StockDAL._fetch_ttm_valuation(bare)
-        market_cap = ttm_val.get("total_mv")
+        cached_val = self.dal._get_cached_valuation(code)
+        market_cap = cached_val.get("total_mv")
+        if market_cap is None:
+            ttm_val = StockDAL._fetch_ttm_valuation(bare)
+            market_cap = ttm_val.get("total_mv")
         market_cap_yi = _safe_round(market_cap / 1e8, 2) if market_cap else None
 
         return {
