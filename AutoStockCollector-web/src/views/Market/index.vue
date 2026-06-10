@@ -41,6 +41,12 @@
           </el-button>
           <el-button size="small" @click="clearAll">清空
           </el-button>
+          <span class="valuation-status" v-if="valuationTime">
+            <el-tag :type="valuationFresh ? 'success' : 'warning'" size="small" effect="plain">
+              {{ valuationFresh ? '估值已同步' : '估值待刷新' }}
+            </el-tag>
+            <span class="valuation-time">{{ valuationTime }}</span>
+          </span>
         </div>
 
         <el-table :data="quotes" stripe size="small" class="quotes-table">
@@ -129,6 +135,8 @@ const chartTitle = ref('')
 const chartData = ref<MinuteBar[]>([])
 const updateTime = ref('--')
 const addCode = ref('')
+const valuationTime = ref('')
+const valuationFresh = ref(false)
 
 let refreshTimer: ReturnType<typeof setInterval>
 
@@ -205,9 +213,17 @@ async function loadQuotes() {
       marketApi.getValuationBatch(watchlistCodes.value).catch(() => ({ data: { data: [] } })),
     ])
     const quoteList = quoteRes.data?.data || []
+    const valList = valRes.data?.data || []
     const valMap: Record<string, any> = {}
-    for (const v of (valRes.data?.data || [])) {
+    let latestValTime = ''
+    for (const v of valList) {
       if (v.code) valMap[v.code] = v
+      if (v.updated_at && v.updated_at > latestValTime) latestValTime = v.updated_at
+    }
+    if (latestValTime) {
+      const d = new Date(latestValTime)
+      valuationTime.value = d.toLocaleTimeString()
+      valuationFresh.value = (Date.now() - d.getTime()) < 10 * 60 * 1000
     }
     quotes.value = quoteList.map((q: any) => {
       const val = valMap[q.code]
@@ -374,6 +390,16 @@ onUnmounted(() => clearInterval(refreshTimer))
 .rise-text, .rise { color: #ef5350; }
 .fall-text, .fall { color: #26a69a; }
 .flat-text, .flat { color: #909399; }
+.valuation-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.valuation-time {
+  font-size: 11px;
+  color: #909399;
+}
 @media (max-width: 768px) {
   .indices-grid { grid-template-columns: repeat(2, 1fr); }
 }
