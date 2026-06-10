@@ -131,6 +131,10 @@ class DatabaseConfig:
         cls._safe_index(db.stock_valuation, [("code", 1)], unique=True)
         cls._safe_index(db.stock_valuation, [("updated_at", -1)])
 
+        cls._safe_index(db.todo, [("updatedAt", -1)])
+        cls._safe_index(db.todo, [("category", 1)])
+        cls._safe_index(db.todo, [("done", 1)])
+
         logger.info("Database indexes ensured successfully")
 
 
