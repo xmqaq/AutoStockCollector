@@ -62,6 +62,31 @@ class TestGetFactorInputs(unittest.TestCase):
         fi = dal.get_factor_inputs("SH600519")
         self.assertIsNone(fi.pe)
 
+    def test_full_valuation_cache_no_unbound_error(self):
+        """估值缓存 PE/PB/ROE 齐全时不应抛 UnboundLocalError（回归：候选池只剩1只）。"""
+        dal = _make_dal()
+        valuation = MagicMock()
+        valuation.get_by_code.return_value = {
+            "code": "SH600519", "pe_dynamic": 22.0, "pb": 8.5,
+            "roe": 30.1, "total_mv": 2.1e12,
+        }
+        dal.valuation_storage = valuation
+        fi = dal.get_factor_inputs("SH600519")
+        self.assertEqual(fi.pe, 22.0)
+        self.assertEqual(fi.pb, 8.5)
+        self.assertEqual(fi.roe, 30.1)
+
+    def test_cached_roe_only_no_unbound_error(self):
+        """缓存只有 ROE（PE/PB 缺）时同样不应崩。"""
+        dal = _make_dal()
+        valuation = MagicMock()
+        valuation.get_by_code.return_value = {
+            "code": "SH600519", "pe_dynamic": None, "pb": None, "roe": 30.1,
+        }
+        dal.valuation_storage = valuation
+        fi = dal.get_factor_inputs("SH600519")
+        self.assertEqual(fi.roe, 30.1)
+
 
 if __name__ == "__main__":
     unittest.main()

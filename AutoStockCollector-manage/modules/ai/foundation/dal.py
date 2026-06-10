@@ -651,10 +651,11 @@ class StockDAL:
         pb: Optional[float] = cached_val.get("pb")
         roe: Optional[float] = cached_val.get("roe")
 
+        price = fund.get("price")
+        if price is not None:
+            price = float(price)
+
         if pe is None or pb is None:
-            price = fund.get("price")
-            if price is not None:
-                price = float(price)
             eps_val = _parse_pct(financial.get("基本每股收益"))
             bps_val = _parse_pct(financial.get("每股净资产"))
             latest_close = price or (closes[0] if closes else None)
@@ -669,10 +670,10 @@ class StockDAL:
         if total_amount is not None:
             total_amount = float(total_amount)
 
+        rd = str(financial.get("report_date") or financial.get("报告期") or "")
+        q = self._report_quarter(rd)
         if roe is None:
             roe = _parse_pct(financial.get("净资产收益率") or financial.get("roe"))
-            rd = str(financial.get("report_date") or financial.get("报告期") or "")
-            q = self._report_quarter(rd)
             if roe is not None and q < 4:
                 roe = round(roe * 4 / q, 2)
 

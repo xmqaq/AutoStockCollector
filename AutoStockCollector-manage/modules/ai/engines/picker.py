@@ -223,21 +223,29 @@ class PickerEngine:
 
         # ── Stage-1 初筛 ──
         screened: List[tuple] = []
+        screen_failures = 0
         report_interval = max(1, total_u // 20)  # 每5%报告一次
         for i, code in enumerate(universe):
             try:
                 fi = self.dal.get_factor_inputs(code, kline_limit=30)
                 screened.append((code, self._screen_score(fi)))
-            except Exception:
+            except Exception as e:
+                screen_failures += 1
+                if screen_failures <= 5:
+                    logger.warning(f"Stage-1 screen failed for {code}: {e!r}")
                 continue
             if (i + 1) % report_interval == 0:
                 pct = 15 + int((i + 1) / total_u * 30)  # 15~45
                 _update_progress(pct, f"初筛 {i + 1}/{total_u} 只...")
 
+        if screen_failures > total_u * 0.5:
+            logger.error(
+                f"Stage-1: {screen_failures}/{total_u} stocks failed screening, "
+                "结果不可信，请检查数据层/取数逻辑")
         screened.sort(key=lambda x: x[1], reverse=True)
         candidates = [c for c, _ in screened[:candidate_pool]]
         _update_progress(45, f"初筛完成，候选 {len(candidates)} 只，开始深度评分...")
-        logger.info(f"Stage-1 done: {len(candidates)} candidates from {len(screened)} screened")
+        logger.info(f"Stage-1 done: {len(candidates)} candidates from {len(screened)} screened, {screen_failures} failed")
 
         # ── Stage-2 深度评分 ──
         # 每只股票的 LLM 深研有 30s 硬性墙钟超时（ThreadPoolExecutor），
