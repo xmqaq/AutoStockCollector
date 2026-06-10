@@ -1,8 +1,9 @@
 """
 估值指标采集器
-直接调用东财 API 按股票代码精准查询 PE/PB/总市值等估值指标，
+通过东财 ulist.np 接口分批查询全市场 PE/PB/总市值等估值指标，
 结合 financial 集合中最新财报计算 ROE，写入 stock_valuation 集合。
 设计为 5 分钟轮询，盘中高频刷新，盘后/周末自动跳过。
+全市场约 5000 只股票，分批查询耗时约 5 秒。
 """
 from typing import List, Dict, Any, Optional
 from datetime import datetime
@@ -14,6 +15,7 @@ logger = get_logger(__name__)
 
 _EASTMONEY_URL = "https://push2.eastmoney.com/api/qt/ulist.np/get"
 _FIELDS = "f2,f3,f9,f12,f14,f20,f21,f23,f8,f10"
+_BATCH_SIZE = 200
 
 
 class ValuationCollector:
@@ -24,12 +26,17 @@ class ValuationCollector:
 
     def collect(self, codes: Optional[List[str]] = None) -> int:
         if not codes:
+            codes = self._get_all_stock_codes()
+        if not codes:
             return 0
-        spot_records = self._fetch_valuation_batch(codes)
+
+        spot_records = self._fetch_valuation_all(codes)
         if not spot_records:
             return 0
 
-        roe_map = self._compute_roe_from_financial(codes)
+        roe_map = self._compute_roe_from_financial(
+            [r["code"] for r in spot_records]
+        )
         for rec in spot_records:
             roe = roe_map.get(rec["code"])
             if roe is not None:
@@ -38,6 +45,23 @@ class ValuationCollector:
         self.storage.save_batch(spot_records)
         logger.info(f"Valuation cache updated: {len(spot_records)} stocks")
         return len(spot_records)
+
+    def _get_all_stock_codes(self) -> List[str]:
+        try:
+            from core.storage.mongo_storage import StockInfoStorage
+            docs = StockInfoStorage().collection.find({}, {"code": 1, "_id": 0})
+            return [d["code"] for d in docs if d.get("code")]
+        except Exception as e:
+            logger.error(f"Failed to load stock codes from DB: {e}")
+            return []
+
+    def _fetch_valuation_all(self, codes: List[str]) -> List[Dict[str, Any]]:
+        all_records: List[Dict[str, Any]] = []
+        for i in range(0, len(codes), _BATCH_SIZE):
+            batch = codes[i:i + _BATCH_SIZE]
+            records = self._fetch_valuation_batch(batch)
+            all_records.extend(records)
+        return all_records
 
     def _fetch_valuation_batch(self, codes: List[str]) -> List[Dict[str, Any]]:
         secids = []
@@ -51,7 +75,7 @@ class ValuationCollector:
                 "fltt": 2,
                 "fields": _FIELDS,
                 "secids": ",".join(secids),
-            }, timeout=10)
+            }, timeout=15)
             data = resp.json()
         except Exception as e:
             logger.error(f"EastMoney valuation API failed: {e}")
@@ -59,7 +83,6 @@ class ValuationCollector:
 
         diff = (data.get("data") or {}).get("diff")
         if not diff:
-            logger.warning("EastMoney valuation API returned empty diff")
             return []
 
         now = datetime.now()

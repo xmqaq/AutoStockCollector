@@ -409,7 +409,7 @@ def job_financial_quarterly():
 # ─── 估值指标高频缓存 ─────────────────────────────────────────────────────────
 
 def job_valuation_cache():
-    """每5分钟刷新自选股估值指标缓存（PE/PB/ROE等），仅工作日盘中执行。"""
+    """每5分钟刷新全市场估值指标缓存（PE/PB/ROE等），仅工作日盘中执行。"""
     if not _is_weekday():
         return
     now = datetime.datetime.now()
@@ -418,14 +418,8 @@ def job_valuation_cache():
         return
     try:
         from core.collector.valuation_collector import ValuationCollector
-        from modules.watchlist.watchlist import watchlist_manager
-        watchlist = watchlist_manager.get_watchlist("default")
-        codes = [s["code"] for s in watchlist if s.get("code")]
-        if not codes:
-            logger.debug("[cron] 估值缓存: 自选股为空，跳过")
-            return
         collector = ValuationCollector()
-        count = collector.collect(codes)
+        count = collector.collect()
         _record_result("估值缓存 5min", True, f"刷新{count}条")
         _persist_cron_status("valuation_cache", now.isoformat(), True, f"刷新{count}条", inc_count=True)
     except Exception as e:
