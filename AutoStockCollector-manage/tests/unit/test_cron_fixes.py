@@ -8,6 +8,14 @@ from unittest.mock import MagicMock, patch, PropertyMock
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+from zoneinfo import ZoneInfo
+
+_BEIJING_TZ = ZoneInfo("Asia/Shanghai")
+
+
+def _now():
+    return datetime.datetime.now(_BEIJING_TZ).replace(tzinfo=None)
+
 
 def _patch_scheduler(fake_scheduler):
     """_is_task_running 内部用 from ... import scheduler，需 patch 模块属性。"""
@@ -23,7 +31,7 @@ class TestIsTaskRunningStaleDetection(unittest.TestCase):
     def test_stale_running_task_not_blocking(self, mock_cancel):
         from core.scheduler.cron import _is_task_running, _STALE_TASK_SECONDS
 
-        stale_time = (datetime.datetime.now() - datetime.timedelta(seconds=_STALE_TASK_SECONDS + 100)).isoformat()
+        stale_time = (_now() - datetime.timedelta(seconds=_STALE_TASK_SECONDS + 100)).isoformat()
         fake_scheduler = MagicMock()
         fake_scheduler.list_tasks.return_value = [
             {"task_type": "news", "status": "running", "start_time": stale_time, "task_id": "news_old"},
@@ -36,7 +44,7 @@ class TestIsTaskRunningStaleDetection(unittest.TestCase):
     def test_fresh_running_task_blocks(self):
         from core.scheduler.cron import _is_task_running
 
-        fresh_time = datetime.datetime.now().isoformat()
+        fresh_time = _now().isoformat()
         fake_scheduler = MagicMock()
         fake_scheduler.list_tasks.return_value = [
             {"task_type": "news", "status": "running", "start_time": fresh_time, "task_id": "news_new"},
@@ -50,7 +58,7 @@ class TestIsTaskRunningStaleDetection(unittest.TestCase):
 
         fake_scheduler = MagicMock()
         fake_scheduler.list_tasks.return_value = [
-            {"task_type": "news", "status": "completed", "start_time": datetime.datetime.now().isoformat()},
+            {"task_type": "news", "status": "completed", "start_time": _now().isoformat()},
         ]
         with _patch_scheduler(fake_scheduler):
             result = _is_task_running("news")
@@ -120,8 +128,8 @@ class TestRestoreNextRunSkipsStale(unittest.TestCase):
     def test_past_next_run_recalculated(self):
         import core.scheduler.cron as cron_mod
 
-        past_time = (datetime.datetime.now() - datetime.timedelta(hours=3)).isoformat()
-        future_time = (datetime.datetime.now() + datetime.timedelta(hours=1)).isoformat()
+        past_time = (_now() - datetime.timedelta(hours=3)).isoformat()
+        future_time = (_now() + datetime.timedelta(hours=1)).isoformat()
 
         mock_col = MagicMock()
         mock_col.find.return_value = [
@@ -131,16 +139,16 @@ class TestRestoreNextRunSkipsStale(unittest.TestCase):
 
         test_jobs = [
             {"label": "新闻增量 整点", "kind": "hourly", "hour": 0, "minute": 0,
-             "next_run": datetime.datetime.now()},
+             "next_run": _now()},
             {"label": "K线增量 16:05", "kind": "daily", "hour": 16, "minute": 5,
-             "next_run": datetime.datetime.now()},
+             "next_run": _now()},
         ]
 
         with patch.object(cron_mod, "_registered_jobs", test_jobs):
             with patch.object(cron_mod, "_get_cron_collection", return_value=mock_col):
                 cron_mod._restore_next_run()
 
-        self.assertGreater(test_jobs[0]["next_run"], datetime.datetime.now())
+        self.assertGreater(test_jobs[0]["next_run"], _now())
         expected_future = datetime.datetime.fromisoformat(future_time)
         self.assertEqual(test_jobs[1]["next_run"], expected_future)
 
@@ -160,7 +168,7 @@ class TestOnTaskDoneHandlesAllTerminalStates(unittest.TestCase):
         task.status = TaskStatus.COMPLETED
         task.success = 0
         task.failed = 0
-        task.end_time = datetime.datetime.now()
+        task.end_time = _now()
 
         with sched._lock:
             sched._tasks["news_test"] = task
@@ -185,7 +193,7 @@ class TestOnTaskDoneHandlesAllTerminalStates(unittest.TestCase):
         from core.scheduler.scheduler import Task
         task = Task("news_cancel", "news", {}, mock_storage)
         task.status = TaskStatus.CANCELLED
-        task.end_time = datetime.datetime.now()
+        task.end_time = _now()
 
         with sched._lock:
             sched._tasks["news_cancel"] = task
@@ -210,7 +218,7 @@ class TestPersistScheduleUpsert(unittest.TestCase):
         mock_col = MagicMock()
         test_jobs = [
             {"label": "新闻增量 整点", "kind": "hourly", "hour": 0, "minute": 0,
-             "next_run": datetime.datetime.now(), "task_type": "news"},
+             "next_run": _now(), "task_type": "news"},
         ]
 
         with patch.object(cron_mod, "_registered_jobs", test_jobs):

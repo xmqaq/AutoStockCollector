@@ -290,7 +290,7 @@ def _is_task_running(task_type: str) -> bool:
     """
     try:
         from core.scheduler.scheduler import scheduler
-        now_ts = time.time()
+        now = _now()
         tasks = scheduler.list_tasks(limit=200)
         for t in tasks:
             if t.get("task_type") != task_type:
@@ -303,7 +303,7 @@ def _is_task_running(task_type: str) -> bool:
                     create_dt = datetime.datetime.fromisoformat(str(create_iso).replace("Z", "+00:00"))
                     if create_dt.tzinfo:
                         create_dt = create_dt.replace(tzinfo=None)
-                    elapsed = now_ts - create_dt.timestamp()
+                    elapsed = (now - create_dt).total_seconds()
                     if elapsed > _STALE_TASK_SECONDS:
                         _cancel_stale_task(scheduler, t.get("task_id"), elapsed)
                         continue
