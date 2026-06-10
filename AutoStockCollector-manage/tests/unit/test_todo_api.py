@@ -60,8 +60,8 @@ class TestListTodos(unittest.TestCase):
     def test_returns_pagination_metadata(self, mock_get_db):
         mock_col = MagicMock()
         mock_get_db.return_value = {"todo": mock_col}
-        # count_documents called 3 times: filtered, global_total, global_done
-        mock_col.count_documents.side_effect = [25, 25, 10]
+        # count_documents called 2 times (query={} path): filtered(reused as global), global_done
+        mock_col.count_documents.side_effect = [25, 10]
         mock_col.find.return_value = iter([_fake_doc(i) for i in range(20)])
 
         resp = self.client.get("/api/v1/todo?page=1&pageSize=20")
@@ -93,7 +93,7 @@ class TestListTodos(unittest.TestCase):
     def test_skip_calculated_correctly(self, mock_get_db):
         mock_col = MagicMock()
         mock_get_db.return_value = {"todo": mock_col}
-        mock_col.count_documents.side_effect = [50, 50, 5]
+        mock_col.count_documents.side_effect = [50, 5]
         mock_col.find.return_value = iter([_fake_doc(i) for i in range(20)])
 
         self.client.get("/api/v1/todo?page=3&pageSize=10")
@@ -105,6 +105,23 @@ class TestListTodos(unittest.TestCase):
         self.assertIsNotNone(limit_val, "find() was not called with a 'limit' keyword argument")
         self.assertEqual(skip_val, 20)
         self.assertEqual(limit_val, 10)
+
+    @patch("api.routes.todo._get_db")
+    def test_invalid_category_treated_as_all(self, mock_get_db):
+        mock_col = MagicMock()
+        mock_get_db.return_value = {"todo": mock_col}
+        # query={} path: filtered_total reused as global_total (2 count calls, not 3)
+        mock_col.count_documents.side_effect = [30, 5]  # filtered=30(reused as global), global_done=5
+        mock_col.find.return_value = iter([_fake_doc(i) for i in range(20)])
+
+        resp = self.client.get("/api/v1/todo?category=invalid_value")
+        data = resp.get_json()
+
+        self.assertTrue(data["success"])
+        self.assertEqual(data["stats"]["total"], 30)   # same as filtered (query={})
+        self.assertEqual(data["stats"]["done"], 5)
+        self.assertEqual(data["stats"]["pending"], 25)
+        self.assertEqual(data["pagination"]["total"], 30)
 
 
 class TestCreateTodoIp(unittest.TestCase):

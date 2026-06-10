@@ -49,7 +49,7 @@ def list_todos():
     query = {} if category not in _VALID_CATEGORIES else {"category": category}
 
     filtered_total = col.count_documents(query)
-    global_total = col.count_documents({})
+    global_total = filtered_total if not query else col.count_documents({})
     global_done = col.count_documents({"done": True})
 
     skip = (page - 1) * page_size
