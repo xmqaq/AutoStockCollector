@@ -3,8 +3,16 @@
 """
 from datetime import datetime, timedelta
 from typing import List, Optional, Any, Dict, Set
+from zoneinfo import ZoneInfo
 import pandas as pd
 import re
+
+_BEIJING_TZ = ZoneInfo("Asia/Shanghai")
+
+
+def beijing_now() -> datetime:
+    """返回北京时间的 naive datetime，不依赖系统时区设置。"""
+    return datetime.now(_BEIJING_TZ).replace(tzinfo=None)
 
 
 def format_date(date: datetime) -> str:

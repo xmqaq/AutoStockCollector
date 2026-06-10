@@ -6,7 +6,15 @@ import time
 import threading
 import datetime
 from collections import deque as _deque
+from zoneinfo import ZoneInfo
 from utils.logger import get_logger
+
+_BEIJING_TZ = ZoneInfo("Asia/Shanghai")
+
+
+def _now() -> datetime.datetime:
+    """北京时间 naive datetime，不依赖系统时区。"""
+    return datetime.datetime.now(_BEIJING_TZ).replace(tzinfo=None)
 
 logger = get_logger(__name__)
 
@@ -46,7 +54,7 @@ def _persist_cron_status(task_type: str, last_run: str, last_ok: bool, last_msg:
             "last_run": last_run,
             "last_ok": last_ok,
             "last_msg": last_msg,
-            "updated_at": datetime.datetime.now().isoformat(),
+            "updated_at": _now().isoformat(),
         }}
         if inc_count:
             update["$inc"] = {"run_count": 1}
@@ -106,7 +114,7 @@ def _restore_next_run():
         saved = {doc["label"]: doc for doc in col.find({})}
         if not saved:
             return
-        now = datetime.datetime.now()
+        now = _now()
         with _jobs_lock:
             restored = 0
             for job in _registered_jobs:
@@ -132,7 +140,7 @@ def _record_result(label: str, ok: bool, msg: str = "") -> None:
         if label not in _job_history:
             _job_history[label] = _deque(maxlen=5)
         _job_history[label].append({
-            "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "time": _now().strftime("%Y-%m-%d %H:%M:%S"),
             "ok": ok,
             "msg": msg,
         })
@@ -270,7 +278,7 @@ def get_cron_status() -> list:
 
 
 def _is_weekday() -> bool:
-    return datetime.datetime.now().weekday() < 5
+    return _now().weekday() < 5
 
 
 _STALE_TASK_SECONDS = 3600
@@ -328,15 +336,15 @@ def _trigger_task(task_type: str, params: dict, label: str = "") -> None:
         scheduler.start_task(task_id)
         logger.info(f"[cron] {_label} 任务已触发: {task_id}")
         _record_result(_label, ok=True, msg=f"triggered: {task_id}")
-        _persist_cron_status(task_type, datetime.datetime.now().isoformat(), None, "任务已触发")
+        _persist_cron_status(task_type, _now().isoformat(), None, "任务已触发")
     except Exception as e:
         logger.error(f"[cron] {_label} 触发失败: {e}")
         _record_result(_label, ok=False, msg=str(e))
-        _persist_cron_status(task_type, datetime.datetime.now().isoformat(), False, str(e)[:100])
+        _persist_cron_status(task_type, _now().isoformat(), False, str(e)[:100])
 
 
 def _today() -> str:
-    return datetime.datetime.now().strftime("%Y-%m-%d")
+    return _now().strftime("%Y-%m-%d")
 
 
 # ─── 每日盘后任务 ──────────────────────────────────────────────────────────────
@@ -384,7 +392,7 @@ def job_news_incremental():
 def job_stock_info_weekly():
     if not _is_weekday():
         return
-    if datetime.datetime.now().weekday() != 0:
+    if _now().weekday() != 0:
         return
     _trigger_task("stock_info", {"mode": "full"}, "股票信息全量刷新")
 
@@ -392,7 +400,7 @@ def job_stock_info_weekly():
 def job_financial_quarterly():
     if not _is_weekday():
         return
-    now = datetime.datetime.now()
+    now = _now()
     if now.month not in (1, 4, 8, 10):
         return
     if now.day > 7:
@@ -412,7 +420,7 @@ def job_valuation_cache():
     """每5分钟刷新全市场估值指标缓存（PE/PB/ROE等），仅工作日盘中执行。"""
     if not _is_weekday():
         return
-    now = datetime.datetime.now()
+    now = _now()
     hour_min = now.hour * 100 + now.minute
     if hour_min < 925 or hour_min > 1535:
         return
@@ -466,11 +474,11 @@ def job_portfolio_snapshot():
         snapshot.record("default", account, engine)
         logger.info("[cron] 净值快照记录成功")
         _record_result("净值快照 16:30", True, "快照记录完成")
-        _persist_cron_status("portfolio_snapshot", datetime.datetime.now().isoformat(), True, "快照记录完成", inc_count=True)
+        _persist_cron_status("portfolio_snapshot", _now().isoformat(), True, "快照记录完成", inc_count=True)
     except Exception as e:
         logger.warning(f"[cron] 净值快照失败: {e}")
         _record_result("净值快照 16:30", False, str(e))
-        _persist_cron_status("portfolio_snapshot", datetime.datetime.now().isoformat(), False, str(e))
+        _persist_cron_status("portfolio_snapshot", _now().isoformat(), False, str(e))
 
 
 # ─── 选股工作流定时调度 ────────────────────────────────────────────────────────
@@ -513,7 +521,7 @@ def job_workflow_daily():
             current_node="",
             current_step="准备执行...",
             steps=[],
-            started_at=datetime.now().isoformat(),
+            started_at=_now().isoformat(),
         )
         exec_storage.create_execution(execution)
 
@@ -524,7 +532,7 @@ def job_workflow_daily():
                 "step": step,
                 "progress": progress,
                 "detail": detail or {},
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": _now().isoformat(),
             }
             exec_storage.update_progress(execution_id, progress, node_id, step, step_data)
 
@@ -556,7 +564,7 @@ def job_workflow_daily():
 
 def _next_daily_run(hour: int, minute: int) -> datetime.datetime:
     """计算下次每日定时触发时间（HH:MM）。"""
-    now = datetime.datetime.now()
+    now = _now()
     scheduled = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
     if scheduled <= now:
         scheduled += datetime.timedelta(days=1)
@@ -565,7 +573,7 @@ def _next_daily_run(hour: int, minute: int) -> datetime.datetime:
 
 def _next_hourly_run(at_minute: int) -> datetime.datetime:
     """计算下次整点 :MM 触发时间。"""
-    now = datetime.datetime.now()
+    now = _now()
     scheduled = now.replace(minute=at_minute, second=0, microsecond=0)
     if scheduled <= now:
         scheduled += datetime.timedelta(hours=1)
@@ -574,7 +582,7 @@ def _next_hourly_run(at_minute: int) -> datetime.datetime:
 
 def _next_interval_run(interval_minutes: int) -> datetime.datetime:
     """计算下次 N 分钟间隔触发时间。"""
-    return datetime.datetime.now() + datetime.timedelta(minutes=interval_minutes)
+    return _now() + datetime.timedelta(minutes=interval_minutes)
 
 
 def _make_job(label: str, handler, kind: str, hour: int = 0, minute: int = 0,
@@ -611,7 +619,7 @@ def _advance_next_run(job: dict) -> None:
 def _scheduler_loop() -> None:
     while True:
         try:
-            now = datetime.datetime.now()
+            now = _now()
             with _jobs_lock:
                 due = [j for j in _registered_jobs if j["next_run"] <= now]
 

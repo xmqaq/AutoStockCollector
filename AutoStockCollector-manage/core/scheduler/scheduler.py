@@ -10,6 +10,7 @@ import time
 import threading
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from concurrent.futures import ThreadPoolExecutor, Future, as_completed
 from .enums import TaskStatus, TaskType
 from core.storage.mongo_storage import TaskStorage, KlineStorage, StockInfoStorage
@@ -19,6 +20,14 @@ from utils.helpers import get_trading_days
 
 
 logger = get_logger(__name__)
+
+_BEIJING_TZ = ZoneInfo("Asia/Shanghai")
+
+
+def _beijing_now() -> datetime:
+    """北京时间 naive datetime，不依赖系统时区。"""
+    return datetime.now(_BEIJING_TZ).replace(tzinfo=None)
+
 
 # 任务超时（秒）：超过此时间的 RUNNING 任务会被强制取消
 _TASK_TIMEOUT_SECONDS = 3600
@@ -80,7 +89,7 @@ class Task:
 
     def start(self):
         self.status = TaskStatus.RUNNING
-        self.start_time = datetime.now()
+        self.start_time = _beijing_now()
         self.logger = init_task_logger(self.task_id)
         self._persist("running", progress=self.progress, total=self.total)
         self.logger.info(f"Task {self.task_id} started")
@@ -100,7 +109,7 @@ class Task:
 
     def complete(self, success_count: int = 0, failed_count: int = 0):
         self.status = TaskStatus.COMPLETED
-        self.end_time = datetime.now()
+        self.end_time = _beijing_now()
         elapsed = (self.end_time - self.start_time).total_seconds() if self.start_time else 0
         self.progress = self.total
         self.success = success_count
@@ -119,14 +128,14 @@ class Task:
     def fail(self, error_message: str):
         self.status = TaskStatus.FAILED
         self.error_message = error_message
-        self.end_time = datetime.now()
+        self.end_time = _beijing_now()
         self._persist("failed", error_message=error_message)
         if self.logger:
             self.logger.error(f"Task {self.task_id} failed: {error_message}")
 
     def cancel(self):
         self.status = TaskStatus.CANCELLED
-        self.end_time = datetime.now()
+        self.end_time = _beijing_now()
         self._persist("cancelled")
         if self.logger:
             self.logger.info(f"Task {self.task_id} cancelled")
@@ -134,13 +143,13 @@ class Task:
     def get_stats(self) -> Dict[str, Any]:
         elapsed = 0.0
         if self.start_time:
-            end = self.end_time or datetime.now()
+            end = self.end_time or _beijing_now()
             elapsed = (end - self.start_time).total_seconds()
         # task_id 形如 "kline_1779931587433"（毫秒时间戳），可由此推导创建时间
         create_time = None
         try:
             ts_ms = int(self.task_id.rsplit("_", 1)[-1])
-            create_time = datetime.fromtimestamp(ts_ms / 1000.0).isoformat()
+            create_time = datetime.fromtimestamp(ts_ms / 1000.0, tz=_BEIJING_TZ).replace(tzinfo=None).isoformat()
         except Exception:
             create_time = self.start_time.isoformat() if self.start_time else None
         # ETA：基于当前速率预估剩余时间（仅对 running 状态且有进度的任务）
@@ -790,11 +799,11 @@ class TaskScheduler:
             try:
                 as_of = datetime.strptime(end_date[:10], "%Y-%m-%d")
             except Exception:
-                as_of = datetime.now()
-            expected = _expected_report_period(min(as_of, datetime.now()))
+                as_of = _beijing_now()
+            expected = _expected_report_period(min(as_of, _beijing_now()))
             start_dt = start_date[:10] if start_date else None
             # 判断是否为历史补采请求（end_date 比今天早超过30天）
-            is_backfill = (datetime.now() - as_of).days > 30
+            is_backfill = (_beijing_now() - as_of).days > 30
             try:
                 pipeline = [
                     {"$group": {
@@ -1018,7 +1027,7 @@ class TaskScheduler:
             df = collector.collect_sector_flow()
             if df is not None and not df.empty:
                 df["block_type"] = "sector"
-                df["_updated_at"] = datetime.now()
+                df["_updated_at"] = _beijing_now()
                 records = df.to_dict("records")
                 for record in records:
                     storage.save_block(record)
@@ -1040,7 +1049,7 @@ class TaskScheduler:
         import random
 
         start_date = task.params.get("start_date", "20260101")
-        end_date = task.params.get("end_date", datetime.now().strftime("%Y%m%d"))
+        end_date = task.params.get("end_date", _beijing_now().strftime("%Y%m%d"))
         start_date = start_date.replace("-", "")
         end_date = end_date.replace("-", "")
         start_fmt = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:]}"
@@ -1162,7 +1171,7 @@ class TaskScheduler:
     def _monitor_loop(self):
         while True:
             try:
-                now = datetime.now()
+                now = _beijing_now()
                 with self._lock:
                     for task_id, task in list(self._tasks.items()):
                         if task.status == TaskStatus.RUNNING and task.start_time:
@@ -1180,7 +1189,7 @@ class TaskScheduler:
 
     def _gc_tasks(self):
         from datetime import timedelta
-        cutoff = datetime.now() - timedelta(hours=48)
+        cutoff = _beijing_now() - timedelta(hours=48)
         with self._lock:
             stale = [
                 tid for tid, t in self._tasks.items()
@@ -1209,7 +1218,7 @@ class TaskScheduler:
 
         try:
             from core.scheduler.cron import _persist_cron_status, _fmt_task_time
-            last_run = _fmt_task_time(task.end_time or task.start_time or datetime.now())
+            last_run = _fmt_task_time(task.end_time or task.start_time or _beijing_now())
             if task.status == TaskStatus.COMPLETED:
                 last_ok = True
                 if task.success == 0:
@@ -1287,7 +1296,7 @@ class TaskScheduler:
             "thread_pool_max": 10,
             "concurrent_limit": Settings.get_max_concurrent(),
             "metrics": self.metrics.get_stats(),
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": _beijing_now().isoformat(),
         }
 
 
