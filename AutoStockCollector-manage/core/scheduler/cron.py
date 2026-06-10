@@ -87,6 +87,7 @@ def _persist_schedule():
                 "kind": j["kind"],
                 "hour": j["hour"],
                 "minute": j["minute"],
+                "interval_minutes": j.get("interval_minutes", 0),
                 "next_run": j["next_run"].isoformat(),
                 "task_type": j.get("task_type", ""),
             } for j in _registered_jobs]
@@ -405,6 +406,34 @@ def job_financial_quarterly():
     }, "财务数据季度采集")
 
 
+# ─── 估值指标高频缓存 ─────────────────────────────────────────────────────────
+
+def job_valuation_cache():
+    """每5分钟刷新自选股估值指标缓存（PE/PB/ROE等），仅工作日盘中执行。"""
+    if not _is_weekday():
+        return
+    now = datetime.datetime.now()
+    hour_min = now.hour * 100 + now.minute
+    if hour_min < 925 or hour_min > 1535:
+        return
+    try:
+        from core.collector.valuation_collector import ValuationCollector
+        from modules.watchlist.watchlist import watchlist_manager
+        watchlist = watchlist_manager.get_watchlist("default")
+        codes = [s["code"] for s in watchlist if s.get("code")]
+        if not codes:
+            logger.debug("[cron] 估值缓存: 自选股为空，跳过")
+            return
+        collector = ValuationCollector()
+        count = collector.collect(codes)
+        _record_result("估值缓存 5min", True, f"刷新{count}条")
+        _persist_cron_status("valuation_cache", now.isoformat(), True, f"刷新{count}条", inc_count=True)
+    except Exception as e:
+        logger.error(f"[cron] 估值缓存刷新失败: {e}")
+        _record_result("估值缓存 5min", False, str(e))
+        _persist_cron_status("valuation_cache", now.isoformat(), False, str(e)[:100])
+
+
 # ─── AI 选股 ──────────────────────────────────────────────────────────────────
 
 import os as _os
@@ -549,10 +578,18 @@ def _next_hourly_run(at_minute: int) -> datetime.datetime:
     return scheduled
 
 
-def _make_job(label: str, handler, kind: str, hour: int = 0, minute: int = 0, task_type: str = "") -> dict:
-    """构建任务描述字典。kind: 'daily' | 'hourly'"""
+def _next_interval_run(interval_minutes: int) -> datetime.datetime:
+    """计算下次 N 分钟间隔触发时间。"""
+    return datetime.datetime.now() + datetime.timedelta(minutes=interval_minutes)
+
+
+def _make_job(label: str, handler, kind: str, hour: int = 0, minute: int = 0,
+              task_type: str = "", interval_minutes: int = 0) -> dict:
+    """构建任务描述字典。kind: 'daily' | 'hourly' | 'interval'"""
     if kind == "daily":
         next_run = _next_daily_run(hour, minute)
+    elif kind == "interval":
+        next_run = _next_interval_run(interval_minutes)
     else:
         next_run = _next_hourly_run(minute)
     return {
@@ -561,6 +598,7 @@ def _make_job(label: str, handler, kind: str, hour: int = 0, minute: int = 0, ta
         "kind": kind,
         "hour": hour,
         "minute": minute,
+        "interval_minutes": interval_minutes,
         "next_run": next_run,
         "task_type": task_type,
     }
@@ -570,6 +608,8 @@ def _advance_next_run(job: dict) -> None:
     """任务执行后更新 next_run。"""
     if job["kind"] == "daily":
         job["next_run"] = _next_daily_run(job["hour"], job["minute"])
+    elif job["kind"] == "interval":
+        job["next_run"] = _next_interval_run(job.get("interval_minutes", 5))
     else:
         job["next_run"] = _next_hourly_run(job["minute"])
 
@@ -637,6 +677,7 @@ def start_daily_jobs() -> None:
         _make_job(f"AI选股 {ai_time}",   _ai_pick_wrapper,        "daily", ai_hour, ai_minute, task_type="ai_pick"),
         _make_job(f"选股工作流 {wf_time}", job_workflow_daily,     "daily", wf_hour, wf_minute, task_type="workflow"),
         _make_job("净值快照 16:30",       job_portfolio_snapshot,  "daily", 16, 30, task_type="portfolio_snapshot"),
+        _make_job("估值缓存 5min",       job_valuation_cache,     "interval", interval_minutes=5, task_type="valuation_cache"),
     ]
 
     with _jobs_lock:

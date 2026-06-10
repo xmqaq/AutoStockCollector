@@ -115,11 +115,12 @@ class StockDAL:
         financial_storage=None,
         dragon_tiger_storage=None,
         margin_storage=None,
+        valuation_storage=None,
     ):
         if kline_storage is None:
             from core.storage.mongo_storage import (
                 KlineStorage, StockInfoStorage, FinancialStorage, NewsStorage,
-                FundFlowStorage, DragonTigerStorage, MarginStorage,
+                FundFlowStorage, DragonTigerStorage, MarginStorage, ValuationStorage,
             )
             kline_storage = KlineStorage()
             info_storage = StockInfoStorage()
@@ -128,6 +129,7 @@ class StockDAL:
             financial_storage = FinancialStorage()
             dragon_tiger_storage = DragonTigerStorage()
             margin_storage = MarginStorage()
+            valuation_storage = ValuationStorage()
         self.kline_storage = kline_storage
         self.info_storage = info_storage
         self.fund_flow_storage = fund_flow_storage
@@ -135,6 +137,7 @@ class StockDAL:
         self.financial_storage = financial_storage
         self.dragon_tiger_storage = dragon_tiger_storage
         self.margin_storage = margin_storage
+        self.valuation_storage = valuation_storage
 
     @staticmethod
     def _fetch_realtime_price(code: str) -> Optional[float]:
@@ -200,11 +203,31 @@ class StockDAL:
         except (ValueError, ZeroDivisionError, TypeError):
             return None, None
 
+    def _get_cached_valuation(self, code: str) -> Dict[str, Optional[float]]:
+        """从 stock_valuation 缓存读取 PE/PB/ROE/总市值。
+        缓存由 ValuationCollector 每5分钟刷新，避免每次分析都调外部 API。
+        """
+        result: Dict[str, Optional[float]] = {
+            "pe": None, "pb": None, "roe": None, "total_mv": None,
+        }
+        if self.valuation_storage is None:
+            return result
+        try:
+            cached = self.valuation_storage.get_by_code(code)
+            if cached:
+                result["pe"] = cached.get("pe_dynamic")
+                result["pb"] = cached.get("pb")
+                result["roe"] = cached.get("roe")
+                total_mv = cached.get("total_mv")
+                if total_mv is not None:
+                    result["total_mv"] = float(total_mv)
+        except Exception:
+            pass
+        return result
+
     @staticmethod
     def _fetch_ttm_valuation(bare_code: str) -> Dict[str, Optional[float]]:
-        """通过百度估值接口拉取 TTM PE / PB / 总市值。
-        与路由层 _fetch_valuation 逻辑相同，让分析引擎也能用上实时估值。
-        """
+        """通过百度估值接口拉取 TTM PE / PB / 总市值（API fallback）。"""
         result: Dict[str, Optional[float]] = {"pe": None, "pb": None, "total_mv": None}
         try:
             import akshare as ak
@@ -461,10 +484,19 @@ class StockDAL:
             closes = [realtime_price] + closes
             volumes = [volumes[0] if volumes else 0] + volumes  # 复用最近量
 
-        # ── PE/PB：优先使用百度实时 TTM 估值，不可用时回退到财报推算 ──
-        ttm_val = self._fetch_ttm_valuation(bare)
-        pe = ttm_val.get("pe")
-        pb = ttm_val.get("pb")
+        # ── PE/PB/ROE：优先读 DB 缓存 → 百度 API → 财报推算 ──
+        cached_val = self._get_cached_valuation(code)
+        pe = cached_val.get("pe")
+        pb = cached_val.get("pb")
+        cached_roe = cached_val.get("roe")
+
+        if pe is None or pb is None:
+            ttm_val = self._fetch_ttm_valuation(bare)
+            if pe is None:
+                pe = ttm_val.get("pe")
+            if pb is None:
+                pb = ttm_val.get("pb")
+
         if pe is None or pb is None:
             fallback_pe, fallback_pb = self._compute_pe_pb(
                 financial, realtime_price or (closes[0] if closes else None)
@@ -478,7 +510,7 @@ class StockDAL:
         net_profit_ttm = self._compute_ttm_net_profit(financials)
 
         # ── 从最新财报提取基本面维度 ──
-        roe = self._compute_ttm_roe(financials) or _parse_pct(
+        roe = cached_roe or self._compute_ttm_roe(financials) or _parse_pct(
             financial.get("净资产收益率") or financial.get("roe"))
         gross_margin = _parse_pct(financial.get("销售毛利率") or financial.get("gross_margin"))
         debt_ratio = _parse_pct(financial.get("资产负债率") or financial.get("debt_ratio"))
@@ -605,19 +637,23 @@ class StockDAL:
                 {"code": code}, sort=[("report_date", -1)]
             ) or {}
 
-        # PE/PB: 用 fund_flow 当前价 + financial EPS/BPS 计算
-        price = fund.get("price")
-        if price is not None:
-            price = float(price)
-        eps_val = _parse_pct(financial.get("基本每股收益"))
-        bps_val = _parse_pct(financial.get("每股净资产"))
-        latest_close = price or (closes[0] if closes else None)
-        pe: Optional[float] = None
-        pb: Optional[float] = None
-        if latest_close and eps_val and eps_val > 0:
-            pe = round(latest_close / eps_val, 2)
-        if latest_close and bps_val and bps_val > 0:
-            pb = round(latest_close / bps_val, 2)
+        # PE/PB/ROE: 优先读 DB 缓存，回退到财报推算
+        cached_val = self._get_cached_valuation(code)
+        pe: Optional[float] = cached_val.get("pe")
+        pb: Optional[float] = cached_val.get("pb")
+        roe: Optional[float] = cached_val.get("roe")
+
+        if pe is None or pb is None:
+            price = fund.get("price")
+            if price is not None:
+                price = float(price)
+            eps_val = _parse_pct(financial.get("基本每股收益"))
+            bps_val = _parse_pct(financial.get("每股净资产"))
+            latest_close = price or (closes[0] if closes else None)
+            if pe is None and latest_close and eps_val and eps_val > 0:
+                pe = round(latest_close / eps_val, 2)
+            if pb is None and latest_close and bps_val and bps_val > 0:
+                pb = round(latest_close / bps_val, 2)
 
         main_net_inflow = _parse_amount_yuan(fund.get("main_net_inflow") or fund.get("净额"))
         turnover_rate = _parse_pct(fund.get("turnover_rate"))
@@ -625,12 +661,12 @@ class StockDAL:
         if total_amount is not None:
             total_amount = float(total_amount)
 
-        # ROE: 季报值年化，避免 Q1 ROE 低估
-        roe = _parse_pct(financial.get("净资产收益率") or financial.get("roe"))
-        rd = str(financial.get("report_date") or financial.get("报告期") or "")
-        q = self._report_quarter(rd)
-        if roe is not None and q < 4:
-            roe = round(roe * 4 / q, 2)
+        if roe is None:
+            roe = _parse_pct(financial.get("净资产收益率") or financial.get("roe"))
+            rd = str(financial.get("report_date") or financial.get("报告期") or "")
+            q = self._report_quarter(rd)
+            if roe is not None and q < 4:
+                roe = round(roe * 4 / q, 2)
 
         # 增速: 初筛阶段只有单条缓存，无法取年报。
         # 对 Q1 数据做保守折算（Q1 同比波动大，打 6 折平滑）

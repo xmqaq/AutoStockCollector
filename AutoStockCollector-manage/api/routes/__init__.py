@@ -52,11 +52,29 @@ def _cache_set(key: str, value):
 
 
 def _fetch_valuation(bare_code: str) -> Dict[str, Optional[float]]:
-    """通过百度估值接口拉取 PE/PB/总市值（单位：亿元 → 元）"""
+    """读取估值数据：优先 DB 缓存 → 内存缓存 → 百度 API"""
     cache_key = f"valuation_{bare_code}"
     cached = _cache_get(cache_key)
     if cached is not None:
         return cached
+
+    # 优先读 DB 缓存（ValuationCollector 每5分钟刷新）
+    try:
+        from core.storage.mongo_storage import ValuationStorage
+        prefix = "SH" if bare_code.startswith("6") else "SZ"
+        full_code = f"{prefix}{bare_code}"
+        db_cached = ValuationStorage().get_by_code(full_code)
+        if db_cached and db_cached.get("pe_dynamic") is not None:
+            result = {
+                "pe": db_cached.get("pe_dynamic"),
+                "pe_static": None,
+                "pb": db_cached.get("pb"),
+                "total_mv": db_cached.get("total_mv"),
+            }
+            _cache_set(cache_key, result)
+            return result
+    except Exception:
+        pass
 
     import akshare as ak
     result = {"pe": None, "pe_static": None, "pb": None, "total_mv": None}
@@ -64,7 +82,7 @@ def _fetch_valuation(bare_code: str) -> Dict[str, Optional[float]]:
         ("pe", "市盈率(TTM)"),
         ("pe_static", "市盈率(静)"),
         ("pb", "市净率"),
-        ("total_mv_yi", "总市值"),  # 单位亿元
+        ("total_mv_yi", "总市值"),
     ]
     for field, ind in indicators:
         try:
@@ -73,7 +91,7 @@ def _fetch_valuation(bare_code: str) -> Dict[str, Optional[float]]:
                 val = df.iloc[-1].get("value")
                 if val is not None:
                     if field == "total_mv_yi":
-                        result["total_mv"] = float(val) * 1e8  # 亿 → 元
+                        result["total_mv"] = float(val) * 1e8
                     else:
                         result[field] = float(val)
         except Exception:
@@ -2960,3 +2978,44 @@ def _build_agent_context(agent_id: str, bundle, scores: dict) -> str:
             lines.append(f"PE：{bundle.pe}  PB：{bundle.pb or '暂无'}")
 
     return "\n".join(lines)
+
+
+# =====================================================================
+# 估值缓存查询
+# =====================================================================
+
+@api_bp.route("/valuation/<code>", methods=["GET"])
+def get_valuation(code: str):
+    """查询单只股票的估值缓存（PE/PB/ROE/总市值等）"""
+    code = _normalize_code(code)
+    try:
+        from core.storage.mongo_storage import ValuationStorage
+        record = ValuationStorage().get_by_code(code)
+        if not record:
+            return jsonify({"success": True, "data": None, "message": "暂无缓存，等待下次刷新"})
+        if "updated_at" in record and hasattr(record["updated_at"], "isoformat"):
+            record["updated_at"] = record["updated_at"].isoformat()
+        return jsonify({"success": True, "data": record})
+    except Exception as e:
+        logger.error(f"get_valuation failed: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@api_bp.route("/valuation/batch", methods=["POST"])
+def get_valuation_batch():
+    """批量查询估值缓存"""
+    data = request.get_json() or {}
+    codes = data.get("codes", [])
+    if not codes:
+        return jsonify({"success": True, "data": []})
+    codes = [_normalize_code(c) for c in codes]
+    try:
+        from core.storage.mongo_storage import ValuationStorage
+        records = ValuationStorage().get_by_codes(codes)
+        for r in records:
+            if "updated_at" in r and hasattr(r["updated_at"], "isoformat"):
+                r["updated_at"] = r["updated_at"].isoformat()
+        return jsonify({"success": True, "data": records})
+    except Exception as e:
+        logger.error(f"get_valuation_batch failed: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500

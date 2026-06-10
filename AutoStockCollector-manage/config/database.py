@@ -128,6 +128,9 @@ class DatabaseConfig:
 
         cls._safe_index(db.cron_schedule, [("label", 1)], unique=True)
 
+        cls._safe_index(db.stock_valuation, [("code", 1)], unique=True)
+        cls._safe_index(db.stock_valuation, [("updated_at", -1)])
+
         logger.info("Database indexes ensured successfully")
 
 

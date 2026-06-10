@@ -66,4 +66,8 @@ export const marketApi = {
   getSignalHistory(code?: string) {
     return client.get('/api/v1/market/signal-history', { params: { code } })
   },
+
+  getValuationBatch(codes: string[]) {
+    return client.post('/api/v1/valuation/batch', { codes })
+  },
 }

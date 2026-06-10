@@ -818,3 +818,26 @@ class MarginStorage(MongoStorage):
         if records and "code" in records[0]:
             return self.upsert_many(records, ["code", "date"])
         return self.upsert_many(records, ["信用交易日期", "market"])
+
+
+class ValuationStorage(MongoStorage):
+    def __init__(self):
+        super().__init__("stock_valuation")
+        self.create_index([("updated_at", -1)])
+
+    def get_by_code(self, code: str) -> Optional[Dict[str, Any]]:
+        record = self.find_one({"code": code})
+        if record:
+            record.pop("_id", None)
+        return record
+
+    def get_by_codes(self, codes: List[str]) -> List[Dict[str, Any]]:
+        records = self.find_many({"code": {"$in": codes}})
+        for r in records:
+            r.pop("_id", None)
+        return records
+
+    def save_batch(self, records: List[Dict[str, Any]]) -> Tuple[int, int]:
+        if not records:
+            return (0, 0)
+        return self.upsert_many(records, ["code"])

@@ -74,6 +74,15 @@
           <el-table-column label="成交额" width="100" align="right">
             <template #default="{ row }">{{ fmtAmount(row.amount) }}</template>
           </el-table-column>
+          <el-table-column label="PE" width="80" align="right">
+            <template #default="{ row }">{{ fmtVal(row.pe_dynamic) }}</template>
+          </el-table-column>
+          <el-table-column label="PB" width="80" align="right">
+            <template #default="{ row }">{{ fmtVal(row.pb) }}</template>
+          </el-table-column>
+          <el-table-column label="ROE" width="80" align="right">
+            <template #default="{ row }">{{ fmtPct(row.roe) }}</template>
+          </el-table-column>
           <el-table-column label="分时" width="80" align="center">
             <template #default="{ row }">
               <el-button size="small" link @click="showMiniChart(row)">查看</el-button>
@@ -155,6 +164,16 @@ function fmtTurnover(v?: number | null): string {
   return v.toFixed(2) + '%'
 }
 
+function fmtVal(v?: number | null): string {
+  if (v === undefined || v === null) return '--'
+  return v.toFixed(2)
+}
+
+function fmtPct(v?: number | null): string {
+  if (v === undefined || v === null) return '--'
+  return v.toFixed(2) + '%'
+}
+
 async function loadIndices() {
   indicesLoading.value = true
   try {
@@ -181,8 +200,24 @@ async function loadQuotes() {
   if (watchlistCodes.value.length === 0) return
   quotesLoading.value = true
   try {
-    const res = await marketApi.getRealtimeQuotes(watchlistCodes.value)
-    quotes.value = res.data?.data || []
+    const [quoteRes, valRes] = await Promise.all([
+      marketApi.getRealtimeQuotes(watchlistCodes.value),
+      marketApi.getValuationBatch(watchlistCodes.value).catch(() => ({ data: { data: [] } })),
+    ])
+    const quoteList = quoteRes.data?.data || []
+    const valMap: Record<string, any> = {}
+    for (const v of (valRes.data?.data || [])) {
+      if (v.code) valMap[v.code] = v
+    }
+    quotes.value = quoteList.map((q: any) => {
+      const val = valMap[q.code]
+      if (val) {
+        q.pe_dynamic = val.pe_dynamic
+        q.pb = val.pb
+        q.roe = val.roe
+      }
+      return q
+    })
     updateTime.value = new Date().toLocaleTimeString()
   } catch {
     ElMessage.error('获取行情数据失败')
