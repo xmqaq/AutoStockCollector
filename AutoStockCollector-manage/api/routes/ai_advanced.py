@@ -10,6 +10,7 @@ import threading
 import time
 import uuid
 from utils.logger import get_logger
+from utils.helpers import beijing_now
 
 logger = get_logger(__name__)
 
@@ -22,7 +23,7 @@ def _get_db():
 
 
 def _normalize_code(code: str) -> str:
-    from utils.helpers import normalize_stock_code_flexible, beijing_now
+    from utils.helpers import normalize_stock_code_flexible
     return normalize_stock_code_flexible(code)
 
 

@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 import time
 import threading
 from utils.logger import get_logger
+from utils.helpers import beijing_now
 from modules.ai.engines.analysis import AnalysisEngine
 from modules.ai.engines.advice import AdviceEngine
 from modules.ai.engines.picker import PickerEngine
@@ -24,7 +25,7 @@ CATALOG_TYPES = ["stock_info"]                                   # 全量名录
 
 def _normalize_code(code: str) -> str:
     """统一股票代码格式，支持多种输入格式"""
-    from utils.helpers import normalize_stock_code_flexible, beijing_now
+    from utils.helpers import normalize_stock_code_flexible
     return normalize_stock_code_flexible(code)
 
 

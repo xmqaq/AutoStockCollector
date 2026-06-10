@@ -5,6 +5,7 @@
 """
 from flask import Blueprint, request, jsonify
 from datetime import datetime, timedelta
+from utils.helpers import beijing_now
 from typing import Dict, List
 import random
 
@@ -17,7 +18,7 @@ def _get_db():
 
 
 def _normalize_code(code: str) -> str:
-    from utils.helpers import normalize_stock_code_flexible, beijing_now
+    from utils.helpers import normalize_stock_code_flexible
     return normalize_stock_code_flexible(code)
 
 
