@@ -27,6 +27,7 @@ def _serialize(doc: dict) -> Optional[dict]:
 
 
 def _get_client_ip() -> str:
+    # X-Forwarded-For 可被客户端伪造，仅用于轻量级追踪，不作身份认证依据
     forwarded = request.headers.get("X-Forwarded-For", "")
     if forwarded:
         return forwarded.split(",")[0].strip()
