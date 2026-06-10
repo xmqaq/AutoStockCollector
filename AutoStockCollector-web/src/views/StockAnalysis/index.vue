@@ -11,6 +11,9 @@
       <el-button type="primary" :loading="loading" :disabled="!inputCode" @click="runAnalysis">
         深度分析
       </el-button>
+      <el-tooltip content="分析偏好设置（注入AI报告）" placement="bottom">
+        <el-button :icon="Setting" circle @click="openProfileDrawer" />
+      </el-tooltip>
     </div>
 
     <el-empty v-if="!data && !loading" description="输入股票代码开始分析" />
@@ -145,6 +148,41 @@
         </div>
       </el-card>
 
+      <!-- 区块：历史预测复盘 + 分析记录 -->
+      <el-card shadow="never" class="da-card">
+        <template #header><span>历史预测复盘</span></template>
+        <template v-if="reflectionHistory.length">
+          <div class="da-reflect-stats">
+            <span class="da-reflect-stat">共复盘 <em>{{ reflectionStats.total }}</em> 次</span>
+            <span class="da-reflect-stat ok">正确 <em>{{ reflectionStats.correct }}</em></span>
+            <span class="da-reflect-stat bad">错误 <em>{{ reflectionStats.wrong }}</em></span>
+            <span class="da-reflect-stat">部分正确 <em>{{ reflectionStats.partial }}</em></span>
+          </div>
+          <div class="da-reflect-list">
+            <div v-for="(r, i) in reflectionHistory" :key="i" class="da-reflect-item">
+              <el-tag size="small" :type="accuracyTagType(r.accuracy)">{{ accuracyLabel(r.accuracy) }}</el-tag>
+              <span class="da-reflect-summary">{{ r.summary }}</span>
+              <span class="da-reflect-return" :class="r.realized_return >= 0 ? 'rise' : 'fall'">
+                {{ fmtChange(r.realized_return) }}
+              </span>
+            </div>
+          </div>
+        </template>
+        <p v-else class="da-block-hint">
+          暂无该股的历史预测。生成AI深度分析报告后会自动记录本次结论，下次分析时将用真实走势复盘对错。
+        </p>
+        <template v-if="analysisHistory.length">
+          <el-divider style="margin: 12px 0" />
+          <div class="da-history-title">近期分析记录</div>
+          <div class="da-history-list">
+            <div v-for="(h, i) in analysisHistory" :key="i" class="da-history-item">
+              <span class="da-history-date">{{ h.analysis_date }}</span>
+              <el-tag size="small" :type="verdictTagType(h.verdict)">{{ h.verdict }}</el-tag>
+            </div>
+          </div>
+        </template>
+      </el-card>
+
       <!-- 区块六：买卖参考建议 -->
       <el-card shadow="never" class="da-card">
         <template #header>
@@ -185,16 +223,69 @@
         </div>
       </el-card>
 
+      <!-- 区块八：多Agent 辩论分析（增强） -->
+      <el-card shadow="never" class="da-card">
+        <template #header>
+          <div class="da-ma-head">
+            <span>多Agent 辩论分析（增强）</span>
+            <el-button v-if="!showMultiAgent" size="small" type="primary" plain @click="showMultiAgent = true">
+              启动辩论分析
+            </el-button>
+            <el-button v-else size="small" text @click="showMultiAgent = false">收起</el-button>
+          </div>
+        </template>
+        <p v-if="!showMultiAgent" class="da-block-hint">
+          由传统分析师团队 + 投资哲学流派 Agent 对该股进行多空辩论并输出最终裁决。涉及多轮大模型调用，耗时较长，按需启动。
+        </p>
+        <MultiAgentPanel v-else :initial-code="data.basic_info.code" />
+      </el-card>
+
       <p class="da-method-note">评分基于实时数据计算：K线取近60个交易日，财务取最新报告期，资金面取近5日均值，PE/PB取TTM口径</p>
     </template>
+
+    <!-- 分析偏好设置抽屉 -->
+    <el-drawer v-model="profileDrawerVisible" title="分析偏好设置" size="380px">
+      <el-form label-position="top">
+        <el-form-item label="风险偏好">
+          <el-radio-group v-model="profileForm.risk_level">
+            <el-radio-button value="conservative">保守</el-radio-button>
+            <el-radio-button value="balanced">平衡</el-radio-button>
+            <el-radio-button value="aggressive">激进</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="持仓周期偏好">
+          <el-radio-group v-model="profileForm.holding_horizon">
+            <el-radio-button value="short">短线</el-radio-button>
+            <el-radio-button value="medium">中线</el-radio-button>
+            <el-radio-button value="long">长线</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="偏好行业（可输入新增）">
+          <el-select
+            v-model="profileForm.preferred_industries"
+            multiple filterable allow-create default-first-option
+            placeholder="如：半导体、医药、银行"
+            style="width: 100%"
+          >
+            <el-option v-for="ind in commonIndustries" :key="ind" :label="ind" :value="ind" />
+          </el-select>
+        </el-form-item>
+        <p class="da-block-hint" style="margin-bottom: 14px">
+          偏好会注入AI深度分析报告，影响综合评级与操作建议的口径
+        </p>
+        <el-button type="primary" :loading="profileSaving" style="width: 100%" @click="saveProfile">
+          保存偏好
+        </el-button>
+      </el-form>
+    </el-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick, reactive } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Loading, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
+import { Loading, ArrowUp, ArrowDown, Setting } from '@element-plus/icons-vue'
 import { marked } from 'marked'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
@@ -208,6 +299,8 @@ import {
   deepAnalysisApi, aiServiceApi,
   type DeepAnalysisData, type AIReportResult, type AIAdviceResult,
 } from '@/api/ai'
+import { memoryApi } from '@/api/memory'
+import MultiAgentPanel from '@/components/MultiAgentPanel/index.vue'
 import { RISE_COLOR, FALL_COLOR } from '@/utils/format'
 
 use([
@@ -233,6 +326,65 @@ const cost = ref<number | undefined>()
 const position = ref<number | undefined>()
 
 const klineChartRef = ref<InstanceType<typeof VChart> | null>(null)
+
+// ── 多Agent辩论增强区块 ──
+const showMultiAgent = ref(false)
+
+// ── 历史预测复盘 / 分析记录 ──
+const reflectionHistory = computed(() => data.value?.reflection?.history ?? [])
+const reflectionStats = computed(() =>
+  data.value?.reflection?.stats ?? { total: 0, correct: 0, wrong: 0, partial: 0 })
+const analysisHistory = computed(() => data.value?.analysis_history ?? [])
+
+function accuracyLabel(acc: string): string {
+  return { correct: '判断正确', wrong: '判断错误', partial: '部分正确' }[acc] || acc
+}
+
+function accuracyTagType(acc: string): string {
+  return { correct: 'success', wrong: 'danger', partial: 'warning' }[acc] || 'info'
+}
+
+function verdictTagType(verdict: string): string {
+  if (verdict.includes('强烈关注') || verdict.includes('适度关注')) return 'success'
+  if (verdict.includes('回避')) return 'danger'
+  return 'info'
+}
+
+// ── 分析偏好设置 ──
+const profileDrawerVisible = ref(false)
+const profileSaving = ref(false)
+const profileForm = reactive({
+  risk_level: 'balanced',
+  holding_horizon: 'medium',
+  preferred_industries: [] as string[],
+})
+const commonIndustries = ['半导体', '医药生物', '银行', '新能源', '白酒', '军工', '计算机', '消费电子']
+
+async function openProfileDrawer() {
+  profileDrawerVisible.value = true
+  try {
+    const res = await memoryApi.getProfile()
+    const p = res.data?.data
+    if (p) {
+      profileForm.risk_level = p.risk_level || 'balanced'
+      profileForm.holding_horizon = p.holding_horizon || 'medium'
+      profileForm.preferred_industries = p.preferred_industries || []
+    }
+  } catch { /* 加载失败保留默认值 */ }
+}
+
+async function saveProfile() {
+  profileSaving.value = true
+  try {
+    await memoryApi.updateProfile({ ...profileForm })
+    ElMessage.success('偏好已保存，将在下次AI报告中生效')
+    profileDrawerVisible.value = false
+  } catch {
+    ElMessage.error('保存失败')
+  } finally {
+    profileSaving.value = false
+  }
+}
 
 const scoreDims = [
   { key: 'fundamental' as const, label: '基本面' },
@@ -455,6 +607,7 @@ async function runAnalysis() {
   advice.value = null
   scoreExpanded.value = false
   expandedNews.value = null
+  showMultiAgent.value = false
   try {
     const res = await deepAnalysisApi.getData(inputCode.value.trim())
     if (res.data?.success) {
@@ -624,6 +777,24 @@ onMounted(() => {
 .da-news-content { margin-top: 8px; font-size: 12px; color: #8888a8; line-height: 1.6; }
 
 .da-method-note { font-size: 11px; color: #44445a; text-align: center; margin-top: 8px; }
+
+/* ── 历史预测复盘 ── */
+.da-block-hint { font-size: 12px; color: #606080; line-height: 1.7; }
+.da-reflect-stats { display: flex; gap: 18px; margin-bottom: 12px; font-size: 12px; color: #8888a8; }
+.da-reflect-stat em { font-style: normal; font-weight: 700; color: #c8cae8; }
+.da-reflect-stat.ok em { color: #3a8a52; }
+.da-reflect-stat.bad em { color: #a04040; }
+.da-reflect-list { display: flex; flex-direction: column; gap: 8px; }
+.da-reflect-item { display: flex; align-items: center; gap: 10px; }
+.da-reflect-summary { flex: 1; font-size: 12.5px; color: #c0c2dd; }
+.da-reflect-return { font-size: 12.5px; font-weight: 600; }
+.da-history-title { font-size: 12px; color: #8888a8; font-weight: 600; margin-bottom: 8px; }
+.da-history-list { display: flex; flex-direction: column; gap: 6px; }
+.da-history-item { display: flex; align-items: center; gap: 12px; }
+.da-history-date { font-size: 12px; color: #8888a8; min-width: 120px; }
+
+/* ── 多Agent辩论区块 ── */
+.da-ma-head { display: flex; justify-content: space-between; align-items: center; }
 
 .rise { color: #ef5350; }
 .fall { color: #26a69a; }

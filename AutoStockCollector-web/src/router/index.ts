@@ -60,12 +60,6 @@ const router = createRouter({
           meta: { title: 'AI Agent管理' },
         },
         {
-          path: 'memory-settings',
-          name: 'MemorySettings',
-          component: () => import('@/views/MemorySettings/index.vue'),
-          meta: { title: '记忆设置' },
-        },
-        {
           path: 'dragon-tiger',
           name: 'DragonTiger',
           component: () => import('@/views/DragonTiger/index.vue'),
@@ -108,12 +102,6 @@ const router = createRouter({
           meta: { title: '仓位管理' },
         },
         {
-          path: 'multi-agent',
-          name: 'MultiAgent',
-          component: () => import('@/views/MultiAgent/index.vue'),
-          meta: { title: '多Agent分析' },
-        },
-        {
           path: 'workflow',
           name: 'Workflow',
           component: () => import('@/views/Workflow/index.vue'),
@@ -130,18 +118,6 @@ const router = createRouter({
           name: 'Todo',
           component: () => import('@/views/Todo/index.vue'),
           meta: { title: '待办事项' },
-        },
-        {
-          path: 'signals',
-          name: 'Signals',
-          component: () => import('@/views/Signals/index.vue'),
-          meta: { title: 'Agent 信号源' },
-        },
-        {
-          path: 'reflections',
-          name: 'Reflections',
-          component: () => import('@/views/Reflections/index.vue'),
-          meta: { title: '决策反思' },
         },
       ],
     },

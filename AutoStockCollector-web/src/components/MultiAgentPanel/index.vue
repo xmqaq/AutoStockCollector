@@ -194,12 +194,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { Check, MagicStick, User } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agentStore'
 import { usePhilosophyStore } from '@/stores/philosophyStore'
 import { watchlistApi } from '@/api/watchlist'
 import { researchBattleApi } from '@/api/ai'
+
+const props = defineProps<{ initialCode?: string }>()
 
 import AnalysisPipeline from './AnalysisPipeline.vue'
 import DataCollectionPanel from './DataCollectionPanel.vue'
@@ -569,6 +571,15 @@ async function loadWatchlist() {
     }
   } catch { watchlist.value = [] }
 }
+
+watch(() => props.initialCode, (v) => {
+  if (v) {
+    stockCode.value = v
+    if (!remoteOptions.value.some(o => o.value === v)) {
+      remoteOptions.value = [{ value: v, label: v }, ...remoteOptions.value]
+    }
+  }
+}, { immediate: true })
 
 onMounted(() => {
   philosophyStore.loadAgents()

@@ -945,15 +945,6 @@ def get_skill(skill_name: str):
     return jsonify({"success": True, "data": {"name": skill_name, "content": content}})
 
 
-@ai_agent_bp.route("/reflections/<stock_code>", methods=["GET"])
-def get_reflections(stock_code: str):
-    """获取某支股票的反思记录"""
-    from modules.ai.reflection.evaluator import ReflectionEvaluator
-    evaluator = ReflectionEvaluator()
-    reflection = evaluator.get_reflection_for_stock(stock_code)
-    return jsonify({"success": True, "data": reflection})
-
-
 @ai_agent_bp.route("/<agent_id>/analyze", methods=["POST"])
 def analyze_with_agent(agent_id: str):
     """使用指定 Agent 分析股票"""

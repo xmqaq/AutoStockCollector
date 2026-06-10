@@ -4,6 +4,9 @@ from typing import Any, Dict, List, Optional
 from modules.ai.foundation import factors
 from modules.ai.foundation.dal import StockDAL, _parse_pct, _parse_amount_yuan
 from modules.ai.content_risk import sanitize_text
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def _safe_round(v, n=2):
@@ -29,7 +32,7 @@ class DeepAnalysisService:
             self._router = LLMRouter()
         return self._router
 
-    def get_full_data(self, code: str) -> Dict[str, Any]:
+    def get_full_data(self, code: str, user_id: str = "default") -> Dict[str, Any]:
         """一次性返回该股票所有分析所需数据。"""
         bundle = self.dal.get_stock_bundle(code, kline_limit=120)
 
@@ -41,6 +44,8 @@ class DeepAnalysisService:
         technical = self._build_technical(bundle)
         scores = self._build_scores(bundle)
         news = self._build_news(bundle)
+        reflection = self._build_reflection(code)
+        analysis_history = self._build_analysis_history(code, user_id)
 
         from datetime import datetime as _dt, timezone as _tz, timedelta as _td
         beijing = _tz(_td(hours=8))
@@ -53,16 +58,19 @@ class DeepAnalysisService:
             "technical": technical,
             "scores": scores,
             "news": news,
+            "reflection": reflection,
+            "analysis_history": analysis_history,
             "analysis_time": _dt.now(beijing).strftime("%Y-%m-%d %H:%M"),
 
         }
 
-    def ai_report(self, code: str, data: Optional[Dict] = None) -> Dict[str, Any]:
+    def ai_report(self, code: str, data: Optional[Dict] = None,
+                  user_id: str = "default") -> Dict[str, Any]:
         """基于真实数据生成AI深度分析报告。data为get_full_data返回值，不传则重新获取。"""
         if data is None:
-            data = self.get_full_data(code)
+            data = self.get_full_data(code, user_id=user_id)
 
-        prompt = self._build_ai_prompt(data)
+        prompt = self._build_ai_prompt(data, user_id=user_id)
         system = (
             "你是一位专业的A股投资分析师，擅长从量化数据中提炼投资洞察。"
             "分析时必须基于提供的真实数据，不允许编造数据或假设数据。"
@@ -83,6 +91,8 @@ class DeepAnalysisService:
         )
         if result.success and result.raw:
             content, _ = sanitize_text(result.raw)
+            if not result.from_cache:
+                self._record_outcome(code, content, user_id)
             return {
                 "success": True,
                 "content": content,
@@ -95,6 +105,101 @@ class DeepAnalysisService:
             "error": result.error or "所有AI服务暂不可用",
 
         }
+
+    # ==================== 反思与记忆融合 ====================
+
+    RATING_SCORES = {
+        "强烈关注": (80, 20),
+        "适度关注": (65, 35),
+        "中性观望": (50, 50),
+        "谨慎回避": (30, 70),
+    }
+
+    def _build_reflection(self, code: str) -> Dict[str, Any]:
+        """补评估历史决策（事后用真实K线核对），返回复盘数据。"""
+        try:
+            from modules.ai.reflection.decision_logger import DecisionLogger
+            from modules.ai.reflection.evaluator import ReflectionEvaluator
+
+            records = DecisionLogger().get_history(code, limit=10)
+            evaluator = ReflectionEvaluator()
+            reflections = []
+            for rec in records:
+                if rec.get("evaluated") and rec.get("reflection"):
+                    reflections.append(rec["reflection"])
+                else:
+                    r = evaluator.evaluate(rec)
+                    if r:
+                        reflections.append(r)
+
+            correct = sum(1 for r in reflections if r.get("accuracy") == "correct")
+            wrong = sum(1 for r in reflections if r.get("accuracy") == "wrong")
+            return {
+                "latest": reflections[0] if reflections else None,
+                "history": reflections[:5],
+                "stats": {
+                    "total": len(reflections),
+                    "correct": correct,
+                    "wrong": wrong,
+                    "partial": len(reflections) - correct - wrong,
+                },
+            }
+        except Exception as e:
+            logger.warning(f"Reflection build failed for {code}: {e}")
+            return {"latest": None, "history": [], "stats": {"total": 0, "correct": 0, "wrong": 0, "partial": 0}}
+
+    def _build_analysis_history(self, code: str, user_id: str) -> List[Dict[str, Any]]:
+        """该股票的历史分析记录（来自记忆系统）。"""
+        try:
+            from modules.memory.episodic_memory import EpisodicMemory
+            return EpisodicMemory().get_stock_analyses(user_id, code, limit=5)
+        except Exception:
+            return []
+
+    def _get_user_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
+        try:
+            from modules.memory.episodic_memory import EpisodicMemory
+            profile = EpisodicMemory().get_profile(user_id)
+            return profile.to_dict() if profile else None
+        except Exception:
+            return None
+
+    def _extract_rating(self, content: str) -> str:
+        """从报告文本中提取综合评级，优先匹配靠后出现的评级词。"""
+        best, best_pos = "中性观望", -1
+        for rating in self.RATING_SCORES:
+            pos = content.rfind(rating)
+            if pos > best_pos:
+                best, best_pos = rating, pos
+        return best
+
+    def _record_outcome(self, code: str, content: str, user_id: str):
+        """报告生成后：落决策记录（供下次复盘）+ 写入分析历史记忆。"""
+        rating = self._extract_rating(content)
+        bull, bear = self.RATING_SCORES[rating]
+        try:
+            import uuid
+            from modules.ai.reflection.decision_logger import DecisionLogger
+            DecisionLogger().log_decision(
+                f"deep_{uuid.uuid4().hex[:12]}", code,
+                {"decision": rating, "bull_score": bull, "bear_score": bear},
+            )
+        except Exception as e:
+            logger.warning(f"Decision log failed for {code}: {e}")
+        try:
+            from utils.helpers import beijing_now
+            from modules.memory.episodic_memory import EpisodicMemory
+            from modules.memory.models import AnalysisHistory
+            EpisodicMemory().record_analysis(AnalysisHistory(
+                user_id=user_id,
+                code=code,
+                analysis_date=beijing_now().strftime("%Y-%m-%d %H:%M"),
+                analysis_type="deep_analysis",
+                verdict=rating,
+                recommendation=rating,
+            ))
+        except Exception as e:
+            logger.warning(f"Analysis history record failed for {code}: {e}")
 
     def _build_basic_info(self, code: str, bundle) -> Dict[str, Any]:
         info = self.dal.info_storage.get_by_code(code) or {}
@@ -376,13 +481,51 @@ class DeepAnalysisService:
             })
         return result
 
-    def _build_ai_prompt(self, data: Dict) -> str:
+    def _build_context_sections(self, data: Dict, user_id: str) -> str:
+        """构建用户画像/历史预测复盘/历史分析记录的 prompt 附加段落。"""
+        sections = []
+
+        profile = self._get_user_profile(user_id)
+        if profile:
+            risk_map = {"conservative": "保守型", "balanced": "平衡型", "aggressive": "激进型"}
+            horizon_map = {"short": "短线（≤20天）", "medium": "中线（20-60天）", "long": "长线（>60天）"}
+            industries = "、".join(profile.get("preferred_industries") or []) or "无特别偏好"
+            sections.append(
+                f"【用户画像】\n"
+                f"风险偏好：{risk_map.get(profile.get('risk_level'), '平衡型')}\n"
+                f"持仓周期偏好：{horizon_map.get(profile.get('holding_horizon'), '中线')}\n"
+                f"偏好行业：{industries}"
+            )
+
+        reflection = (data.get("reflection") or {}).get("latest")
+        if reflection:
+            sections.append(
+                f"【历史预测复盘】\n"
+                f"上次分析时间：{reflection.get('decision_time', 'N/A')[:16]}\n"
+                f"当时预测方向：{reflection.get('predicted_direction', 'N/A')}\n"
+                f"当时价格：{reflection.get('decision_price', 'N/A')}元 → 当前价格：{reflection.get('current_price', 'N/A')}元\n"
+                f"实现收益：{reflection.get('realized_return', 0):+.2f}%\n"
+                f"判断结果：{reflection.get('summary', '')}"
+            )
+
+        history = data.get("analysis_history") or []
+        if history:
+            lines = [
+                f"  - {h.get('analysis_date', '')} 结论：{h.get('verdict', '')}"
+                for h in history[:5]
+            ]
+            sections.append("【近期分析记录】\n" + "\n".join(lines))
+
+        return ("\n\n" + "\n\n".join(sections)) if sections else ""
+
+    def _build_ai_prompt(self, data: Dict, user_id: str = "default") -> str:
         bi = data.get("basic_info", {})
         pi = data.get("price_info", {})
         fi = data.get("financial", {})
         ff = data.get("fund_flow", {})
         te = data.get("technical", {})
         sc = data.get("scores", {})
+        context_sections = self._build_context_sections(data, user_id)
 
         def _v(val, suffix="", default="N/A"):
             if val is None:
@@ -421,7 +564,11 @@ RSI(14)：{_v(te.get('rsi14'))}
 技术面：{_v(sc.get('technical', {}).get('score'), '分')}
 资金面：{_v(sc.get('fund_flow', {}).get('score'), '分')}
 估值面：{_v(sc.get('valuation', {}).get('score'), '分')}
-综合：{_v(sc.get('composite'), '分')}
+综合：{_v(sc.get('composite'), '分')}{context_sections}
+
+补充要求：
+- 如提供了【用户画像】，综合评级和操作建议需贴合该风险偏好与持仓周期
+- 如提供了【历史预测复盘】，需在综合评级中用一句话回应上次预测的对错及本次修正
 
 请按以下格式输出分析报告：
 

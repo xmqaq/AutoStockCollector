@@ -29,14 +29,6 @@ export interface BatchTask {
   errors: unknown[]
 }
 
-export interface MultiAgentTask {
-  task_id: string
-  status: string
-  code: string
-  agents: Record<string, AgentState>
-  aggregated_result?: AggregatedResult
-}
-
 export interface AgentState {
   id: string
   name: string
@@ -160,12 +152,6 @@ export const aiApi = {
   },
   getBatchProgress(taskId: string) {
     return client.get(`/api/v1/ai/batch-progress/${taskId}`)
-  },
-  multiAgentAnalyze(params: { code: string; type?: string }) {
-    return client.post('/api/v1/ai/multi-agent', params)
-  },
-  getMultiAgentProgress(taskId: string) {
-    return client.get(`/api/v1/ai/multi-agent/${taskId}`)
   },
   chat(params: { message: string; model?: string; provider?: string; history?: { role: string; content: string }[] }) {
     return client.post('/api/v1/ai/chat', params)
@@ -319,6 +305,31 @@ export interface DeepNewsItem {
   content: string
 }
 
+export interface DeepReflectionItem {
+  stock_code: string
+  decision_time: string
+  decision_price: number | null
+  current_price: number | null
+  realized_return: number
+  days_elapsed: number
+  predicted_direction: string
+  accuracy: 'correct' | 'wrong' | 'partial'
+  summary: string
+}
+
+export interface DeepReflection {
+  latest: DeepReflectionItem | null
+  history: DeepReflectionItem[]
+  stats: { total: number; correct: number; wrong: number; partial: number }
+}
+
+export interface DeepAnalysisHistoryItem {
+  analysis_date: string
+  analysis_type: string
+  verdict: string
+  recommendation: string
+}
+
 export interface DeepAnalysisData {
   basic_info: DeepBasicInfo
   price_info: DeepPriceInfo
@@ -328,6 +339,8 @@ export interface DeepAnalysisData {
   technical: DeepTechnical
   scores: DeepScores
   news: DeepNewsItem[]
+  reflection?: DeepReflection
+  analysis_history?: DeepAnalysisHistoryItem[]
   analysis_time: string
 }
 
@@ -537,12 +550,6 @@ export const orchestrationApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
     })
-  },
-}
-
-export const reflectionApi = {
-  getForStock(code: string) {
-    return client.get(`/api/v1/ai-agents/reflections/${code}`)
   },
 }
 
