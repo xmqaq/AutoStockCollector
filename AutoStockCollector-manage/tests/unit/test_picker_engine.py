@@ -107,6 +107,90 @@ class TestPickerEngine(unittest.TestCase):
         _, kwargs = dal.get_factor_inputs.call_args
         self.assertEqual(kwargs.get("kline_limit"), 60)
 
+    def _passing_factor_inputs(self, code):
+        return FactorInputs(code=code, name="正常股", closes=[10.0] * 30,
+                            volumes=[1000.0] * 30, pe=15.0, pb=2.0,
+                            main_net_inflow=1e6, total_amount=5e8)
+
+    def test_stage2_runs_in_parallel(self):
+        """Stage-2 应真并行：8只×0.4s 在4 worker 下应远快于串行的 3.2s。"""
+        import time
+        dal = MagicMock()
+        dal.list_universe.return_value = [f"C{i}" for i in range(8)]
+        dal.get_factor_inputs.side_effect = lambda code, **kw: self._passing_factor_inputs(code)
+
+        eng = MagicMock()
+        def slow_analyze(code, **kw):
+            time.sleep(0.4)
+            return {"code": code, "name": code, "scores": {"composite": 60}, "source": "llm"}
+        eng.analyze.side_effect = slow_analyze
+
+        engine = PickerEngine(dal=dal, analysis_engine=eng, result_saver=MagicMock())
+        t0 = time.monotonic()
+        result = engine.run(top_n=8, candidate_pool=8)
+        elapsed = time.monotonic() - t0
+        self.assertEqual(len(result["picks"]), 8)
+        self.assertLess(elapsed, 2.4)  # 串行需 3.2s，4路并行约 0.8s
+
+    def test_stage2_failure_falls_back_to_factor_score(self):
+        """单只深研异常应降级为纯因子评分，不丢股票。"""
+        dal = MagicMock()
+        dal.list_universe.return_value = ["A", "B"]
+        dal.get_factor_inputs.side_effect = lambda code, **kw: self._passing_factor_inputs(code)
+
+        eng = MagicMock()
+        def analyze(code, **kw):
+            if code == "B":
+                raise RuntimeError("LLM boom")
+            return {"code": code, "name": code, "scores": {"composite": 80}, "source": "llm"}
+        eng.analyze.side_effect = analyze
+        eng.analyze_factor_only.side_effect = lambda code: {
+            "code": code, "name": code, "scores": {"composite": 40}, "source": "factor"}
+
+        result = PickerEngine(dal=dal, analysis_engine=eng,
+                              result_saver=MagicMock()).run(top_n=2, candidate_pool=2)
+        by_code = {p["code"]: p for p in result["picks"]}
+        self.assertEqual(set(by_code), {"A", "B"})
+        self.assertEqual(by_code["B"]["source"], "factor")
+
+    def test_industry_cap_max3_per_industry(self):
+        """精选阶段单行业最多3只，超额顺位让给下一行业。"""
+        dal = MagicMock()
+        codes = [f"G{i}" for i in range(5)] + ["B1", "B2"]
+        dal.list_universe.return_value = codes
+        dal.get_factor_inputs.side_effect = lambda code, **kw: self._passing_factor_inputs(code)
+
+        eng = MagicMock()
+        def analyze(code, **kw):
+            if code.startswith("G"):
+                return {"code": code, "name": code, "industry": "光模块",
+                        "scores": {"composite": 90 - int(code[1])}, "source": "llm"}
+            return {"code": code, "name": code, "industry": "银行",
+                    "scores": {"composite": 70 - int(code[1])}, "source": "llm"}
+        eng.analyze.side_effect = analyze
+
+        result = PickerEngine(dal=dal, analysis_engine=eng,
+                              result_saver=MagicMock()).run(top_n=5, candidate_pool=7)
+        industries = [p["industry"] for p in result["picks"]]
+        self.assertEqual(len(result["picks"]), 5)
+        self.assertEqual(industries.count("光模块"), 3)
+        self.assertEqual(industries.count("银行"), 2)
+
+    def test_unknown_industry_not_capped(self):
+        """行业缺失的股票不应被当作同一行业封顶。"""
+        dal = MagicMock()
+        dal.list_universe.return_value = [f"U{i}" for i in range(5)]
+        dal.get_factor_inputs.side_effect = lambda code, **kw: self._passing_factor_inputs(code)
+
+        eng = MagicMock()
+        eng.analyze.side_effect = lambda code, **kw: {
+            "code": code, "name": code, "industry": "",
+            "scores": {"composite": 80}, "source": "llm"}
+
+        result = PickerEngine(dal=dal, analysis_engine=eng,
+                              result_saver=MagicMock()).run(top_n=5, candidate_pool=5)
+        self.assertEqual(len(result["picks"]), 5)
+
     def test_screen_score_redistributes_unavailable_technical(self):
         """K线不足时技术面应标记不可用并重分配权重，而非按50分中性值计入。"""
         engine = PickerEngine(dal=MagicMock(), analysis_engine=MagicMock(),

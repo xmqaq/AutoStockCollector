@@ -2,7 +2,7 @@
 import unittest
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
@@ -86,6 +86,33 @@ class TestGetFactorInputs(unittest.TestCase):
         dal.valuation_storage = valuation
         fi = dal.get_factor_inputs("SH600053")
         self.assertEqual(fi.name, "*ST九鼎")
+
+    def test_preload_caches_valuation_no_per_code_query(self):
+        """预加载后估值走内存缓存，不应再逐只查 valuation_storage。"""
+        dal = _make_dal()
+        valuation = MagicMock()
+        dal.valuation_storage = valuation
+
+        colls = {}
+        for name in ("financial", "fund_flow", "stock_info", "stock_valuation"):
+            colls[name] = MagicMock()
+        colls["financial"].aggregate.return_value = []
+        colls["fund_flow"].distinct.return_value = []
+        colls["stock_info"].find.return_value = []
+        colls["stock_valuation"].find.return_value = [
+            {"code": "SH600519", "name": "贵州茅台", "pe_dynamic": 22.0, "pb": 8.5, "roe": 30.1},
+        ]
+        fake_db = MagicMock()
+        fake_db.__getitem__.side_effect = lambda n: colls[n]
+
+        with patch("config.database.DatabaseConfig.get_database", return_value=fake_db):
+            dal.preload_screen_cache(["SH600519"])
+
+        fi = dal.get_factor_inputs("SH600519")
+        self.assertEqual(fi.pe, 22.0)
+        self.assertEqual(fi.roe, 30.1)
+        self.assertEqual(fi.name, "贵州茅台")
+        valuation.get_by_code.assert_not_called()
 
     def test_cached_roe_only_no_unbound_error(self):
         """缓存只有 ROE（PE/PB 缺）时同样不应崩。"""

@@ -211,10 +211,13 @@ class StockDAL:
         result: Dict[str, Any] = {
             "pe": None, "pb": None, "roe": None, "total_mv": None, "name": None,
         }
-        if self.valuation_storage is None:
-            return result
         try:
-            cached = self.valuation_storage.get_by_code(code)
+            if hasattr(self, "_val_cache"):
+                cached = self._val_cache.get(code)
+            elif self.valuation_storage is not None:
+                cached = self.valuation_storage.get_by_code(code)
+            else:
+                return result
             if cached:
                 result["name"] = cached.get("name")
                 result["pe"] = cached.get("pe_dynamic")
@@ -619,6 +622,13 @@ class StockDAL:
             c = rec.get("code", "")
             if c:
                 self._info_cache[c] = rec
+
+        # 批量加载估值缓存，避免初筛阶段逐只远程查询 stock_valuation
+        self._val_cache: Dict[str, Dict] = {}
+        for rec in db["stock_valuation"].find({}, {"_id": 0}):
+            c = rec.get("code", "")
+            if c:
+                self._val_cache[c] = rec
 
     def get_factor_inputs(self, code: str, kline_limit: int = 30) -> FactorInputs:
         """轻量取数：仅打分必需字段。有预加载缓存时走缓存。"""

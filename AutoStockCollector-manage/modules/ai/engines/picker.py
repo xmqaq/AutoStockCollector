@@ -19,6 +19,13 @@ _PROGRESS_KEY = "current"
 _MIN_KLINE_BARS = 20      # K线少于该数（次新/长期停牌）不参与选股
 _MIN_AVG_AMOUNT = 3e7     # 近5日均成交额低于 3000万元 视为流动性不足（约全市场 p5 分位）
 
+# Stage-2 深度评分
+_STAGE2_WORKERS = 4       # LLM 深研并行度
+_STAGE2_PER_STOCK_SEC = 30  # 单只预算，总预算 = 30s × ceil(候选数/并行度)
+
+# 精选阶段单行业上限，避免热门赛道扎堆（行业未知不计入）
+_MAX_PER_INDUSTRY = 3
+
 
 def _update_progress(progress: int, status: str, is_running: bool = True,
                      extra: Optional[Dict] = None) -> None:
@@ -272,42 +279,74 @@ class PickerEngine:
             f"Stage-1 done: {len(candidates)} candidates from {len(screened)} screened, "
             f"filtered={filtered}, {screen_failures} failed")
 
-        # ── Stage-2 深度评分 ──
-        # 每只股票的 LLM 深研有 30s 硬性墙钟超时（ThreadPoolExecutor），
-        # 超时/异常一律降级为纯因子评分兜底，绝不丢股票、绝不阻塞整体循环；
-        # 无论成功/超时/失败都推进进度，保证 50 只全部处理完后能到 100%。
-        from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FutureTimeout
+        # ── Stage-2 深度评分（真并行）──
+        # 全部候选一次性提交线程池并行深研，按完成顺序收集；
+        # 总预算 = 30s × ceil(候选数/并行度)（即旧串行逐只30s的并行等价时间），
+        # 预算耗尽后仍未完成的候选统一降级为纯因子评分兜底，
+        # 绝不丢股票、绝不无限阻塞，进度保证推进到 100%。
+        from concurrent.futures import (
+            ThreadPoolExecutor, as_completed, TimeoutError as _FutureTimeout,
+        )
 
         deep: List[Dict[str, Any]] = []
         total_c = len(candidates)
-        executor = ThreadPoolExecutor(max_workers=4)
+        done_n = 0
+
+        def _advance(status_n: int) -> None:
+            pct = 50 + int(status_n / total_c * 45)  # 50~95
+            _update_progress(pct, f"深度评分 {status_n}/{total_c} 只...")
+
+        executor = ThreadPoolExecutor(max_workers=_STAGE2_WORKERS)
         try:
-            for i, code in enumerate(candidates):
-                try:
-                    future = executor.submit(
-                        self.analysis_engine.analyze, code, use_cache=use_cache,
-                    )
-                    analysis = future.result(timeout=30)
-                    deep.append(self._pick_item(analysis, code))
-                except _FutureTimeout:
-                    logger.warning(f"Stage-2 timeout for {code} (>30s)，降级为因子评分")
-                    fb = self._factor_fallback(code)
-                    if fb:
-                        deep.append(fb)
-                except Exception as e:
-                    logger.warning(f"Stage-2 failed for {code}: {e}，降级为因子评分")
-                    fb = self._factor_fallback(code)
-                    if fb:
-                        deep.append(fb)
-                # 无论成功/超时/失败都推进进度，避免卡死
-                pct = 50 + int((i + 1) / total_c * 45)  # 50~95
-                _update_progress(pct, f"深度评分 {i + 1}/{total_c} 只...")
+            future_map = {
+                executor.submit(self.analysis_engine.analyze, code, use_cache=use_cache): code
+                for code in candidates
+            }
+            budget = _STAGE2_PER_STOCK_SEC * max(1, -(-total_c // _STAGE2_WORKERS))
+            try:
+                for future in as_completed(list(future_map), timeout=budget):
+                    code = future_map.pop(future)
+                    try:
+                        deep.append(self._pick_item(future.result(), code))
+                    except Exception as e:
+                        logger.warning(f"Stage-2 failed for {code}: {e}，降级为因子评分")
+                        fb = self._factor_fallback(code)
+                        if fb:
+                            deep.append(fb)
+                    done_n += 1
+                    _advance(done_n)
+            except _FutureTimeout:
+                logger.warning(
+                    f"Stage-2 总预算 {budget}s 耗尽，剩余 {len(future_map)} 只降级为因子评分")
+
+            # 预算耗尽仍未完成的候选：取消排队任务并降级兜底
+            for future, code in future_map.items():
+                future.cancel()
+                fb = self._factor_fallback(code)
+                if fb:
+                    deep.append(fb)
+                done_n += 1
+                _advance(done_n)
         finally:
-            # 不等待可能仍阻塞的兜底线程，让它们在后台随 HTTP 超时自行退出
+            # 不等待可能仍阻塞的深研线程，让它们在后台随 HTTP 超时自行退出
             executor.shutdown(wait=False)
 
+        # ── 精选：按综合分降序 + 单行业上限（避免热门赛道扎堆）──
         deep.sort(key=lambda x: x["composite"], reverse=True)
-        picks = deep[:top_n]
+        picks: List[Dict[str, Any]] = []
+        industry_count: Dict[str, int] = {}
+        for item in deep:
+            ind = item.get("industry") or ""
+            if ind and industry_count.get(ind, 0) >= _MAX_PER_INDUSTRY:
+                continue
+            picks.append(item)
+            if ind:
+                industry_count[ind] = industry_count.get(ind, 0) + 1
+            if len(picks) >= top_n:
+                break
+        if len(picks) < min(top_n, len(deep)):
+            logger.info(
+                f"行业分散约束生效：{len(deep)} 只候选按单行业≤{_MAX_PER_INDUSTRY}只取出 {len(picks)} 只")
 
         _update_progress(96, "AI综合研判中...")
         ai_summary = self._generate_summary(picks)
