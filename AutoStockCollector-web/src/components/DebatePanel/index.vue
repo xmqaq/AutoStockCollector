@@ -163,7 +163,7 @@ onMounted(() => {
 .node-icon.done { color: #67c23a; }
 .node-icon.loading { color: #e6a23c; }
 .node-icon.error { color: #f56c6c; }
-.node-icon.idle { color: #4a4a4a; }
+.node-icon.idle { color: var(--text-faint); }
 .verdict-card { border: 1px solid #409eff; }
 .verdict-content { font-size: 13px; color: var(--text-secondary); line-height: 1.7; padding: 8px 0; }
 .error-card { border: 1px solid #f56c6c; }

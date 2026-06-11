@@ -245,7 +245,7 @@ function copyFullContent() {
   margin: 0;
   font-family: 'JetBrains Mono', 'SF Mono', monospace;
   font-size: 12px;
-  color: #a8b5c1;
+  color: var(--text-secondary);
   white-space: pre-wrap;
   word-break: break-all;
   line-height: 1.6;

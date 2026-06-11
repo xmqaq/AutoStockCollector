@@ -471,7 +471,7 @@ onMounted(() => {
 
 .welcome-title {
   font-weight: 600;
-  color: #fff;
+  color: var(--text-primary);
   font-size: 14px;
 }
 

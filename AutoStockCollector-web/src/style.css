@@ -29,6 +29,8 @@
   /* 状态浅底 */
   --tint-success-bg: #f0f9eb;
   --tint-danger-bg: #fef0f0;
+  /* 半透明遮罩 */
+  --bg-overlay: rgba(255, 255, 255, 0.85);
   /* 滚动条 */
   --scrollbar-track: #f0f2f5;
   --scrollbar-thumb: #c0c4cc;
@@ -62,6 +64,7 @@ html.dark {
   --code-text: #c3e88d;
   --tint-success-bg: #0f2014;
   --tint-danger-bg: #2a1515;
+  --bg-overlay: rgba(31, 31, 31, 0.8);
   --scrollbar-track: #1f1f1f;
   --scrollbar-thumb: #434343;
   --scrollbar-thumb-hover: #5a5a5a;

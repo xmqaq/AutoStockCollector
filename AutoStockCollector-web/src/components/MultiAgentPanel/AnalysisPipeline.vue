@@ -199,6 +199,6 @@ const stages = computed(() => [
   color: var(--text-faint);
 }
 .pipeline-stage.pending .stage-desc {
-  color: #4a4a4a;
+  color: var(--text-faint);
 }
 </style>

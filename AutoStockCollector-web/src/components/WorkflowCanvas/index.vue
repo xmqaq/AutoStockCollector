@@ -1251,8 +1251,8 @@ onMounted(() => {
   overflow: auto;
   background: var(--bg-soft);
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    linear-gradient(var(--bg-hover) 1px, transparent 1px),
+    linear-gradient(90deg, var(--bg-hover) 1px, transparent 1px);
   background-size: 20px 20px;
 }
 
@@ -1260,7 +1260,7 @@ onMounted(() => {
   position: absolute;
   width: 200px;
   background: var(--border-strong);
-  border: 2px solid var(--node-color, #4c4c4c);
+  border: 2px solid var(--node-color, var(--border-heavy));
   border-radius: 8px;
   cursor: move;
   user-select: none;
@@ -1298,7 +1298,7 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  background: #4c4c4c;
+  background: var(--border-heavy);
   border-radius: 6px 6px 0 0;
   font-size: 13px;
   font-weight: 600;
@@ -1319,7 +1319,7 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   padding: 8px 12px;
-  border-top: 1px solid #4c4c4c;
+  border-top: 1px solid var(--border-heavy);
 }
 
 .port {
@@ -1402,7 +1402,7 @@ onMounted(() => {
   align-items: center;
   padding: 12px 16px;
   background: var(--border-strong);
-  border-bottom: 1px solid #4c4c4c;
+  border-bottom: 1px solid var(--border-heavy);
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
