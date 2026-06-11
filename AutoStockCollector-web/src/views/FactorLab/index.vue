@@ -1366,14 +1366,14 @@ onUnmounted(() => {
 
 /* ── IC回测 进度 ── */
 .bt-progress {
-  background: linear-gradient(135deg, var(--bg-card-alt) 0%, #16213e 100%);
+  background: linear-gradient(135deg, var(--bg-card-alt) 0%, var(--bg-deep-soft) 100%);
   border: 1px solid var(--border-alt);
   border-radius: 10px;
   padding: 24px;
   margin-bottom: 16px;
 }
 .bt-progress-step {
-  color: #7c8db0;
+  color: var(--text-alt-secondary);
   font-size: 13px;
   text-align: center;
   margin-top: 10px;
@@ -1388,7 +1388,7 @@ onUnmounted(() => {
   flex-wrap: wrap;
 }
 .bt-metric-card {
-  background: #1e1e30;
+  background: var(--bg-card-alt);
   border: 1px solid var(--border-alt);
   border-radius: 8px;
   padding: 10px 14px;
@@ -1397,7 +1397,7 @@ onUnmounted(() => {
 }
 .bt-metric-title {
   font-size: 11px;
-  color: #7c8db0;
+  color: var(--text-alt-secondary);
   text-transform: uppercase;
   letter-spacing: 1px;
   margin-bottom: 6px;
@@ -1447,7 +1447,7 @@ onUnmounted(() => {
 }
 .bt-chart-title {
   font-size: 12px;
-  color: #7c8db0;
+  color: var(--text-alt-secondary);
   font-weight: 600;
 }
 .bt-expand-btn {
@@ -1480,7 +1480,7 @@ onUnmounted(() => {
   margin-top: 8px;
 }
 .bt-trend-toggle {
-  color: #7c8db0 !important;
+  color: var(--text-alt-secondary) !important;
 }
 .bt-trend-chart {
   height: 260px;
@@ -1494,19 +1494,19 @@ onUnmounted(() => {
 /* ── 因子选股 ── */
 .factor-bars { display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .factor-bar-item { display: flex; align-items: center; gap: 4px; width: calc(50% - 6px); }
-.fb-label { font-size: 11px; color: #a0aec0; min-width: 60px; white-space: nowrap; }
+.fb-label { font-size: 11px; color: var(--text-alt-secondary); min-width: 60px; white-space: nowrap; }
 .factor-bar-item .el-progress { flex: 1; }
 
 /* ── 评分进度弹窗 ── */
 .sc-progress-box {
-  background: linear-gradient(135deg, var(--bg-card-alt) 0%, #16213e 100%);
+  background: linear-gradient(135deg, var(--bg-card-alt) 0%, var(--bg-deep-soft) 100%);
   border: 1px solid var(--border-alt);
   border-radius: 10px;
   padding: 28px 20px;
 }
 .sc-progress-step {
   margin-bottom: 16px; text-align: center;
-  color: #7c8db0; font-size: 13px;
+  color: var(--text-alt-secondary); font-size: 13px;
   font-family: 'SF Mono', 'Fira Code', monospace;
   min-height: 20px;
 }
@@ -1515,10 +1515,10 @@ onUnmounted(() => {
 }
 .sc-progress-bar-wrap .el-progress {
   /* Make track darker for contrast */
-  --el-progress-track-color: #0a0a1a;
+  --el-progress-track-color: var(--bg-deep);
 }
 .sc-progress-bar-wrap .el-progress-bar__outer {
-  background-color: #0a0a1a !important;
+  background-color: var(--bg-deep) !important;
   box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
 }
 .sc-progress-bar-wrap .el-progress-bar__inner {
@@ -1530,26 +1530,26 @@ onUnmounted(() => {
   margin-top: 8px; font-family: 'SF Mono', 'Fira Code', monospace;
 }
 .sc-progress-hint {
-  text-align: center; color: #505050; font-size: 11px;
+  text-align: center; color: var(--text-alt-muted); font-size: 11px;
   margin-top: 14px; font-style: italic;
 }
 
 /* ── 相关性 ── */
-.heatmap-wrapper { background: var(--bg-card-alt); border: 1px solid #333; border-radius: 6px; padding: 8px; }
+.heatmap-wrapper { background: var(--bg-card-alt); border: 1px solid var(--border-alt); border-radius: 6px; padding: 8px; }
 .corr-legend { display: flex; gap: 16px; margin-top: 8px; justify-content: center; flex-wrap: wrap; }
-.corr-legend-item { font-size: 12px; color: #a0aec0; display: flex; align-items: center; }
+.corr-legend-item { font-size: 12px; color: var(--text-alt-secondary); display: flex; align-items: center; }
 
 /* ── 使用说明 ── */
 .help-card { line-height: 1.8; font-size: 14px; }
 .help-card h3 { color: var(--text-primary); }
 .help-card h4 { color: var(--text-secondary); margin: 16px 0 8px; font-size: 15px; }
-.help-card h5 { color: #a0aec0; margin: 12px 0 6px; font-size: 14px; }
+.help-card h5 { color: var(--text-alt-secondary); margin: 12px 0 6px; font-size: 14px; }
 .help-card p { color: var(--text-muted); }
 .help-card ul { padding-left: 20px; }
 .help-card li { color: var(--text-muted); margin: 4px 0; }
 .help-card li b { color: var(--text-secondary); }
 .help-card code {
-  background: var(--bg-card-alt); color: #c3e88d; padding: 1px 6px;
+  background: var(--bg-card-alt); color: var(--code-text); padding: 1px 6px;
   border-radius: 3px; font-size: 13px;
 }
 .help-code {
@@ -1603,7 +1603,7 @@ onUnmounted(() => {
 .validity-ir { font-weight: 500; }
 .ir-good { color: #67c23a; }
 .ir-weak { color: var(--text-muted); }
-.validity-na { color: #505050; font-size: 11px; }
+.validity-na { color: var(--text-alt-muted); font-size: 11px; }
 
 /* ── 紧凑表格 ── */
 .compact-table { --factor-row-height: 32px; }
@@ -1614,7 +1614,7 @@ onUnmounted(() => {
 
 /* ── 斑马纹与行高亮增强 ── */
 .factor-lab .el-table__body tr.el-table__row--striped td {
-  background: rgba(255,255,255,0.015);
+  background: var(--bg-hover-subtle);
 }
 .factor-lab .el-table__body tr.el-table__row--striped:hover td {
   background: rgba(64,158,255,0.06);

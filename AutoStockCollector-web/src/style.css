@@ -22,8 +22,13 @@
   --text-alt-secondary: #606266;
   --text-alt-body: #606266;
   --text-alt-primary: #303133;
+  --text-alt-strong: #303133;
   /* 弱化链接/高亮文字 */
   --color-link-soft: #409eff;
+  --code-text: #3a8a52;
+  /* 状态浅底 */
+  --tint-success-bg: #f0f9eb;
+  --tint-danger-bg: #fef0f0;
   /* 滚动条 */
   --scrollbar-track: #f0f2f5;
   --scrollbar-thumb: #c0c4cc;
@@ -52,7 +57,11 @@ html.dark {
   --text-alt-secondary: #8888a8;
   --text-alt-body: #c0c2dd;
   --text-alt-primary: #e0e2f0;
+  --text-alt-strong: #ffffff;
   --color-link-soft: #a0cfff;
+  --code-text: #c3e88d;
+  --tint-success-bg: #0f2014;
+  --tint-danger-bg: #2a1515;
   --scrollbar-track: #1f1f1f;
   --scrollbar-thumb: #434343;
   --scrollbar-thumb-hover: #5a5a5a;
