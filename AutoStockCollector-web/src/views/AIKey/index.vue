@@ -144,6 +144,23 @@
             </div>
           </div>
 
+          <!-- ── 优先级 ── -->
+          <div class="ak-section ak-priority-section">
+            <span class="ak-section-label">优先级</span>
+            <div class="ak-priority-row">
+              <el-input-number
+                v-model="row.priority"
+                :min="1"
+                :max="99"
+                size="small"
+                controls-position="right"
+                class="ak-priority-input"
+                @change="savePriority(row)"
+              />
+              <span class="ak-priority-hint">数字越小越先调用，失败自动切换下一家</span>
+            </div>
+          </div>
+
           <!-- ── 验证行 ── -->
           <div class="ak-section ak-test-section">
             <div class="ak-test-status">
@@ -313,7 +330,9 @@ async function loadKeys() {
   loading.value = true
   try {
     const res = await aiKeyApi.list()
-    keys.value = (res.data?.data || []).map((k: AIKeyConfig) => ({ ...k, api_key: '' }))
+    keys.value = (res.data?.data || [])
+      .map((k: AIKeyConfig) => ({ ...k, api_key: '' }))
+      .sort((a: AIKeyConfig, b: AIKeyConfig) => (a.priority ?? 99) - (b.priority ?? 99))
     for (const key of keys.value) {
       if (!modelOptions.value[key.provider]?.length) {
         modelOptions.value[key.provider] = []
@@ -380,6 +399,17 @@ async function toggle(row: KeyRow) {
   } catch {
     ElMessage.error('操作失败')
     row.enabled = !row.enabled
+  }
+}
+
+async function savePriority(row: KeyRow) {
+  if (row.priority == null) return
+  try {
+    await aiKeyApi.update({ provider: row.provider, name: row.name, enabled: row.enabled, priority: row.priority, base_url: row.base_url })
+    keys.value = [...keys.value].sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99))
+    ElMessage.success(`${row.name} 优先级 → ${row.priority}`)
+  } catch {
+    ElMessage.error('优先级保存失败')
   }
 }
 
@@ -565,6 +595,11 @@ onMounted(loadKeys)
 
 /* ── 测试行 ── */
 .ak-test-section { justify-content: space-between; padding-top: 4px; border-top: 1px solid #111120; margin-top: 2px; }
+
+/* 优先级 */
+.ak-priority-row { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+.ak-priority-input { width: 86px; flex-shrink: 0; }
+.ak-priority-hint { font-size: 11px; color: #565670; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ak-test-status { display: flex; align-items: center; gap: 5px; }
 .ak-test-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .ak-test-dot.valid   { background: #2ecc71; }
