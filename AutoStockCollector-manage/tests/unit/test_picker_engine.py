@@ -1,13 +1,84 @@
 """AI选股引擎测试：mock DAL / AnalysisEngine / saver，不连 DB / 不发 LLM。"""
 import unittest
 import sys
+from datetime import timedelta
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from modules.ai.foundation.dal import FactorInputs
-from modules.ai.engines.picker import PickerEngine
+from modules.ai.engines.picker import PickerEngine, get_progress
+from utils.helpers import beijing_now
+
+
+class TestGetProgressStaleGuard(unittest.TestCase):
+    def _db_with_doc(self, doc):
+        coll = MagicMock()
+        coll.find_one.return_value = doc
+        db = MagicMock()
+        db.__getitem__.side_effect = lambda n: coll
+        return db
+
+    def test_stale_running_doc_reported_dead(self):
+        """is_running=True 但 updated_at 超过10分钟未推进 → 视为已中断。"""
+        doc = {"key": "current", "is_running": True, "progress": 29,
+               "status": "初筛 2600/5209 只...",
+               "updated_at": beijing_now() - timedelta(minutes=30)}
+        with patch("config.database.DatabaseConfig.get_database",
+                   return_value=self._db_with_doc(doc)):
+            prog = get_progress()
+        self.assertFalse(prog["is_running"])
+        self.assertIn("中断", prog["status"])
+
+    def test_fresh_running_doc_untouched(self):
+        doc = {"key": "current", "is_running": True, "progress": 50,
+               "status": "深度评分 1/50 只...", "updated_at": beijing_now()}
+        with patch("config.database.DatabaseConfig.get_database",
+                   return_value=self._db_with_doc(doc)):
+            prog = get_progress()
+        self.assertTrue(prog["is_running"])
+
+
+class TestRunLock(unittest.TestCase):
+    """跨进程选股互斥：另一实例运行中时本次应跳过且不写结果。"""
+
+    def _engine(self):
+        dal = MagicMock()
+        dal.list_universe.return_value = ["A"]
+        dal.get_factor_inputs.side_effect = lambda code, **kw: FactorInputs(
+            code=code, name="正常股", closes=[10.0] * 30, volumes=[1000.0] * 30,
+            pe=15.0, pb=2.0, main_net_inflow=1e6, total_amount=5e8)
+        eng = MagicMock()
+        eng.analyze.side_effect = lambda code, **kw: {
+            "code": code, "name": code, "scores": {"composite": 60}, "source": "llm"}
+        saver = MagicMock()
+        return PickerEngine(dal=dal, analysis_engine=eng, result_saver=saver), saver
+
+    def test_lock_held_by_other_run_skips(self):
+        coll = MagicMock()
+        coll.find_one_and_update.return_value = None   # 抢锁失败
+        coll.find_one.return_value = {"key": "current", "is_running": True,
+                                      "updated_at": beijing_now()}
+        db = MagicMock()
+        db.__getitem__.side_effect = lambda n: coll
+        engine, saver = self._engine()
+        with patch("config.database.DatabaseConfig.get_database", return_value=db):
+            result = engine.run(top_n=1, candidate_pool=1)
+        self.assertTrue(result.get("skipped"))
+        self.assertEqual(result["picks"], [])
+        saver.assert_not_called()
+
+    def test_stale_lock_can_be_claimed(self):
+        coll = MagicMock()
+        coll.find_one_and_update.return_value = {"key": "current"}  # 抢到锁（含僵死场景）
+        db = MagicMock()
+        db.__getitem__.side_effect = lambda n: coll
+        engine, saver = self._engine()
+        with patch("config.database.DatabaseConfig.get_database", return_value=db):
+            result = engine.run(top_n=1, candidate_pool=1)
+        self.assertFalse(result.get("skipped", False))
+        self.assertTrue(saver.called)
 
 
 class TestPickerEngine(unittest.TestCase):

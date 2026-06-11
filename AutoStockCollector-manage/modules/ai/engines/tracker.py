@@ -15,11 +15,14 @@ logger = get_logger(__name__)
 KlineRow = Tuple[str, float]  # (date_str, close)
 
 
-def _default_results_loader(limit: int) -> List[Dict[str, Any]]:
+def _default_results_loader(limit: int, strategy: Optional[str] = None) -> List[Dict[str, Any]]:
     from config.database import DatabaseConfig
     db = DatabaseConfig.get_database()
+    query: Dict[str, Any] = {"picks.0": {"$exists": True}}
+    if strategy:
+        query["strategy"] = strategy
     cursor = db["ai_pick_results"].find(
-        {"picks.0": {"$exists": True}},
+        query,
         {"_id": 0, "timestamp": 1, "strategy": 1,
          "picks.code": 1, "picks.name": 1, "picks.composite": 1},
     ).sort("timestamp", -1).limit(limit)
@@ -96,8 +99,10 @@ class PickTracker:
         kline_loader: Optional[Callable[[str, str, int], List[KlineRow]]] = None,
         trading_dates_loader: Optional[Callable[[], List[str]]] = None,
         market_loader: Optional[Callable[[List[str]], Dict[str, Dict[str, float]]]] = None,
+        strategy: Optional[str] = None,
     ):
-        self.results_loader = results_loader or _default_results_loader
+        self.results_loader = results_loader or (
+            lambda limit: _default_results_loader(limit, strategy))
         self.kline_loader = kline_loader or _default_kline_loader
         self.trading_dates_loader = trading_dates_loader or _default_trading_dates_loader
         self.market_loader = market_loader or _default_market_loader

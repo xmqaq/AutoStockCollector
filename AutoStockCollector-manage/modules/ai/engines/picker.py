@@ -47,14 +47,61 @@ def _update_progress(progress: int, status: str, is_running: bool = True,
         pass
 
 
+_STALE_MINUTES = 10  # 进度超过该时长未推进视为运行已死（正常更新间隔为秒级）
+
+
 def get_progress() -> Dict[str, Any]:
     try:
+        from datetime import timedelta
         from config.database import DatabaseConfig
         db = DatabaseConfig.get_database()
         doc = db["pick_progress"].find_one({"key": _PROGRESS_KEY}, {"_id": 0})
-        return doc or {"is_running": False, "progress": 0, "status": ""}
+        if not doc:
+            return {"is_running": False, "progress": 0, "status": ""}
+        # 僵尸进度防护：运行进程被杀时文档永远停在中间态，前端会一直显示"执行中"
+        updated = doc.get("updated_at")
+        if doc.get("is_running") and updated is not None:
+            if beijing_now() - updated > timedelta(minutes=_STALE_MINUTES):
+                doc["is_running"] = False
+                doc["status"] = f"{doc.get('status', '')}（运行已中断，可重新发起）"
+        return doc
     except Exception:
         return {"is_running": False, "progress": 0, "status": ""}
+
+
+def _acquire_run_lock() -> bool:
+    """跨进程选股互斥：原子抢占 pick_progress 文档。
+    仅当无运行中任务、或运行已超时僵死时才能拿到锁；
+    防止多实例/调度器并发触发的选股互相覆盖进度与结果。
+    拿锁环节自身异常时放行（降级为无锁，不因DB抖动阻塞选股）。
+    """
+    try:
+        from datetime import timedelta
+        from config.database import DatabaseConfig
+        db = DatabaseConfig.get_database()
+        now = beijing_now()
+        stale_before = now - timedelta(minutes=_STALE_MINUTES)
+        claimed = db["pick_progress"].find_one_and_update(
+            {"key": _PROGRESS_KEY,
+             "$or": [{"is_running": {"$ne": True}},
+                     {"updated_at": {"$lt": stale_before}}]},
+            {"$set": {"is_running": True, "progress": 5,
+                      "status": "正在加载股票池...", "updated_at": now}},
+        )
+        if claimed is not None:
+            return True
+        if db["pick_progress"].find_one({"key": _PROGRESS_KEY}) is None:
+            # 首次运行无文档，直接创建
+            db["pick_progress"].update_one(
+                {"key": _PROGRESS_KEY},
+                {"$set": {"is_running": True, "progress": 5,
+                          "status": "正在加载股票池...", "updated_at": now}},
+                upsert=True,
+            )
+            return True
+        return False
+    except Exception:
+        return True
 
 
 def _default_saver(doc: Dict[str, Any]) -> None:
@@ -231,7 +278,11 @@ class PickerEngine:
     def _run_internal(self, strategy: str, top_n: int,
                       candidate_pool: int, use_cache: bool) -> Dict[str, Any]:
 
-        _update_progress(5, "正在加载股票池...")
+        if not _acquire_run_lock():
+            logger.warning("检测到另一选股任务正在运行（可能来自其他实例/调度器），本次跳过")
+            return {"strategy": strategy, "picks": [], "skipped": True,
+                    "timestamp": beijing_now().isoformat()}
+
         universe = self.dal.list_universe()
         if not universe:
             _update_progress(100, "选股完成（无可用股票）", is_running=False)

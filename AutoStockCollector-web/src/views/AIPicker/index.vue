@@ -168,7 +168,7 @@
         <div v-else-if="trackError" class="ap-track-tip">{{ trackError }}</div>
         <template v-else-if="track">
           <div class="ap-track-meta">
-            已跟踪 {{ track.runs_count }} 次选股 · 入场=选股日(含)后首个收盘价 · 基准=同窗口全市场等权平均收益
+            已跟踪 {{ track.runs_count }} 次选股（仅 default 策略）· 入场=选股日(含)后首个收盘价 · 基准=同窗口全市场等权平均收益 · 当日批次需待收盘K线入库后才可评估（显示为 -）
           </div>
           <el-table :data="overallRows" size="small" class="ap-table ap-track-table">
             <el-table-column prop="horizon" label="持有期" width="70" align="center" />
@@ -270,7 +270,7 @@ async function toggleTrack() {
     trackLoading.value = true
     trackError.value = ''
     try {
-      const res = await aiServiceApi.pickTrack({ horizons: '1,3,5,10', limit: 20 })
+      const res = await aiServiceApi.pickTrack({ horizons: '1,3,5,10', limit: 50, strategy: 'default' })
       track.value = res.data?.data || null
       if (!track.value) trackError.value = '暂无跟踪数据'
     } catch {
@@ -461,12 +461,17 @@ function startProgressPolling() {
       const data = res.data?.data
       if (data) {
         progressData.value = data
-        if (!data.is_running && data.progress >= 100) {
+        if (!data.is_running) {
+          // 完成或后端判定运行已中断（僵尸进度），都停止轮询并恢复按钮
           stopProgressPolling()
           running.value = false
-          showDoneTip.value = true
-          await loadResults()
-          setTimeout(() => { showDoneTip.value = false }, 4000)
+          if (data.progress >= 100) {
+            showDoneTip.value = true
+            await loadResults()
+            setTimeout(() => { showDoneTip.value = false }, 4000)
+          } else if (data.status) {
+            ElMessage.warning(data.status)
+          }
         }
       }
     } catch { /* ignore */ }

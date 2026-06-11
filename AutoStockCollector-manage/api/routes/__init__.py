@@ -1086,14 +1086,16 @@ def ai_pick_results():
 @api_bp.route("/ai/pick/track", methods=["GET"])
 def ai_pick_track():
     """选股效果跟踪：历史 picks 的后续 N 日收益与胜率。
-    参数：horizons=1,3,5,10（交易日）、limit=20（最近N次选股）。
+    参数：horizons=1,3,5,10（交易日）、limit=20（最近N次选股）、
+    strategy=default（按策略过滤，空则全部）。
     """
     try:
         from modules.ai.engines.tracker import PickTracker
         raw = request.args.get("horizons", "1,3,5,10")
         horizons = [int(x) for x in raw.split(",") if x.strip().isdigit()] or [1, 3, 5, 10]
         limit = min(int(request.args.get("limit", 20)), 100)
-        data = PickTracker().evaluate(horizons=horizons, limit=limit)
+        strategy = request.args.get("strategy") or None
+        data = PickTracker(strategy=strategy).evaluate(horizons=horizons, limit=limit)
         return jsonify({"success": True, "data": data})
     except Exception as e:
         logger.error(f"AI pick track failed: {e}")

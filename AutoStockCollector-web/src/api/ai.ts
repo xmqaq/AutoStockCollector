@@ -468,7 +468,7 @@ export const aiServiceApi = {
   pickProgress() {
     return client.get('/api/v1/ai/pick/progress')
   },
-  pickTrack(params: { horizons?: string; limit?: number } = {}) {
+  pickTrack(params: { horizons?: string; limit?: number; strategy?: string } = {}) {
     return client.get('/api/v1/ai/pick/track', { params })
   },
 }
