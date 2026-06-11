@@ -28,6 +28,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { getChartTheme as ct } from '@/utils/chartTheme'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import {
@@ -249,30 +250,30 @@ const chartOption = computed(() => {
 
   const yAxis = showVolume.value
     ? [
-        { scale: true, splitArea: { show: false }, axisLine: { lineStyle: { color: '#444' } }, splitLine: { lineStyle: { color: '#2c2c2c' } }, axisLabel: { color: '#909399', fontSize: 11 }, gridIndex: 0 },
-        { scale: true, splitArea: { show: false }, axisLine: { lineStyle: { color: '#444' } }, splitLine: { lineStyle: { color: '#2c2c2c' } }, axisLabel: { color: '#909399', fontSize: 11, formatter: (v: number) => (v / 100 / 1e4).toFixed(0) + '万' }, gridIndex: 1 },
+        { scale: true, splitArea: { show: false }, axisLine: { lineStyle: { color: ct().axisLineColor } }, splitLine: { lineStyle: { color: ct().splitLineColor } }, axisLabel: { color: ct().textColor, fontSize: 11 }, gridIndex: 0 },
+        { scale: true, splitArea: { show: false }, axisLine: { lineStyle: { color: ct().axisLineColor } }, splitLine: { lineStyle: { color: ct().splitLineColor } }, axisLabel: { color: ct().textColor, fontSize: 11, formatter: (v: number) => (v / 100 / 1e4).toFixed(0) + '万' }, gridIndex: 1 },
       ]
     : [
-        { scale: true, splitArea: { show: false }, axisLine: { lineStyle: { color: '#444' } }, splitLine: { lineStyle: { color: '#2c2c2c' } }, axisLabel: { color: '#909399', fontSize: 11 } },
+        { scale: true, splitArea: { show: false }, axisLine: { lineStyle: { color: ct().axisLineColor } }, splitLine: { lineStyle: { color: ct().splitLineColor } }, axisLabel: { color: ct().textColor, fontSize: 11 } },
       ]
 
   const xAxis = showVolume.value
     ? [
-        { type: 'category', data: dates, scale: true, boundaryGap: false, axisLine: { lineStyle: { color: '#444' } }, splitLine: { show: false }, axisLabel: { color: '#909399', fontSize: 11 }, min: 'dataMin', max: 'dataMax', gridIndex: 0 },
-        { type: 'category', data: dates, scale: true, boundaryGap: false, axisLine: { lineStyle: { color: '#444' } }, splitLine: { show: false }, axisLabel: { show: false }, min: 'dataMin', max: 'dataMax', gridIndex: 1 },
+        { type: 'category', data: dates, scale: true, boundaryGap: false, axisLine: { lineStyle: { color: ct().axisLineColor } }, splitLine: { show: false }, axisLabel: { color: ct().textColor, fontSize: 11 }, min: 'dataMin', max: 'dataMax', gridIndex: 0 },
+        { type: 'category', data: dates, scale: true, boundaryGap: false, axisLine: { lineStyle: { color: ct().axisLineColor } }, splitLine: { show: false }, axisLabel: { show: false }, min: 'dataMin', max: 'dataMax', gridIndex: 1 },
       ]
     : [
-        { type: 'category', data: dates, scale: true, boundaryGap: false, axisLine: { lineStyle: { color: '#444' } }, splitLine: { show: false }, axisLabel: { color: '#909399', fontSize: 11 }, min: 'dataMin', max: 'dataMax' },
+        { type: 'category', data: dates, scale: true, boundaryGap: false, axisLine: { lineStyle: { color: ct().axisLineColor } }, splitLine: { show: false }, axisLabel: { color: ct().textColor, fontSize: 11 }, min: 'dataMin', max: 'dataMax' },
       ]
 
   const allSeries: unknown[] = [klineSeries, ...maSeries, ...annotationSeries, ...volumeSeries]
 
   return {
-    backgroundColor: '#1f1f1f',
+    backgroundColor: 'transparent',
     animation: false,
     legend: showVolume.value
-      ? { top: 4, left: 'center', textStyle: { color: '#909399' }, data: ['K线', ...selectedMAs.value, ...(showAnnotations.value && props.annotations.length > 0 ? ['AI标注'] : []), '成交量'] }
-      : { top: 4, left: 'center', textStyle: { color: '#909399' }, data: ['K线', ...selectedMAs.value] },
+      ? { top: 4, left: 'center', textStyle: { color: ct().textColor }, data: ['K线', ...selectedMAs.value, ...(showAnnotations.value && props.annotations.length > 0 ? ['AI标注'] : []), '成交量'] }
+      : { top: 4, left: 'center', textStyle: { color: ct().textColor }, data: ['K线', ...selectedMAs.value] },
     axisPointer: {
       link: [{ xAxisIndex: 'all' }],
       label: { backgroundColor: '#555' },
@@ -283,9 +284,9 @@ const chartOption = computed(() => {
         type: 'cross',
         crossStyle: { color: '#888' },
       },
-      backgroundColor: '#2c2c2c',
-      borderColor: '#444',
-      textStyle: { color: '#e5eaf3', fontSize: 12 },
+      backgroundColor: ct().tooltipBg,
+      borderColor: ct().tooltipBorder,
+      textStyle: { color: ct().tooltipText, fontSize: 12 },
       formatter(params: unknown[]) {
         const arr = params as Array<{ seriesName: string; dataIndex: number }>
         if (!arr || !arr.length) return ''
@@ -307,9 +308,9 @@ const chartOption = computed(() => {
         const amtStr = Number.isFinite(amt) && amt > 0
           ? (amt >= 1e8 ? `${(amt / 1e8).toFixed(2)} 亿` : `${(amt / 1e4).toFixed(2)} 万`)
           : '--'
-        const chgColor = Number.isFinite(chg) ? (chg >= 0 ? '#ef5350' : '#26a69a') : '#e5eaf3'
+        const chgColor = Number.isFinite(chg) ? (chg >= 0 ? '#ef5350' : '#26a69a') : ct().tooltipText
         const chgStr = Number.isFinite(chg) ? `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%` : '--'
-        const row = (k: string, v: string, color = '#e5eaf3') =>
+        const row = (k: string, v: string, color = ct().tooltipText) =>
           `<div style="display:flex;justify-content:space-between;gap:18px;line-height:1.6"><span style="color:#909399">${k}</span><span style="color:${color};font-weight:500">${v}</span></div>`
         const annotInfo = props.annotations.find(a => findDateIndex(dates, a.date) === idx)
         let annotHtml = ''
@@ -322,7 +323,7 @@ const chartOption = computed(() => {
         }
         return `
           <div style="padding:6px 10px;min-width:170px">
-            <div style="font-weight:bold;margin-bottom:6px;color:#e5eaf3">${date}</div>
+            <div style="font-weight:bold;margin-bottom:6px;color:${ct().tooltipText}">${date}</div>
             ${row('开盘', fmt(o))}
             ${row('最高', fmt(h), '#ef5350')}
             ${row('最低', fmt(l), '#26a69a')}
@@ -353,8 +354,8 @@ const chartOption = computed(() => {
         height: 20,
         start: 0,
         end: 100,
-        textStyle: { color: '#909399' },
-        borderColor: '#444',
+        textStyle: { color: ct().textColor },
+        borderColor: ct().tooltipBorder,
         fillerColor: 'rgba(64,158,255,0.1)',
         handleStyle: { color: '#409eff' },
       },

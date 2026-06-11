@@ -13,6 +13,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { getChartTheme as ct } from '@/utils/chartTheme'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { LineChart } from 'echarts/charts'
@@ -76,7 +77,7 @@ const chartOption = computed(() => {
       smooth: false,
       showSymbol: false,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      lineStyle: { width: 1, type: 'dashed', color: '#909399' } as any,
+      lineStyle: { width: 1, type: 'dashed', color: ct().textColor } as any,
     })
   }
 
@@ -84,17 +85,17 @@ const chartOption = computed(() => {
     backgroundColor: 'transparent',
     tooltip: {
       trigger: 'axis',
-      backgroundColor: '#2c2c2c',
-      borderColor: '#444',
-      textStyle: { color: '#e5eaf3' },
+      backgroundColor: ct().tooltipBg,
+      borderColor: ct().tooltipBorder,
+      textStyle: { color: ct().tooltipText },
       formatter: (params: unknown[]) => {
         const ps = params as Array<{ axisValue: string; value: number; seriesName: string; color: string; dataIndex: number }>
         const idx = ps[0].dataIndex
         const record = data[idx]
-        let html = `<div style="padding:8px"><div style="font-weight:bold;color:#e5eaf3">${ps[0].axisValue}</div>`
+        let html = `<div style="padding:8px"><div style="font-weight:bold;color:${ct().tooltipText}">${ps[0].axisValue}</div>`
         if (record?.profit_amount !== undefined) {
           const pnlColor = record.profit_amount >= 0 ? '#ef5350' : '#26a69a'
-          html += `<div style="color:#e5eaf3">净值: ${record.value.toFixed(2)}</div>`
+          html += `<div style="color:${ct().tooltipText}">净值: ${record.value.toFixed(2)}</div>`
           html += `<div style="color:${pnlColor}">盈亏: ${record.profit_amount >= 0 ? '+' : ''}${record.profit_amount.toFixed(2)}</div>`
           html += `<div style="color:${pnlColor}">收益率: ${record.profit_pct !== undefined ? (record.profit_pct >= 0 ? '+' : '') + record.profit_pct.toFixed(2) + '%' : ''}</div>`
         } else {
@@ -109,21 +110,21 @@ const chartOption = computed(() => {
     legend: hasCosts ? {
       data: ['账户净值', '初始资金'],
       bottom: 0,
-      textStyle: { color: '#909399' },
+      textStyle: { color: ct().textColor },
     } as const : undefined,
     grid: { left: 50, right: 20, top: 20, bottom: hasCosts ? 40 : 30 },
     xAxis: {
       type: 'category',
       data: dates,
-      axisLine: { lineStyle: { color: '#444' } },
-      axisLabel: { color: '#909399', fontSize: 10 },
+      axisLine: { lineStyle: { color: ct().axisLineColor } },
+      axisLabel: { color: ct().textColor, fontSize: 10 },
     },
     yAxis: {
       type: 'value',
-      axisLine: { lineStyle: { color: '#444' } },
-      splitLine: { lineStyle: { color: '#2c2c2c', type: 'dashed' } },
+      axisLine: { lineStyle: { color: ct().axisLineColor } },
+      splitLine: { lineStyle: { color: ct().splitLineColor, type: 'dashed' } },
       axisLabel: {
-        color: '#909399',
+        color: ct().textColor,
         formatter: (val: number) => val >= 0 ? `+${val}` : val.toString(),
       },
     },

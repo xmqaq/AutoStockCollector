@@ -626,6 +626,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { getChartTheme as ct } from '@/utils/chartTheme'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Plus, Edit, Delete, VideoPlay, VideoPause, Clock, Timer,
@@ -681,7 +682,7 @@ const factorRadarOptions = computed(() => {
       indicator: dims.map(d => ({ name: d.name, max: 100 })),
       center: ['50%', '55%'],
       radius: '65%',
-      axisName: { color: '#606266', fontSize: 13 },
+      axisName: { color: ct().legendText, fontSize: 13 },
       splitArea: { areaStyle: { color: ['rgba(64,158,255,0.02)', 'rgba(64,158,255,0.05)'] } },
     },
     series: [{

@@ -373,6 +373,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { getChartTheme as ct } from '@/utils/chartTheme'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { useCollectStore } from '@/stores/collectStore'
 import { collectApi } from '@/api/collect'
@@ -578,7 +579,7 @@ const coverageText = computed(() => {
 })
 
 const gaugeOption = computed(() => ({
-  backgroundColor: '#1f1f1f',
+  backgroundColor: 'transparent',
   series: [
     {
       type: 'gauge',
@@ -592,16 +593,16 @@ const gaugeOption = computed(() => ({
           width: 12,
           color: [
             [overallPercent.value / 100, '#409eff'],
-            [1, '#2c2c2c'],
+            [1, ct().splitLineColor],
           ],
         },
       },
       pointer: { show: true, length: '60%', width: 4 },
       axisTick: { show: false },
       splitLine: { show: false },
-      axisLabel: { color: '#909399', fontSize: 10 },
+      axisLabel: { color: ct().textColor, fontSize: 10 },
       title: {
-        color: '#909399',
+        color: ct().textColor,
         fontSize: 12,
         offsetCenter: [0, '70%'],
       },

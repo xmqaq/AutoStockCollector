@@ -311,7 +311,7 @@
               <el-button v-if="corrRunning" type="danger" @click="cancelCorrelation">取消</el-button>
             </el-form-item>
           </el-form>
-          <div style="font-size:11px;color:#606880;line-height:1.4">
+          <div style="font-size:11px;color:var(--text-alt-muted);line-height:1.4">
             <div>内部使用 <b>90天K线</b> 计算因子值，以确保统计稳定性</div>
             <div v-if="corrFactorScope.length > 0">已选 {{ corrFactorScope.length }} 个因子</div>
           </div>

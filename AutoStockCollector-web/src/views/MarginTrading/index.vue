@@ -67,6 +67,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
+import { getChartTheme as ct } from '@/utils/chartTheme'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { LineChart } from 'echarts/charts'
@@ -102,12 +103,12 @@ const lineOption = computed(() => {
   const dates = sorted.map(d => d.date)
   const balances = sorted.map(d => d.rz_balance)
   return {
-    backgroundColor: '#1f1f1f',
+    backgroundColor: 'transparent',
     tooltip: {
       trigger: 'axis',
-      backgroundColor: '#2c2c2c',
-      borderColor: '#444',
-      textStyle: { color: '#e5eaf3' },
+      backgroundColor: ct().tooltipBg,
+      borderColor: ct().tooltipBorder,
+      textStyle: { color: ct().tooltipText },
     },
     grid: { left: 80, right: 20, top: 30, bottom: 60 },
     dataZoom: [
@@ -118,21 +119,21 @@ const lineOption = computed(() => {
       type: 'category',
       data: dates,
       axisLabel: {
-        color: '#909399',
+        color: ct().textColor,
         rotate: 30,
         fontSize: 10,
         // 最多显示 8 个标签，避免密集重叠
         interval: Math.max(0, Math.floor(dates.length / 8) - 1),
       },
-      axisLine: { lineStyle: { color: '#444' } },
+      axisLine: { lineStyle: { color: ct().axisLineColor } },
     },
     yAxis: {
       type: 'value',
       axisLabel: {
-        color: '#909399',
+        color: ct().textColor,
         formatter: (v: number) => (v >= 1e8 ? `${(v / 1e8).toFixed(1)}亿` : `${(v / 1e4).toFixed(0)}万`),
       },
-      splitLine: { lineStyle: { color: '#2c2c2c' } },
+      splitLine: { lineStyle: { color: ct().splitLineColor } },
     },
     series: [
       {

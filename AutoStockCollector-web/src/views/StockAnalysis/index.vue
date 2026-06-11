@@ -283,6 +283,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, reactive } from 'vue'
+import { getChartTheme as ct } from '@/utils/chartTheme'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Loading, ArrowUp, ArrowDown, Setting } from '@element-plus/icons-vue'
@@ -515,7 +516,7 @@ const klineOption = computed(() => {
     animation: false,
     legend: {
       top: 0, left: 'center',
-      textStyle: { color: '#909399', fontSize: 11 },
+      textStyle: { color: ct().textColor, fontSize: 11 },
       data: ['MA5', 'MA20', 'MA60'],
     },
     axisPointer: {
@@ -525,15 +526,15 @@ const klineOption = computed(() => {
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'cross', crossStyle: { color: '#888' } },
-      backgroundColor: '#1a1a2e',
-      borderColor: '#333',
-      textStyle: { color: '#e5eaf3', fontSize: 12 },
+      backgroundColor: ct().tooltipBg,
+      borderColor: ct().tooltipBorder,
+      textStyle: { color: ct().tooltipText, fontSize: 12 },
       formatter(params: any[]) {
         if (!params?.length) return ''
         const idx = params[0]?.dataIndex
         if (idx == null || !kdata![idx]) return ''
         const r = kdata![idx]
-        const row = (k: string, v: string, c = '#e5eaf3') =>
+        const row = (k: string, v: string, c = ct().tooltipText) =>
           `<div style="display:flex;justify-content:space-between;gap:16px"><span style="color:#909399">${k}</span><span style="color:${c}">${v}</span></div>`
         return `<div style="padding:4px 8px;min-width:150px">
           <div style="font-weight:600;margin-bottom:4px">${r.date}</div>
@@ -550,16 +551,16 @@ const klineOption = computed(() => {
       { left: 60, right: 20, top: '75%', bottom: 50 },
     ],
     xAxis: [
-      { type: 'category', data: dates, boundaryGap: false, axisLine: { lineStyle: { color: '#333' } }, splitLine: { show: false }, axisLabel: { color: '#666', fontSize: 10, formatter: (v: string) => shortDate(v) }, gridIndex: 0 },
-      { type: 'category', data: dates, boundaryGap: false, axisLine: { lineStyle: { color: '#333' } }, splitLine: { show: false }, axisLabel: { show: false }, gridIndex: 1 },
+      { type: 'category', data: dates, boundaryGap: false, axisLine: { lineStyle: { color: ct().axisLineColor } }, splitLine: { show: false }, axisLabel: { color: ct().textColor, fontSize: 10, formatter: (v: string) => shortDate(v) }, gridIndex: 0 },
+      { type: 'category', data: dates, boundaryGap: false, axisLine: { lineStyle: { color: ct().axisLineColor } }, splitLine: { show: false }, axisLabel: { show: false }, gridIndex: 1 },
     ],
     yAxis: [
-      { scale: true, splitArea: { show: false }, axisLine: { lineStyle: { color: '#333' } }, splitLine: { lineStyle: { color: '#1a1a2e' } }, axisLabel: { color: '#666', fontSize: 10 }, gridIndex: 0 },
-      { scale: true, splitArea: { show: false }, axisLine: { lineStyle: { color: '#333' } }, splitLine: { lineStyle: { color: '#1a1a2e' } }, axisLabel: { color: '#666', fontSize: 10, formatter: (v: number) => v >= 1e8 ? (v / 1e8).toFixed(0) + '亿' : (v / 1e4).toFixed(0) + '万' }, gridIndex: 1 },
+      { scale: true, splitArea: { show: false }, axisLine: { lineStyle: { color: ct().axisLineColor } }, splitLine: { lineStyle: { color: ct().splitLineColor } }, axisLabel: { color: ct().textColor, fontSize: 10 }, gridIndex: 0 },
+      { scale: true, splitArea: { show: false }, axisLine: { lineStyle: { color: ct().axisLineColor } }, splitLine: { lineStyle: { color: ct().splitLineColor } }, axisLabel: { color: ct().textColor, fontSize: 10, formatter: (v: number) => v >= 1e8 ? (v / 1e8).toFixed(0) + '亿' : (v / 1e4).toFixed(0) + '万' }, gridIndex: 1 },
     ],
     dataZoom: [
       { type: 'inside', xAxisIndex: [0, 1], start: 0, end: 100 },
-      { type: 'slider', xAxisIndex: [0, 1], bottom: 8, height: 16, borderColor: '#333', fillerColor: 'rgba(100,100,200,0.1)', handleStyle: { color: '#555' }, textStyle: { color: '#666' }, labelFormatter: (_: number, v: string) => shortDate(v) },
+      { type: 'slider', xAxisIndex: [0, 1], bottom: 8, height: 16, borderColor: ct().tooltipBorder, fillerColor: 'rgba(100,100,200,0.1)', handleStyle: { color: '#555' }, textStyle: { color: ct().textColor }, labelFormatter: (_: number, v: string) => shortDate(v) },
     ],
     series: [
       {
@@ -582,13 +583,13 @@ const finChartOption = computed(() => {
   const labels = reversed.map(h => h.report_date?.slice(0, 7) || '')
   return {
     backgroundColor: 'transparent',
-    legend: { top: 0, textStyle: { color: '#909399', fontSize: 11 }, data: ['营收(亿)', '净利润(亿)', 'ROE(%)', '毛利率(%)'] },
-    tooltip: { trigger: 'axis', backgroundColor: '#1a1a2e', borderColor: '#333', textStyle: { color: '#e5eaf3', fontSize: 12 } },
+    legend: { top: 0, textStyle: { color: ct().textColor, fontSize: 11 }, data: ['营收(亿)', '净利润(亿)', 'ROE(%)', '毛利率(%)'] },
+    tooltip: { trigger: 'axis', backgroundColor: ct().tooltipBg, borderColor: ct().tooltipBorder, textStyle: { color: ct().tooltipText, fontSize: 12 } },
     grid: { left: 50, right: 50, top: 40, bottom: 30 },
-    xAxis: { type: 'category', data: labels, axisLabel: { color: '#666', fontSize: 10 }, axisLine: { lineStyle: { color: '#333' } } },
+    xAxis: { type: 'category', data: labels, axisLabel: { color: ct().textColor, fontSize: 10 }, axisLine: { lineStyle: { color: ct().axisLineColor } } },
     yAxis: [
-      { type: 'value', name: '亿元', nameTextStyle: { color: '#666', fontSize: 10 }, axisLabel: { color: '#666', fontSize: 10 }, splitLine: { lineStyle: { color: '#1a1a2e' } }, axisLine: { lineStyle: { color: '#333' } } },
-      { type: 'value', name: '%', nameTextStyle: { color: '#666', fontSize: 10 }, axisLabel: { color: '#666', fontSize: 10 }, splitLine: { show: false }, axisLine: { lineStyle: { color: '#333' } } },
+      { type: 'value', name: '亿元', nameTextStyle: { color: ct().textColor, fontSize: 10 }, axisLabel: { color: ct().textColor, fontSize: 10 }, splitLine: { lineStyle: { color: ct().splitLineColor } }, axisLine: { lineStyle: { color: ct().axisLineColor } } },
+      { type: 'value', name: '%', nameTextStyle: { color: ct().textColor, fontSize: 10 }, axisLabel: { color: ct().textColor, fontSize: 10 }, splitLine: { show: false }, axisLine: { lineStyle: { color: ct().axisLineColor } } },
     ],
     series: [
       { name: '营收(亿)', type: 'bar', data: reversed.map(h => h.revenue_yi), barMaxWidth: 30, itemStyle: { color: '#409eff', borderRadius: [2, 2, 0, 0] } },

@@ -76,6 +76,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
+import { getChartTheme as ct } from '@/utils/chartTheme'
 import { useRouter } from 'vue-router'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
@@ -139,14 +140,14 @@ const barOption = computed(() => {
   const names = top20.map(r => (r.name as string) || (r.code as string))
   const values = top20.map(r => +((r.main_net_inflow as number) / 1e8).toFixed(3))
   return {
-    backgroundColor: '#1a1a1a',
+    backgroundColor: 'transparent',
     tooltip: { trigger: 'axis', formatter: (p: unknown[]) => {
       const item = (p as { name: string; value: number }[])[0]
       return `${item.name}: ${item.value > 0 ? '+' : ''}${item.value}亿`
     }},
     grid: { left: 60, right: 20, top: 20, bottom: 60 },
-    xAxis: { type: 'category', data: names, axisLabel: { color: '#909399', rotate: 30, fontSize: 11 } },
-    yAxis: { type: 'value', axisLabel: { color: '#909399', formatter: '{value}亿' } },
+    xAxis: { type: 'category', data: names, axisLabel: { color: ct().textColor, rotate: 30, fontSize: 11 } },
+    yAxis: { type: 'value', axisLabel: { color: ct().textColor, formatter: '{value}亿' } },
     series: [{
       type: 'bar',
       data: values.map(v => ({

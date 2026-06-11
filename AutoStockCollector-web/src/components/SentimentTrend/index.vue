@@ -94,6 +94,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { getChartTheme as ct } from '@/utils/chartTheme'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { LineChart } from 'echarts/charts'
@@ -134,15 +135,15 @@ const sentimentOption = computed(() => {
     backgroundColor: 'transparent',
     tooltip: {
       trigger: 'axis',
-      backgroundColor: '#2c2c2c',
-      borderColor: '#444',
-      textStyle: { color: '#e5eaf3' },
+      backgroundColor: ct().tooltipBg,
+      borderColor: ct().tooltipBorder,
+      textStyle: { color: ct().tooltipText },
       formatter: (params: unknown[]) => {
         const p = params[0] as { axisValue: string; value: number }
         const score = p.value
         const color = score >= 60 ? '#67c23a' : score >= 40 ? '#e6a23c' : '#f56c6c'
         return `<div style="padding:8px">
-          <div style="font-weight:bold;color:#e5eaf3">${p.axisValue}</div>
+          <div style="font-weight:bold;color:${ct().tooltipText}">${p.axisValue}</div>
           <div style="color:${color}">舆情指数: ${score}</div>
         </div>`
       },
@@ -151,16 +152,16 @@ const sentimentOption = computed(() => {
     xAxis: {
       type: 'category',
       data: data.map(d => d.date),
-      axisLine: { lineStyle: { color: '#444' } },
-      axisLabel: { color: '#909399', fontSize: 10 },
+      axisLine: { lineStyle: { color: ct().axisLineColor } },
+      axisLabel: { color: ct().textColor, fontSize: 10 },
     },
     yAxis: {
       type: 'value',
       min: 0,
       max: 100,
-      axisLine: { lineStyle: { color: '#444' } },
-      splitLine: { lineStyle: { color: '#2c2c2c', type: 'dashed' } },
-      axisLabel: { color: '#909399' },
+      axisLine: { lineStyle: { color: ct().axisLineColor } },
+      splitLine: { lineStyle: { color: ct().splitLineColor, type: 'dashed' } },
+      axisLabel: { color: ct().textColor },
     },
     series: [{
       type: 'line',

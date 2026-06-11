@@ -141,7 +141,7 @@ const treemapOption = computed(() => {
   }))
 
   return {
-    backgroundColor: '#1f1f1f',
+    backgroundColor: 'transparent',
     tooltip: {
       formatter: (p: { data: { name: string; sectorData: SectorRecord } }) => {
         const s = p.data.sectorData
