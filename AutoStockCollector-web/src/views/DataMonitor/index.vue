@@ -22,38 +22,19 @@
       </div>
     </el-card>
 
-    <!-- Gauge: data coverage + freshness -->
-    <el-card shadow="never" class="section-card">
-      <template #header><span>整体采集进度</span></template>
-      <div class="gauge-wrapper">
-        <v-chart :option="gaugeOption" style="height:200px;flex:1" autoresize />
-        <div class="freshness-panel">
-          <div class="freshness-title">数据时效性</div>
-          <div class="freshness-row">
-            <el-tag type="success" size="small">✅ 最新</el-tag>
-            <span class="freshness-count">{{ freshnessOk }} 类</span>
-          </div>
-          <div class="freshness-row">
-            <el-tag type="warning" size="small">⚠️ 需更新</el-tag>
-            <span class="freshness-count">{{ freshnessStale }} 类</span>
-          </div>
-          <div class="freshness-row">
-            <el-tag type="danger" size="small">❌ 异常</el-tag>
-            <span class="freshness-count">{{ freshnessError }} 类</span>
-          </div>
-          <div class="freshness-hint">{{ coverageText }}</div>
-        </div>
-      </div>
-    </el-card>
-
-    <!-- 数据完整性体检 -->
+    <!-- 数据完整性体检（含时效性概览） -->
     <el-card shadow="never" class="section-card">
       <template #header>
         <div class="card-header">
           <span>数据完整性（{{ coverage?.ref_date || '--' }}）</span>
-          <el-tag v-if="coverage?.overall === 'bad'" type="danger" size="small">❌ 有数据缺口</el-tag>
-          <el-tag v-else-if="coverage?.overall === 'warn'" type="warning" size="small">⚠️ 覆盖偏低</el-tag>
-          <el-tag v-else-if="coverage" type="success" size="small">✅ 完整</el-tag>
+          <div class="header-chips">
+            <el-tag v-if="freshnessStale > 0" type="warning" size="small">⚠️ {{ freshnessStale }} 类需更新</el-tag>
+            <el-tag v-if="freshnessError > 0" type="danger" size="small">❌ {{ freshnessError }} 类异常</el-tag>
+            <el-tag v-if="freshnessStale === 0 && freshnessError === 0" type="success" size="small">✅ {{ freshnessOk }} 类时效正常</el-tag>
+            <el-tag v-if="coverage?.overall === 'bad'" type="danger" size="small">❌ 有数据缺口</el-tag>
+            <el-tag v-else-if="coverage?.overall === 'warn'" type="warning" size="small">⚠️ 覆盖偏低</el-tag>
+            <el-tag v-else-if="coverage" type="success" size="small">✅ 覆盖完整</el-tag>
+          </div>
         </div>
       </template>
       <el-empty v-if="!coverage" description="加载中..." :image-size="40" />
@@ -78,8 +59,8 @@
         </el-table-column>
         <el-table-column label="缺口示例" min-width="220" show-overflow-tooltip>
           <template #default="{ row }">
-            <span v-if="row.missing_count > 0" class="coverage-missing">
-              缺 {{ row.missing_count }} 只<template v-if="row.missing_sample.length">：{{ row.missing_sample.join('、') }}…</template>
+            <span v-if="row.missing_count > 0" :class="row.status === 'ok' ? 'coverage-ok-text' : 'coverage-missing'">
+              缺 {{ row.missing_count }} 只<template v-if="row.status === 'ok'">（停牌等正常情形）</template><template v-if="row.missing_sample.length">：{{ row.missing_sample.join('、') }}…</template>
             </span>
             <span v-else class="coverage-ok-text">无</span>
           </template>
@@ -125,97 +106,6 @@
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
-
-    <!-- Task history -->
-    <el-card shadow="never" class="section-card" style="margin-top:16px">
-      <template #header>
-        <div class="card-header">
-          <span>任务历史</span>
-          <el-select v-model="taskStatusFilter" size="small" style="width:120px" @change="loadTasks">
-            <el-option label="全部" value="" />
-            <el-option label="运行中" value="running" />
-            <el-option label="已完成" value="completed" />
-            <el-option label="失败" value="failed" />
-            <el-option label="取消" value="cancelled" />
-          </el-select>
-        </div>
-      </template>
-      <el-empty v-if="collectStore.tasks.length === 0" description="暂无任务记录" />
-      <el-table v-else :data="pagedTasks" stripe>
-        <el-table-column prop="task_id" label="任务ID" width="200" show-overflow-tooltip />
-        <el-table-column prop="task_type" label="类型" width="120">
-          <template #default="{ row }">
-            <el-tag size="small">{{ typeLabel(row.task_type) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="status" label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag
-              :type="row.status === 'completed' && (row.success || 0) === 0 ? 'info' : statusType(row.status)"
-              size="small"
-            >{{ row.status === 'completed' && (row.success || 0) === 0 ? '无数据' : statusLabel(row.status) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="进度" min-width="200">
-          <template #default="{ row }">
-            <div class="prog-cell">
-              <span class="prog-main">
-                已完成 {{ row.progress || 0 }}/{{ row.total || 0 }} 只
-                <span v-if="row.total > 0" class="prog-pct">
-                  ({{ Math.round((row.progress || 0) / row.total * 100) }}%)
-                </span>
-              </span>
-              <el-progress
-                v-if="row.status === 'running' && row.total > 0"
-                :percentage="Math.min(100, Math.round((row.progress || 0) / row.total * 100))"
-                :stroke-width="4"
-                style="margin: 2px 0; width: 160px"
-              />
-              <span class="prog-sub">
-                成功 {{ row.success || 0 }}<template v-if="row.failed"> · <span class="prog-fail">失败 {{ row.failed }}</span></template>
-                <template v-if="row.eta_seconds != null && row.status === 'running'">
-                  · <span class="prog-eta">剩余约 {{ fmtEta(row.eta_seconds) }}</span>
-                </template>
-              </span>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="create_time" label="创建时间" width="160">
-          <template #default="{ row }">{{ fmtDateTime(row.create_time || row.created_at) }}</template>
-        </el-table-column>
-        <el-table-column label="参数" min-width="200">
-          <template #default="{ row }">
-            <span v-if="row.params?.start_date">{{ row.params.start_date }} ~ {{ row.params.end_date }}</span>
-            <span v-else-if="row.params?.mode">{{ row.params.mode }}</span>
-            <span v-else>快照</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="200">
-          <template #default="{ row }">
-            <el-button
-              v-if="row.status === 'running' || row.status === 'pending'"
-              size="small"
-              type="warning"
-              @click="handleCancel(row.task_id)"
-            >取消</el-button>
-            <template v-else>
-              <el-button size="small" type="primary" @click="handleRerun(row)">重跑</el-button>
-              <el-button size="small" type="danger" plain @click="handleDelete(row.task_id)">删除</el-button>
-            </template>
-          </template>
-        </el-table-column>
-      </el-table>
-      <el-pagination
-        v-if="collectStore.tasks.length > taskPageSize"
-        v-model:current-page="currentTaskPage"
-        v-model:page-size="taskPageSize"
-        :page-sizes="[20, 50, 100, 200]"
-        :total="collectStore.tasks.length"
-        layout="total, sizes, prev, pager, next"
-        background
-        class="table-pagination"
-      />
     </el-card>
 
     <!-- 数据健康状态总览表 -->
@@ -313,6 +203,9 @@
             <span v-if="gapData[row.value]?.completeness_pct != null" :class="gapData[row.value].completeness_pct < 90 ? 'stale-days' : ''">
               {{ gapData[row.value].completeness_pct }}%
             </span>
+            <span v-else-if="coveragePct(row.value) != null" :class="(coveragePct(row.value) ?? 100) < 90 ? 'stale-days' : ''">
+              {{ coveragePct(row.value) }}%
+            </span>
             <span v-else class="gap-hint">--</span>
           </template>
         </el-table-column>
@@ -341,6 +234,97 @@
           </template>
         </el-table-column>
       </el-table>
+    </el-card>
+
+    <!-- Task history -->
+    <el-card shadow="never" class="section-card" style="margin-top:16px">
+      <template #header>
+        <div class="card-header">
+          <span>任务历史</span>
+          <el-select v-model="taskStatusFilter" size="small" style="width:120px" @change="loadTasks">
+            <el-option label="全部" value="" />
+            <el-option label="运行中" value="running" />
+            <el-option label="已完成" value="completed" />
+            <el-option label="失败" value="failed" />
+            <el-option label="取消" value="cancelled" />
+          </el-select>
+        </div>
+      </template>
+      <el-empty v-if="collectStore.tasks.length === 0" description="暂无任务记录" />
+      <el-table v-else :data="pagedTasks" stripe>
+        <el-table-column prop="task_id" label="任务ID" width="200" show-overflow-tooltip />
+        <el-table-column prop="task_type" label="类型" width="120">
+          <template #default="{ row }">
+            <el-tag size="small">{{ typeLabel(row.task_type) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="status" label="状态" width="100">
+          <template #default="{ row }">
+            <el-tag
+              :type="row.status === 'completed' && (row.success || 0) === 0 ? 'info' : statusType(row.status)"
+              size="small"
+            >{{ row.status === 'completed' && (row.success || 0) === 0 ? '无数据' : statusLabel(row.status) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="进度" min-width="200">
+          <template #default="{ row }">
+            <div class="prog-cell">
+              <span class="prog-main">
+                已完成 {{ row.progress || 0 }}/{{ row.total || 0 }} 只
+                <span v-if="row.total > 0" class="prog-pct">
+                  ({{ Math.round((row.progress || 0) / row.total * 100) }}%)
+                </span>
+              </span>
+              <el-progress
+                v-if="row.status === 'running' && row.total > 0"
+                :percentage="Math.min(100, Math.round((row.progress || 0) / row.total * 100))"
+                :stroke-width="4"
+                style="margin: 2px 0; width: 160px"
+              />
+              <span class="prog-sub">
+                成功 {{ row.success || 0 }}<template v-if="row.failed"> · <span class="prog-fail">失败 {{ row.failed }}</span></template>
+                <template v-if="row.eta_seconds != null && row.status === 'running'">
+                  · <span class="prog-eta">剩余约 {{ fmtEta(row.eta_seconds) }}</span>
+                </template>
+              </span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="create_time" label="创建时间" width="160">
+          <template #default="{ row }">{{ fmtDateTime(row.create_time || row.created_at) }}</template>
+        </el-table-column>
+        <el-table-column label="参数" min-width="200">
+          <template #default="{ row }">
+            <span v-if="row.params?.start_date">{{ row.params.start_date }} ~ {{ row.params.end_date }}</span>
+            <span v-else-if="row.params?.mode">{{ row.params.mode }}</span>
+            <span v-else>快照</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="200">
+          <template #default="{ row }">
+            <el-button
+              v-if="row.status === 'running' || row.status === 'pending'"
+              size="small"
+              type="warning"
+              @click="handleCancel(row.task_id)"
+            >取消</el-button>
+            <template v-else>
+              <el-button size="small" type="primary" @click="handleRerun(row)">重跑</el-button>
+              <el-button size="small" type="danger" plain @click="handleDelete(row.task_id)">删除</el-button>
+            </template>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-pagination
+        v-if="collectStore.tasks.length > taskPageSize"
+        v-model:current-page="currentTaskPage"
+        v-model:page-size="taskPageSize"
+        :page-sizes="[10, 20, 50, 100]"
+        :total="collectStore.tasks.length"
+        layout="total, sizes, prev, pager, next"
+        background
+        class="table-pagination"
+      />
     </el-card>
 
     <!-- 补历史 dialog -->
@@ -417,20 +401,12 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { getChartTheme as ct } from '@/utils/chartTheme'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { useCollectStore } from '@/stores/collectStore'
 import { collectApi, type DataCoverage } from '@/api/collect'
 import { fmtDateTime } from '@/utils/format'
 import { RANGE_TYPES, COLLECT_TYPES, TYPE_LABEL } from '@/utils/collectTypes'
-import VChart from 'vue-echarts'
-import { use } from 'echarts/core'
-import { GaugeChart } from 'echarts/charts'
-import { TooltipComponent } from 'echarts/components'
-import { CanvasRenderer } from 'echarts/renderers'
 import { VideoPlay, Delete, Refresh } from '@element-plus/icons-vue'
-
-use([GaugeChart, TooltipComponent, CanvasRenderer])
 
 const collectStore = useCollectStore()
 const loading = ref(false)
@@ -445,10 +421,17 @@ async function loadCoverage() {
   } catch { /* 体检失败不阻塞页面其他功能 */ }
 }
 
+// 按数据类型取 /data/coverage 的覆盖率（完整度列的兜底数据源）
+function coveragePct(value: string): number | null {
+  const src = coverage.value?.sources?.find(s => s.name === value)
+  if (!src || !src.expected) return null
+  return Math.round(src.covered / src.expected * 100)
+}
+
 // 无日期序列的数据类型：不做缺口检测，展开时显示说明文字
 const NO_DATE_SEQ = new Set(['news', 'fund_flow', 'sector', 'stock_info'])
 const currentTaskPage = ref(1)
-const taskPageSize = ref(50)
+const taskPageSize = ref(10)
 const pagedTasks = computed(() =>
   collectStore.tasks.slice((currentTaskPage.value - 1) * taskPageSize.value, currentTaskPage.value * taskPageSize.value)
 )
@@ -627,50 +610,7 @@ const overallPercent = computed(() => collectStore.overallPercent)
 const freshnessOk = computed(() => collectStore.progressList.filter(p => (p as any).health === 'ok').length)
 const freshnessStale = computed(() => collectStore.progressList.filter(p => (p as any).health === 'stale').length)
 const freshnessError = computed(() => collectStore.progressList.filter(p => (p as any).health === 'error').length)
-const coverageText = computed(() => {
-  const n = collectStore.progressList.filter(p => ((p as any).record_count || 0) > 0).length
-  return `${n}/8 类已有数据`
-})
 
-const gaugeOption = computed(() => ({
-  backgroundColor: 'transparent',
-  series: [
-    {
-      type: 'gauge',
-      startAngle: 210,
-      endAngle: -30,
-      min: 0,
-      max: 100,
-      splitNumber: 5,
-      axisLine: {
-        lineStyle: {
-          width: 12,
-          color: [
-            [overallPercent.value / 100, '#409eff'],
-            [1, ct().splitLineColor],
-          ],
-        },
-      },
-      pointer: { show: true, length: '60%', width: 4 },
-      axisTick: { show: false },
-      splitLine: { show: false },
-      axisLabel: { color: ct().textColor, fontSize: 10 },
-      title: {
-        color: ct().textColor,
-        fontSize: 12,
-        offsetCenter: [0, '70%'],
-      },
-      detail: {
-        formatter: '{value}%',
-        color: '#409eff',
-        fontSize: 22,
-        fontWeight: 'bold',
-        offsetCenter: [0, '40%'],
-      },
-      data: [{ value: overallPercent.value, name: '数据覆盖度' }],
-    },
-  ],
-}))
 
 function statusType(status: string) {
   const map: Record<string, 'success' | 'danger' | 'warning' | 'info' | 'primary'> = {

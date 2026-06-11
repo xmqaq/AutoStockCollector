@@ -6,7 +6,31 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from core.scheduler.cron import run_ai_pick_job, get_cron_time, job_kline_gap_backfill
+from core.scheduler.cron import (
+    run_ai_pick_job, get_cron_time, job_kline_gap_backfill, job_task_cleanup,
+)
+
+
+class TestTaskCleanup(unittest.TestCase):
+    """任务历史自动清理：只删7天前的已结束任务，运行中/排队的不动。"""
+
+    def test_deletes_only_finished_old_tasks(self):
+        coll = MagicMock()
+        coll.delete_many.return_value = MagicMock(deleted_count=120)
+        db = MagicMock()
+        db.__getitem__.side_effect = lambda n: coll
+        with patch("config.database.DatabaseConfig.get_database", return_value=db):
+            job_task_cleanup()
+        coll.delete_many.assert_called_once()
+        query = coll.delete_many.call_args[0][0]
+        self.assertEqual(set(query["status"]["$in"]),
+                         {"completed", "failed", "cancelled"})
+        self.assertIn("$lt", query["create_time"])
+
+    def test_swallows_errors(self):
+        with patch("config.database.DatabaseConfig.get_database",
+                   side_effect=RuntimeError("db down")):
+            job_task_cleanup()  # 不应抛出
 
 
 class TestKlineGapBackfill(unittest.TestCase):

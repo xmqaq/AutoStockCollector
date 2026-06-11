@@ -388,6 +388,24 @@ def job_kline_gap_backfill():
         logger.error(f"[cron] K线缺口自检失败: {e}")
 
 
+def job_task_cleanup():
+    """清理7天前的已结束任务记录（completed/failed/cancelled）。
+    新闻等高频任务每天产生几十条历史，不清理 task 集合会无限增长，
+    前端任务历史列表也会越来越长。运行中/排队中的任务不动。"""
+    try:
+        from config.database import DatabaseConfig
+        db = DatabaseConfig.get_database()
+        cutoff = (_now() - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
+        res = db["task"].delete_many({
+            "status": {"$in": ["completed", "failed", "cancelled"]},
+            "create_time": {"$lt": cutoff},
+        })
+        if res.deleted_count:
+            logger.info(f"[cron] 任务清理：删除 {res.deleted_count} 条7天前的已结束任务")
+    except Exception as e:
+        logger.error(f"[cron] 任务清理失败: {e}")
+
+
 def job_dragon_tiger():
     if not _is_weekday():
         return
@@ -714,6 +732,7 @@ def start_daily_jobs() -> None:
         _make_job(f"选股工作流 {wf_time}", job_workflow_daily,     "daily", wf_hour, wf_minute, task_type="workflow"),
         _make_job("净值快照 16:30",       job_portfolio_snapshot,  "daily", 16, 30, task_type="portfolio_snapshot"),
         _make_job("估值缓存 5min",       job_valuation_cache,     "interval", interval_minutes=5, task_type="valuation_cache"),
+        _make_job("任务清理 03:30",      job_task_cleanup,        "daily",  3, 30, task_type="task_cleanup"),
     ]
 
     with _jobs_lock:
