@@ -15,6 +15,12 @@ def _kline_loader_factory(data):
     return loader
 
 
+def _no_baseline(**kw):
+    """构造不带基准数据的 tracker kwargs（基准各字段应为 None）。"""
+    return dict(trading_dates_loader=lambda: [],
+                market_loader=lambda dates: {}, **kw)
+
+
 class TestPickTracker(unittest.TestCase):
     def test_returns_and_win_rate(self):
         results = [{
@@ -33,7 +39,8 @@ class TestPickTracker(unittest.TestCase):
                   ("2026-06-03", 20.5), ("2026-06-04", 21.0)],
         }
         tracker = PickTracker(results_loader=lambda limit: results,
-                              kline_loader=_kline_loader_factory(klines))
+                              kline_loader=_kline_loader_factory(klines),
+                              **_no_baseline())
         out = tracker.evaluate(horizons=(1, 3), limit=10)
 
         self.assertEqual(out["runs_count"], 1)
@@ -56,7 +63,8 @@ class TestPickTracker(unittest.TestCase):
                     "picks": [{"code": "A", "name": "甲", "composite": 80}]}]
         klines = {"A": [("2026-06-09", 10.0), ("2026-06-10", 10.5)]}  # 只够1日
         tracker = PickTracker(results_loader=lambda limit: results,
-                              kline_loader=_kline_loader_factory(klines))
+                              kline_loader=_kline_loader_factory(klines),
+                              **_no_baseline())
         out = tracker.evaluate(horizons=(1, 5), limit=10)
         run = out["runs"][0]
         self.assertEqual(run["returns"]["1"]["n"], 1)
@@ -67,17 +75,62 @@ class TestPickTracker(unittest.TestCase):
         results = [{"timestamp": "2026-06-09T15:00:00",
                     "picks": [{"code": "GONE", "name": "无数据", "composite": 50}]}]
         tracker = PickTracker(results_loader=lambda limit: results,
-                              kline_loader=_kline_loader_factory({}))
+                              kline_loader=_kline_loader_factory({}),
+                              **_no_baseline())
         out = tracker.evaluate(horizons=(1,), limit=10)
         self.assertEqual(out["runs"][0]["evaluated"], 0)
         self.assertEqual(out["overall"]["1"]["n"], 0)
 
     def test_empty_results(self):
         tracker = PickTracker(results_loader=lambda limit: [],
-                              kline_loader=_kline_loader_factory({}))
+                              kline_loader=_kline_loader_factory({}),
+                              **_no_baseline())
         out = tracker.evaluate(horizons=(1, 3), limit=10)
         self.assertEqual(out["runs_count"], 0)
         self.assertEqual(out["overall"]["1"]["n"], 0)
+
+    def test_baseline_and_excess(self):
+        """有市场数据时应给出等权基准、超额收益和跑赢率。"""
+        results = [{
+            "timestamp": "2026-06-01T15:00:00",
+            "picks": [{"code": "A", "name": "甲", "composite": 80}],
+        }]
+        klines = {"A": [("2026-06-01", 10.0), ("2026-06-02", 11.0)]}  # pick 1日 +10%
+        # 全市场两只：X +5%，Y 0% → 等权基准 +2.5%
+        market = {
+            "2026-06-01": {"X": 10.0, "Y": 20.0, "A": 10.0},
+            "2026-06-02": {"X": 10.5, "Y": 20.0, "A": 11.0},
+        }
+        tracker = PickTracker(
+            results_loader=lambda limit: results,
+            kline_loader=_kline_loader_factory(klines),
+            trading_dates_loader=lambda: ["2026-06-01", "2026-06-02"],
+            market_loader=lambda dates: {d: market[d] for d in dates if d in market},
+        )
+        out = tracker.evaluate(horizons=(1,), limit=10)
+        h1 = out["runs"][0]["returns"]["1"]
+        self.assertAlmostEqual(h1["baseline"], 5.0)   # (5 + 0 + 10) / 3
+        self.assertAlmostEqual(h1["excess"], 5.0)     # 10 - 5
+        self.assertEqual(h1["beat_rate"], 100.0)
+        self.assertAlmostEqual(out["overall"]["1"]["excess"], 5.0)
+        self.assertEqual(out["overall"]["1"]["beat_rate"], 100.0)
+
+    def test_baseline_missing_target_date(self):
+        """目标交易日超出已有数据时基准为 None，收益仍正常输出。"""
+        results = [{"timestamp": "2026-06-01T15:00:00",
+                    "picks": [{"code": "A", "name": "甲", "composite": 80}]}]
+        klines = {"A": [("2026-06-01", 10.0), ("2026-06-02", 11.0)]}
+        tracker = PickTracker(
+            results_loader=lambda limit: results,
+            kline_loader=_kline_loader_factory(klines),
+            trading_dates_loader=lambda: ["2026-06-01"],  # 没有 06-02
+            market_loader=lambda dates: {},
+        )
+        out = tracker.evaluate(horizons=(1,), limit=10)
+        h1 = out["runs"][0]["returns"]["1"]
+        self.assertAlmostEqual(h1["avg"], 10.0)
+        self.assertIsNone(h1["baseline"])
+        self.assertIsNone(h1["excess"])
 
     def test_zero_entry_close_skipped(self):
         """入场价为0（脏数据）不应除零，整只跳过。"""
@@ -85,7 +138,8 @@ class TestPickTracker(unittest.TestCase):
                     "picks": [{"code": "A", "name": "甲", "composite": 80}]}]
         klines = {"A": [("2026-06-09", 0.0), ("2026-06-10", 10.0)]}
         tracker = PickTracker(results_loader=lambda limit: results,
-                              kline_loader=_kline_loader_factory(klines))
+                              kline_loader=_kline_loader_factory(klines),
+                              **_no_baseline())
         out = tracker.evaluate(horizons=(1,), limit=10)
         self.assertEqual(out["runs"][0]["evaluated"], 0)
 
