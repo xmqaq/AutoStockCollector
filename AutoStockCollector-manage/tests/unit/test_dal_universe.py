@@ -87,24 +87,30 @@ class TestGetFactorInputs(unittest.TestCase):
         fi = dal.get_factor_inputs("SH600053")
         self.assertEqual(fi.name, "*ST九鼎")
 
+    @staticmethod
+    def _fake_db(kline_dates=None, kline_recs=None, val_recs=None):
+        colls = {}
+        for name in ("financial", "fund_flow", "stock_info", "stock_valuation", "kline"):
+            colls[name] = MagicMock()
+        colls["financial"].aggregate.return_value = []
+        colls["fund_flow"].distinct.return_value = []
+        colls["stock_info"].find.return_value = []
+        colls["stock_valuation"].find.return_value = val_recs or []
+        colls["kline"].distinct.return_value = kline_dates or []
+        colls["kline"].find.return_value = kline_recs or []
+        fake_db = MagicMock()
+        fake_db.__getitem__.side_effect = lambda n: colls[n]
+        return fake_db
+
     def test_preload_caches_valuation_no_per_code_query(self):
         """预加载后估值走内存缓存，不应再逐只查 valuation_storage。"""
         dal = _make_dal()
         valuation = MagicMock()
         dal.valuation_storage = valuation
 
-        colls = {}
-        for name in ("financial", "fund_flow", "stock_info", "stock_valuation"):
-            colls[name] = MagicMock()
-        colls["financial"].aggregate.return_value = []
-        colls["fund_flow"].distinct.return_value = []
-        colls["stock_info"].find.return_value = []
-        colls["stock_valuation"].find.return_value = [
+        fake_db = self._fake_db(val_recs=[
             {"code": "SH600519", "name": "贵州茅台", "pe_dynamic": 22.0, "pb": 8.5, "roe": 30.1},
-        ]
-        fake_db = MagicMock()
-        fake_db.__getitem__.side_effect = lambda n: colls[n]
-
+        ])
         with patch("config.database.DatabaseConfig.get_database", return_value=fake_db):
             dal.preload_screen_cache(["SH600519"])
 
@@ -113,6 +119,38 @@ class TestGetFactorInputs(unittest.TestCase):
         self.assertEqual(fi.roe, 30.1)
         self.assertEqual(fi.name, "贵州茅台")
         valuation.get_by_code.assert_not_called()
+
+    def test_preload_caches_klines_no_per_code_query(self):
+        """预加载后K线走内存缓存（时间倒序），不应再逐只查 kline_storage。"""
+        dal = _make_dal()
+        fake_db = self._fake_db(
+            kline_dates=["2026-06-09", "2026-06-08", "2026-06-05"],
+            kline_recs=[
+                {"code": "SH600519", "date": "2026-06-08", "close": 19.0, "volume": 900.0},
+                {"code": "SH600519", "date": "2026-06-09", "close": 20.0, "volume": 1000.0},
+                {"code": "SH600519", "date": "2026-06-05", "close": 18.0, "amount": 800.0},
+            ],
+        )
+        with patch("config.database.DatabaseConfig.get_database", return_value=fake_db):
+            dal.preload_screen_cache(["SH600519"])
+
+        dal.kline_storage.find_many.reset_mock()
+        fi = dal.get_factor_inputs("SH600519")
+        self.assertEqual(fi.closes, [20.0, 19.0, 18.0])   # 按日期倒序
+        self.assertEqual(fi.volumes, [1000.0, 900.0, 800.0])  # volume 缺失回退 amount
+        dal.kline_storage.find_many.assert_not_called()
+
+    def test_preload_kline_cache_respects_limit(self):
+        """缓存命中时仍应遵守 kline_limit 截断。"""
+        dal = _make_dal()
+        recs = [{"code": "SH600519", "date": f"2026-05-{d:02d}", "close": float(d), "volume": 1.0}
+                for d in range(1, 31)]
+        fake_db = self._fake_db(kline_dates=[r["date"] for r in recs], kline_recs=recs)
+        with patch("config.database.DatabaseConfig.get_database", return_value=fake_db):
+            dal.preload_screen_cache(["SH600519"])
+        fi = dal.get_factor_inputs("SH600519", kline_limit=10)
+        self.assertEqual(len(fi.closes), 10)
+        self.assertEqual(fi.closes[0], 30.0)  # 最新在前
 
     def test_cached_roe_only_no_unbound_error(self):
         """缓存只有 ROE（PE/PB 缺）时同样不应崩。"""

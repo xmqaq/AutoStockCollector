@@ -630,13 +630,45 @@ class StockDAL:
             if c:
                 self._val_cache[c] = rec
 
+        # 批量加载 K 线：取最近 90 个交易日窗口一次拉取（初筛最多用 60 条）。
+        # 停牌超过窗口的股票会因 K 线不足被硬过滤剔除——本就不应入选。
+        self._kline_cache: Dict[str, Dict[str, List[float]]] = {}
+        kline_dates = sorted(db["kline"].distinct("date"), reverse=True)[:90]
+        if kline_dates:
+            cutoff = kline_dates[-1]
+            grouped: Dict[str, List[tuple]] = {}
+            cursor = db["kline"].find(
+                {"date": {"$gte": cutoff}},
+                {"_id": 0, "code": 1, "date": 1, "close": 1, "volume": 1, "amount": 1},
+            )
+            for rec in cursor:
+                c = rec.get("code")
+                if not c:
+                    continue
+                grouped.setdefault(c, []).append((
+                    rec.get("date"),
+                    float(rec.get("close", 0)),
+                    float(rec.get("volume") or rec.get("amount") or 0),
+                ))
+            for c, rows in grouped.items():
+                rows.sort(key=lambda r: r[0], reverse=True)
+                self._kline_cache[c] = {
+                    "closes": [r[1] for r in rows],
+                    "volumes": [r[2] for r in rows],
+                }
+
     def get_factor_inputs(self, code: str, kline_limit: int = 30) -> FactorInputs:
         """轻量取数：仅打分必需字段。有预加载缓存时走缓存。"""
-        klines = self.kline_storage.find_many(
-            {"code": code}, sort=[("date", -1)], limit=kline_limit
-        ) or []
-        closes = [float(k.get("close", 0)) for k in klines]
-        volumes = [float(k.get("volume") or k.get("amount") or 0) for k in klines]
+        if hasattr(self, '_kline_cache'):
+            kl = self._kline_cache.get(code) or {"closes": [], "volumes": []}
+            closes = kl["closes"][:kline_limit]
+            volumes = kl["volumes"][:kline_limit]
+        else:
+            klines = self.kline_storage.find_many(
+                {"code": code}, sort=[("date", -1)], limit=kline_limit
+            ) or []
+            closes = [float(k.get("close", 0)) for k in klines]
+            volumes = [float(k.get("volume") or k.get("amount") or 0) for k in klines]
 
         # 走缓存或单次查询
         if hasattr(self, '_info_cache'):
