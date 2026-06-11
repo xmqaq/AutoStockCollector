@@ -575,6 +575,17 @@ class StockDAL:
         from config.database import DatabaseConfig
         db = DatabaseConfig.get_database()
 
+        # 五张表互不依赖，并行批量拉取（pymongo 连接池线程安全）
+        from concurrent.futures import ThreadPoolExecutor
+        loaders = (self._preload_financial, self._preload_fund_flow,
+                   self._preload_info, self._preload_valuation,
+                   self._preload_kline)
+        with ThreadPoolExecutor(max_workers=len(loaders)) as ex:
+            futures = [ex.submit(fn, db) for fn in loaders]
+            for f in futures:
+                f.result()  # 任一表加载失败直接冒泡，避免半套缓存
+
+    def _preload_financial(self, db) -> None:
         # 批量加载最新一期财报（按 code 分组取 report_date 最大的）
         pipeline = [
             {"$sort": {"report_date": -1}},
@@ -584,6 +595,7 @@ class StockDAL:
         for rec in db["financial"].aggregate(pipeline, allowDiskUse=True):
             self._fin_cache[rec["_id"]] = rec["doc"]
 
+    def _preload_fund_flow(self, db) -> None:
         # 批量加载 fund_flow（取最近5个交易日，按 code 聚合均值）
         recent_dates = db["fund_flow"].distinct("date")
         recent_dates = sorted(recent_dates, reverse=True)[:5]
@@ -616,6 +628,7 @@ class StockDAL:
                     avg_rec["total_amount"] = sum(tas) / len(tas)
                 self._ff_cache[c] = avg_rec
 
+    def _preload_info(self, db) -> None:
         # 批量加载 stock_info
         self._info_cache: Dict[str, Dict] = {}
         for rec in db["stock_info"].find({}, {"_id": 0}):
@@ -623,6 +636,7 @@ class StockDAL:
             if c:
                 self._info_cache[c] = rec
 
+    def _preload_valuation(self, db) -> None:
         # 批量加载估值缓存，避免初筛阶段逐只远程查询 stock_valuation
         self._val_cache: Dict[str, Dict] = {}
         for rec in db["stock_valuation"].find({}, {"_id": 0}):
@@ -630,6 +644,7 @@ class StockDAL:
             if c:
                 self._val_cache[c] = rec
 
+    def _preload_kline(self, db) -> None:
         # 批量加载 K 线：取最近 90 个交易日窗口一次拉取（初筛最多用 60 条）。
         # 停牌超过窗口的股票会因 K 线不足被硬过滤剔除——本就不应入选。
         self._kline_cache: Dict[str, Dict[str, List[float]]] = {}

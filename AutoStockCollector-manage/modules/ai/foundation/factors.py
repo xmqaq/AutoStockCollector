@@ -28,8 +28,15 @@ def fundamental_score(
     debt_ratio: Optional[float] = None,
     industry: str = "",
 ) -> DetailScore:
-    """基本面综合评分。输入值为百分比数字（10.57 表示 10.57%）。"""
-    details: Dict[str, Any] = {"data_available": True}
+    """基本面综合评分。输入值为百分比数字（10.57 表示 10.57%）。
+    财务字段全缺时标记 data_available=False，由 composite_score 重分配权重，
+    避免无财报股票拿中性分混排。
+    """
+    has_any_input = any(v is not None for v in (
+        roe, revenue_growth, profit_growth, gross_margin, debt_ratio))
+    details: Dict[str, Any] = {"data_available": has_any_input}
+    if not has_any_input:
+        details["reason"] = "财务数据缺失"
     is_finance = any(kw in industry for kw in _FINANCE_INDUSTRIES)
 
     # ROE（满分35）

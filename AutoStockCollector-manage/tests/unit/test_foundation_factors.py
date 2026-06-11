@@ -7,8 +7,21 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from modules.ai.foundation.factors import (
     trend_score, volume_score, valuation_score, fund_flow_score,
-    composite_score, composite_score_simple,
+    composite_score, composite_score_simple, fundamental_score,
 )
+
+
+class TestFundamentalScoreAvailability(unittest.TestCase):
+    def test_all_inputs_none_marks_unavailable(self):
+        """财务字段全缺时应标记 data_available=False，由综合评分重分配权重。"""
+        _, details = fundamental_score()
+        self.assertFalse(details["data_available"])
+
+    def test_any_input_present_available(self):
+        _, details = fundamental_score(roe=15.0)
+        self.assertTrue(details["data_available"])
+        _, details = fundamental_score(debt_ratio=40.0)
+        self.assertTrue(details["data_available"])
 
 
 class TestTrendScore(unittest.TestCase):
