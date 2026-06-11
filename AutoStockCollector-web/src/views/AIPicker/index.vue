@@ -29,7 +29,11 @@
 
     <div v-if="result" class="ap-meta">
       <span>策略：{{ result.strategy }}</span>
-      <span v-if="result.universe_count">全市场 {{ result.universe_count }} → 候选 {{ result.candidate_count }} → 精选 {{ result.picks.length }}</span>
+      <span v-if="result.universe_count">
+        全市场 {{ result.universe_count }}
+        <template v-if="result.filtered_count"> → 剔除 {{ result.filtered_count }}</template>
+        → 候选 {{ result.candidate_count }} → 精选 {{ result.picks.length }}
+      </span>
       <span>更新：{{ fmtTime(result.timestamp) }}</span>
     </div>
 
@@ -151,9 +155,62 @@
       <div v-if="summaryExpanded" class="ap-summary-body md-content" v-html="renderMd(result.ai_summary)"></div>
     </div>
 
+    <!-- 历史选股效果（折叠式，首次展开时加载） -->
+    <div class="ap-ai-summary ap-track">
+      <div class="ap-summary-toggle" @click="toggleTrack">
+        <span>📈 历史选股效果 <span class="ap-track-sub">vs 等权全市场基准</span></span>
+        <svg class="ap-summary-svg" :class="{ 'is-expanded': trackExpanded }" viewBox="0 0 12 12" width="12" height="12">
+          <path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div v-if="trackExpanded" class="ap-track-body">
+        <div v-if="trackLoading" class="ap-track-tip">⏳ 正在计算全市场等权基准对比，约需10-20秒...</div>
+        <div v-else-if="trackError" class="ap-track-tip">{{ trackError }}</div>
+        <template v-else-if="track">
+          <div class="ap-track-meta">
+            已跟踪 {{ track.runs_count }} 次选股 · 入场=选股日(含)后首个收盘价 · 基准=同窗口全市场等权平均收益
+          </div>
+          <el-table :data="overallRows" size="small" class="ap-table ap-track-table">
+            <el-table-column prop="horizon" label="持有期" width="70" align="center" />
+            <el-table-column label="选股收益" width="90" align="center">
+              <template #default="{ row }"><span :style="{ color: pctColor(row.avg) }">{{ fmtPct(row.avg) }}</span></template>
+            </el-table-column>
+            <el-table-column label="胜率" width="70" align="center">
+              <template #default="{ row }">{{ row.win_rate != null ? row.win_rate + '%' : '-' }}</template>
+            </el-table-column>
+            <el-table-column label="市场基准" width="90" align="center">
+              <template #default="{ row }"><span :style="{ color: pctColor(row.baseline) }">{{ fmtPct(row.baseline) }}</span></template>
+            </el-table-column>
+            <el-table-column label="超额收益" width="90" align="center">
+              <template #default="{ row }"><span class="ap-track-excess" :style="{ color: pctColor(row.excess) }">{{ fmtPct(row.excess) }}</span></template>
+            </el-table-column>
+            <el-table-column label="跑赢率" width="70" align="center">
+              <template #default="{ row }">{{ row.beat_rate != null ? row.beat_rate + '%' : '-' }}</template>
+            </el-table-column>
+            <el-table-column prop="n" label="样本" width="60" align="center" />
+          </el-table>
+
+          <div class="ap-track-runs-title">最近选股批次</div>
+          <el-table :data="track.runs.slice(0, 8)" size="small" class="ap-table ap-track-table">
+            <el-table-column label="时间" width="110">
+              <template #default="{ row }">{{ fmtTime(row.timestamp) }}</template>
+            </el-table-column>
+            <el-table-column label="精选/可评估" width="92" align="center">
+              <template #default="{ row }">{{ row.picks_count }} / {{ row.evaluated }}</template>
+            </el-table-column>
+            <el-table-column v-for="h in track.horizons" :key="h" :label="h + '日超额'" width="86" align="center">
+              <template #default="{ row }">
+                <span :style="{ color: pctColor(row.returns[String(h)]?.excess) }">{{ fmtPct(row.returns[String(h)]?.excess) }}</span>
+              </template>
+            </el-table-column>
+          </el-table>
+        </template>
+      </div>
+    </div>
+
     <el-empty v-if="!result?.picks?.length && !loading" description="暂无选股结果，点击「立即重跑」" />
 
-    <p v-if="result" class="ap-method-note">评分为运行时快照：K线取近30个交易日，财务取最新报告期，资金面取近5日均值，PE/PB由财报EPS推算</p>
+    <p v-if="result" class="ap-method-note">评分为运行时快照：K线取近60个交易日，财务取最新报告期，资金面取近5日均值，PE/PB/ROE优先取估值缓存（5分钟刷新）；候选池已剔除ST/次新/低流动性股票</p>
   </div>
 </template>
 
@@ -163,7 +220,8 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { marked } from 'marked'
 import dayjs from 'dayjs'
-import { aiServiceApi, type AIPickResult, type AIPick } from '@/api/ai'
+import { aiServiceApi, type AIPickResult, type AIPick, type PickTrackData } from '@/api/ai'
+import { RISE_COLOR, FALL_COLOR, FLAT_COLOR } from '@/utils/format'
 
 marked.setOptions({ breaks: true, gfm: true })
 
@@ -181,6 +239,47 @@ const candidatePool = ref(50)
 const expandedCode = ref('')
 const showDoneTip = ref(false)
 const summaryExpanded = ref(false)
+
+// ── 历史选股效果跟踪（首次展开时懒加载）──
+const trackExpanded = ref(false)
+const trackLoading = ref(false)
+const trackError = ref('')
+const track = ref<PickTrackData | null>(null)
+
+const overallRows = computed(() => {
+  if (!track.value) return []
+  return track.value.horizons.map(h => ({
+    horizon: `${h}日`,
+    ...track.value!.overall[String(h)],
+  }))
+})
+
+function fmtPct(v: number | null | undefined): string {
+  if (v == null) return '-'
+  return `${v > 0 ? '+' : ''}${v.toFixed(2)}%`
+}
+
+function pctColor(v: number | null | undefined): string {
+  if (v == null) return FLAT_COLOR
+  return v > 0 ? RISE_COLOR : v < 0 ? FALL_COLOR : FLAT_COLOR
+}
+
+async function toggleTrack() {
+  trackExpanded.value = !trackExpanded.value
+  if (trackExpanded.value && !track.value && !trackLoading.value) {
+    trackLoading.value = true
+    trackError.value = ''
+    try {
+      const res = await aiServiceApi.pickTrack({ horizons: '1,3,5,10', limit: 20 })
+      track.value = res.data?.data || null
+      if (!track.value) trackError.value = '暂无跟踪数据'
+    } catch {
+      trackError.value = '加载选股效果失败'
+    } finally {
+      trackLoading.value = false
+    }
+  }
+}
 
 const progressData = ref<{ is_running: boolean; progress: number; status: string }>({
   is_running: false, progress: 0, status: '',
@@ -597,6 +696,15 @@ onBeforeUnmount(stopProgressPolling)
   color: #c0c0d8;
   line-height: 1.7;
 }
+
+/* 历史选股效果 */
+.ap-track-sub { font-size: 11px; font-weight: 400; color: #707090; margin-left: 6px; }
+.ap-track-body { padding: 0 14px 12px; display: flex; flex-direction: column; gap: 8px; }
+.ap-track-tip { font-size: 12px; color: #808098; padding: 8px 0; }
+.ap-track-meta { font-size: 11px; color: #606080; }
+.ap-track-table { font-size: 12px; }
+.ap-track-excess { font-weight: 600; }
+.ap-track-runs-title { font-size: 12px; font-weight: 600; color: #b0b0d0; margin-top: 4px; }
 
 /* Markdown 渲染样式 */
 .md-content :deep(h1),

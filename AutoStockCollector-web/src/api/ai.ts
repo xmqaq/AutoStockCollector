@@ -404,7 +404,43 @@ export interface AIPickResult {
   ai_summary?: string
   candidate_count?: number
   universe_count?: number
+  filtered_count?: number
+  filtered_detail?: Record<string, number>
   timestamp: string
+}
+
+/** 单个 horizon 的聚合统计（收益/胜率 + 等权全市场基准对比） */
+export interface PickTrackAgg {
+  n: number
+  avg: number | null
+  win_rate: number | null
+  baseline: number | null
+  excess: number | null
+  beat_rate: number | null
+}
+
+export interface PickTrackRun {
+  timestamp: string
+  strategy: string
+  picks_count: number
+  evaluated: number
+  returns: Record<string, PickTrackAgg>
+  picks: Array<{
+    code: string
+    name: string
+    composite: number | null
+    entry_date: string | null
+    entry_close: number | null
+    returns: Record<string, number>
+    excess: Record<string, number>
+  }>
+}
+
+export interface PickTrackData {
+  runs_count: number
+  horizons: number[]
+  overall: Record<string, PickTrackAgg>
+  runs: PickTrackRun[]
 }
 
 export const deepAnalysisApi = {
@@ -431,6 +467,9 @@ export const aiServiceApi = {
   },
   pickProgress() {
     return client.get('/api/v1/ai/pick/progress')
+  },
+  pickTrack(params: { horizons?: string; limit?: number } = {}) {
+    return client.get('/api/v1/ai/pick/track', { params })
   },
 }
 
