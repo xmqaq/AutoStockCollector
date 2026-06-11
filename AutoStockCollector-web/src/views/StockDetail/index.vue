@@ -377,7 +377,7 @@ onMounted(async () => {
 }
 
 .divider {
-  color: #444;
+  color: var(--border-heavy);
   font-size: 18px;
 }
 

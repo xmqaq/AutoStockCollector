@@ -304,7 +304,7 @@ onMounted(() => {
 
 .news-headline {
   font-size: 14px;
-  color: #d5dae3;
+  color: var(--text-primary);
   line-height: 1.5;
   font-weight: 500;
 }
@@ -317,7 +317,7 @@ onMounted(() => {
 
 .news-time {
   font-size: 12px;
-  color: #7a8089;
+  color: var(--text-muted);
 }
 
 .news-source {
@@ -368,7 +368,7 @@ onMounted(() => {
 
 .stat-label {
   font-size: 11px;
-  color: #7a8089;
+  color: var(--text-muted);
   text-transform: capitalize;
 }
 

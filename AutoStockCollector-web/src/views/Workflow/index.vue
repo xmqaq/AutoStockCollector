@@ -1846,7 +1846,7 @@ onUnmounted(() => {
 
 .ai-analysis-preview {
   font-size: 12px;
-  color: #a0cfff;
+  color: var(--color-link-soft);
   cursor: pointer;
   line-height: 1.4;
 }

@@ -22,6 +22,8 @@
   --text-alt-secondary: #606266;
   --text-alt-body: #606266;
   --text-alt-primary: #303133;
+  /* 弱化链接/高亮文字 */
+  --color-link-soft: #409eff;
   /* 滚动条 */
   --scrollbar-track: #f0f2f5;
   --scrollbar-thumb: #c0c4cc;
@@ -50,6 +52,7 @@ html.dark {
   --text-alt-secondary: #8888a8;
   --text-alt-body: #c0c2dd;
   --text-alt-primary: #e0e2f0;
+  --color-link-soft: #a0cfff;
   --scrollbar-track: #1f1f1f;
   --scrollbar-thumb: #434343;
   --scrollbar-thumb-hover: #5a5a5a;

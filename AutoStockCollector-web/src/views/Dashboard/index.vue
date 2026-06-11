@@ -443,7 +443,7 @@ onUnmounted(() => {
 }
 
 .health-card:hover {
-  background: #2d2d2d;
+  background: var(--bg-soft);
 }
 
 .health-card--ok    { border-left-color: #67c23a; }
@@ -462,7 +462,7 @@ onUnmounted(() => {
 
 .hc-name {
   font-weight: 600;
-  color: #c8cdd6;
+  color: var(--text-secondary);
 }
 
 .hc-count {
@@ -502,7 +502,7 @@ onUnmounted(() => {
   background: linear-gradient(
     90deg,
     var(--bg-hover-subtle) 25%,
-    rgba(255, 255, 255, 0.10) 50%,
+    var(--bg-hover) 50%,
     var(--bg-hover-subtle) 75%
   );
   background-size: 200% 100%;
@@ -527,7 +527,7 @@ onUnmounted(() => {
   background: linear-gradient(
     90deg,
     var(--bg-hover-subtle) 25%,
-    rgba(255, 255, 255, 0.10) 50%,
+    var(--bg-hover) 50%,
     var(--bg-hover-subtle) 75%
   );
   background-size: 200% 100%;
@@ -537,7 +537,7 @@ onUnmounted(() => {
 
 .sk-health-card {
   gap: 8px;
-  border-left-color: #333;
+  border-left-color: var(--border-strong);
   cursor: default;
 }
 
