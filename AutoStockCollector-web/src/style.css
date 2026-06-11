@@ -1,3 +1,60 @@
+/* ============ Theme tokens：:root=浅色，html.dark=暗色（暗色值=改造前硬编码值） ============ */
+:root {
+  --bg-page: #f5f7fa;
+  --bg-card: #ffffff;
+  --bg-elevated: #fafbfc;
+  --bg-soft: #f0f2f5;
+  --bg-hover: rgba(0, 0, 0, 0.04);
+  --bg-hover-subtle: rgba(0, 0, 0, 0.02);
+  --border-color: #e4e7ed;
+  --border-strong: #dcdfe6;
+  --border-heavy: #c0c4cc;
+  --text-primary: #303133;
+  --text-secondary: #606266;
+  --text-muted: #909399;
+  --text-faint: #a8abb2;
+  /* 深蓝紫家族（FactorLab/AIKey/AIPicker/StockAnalysis） */
+  --bg-deep: #eef1f6;
+  --bg-deep-soft: #f5f7fa;
+  --bg-card-alt: #ffffff;
+  --border-alt: #e4e7ed;
+  --text-alt-muted: #909399;
+  --text-alt-secondary: #606266;
+  --text-alt-body: #606266;
+  --text-alt-primary: #303133;
+  /* 滚动条 */
+  --scrollbar-track: #f0f2f5;
+  --scrollbar-thumb: #c0c4cc;
+  --scrollbar-thumb-hover: #909399;
+}
+
+html.dark {
+  --bg-page: #141414;
+  --bg-card: #1f1f1f;
+  --bg-elevated: #1a1a1a;
+  --bg-soft: #252525;
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-hover-subtle: rgba(255, 255, 255, 0.03);
+  --border-color: #2c2c2c;
+  --border-strong: #3c3c3c;
+  --border-heavy: #434343;
+  --text-primary: #e5eaf3;
+  --text-secondary: #c0c4cc;
+  --text-muted: #909399;
+  --text-faint: #606266;
+  --bg-deep: #0e0e1c;
+  --bg-deep-soft: #18182a;
+  --bg-card-alt: #1a1a2e;
+  --border-alt: #2a2a45;
+  --text-alt-muted: #606080;
+  --text-alt-secondary: #8888a8;
+  --text-alt-body: #c0c2dd;
+  --text-alt-primary: #e0e2f0;
+  --scrollbar-track: #1f1f1f;
+  --scrollbar-thumb: #434343;
+  --scrollbar-thumb-hover: #5a5a5a;
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
@@ -7,8 +64,8 @@
 html, body {
   height: 100%;
   width: 100%;
-  background: #141414;
-  color: #e5eaf3;
+  background: var(--bg-page);
+  color: var(--text-primary);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   font-size: 14px;
   line-height: 1.5;
@@ -27,19 +84,19 @@ html, body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #1f1f1f;
+  background: var(--scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #434343;
+  background: var(--scrollbar-thumb);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #5a5a5a;
+  background: var(--scrollbar-thumb-hover);
 }
 
-/* Element Plus dark table */
+/* Element Plus themed table */
 .el-table {
   background: transparent !important;
   --el-table-bg-color: transparent !important;
@@ -52,21 +109,21 @@ html, body {
 }
 
 .el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
-  background: rgba(255,255,255,0.03) !important;
+  background: var(--bg-hover-subtle) !important;
 }
 
 .el-table__body tr:hover > td.el-table__cell {
-  background: rgba(255,255,255,0.06) !important;
+  background: var(--bg-hover) !important;
 }
 
 .el-table__header-wrapper th {
-  background: #1a1a1a !important;
-  color: #909399 !important;
+  background: var(--bg-elevated) !important;
+  color: var(--text-muted) !important;
   font-weight: 600;
   font-size: 12px;
 }
 
-/* Collapse dark theme */
+/* Collapse theme */
 .el-collapse {
   border: none !important;
 }

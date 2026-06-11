@@ -9,9 +9,6 @@ import router from './router'
 import App from './App.vue'
 import './style.css'
 
-// Set dark theme
-document.documentElement.classList.add('dark')
-
 const app = createApp(App)
 
 // Register Element Plus icons globally

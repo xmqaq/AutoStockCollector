@@ -9,8 +9,6 @@
       <el-menu
         :default-active="activeMenu"
         :default-openeds="openedMenus"
-        background-color="#141414"
-        text-color="#c0c4cc"
         active-text-color="#409eff"
         @select="handleMenuSelect"
       >
@@ -45,6 +43,12 @@
           <span class="page-title">{{ currentTitle }}</span>
         </div>
         <div class="header-right">
+          <el-tooltip :content="themeStore.theme === 'dark' ? '切换到浅色' : '切换到暗色'" placement="bottom">
+            <el-icon class="theme-toggle" @click="themeStore.toggle()">
+              <Sunny v-if="themeStore.theme === 'dark'" />
+              <Moon v-else />
+            </el-icon>
+          </el-tooltip>
           <div class="status-indicator">
             <span :class="['status-dot', collectStore.backendOnline ? 'online' : 'offline']"></span>
             <span class="status-text">{{ collectStore.backendOnline ? '后端在线' : '后端离线' }}</span>
@@ -67,8 +71,11 @@
 import { computed, onMounted, onUnmounted, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useCollectStore } from '@/stores/collectStore'
+import { useThemeStore } from '@/stores/themeStore'
 import AIChatFloat from '@/components/AIChatFloat/index.vue'
 import {
+  Sunny,
+  Moon,
   DataAnalysis,
   Monitor,
   TrendCharts,
@@ -90,6 +97,7 @@ import {
 const route = useRoute()
 const router = useRouter()
 const collectStore = useCollectStore()
+const themeStore = useThemeStore()
 
 interface MenuChild {
   key: string
@@ -231,12 +239,12 @@ onUnmounted(() => {
 <style scoped>
 .main-layout {
   height: 100vh;
-  background: #141414;
+  background: var(--bg-page);
 }
 
 .sidebar {
-  background: #141414;
-  border-right: 1px solid #2c2c2c;
+  background: var(--bg-page);
+  border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -247,7 +255,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   padding: 0 16px;
-  border-bottom: 1px solid #2c2c2c;
+  border-bottom: 1px solid var(--border-color);
   gap: 8px;
 }
 
@@ -258,7 +266,7 @@ onUnmounted(() => {
 .logo-text {
   font-size: 14px;
   font-weight: 600;
-  color: #e5eaf3;
+  color: var(--text-primary);
   white-space: nowrap;
 }
 
@@ -266,11 +274,14 @@ onUnmounted(() => {
   border-right: none;
   flex: 1;
   overflow-y: auto;
+  --el-menu-bg-color: var(--bg-page);
+  --el-menu-text-color: var(--text-secondary);
+  --el-menu-hover-bg-color: var(--bg-hover);
 }
 
 .header {
-  background: #1f1f1f;
-  border-bottom: 1px solid #2c2c2c;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -285,7 +296,18 @@ onUnmounted(() => {
 .page-title {
   font-size: 16px;
   font-weight: 600;
-  color: #e5eaf3;
+  color: var(--text-primary);
+}
+
+.theme-toggle {
+  cursor: pointer;
+  font-size: 18px;
+  color: var(--text-muted);
+  transition: color 0.2s;
+}
+
+.theme-toggle:hover {
+  color: var(--text-primary);
 }
 
 .header-right {
@@ -318,7 +340,7 @@ onUnmounted(() => {
 
 .status-text {
   font-size: 13px;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .content-wrapper {
@@ -330,7 +352,7 @@ onUnmounted(() => {
 
 .main-content {
   flex: 1;
-  background: #141414;
+  background: var(--bg-page);
   overflow-y: auto;
   padding: 20px;
   min-height: 0;
