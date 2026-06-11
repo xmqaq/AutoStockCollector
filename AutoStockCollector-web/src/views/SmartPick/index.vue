@@ -144,7 +144,7 @@ import { ref, computed, onMounted } from 'vue'
 import { Search } from '@element-plus/icons-vue'
 import { pickerApi } from '@/api/ai'
 import { strategyApi } from '@/api/strategy'
-import type { StrategyItem } from '@/types'
+import type { StrategyRule } from '@/types'
 
 interface PickResult {
   code: string
@@ -161,7 +161,7 @@ interface PickResult {
 }
 
 const selectedStrategy = ref('')
-const strategyList = ref<StrategyItem[]>([])
+const strategyList = ref<{ name: string; description?: string }[]>([])
 const topN = ref(20)
 const minScore = ref(60)
 const loading = ref(false)
@@ -235,11 +235,11 @@ function formatPrice(price: number): string {
 
 async function loadStrategies() {
   try {
-    const res = await strategyApi.getStrategyList()
-    const data = res.data?.strategies || res.data?.data || res.data || []
-    strategyList.value = data
-    if (data.length > 0) {
-      selectedStrategy.value = data[0].name
+    const res = await strategyApi.list('selection')
+    const rules = res.data?.data || []
+    strategyList.value = rules.map((r: StrategyRule) => ({ name: r.name, description: r.description }))
+    if (rules.length > 0) {
+      selectedStrategy.value = rules[0].name
     }
   } catch {
     strategyList.value = []

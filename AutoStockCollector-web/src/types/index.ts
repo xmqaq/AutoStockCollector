@@ -140,6 +140,38 @@ export interface WatchlistGroup {
   stock_count?: number
 }
 
+export interface ParamSchema {
+  key: string
+  label: string
+  min: number
+  max: number
+  step: number
+}
+
+export interface IndicatorItem {
+  key: string
+  dimension: string
+  label: string
+  enabled: boolean
+  weight: number
+  params?: Record<string, number>
+  param_schema?: ParamSchema[]
+  description?: string
+}
+
+export interface StrategyRule {
+  _id: string
+  name: string
+  type: 'selection' | 'trading'
+  description: string
+  enabled: boolean
+  indicators: IndicatorItem[]
+  weights: Record<string, number>
+  filters: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
 export interface StrategyItem {
   name: string
   description?: string

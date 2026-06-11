@@ -92,6 +92,7 @@ import {
   Operation,
   EditPen,
   Setting,
+  List,
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -140,8 +141,10 @@ const menuGroups: MenuGroup[] = [
     label: 'AI智能',
     icon: MagicStick,
     children: [
+      { key: '/strategy-pick', label: '策略选股', icon: Operation },
       { key: '/ai-picker', label: '量化选股', icon: TrendCharts },
       { key: '/stock-analysis', label: '个股深度分析', icon: Search },
+      { key: '/strategy-manager', label: '策略管理', icon: List },
     ],
   },
   {
