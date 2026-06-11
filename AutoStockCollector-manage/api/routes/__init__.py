@@ -1083,6 +1083,23 @@ def ai_pick_results():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@api_bp.route("/ai/pick/track", methods=["GET"])
+def ai_pick_track():
+    """选股效果跟踪：历史 picks 的后续 N 日收益与胜率。
+    参数：horizons=1,3,5,10（交易日）、limit=20（最近N次选股）。
+    """
+    try:
+        from modules.ai.engines.tracker import PickTracker
+        raw = request.args.get("horizons", "1,3,5,10")
+        horizons = [int(x) for x in raw.split(",") if x.strip().isdigit()] or [1, 3, 5, 10]
+        limit = min(int(request.args.get("limit", 20)), 100)
+        data = PickTracker().evaluate(horizons=horizons, limit=limit)
+        return jsonify({"success": True, "data": data})
+    except Exception as e:
+        logger.error(f"AI pick track failed: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @api_bp.route("/ai/pick/progress", methods=["GET"])
 def ai_pick_progress():
     """查询选股执行进度。"""
