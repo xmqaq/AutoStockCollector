@@ -356,6 +356,38 @@ def job_kline_incremental():
     _trigger_task("kline", {"start_date": today, "end_date": today, "adjust": "qfq"}, "K线增量")
 
 
+def job_kline_gap_backfill():
+    """K线缺口自检回补。主采集可能被部署重启打断、或数据源中途失败，
+    导致只采到半个市场（2026-06-10/11 实际发生过，缺口 2000+ 只）。
+    用 fund_flow（独立数据源）交叉比对，找出"今日在交易但缺今日K线"的
+    股票，只对缺口触发增量采集。幂等，可重复执行。"""
+    if not _is_weekday():
+        return
+    try:
+        from config.database import DatabaseConfig
+        db = DatabaseConfig.get_database()
+        today = _today()
+        trading = set(db["fund_flow"].distinct("code", {"date": today}))
+        if not trading:
+            logger.info("[cron] K线缺口自检：今日无资金流向记录（非交易日或未采集），跳过")
+            return
+        today_dt = datetime.datetime.strptime(today, "%Y-%m-%d")
+        have = set(db["kline"].distinct("code", {"date": today_dt}))
+        missing = sorted(c for c in (trading - have) if c)
+        if not missing:
+            logger.info("[cron] K线缺口自检：无缺口")
+            return
+        start = (_now() - datetime.timedelta(days=3)).strftime("%Y-%m-%d")
+        logger.warning(f"[cron] K线缺口自检：{len(missing)} 只在交易但缺今日K线，触发回补")
+        _trigger_task(
+            "kline",
+            {"codes": missing, "start_date": start, "end_date": today, "adjust": "qfq"},
+            f"K线缺口回补({len(missing)}只)",
+        )
+    except Exception as e:
+        logger.error(f"[cron] K线缺口自检失败: {e}")
+
+
 def job_dragon_tiger():
     if not _is_weekday():
         return
@@ -669,6 +701,8 @@ def start_daily_jobs() -> None:
 
     jobs = [
         _make_job("K线增量 16:05",       job_kline_incremental,   "daily", 16, 5,  task_type="kline"),
+        _make_job("K线缺口回补 17:30",    job_kline_gap_backfill,  "daily", 17, 30, task_type="kline"),
+        _make_job("K线缺口回补 21:45",    job_kline_gap_backfill,  "daily", 21, 45, task_type="kline"),
         _make_job("龙虎榜 16:10",         job_dragon_tiger,        "daily", 16, 10, task_type="dragon_tiger"),
         _make_job("资金流向 16:15",       job_fund_flow,           "daily", 16, 15, task_type="fund_flow"),
         _make_job("融资融券 21:30",       job_margin,              "daily", 21, 30, task_type="margin"),
