@@ -84,6 +84,7 @@ import {
   Search,
   Operation,
   EditPen,
+  Setting,
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -133,8 +134,6 @@ const menuGroups: MenuGroup[] = [
     children: [
       { key: '/ai-picker', label: '量化选股', icon: TrendCharts },
       { key: '/stock-analysis', label: '个股深度分析', icon: Search },
-      { key: '/ai-keys', label: 'AI Key管理', icon: Key },
-      { key: '/ai-agents', label: 'AI Agent管理', icon: MagicStick },
     ],
   },
   {
@@ -165,6 +164,15 @@ const menuGroups: MenuGroup[] = [
     label: '待办事项',
     path: '/todo',
     icon: EditPen,
+  },
+  {
+    key: 'settings',
+    label: '系统配置',
+    icon: Setting,
+    children: [
+      { key: '/ai-keys', label: 'AI Key管理', icon: Key },
+      { key: '/ai-agents', label: 'AI Agent管理', icon: MagicStick },
+    ],
   },
 ]
 
