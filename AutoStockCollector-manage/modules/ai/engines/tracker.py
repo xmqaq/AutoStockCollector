@@ -144,10 +144,24 @@ class PickTracker:
         hs = sorted({int(h) for h in horizons if int(h) > 0}) or [1]
         max_h = hs[-1]
 
+        # ── 去重：同一天同策略多次运行只保留最后一批 ──
+        # 手动重跑/多实例并发会在同一天产生重复批次，不去重会重复计票放大该日权重
+        latest_per_day: Dict[Tuple[str, str], Dict[str, Any]] = {}
+        for run in self.results_loader(limit):
+            ts = str(run.get("timestamp", ""))
+            if not ts:
+                continue
+            key = (str(run.get("strategy", "")), ts[:10])
+            cur = latest_per_day.get(key)
+            if cur is None or ts > str(cur.get("timestamp", "")):
+                latest_per_day[key] = run
+        deduped_runs = sorted(latest_per_day.values(),
+                              key=lambda r: str(r.get("timestamp", "")), reverse=True)
+
         # ── 第一遍：算每只 pick 的收益，收集需要基准的 (入场日, horizon) ──
         runs_raw: List[Dict[str, Any]] = []
         baseline_pairs: set = set()
-        for run in self.results_loader(limit):
+        for run in deduped_runs:
             pick_date = str(run.get("timestamp", ""))[:10]
             if not pick_date:
                 continue

@@ -89,6 +89,42 @@ class TestPickTracker(unittest.TestCase):
         self.assertEqual(out["runs_count"], 0)
         self.assertEqual(out["overall"]["1"]["n"], 0)
 
+    def test_same_day_batches_deduped_keep_last(self):
+        """同一天同策略多次运行只统计当天最后一批，重复批次不重复计票。"""
+        results = [
+            {"timestamp": "2026-06-01T15:30:00", "strategy": "default",
+             "picks": [{"code": "A", "name": "甲", "composite": 80}]},
+            {"timestamp": "2026-06-01T09:00:00", "strategy": "default",
+             "picks": [{"code": "A", "name": "甲", "composite": 80},
+                       {"code": "B", "name": "乙", "composite": 70}]},
+        ]
+        klines = {"A": [("2026-06-01", 10.0), ("2026-06-02", 11.0)],
+                  "B": [("2026-06-01", 20.0), ("2026-06-02", 21.0)]}
+        tracker = PickTracker(results_loader=lambda limit: results,
+                              kline_loader=_kline_loader_factory(klines),
+                              **_no_baseline())
+        out = tracker.evaluate(horizons=(1,), limit=10)
+        self.assertEqual(out["runs_count"], 1)
+        self.assertEqual(out["runs"][0]["timestamp"], "2026-06-01T15:30:00")
+        self.assertEqual(out["overall"]["1"]["n"], 1)  # 只计最后一批的1只
+
+    def test_same_day_different_strategies_kept(self):
+        """同一天不同策略的批次互不去重。"""
+        results = [
+            {"timestamp": "2026-06-01T15:30:00", "strategy": "default",
+             "picks": [{"code": "A", "name": "甲", "composite": 80}]},
+            {"timestamp": "2026-06-01T17:00:00", "strategy": "五因子增强",
+             "picks": [{"code": "B", "name": "乙", "composite": 70}]},
+        ]
+        klines = {"A": [("2026-06-01", 10.0), ("2026-06-02", 11.0)],
+                  "B": [("2026-06-01", 20.0), ("2026-06-02", 21.0)]}
+        tracker = PickTracker(results_loader=lambda limit: results,
+                              kline_loader=_kline_loader_factory(klines),
+                              **_no_baseline())
+        out = tracker.evaluate(horizons=(1,), limit=10)
+        self.assertEqual(out["runs_count"], 2)
+        self.assertEqual(out["overall"]["1"]["n"], 2)
+
     def test_baseline_and_excess(self):
         """有市场数据时应给出等权基准、超额收益和跑赢率。"""
         results = [{
