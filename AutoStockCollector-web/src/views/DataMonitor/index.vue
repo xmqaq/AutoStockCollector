@@ -46,6 +46,50 @@
       </div>
     </el-card>
 
+    <!-- 数据完整性体检 -->
+    <el-card shadow="never" class="section-card">
+      <template #header>
+        <div class="card-header">
+          <span>数据完整性（{{ coverage?.ref_date || '--' }}）</span>
+          <el-tag v-if="coverage?.overall === 'bad'" type="danger" size="small">❌ 有数据缺口</el-tag>
+          <el-tag v-else-if="coverage?.overall === 'warn'" type="warning" size="small">⚠️ 覆盖偏低</el-tag>
+          <el-tag v-else-if="coverage" type="success" size="small">✅ 完整</el-tag>
+        </div>
+      </template>
+      <el-empty v-if="!coverage" description="加载中..." :image-size="40" />
+      <el-table v-else :data="coverage.sources" size="small" stripe>
+        <el-table-column prop="label" label="数据源" min-width="160" />
+        <el-table-column label="覆盖" width="130" align="center">
+          <template #default="{ row }">{{ row.covered }} / {{ row.expected }}</template>
+        </el-table-column>
+        <el-table-column label="覆盖率" width="180">
+          <template #default="{ row }">
+            <el-progress :percentage="row.expected ? Math.round(row.covered / row.expected * 100) : 0"
+                         :status="row.status === 'ok' ? 'success' : row.status === 'warn' ? 'warning' : 'exception'"
+                         :stroke-width="8" />
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="90" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.status === 'ok'" type="success" size="small">完整</el-tag>
+            <el-tag v-else-if="row.status === 'warn'" type="warning" size="small">偏低</el-tag>
+            <el-tag v-else type="danger" size="small">缺口</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="缺口示例" min-width="220" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span v-if="row.missing_count > 0" class="coverage-missing">
+              缺 {{ row.missing_count }} 只<template v-if="row.missing_sample.length">：{{ row.missing_sample.join('、') }}…</template>
+            </span>
+            <span v-else class="coverage-ok-text">无</span>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div v-if="coverage" class="coverage-hint">
+        以资金流向（{{ coverage.trading_count }} 只在交易）为基准交叉比对；K线缺口由每日 17:30/21:45 自检任务自动回补
+      </div>
+    </el-card>
+
     <!-- 定时任务状态 -->
     <el-card shadow="never" class="section-card">
       <template #header>
@@ -376,7 +420,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { getChartTheme as ct } from '@/utils/chartTheme'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { useCollectStore } from '@/stores/collectStore'
-import { collectApi } from '@/api/collect'
+import { collectApi, type DataCoverage } from '@/api/collect'
 import { fmtDateTime } from '@/utils/format'
 import { RANGE_TYPES, COLLECT_TYPES, TYPE_LABEL } from '@/utils/collectTypes'
 import VChart from 'vue-echarts'
@@ -390,6 +434,16 @@ use([GaugeChart, TooltipComponent, CanvasRenderer])
 
 const collectStore = useCollectStore()
 const loading = ref(false)
+
+// ── 数据完整性体检（页面打开时加载一次，点击刷新时一并刷新）──
+const coverage = ref<DataCoverage | null>(null)
+
+async function loadCoverage() {
+  try {
+    const res = await collectApi.getDataCoverage()
+    coverage.value = res.data?.data || null
+  } catch { /* 体检失败不阻塞页面其他功能 */ }
+}
 
 // 无日期序列的数据类型：不做缺口检测，展开时显示说明文字
 const NO_DATE_SEQ = new Set(['news', 'fund_flow', 'sector', 'stock_info'])
@@ -706,6 +760,7 @@ async function refresh() {
       collectStore.fetchProgress(),
       loadTasks(),
       loadCronStatus(),
+      loadCoverage(),
     ])
   } finally {
     loading.value = false
@@ -816,6 +871,10 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 16px;
 }
+
+.coverage-missing { color: var(--el-color-danger); font-size: 12px; }
+.coverage-ok-text { color: var(--el-text-color-secondary); font-size: 12px; }
+.coverage-hint { margin-top: 8px; font-size: 12px; color: var(--el-text-color-secondary); }
 
 .toolbar-card {
   background: var(--bg-card);

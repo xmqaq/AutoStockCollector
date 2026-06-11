@@ -10,9 +10,32 @@ export interface ClearDbParams {
   collections?: string[]
 }
 
+export interface CoverageSource {
+  name: string
+  label: string
+  covered: number
+  expected: number
+  missing_count: number
+  missing_sample: string[]
+  status: 'ok' | 'warn' | 'bad' | 'unknown'
+}
+
+export interface DataCoverage {
+  ref_date: string
+  universe_count: number
+  trading_count: number
+  overall: 'ok' | 'warn' | 'bad'
+  sources: CoverageSource[]
+  checked_at: string
+}
+
 export const collectApi = {
   getHealth() {
     return client.get('/health')
+  },
+
+  getDataCoverage() {
+    return client.get('/api/v1/data/coverage')
   },
 
   getProgressAll() {

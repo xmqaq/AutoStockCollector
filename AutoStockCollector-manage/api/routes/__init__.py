@@ -1087,6 +1087,17 @@ def ai_pick_results():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@api_bp.route("/data/coverage", methods=["GET"])
+def data_coverage():
+    """数据完整性体检：各数据源对全市场的覆盖率与缺口示例。"""
+    try:
+        from core.collector.coverage import compute_data_coverage
+        return jsonify({"success": True, "data": compute_data_coverage()})
+    except Exception as e:
+        logger.error(f"data coverage failed: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @api_bp.route("/ai/pick/track", methods=["GET"])
 def ai_pick_track():
     """选股效果跟踪：历史 picks 的后续 N 日收益与胜率。
