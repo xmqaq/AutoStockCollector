@@ -114,6 +114,18 @@ const router = createRouter({
           meta: { title: '因子平台' },
         },
         {
+          path: 'strategy-pick',
+          name: 'StrategyPick',
+          component: () => import('@/views/StrategyPick/index.vue'),
+          meta: { title: '策略选股' },
+        },
+        {
+          path: 'strategy-manager',
+          name: 'StrategyManager',
+          component: () => import('@/views/StrategyManager/index.vue'),
+          meta: { title: '策略管理' },
+        },
+        {
           path: 'todo',
           name: 'Todo',
           component: () => import('@/views/Todo/index.vue'),

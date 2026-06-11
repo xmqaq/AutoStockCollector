@@ -72,11 +72,11 @@ class TestAPIRoutes(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_strategy_list(self):
-        response = self.client.get("/api/v1/strategy/list")
+        response = self.client.get("/api/v1/strategies")
         self.assertEqual(response.status_code, 200)
 
         data = response.get_json()
-        self.assertIn("strategies", data)
+        self.assertIn("data", data)
 
     def test_scheduler_stats(self):
         response = self.client.get("/api/v1/scheduler/stats")

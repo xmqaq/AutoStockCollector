@@ -1,7 +1,7 @@
 """量化选股引擎。两阶段漏斗：
   stage-1 全市场多因子初筛(无 LLM) → 候选池
   stage-2 候选池复用 AnalysisEngine 深研(LLM) → top_n
-结果入 ai_pick_results 集合缓存。dal/analysis_engine/result_saver 注入便于测试。
+ 结果入 ai_pick_results 集合缓存。dal/analysis_engine/result_saver 注入便于测试。
 """
 from datetime import datetime
 from utils.helpers import beijing_now
@@ -16,14 +16,14 @@ logger = get_logger(__name__)
 _PROGRESS_KEY = "current"
 
 # Stage-1 硬过滤阈值
-_MIN_KLINE_BARS = 20      # K线少于该数（次新/长期停牌）不参与选股
-_MIN_AVG_AMOUNT = 3e7     # 近5日均成交额低于 3000万元 视为流动性不足（约全市场 p5 分位）
+_MIN_KLINE_BARS = 20
+_MIN_AVG_AMOUNT = 3e7
 
 # Stage-2 深度评分
-_STAGE2_WORKERS = 4       # LLM 深研并行度
-_STAGE2_PER_STOCK_SEC = 30  # 单只预算，总预算 = 30s × ceil(候选数/并行度)
+_STAGE2_WORKERS = 4
+_STAGE2_PER_STOCK_SEC = 30
 
-# 精选阶段单行业上限，避免热门赛道扎堆（行业未知不计入）
+# 精选阶段单行业上限
 _MAX_PER_INDUSTRY = 3
 
 
@@ -104,6 +104,35 @@ def _acquire_run_lock() -> bool:
         return True
 
 
+_TEST_RESULTS_KEY = "test_results"
+
+
+def _save_test_result(result: Dict[str, Any]) -> None:
+    try:
+        from config.database import DatabaseConfig
+        db = DatabaseConfig.get_database()
+        db["pick_progress"].update_one(
+            {"key": _TEST_RESULTS_KEY}, {"$set": result}, upsert=True,
+        )
+    except Exception:
+        pass
+
+
+def get_test_result() -> Dict[str, Any]:
+    try:
+        from config.database import DatabaseConfig
+        db = DatabaseConfig.get_database()
+        doc = db["pick_progress"].find_one({"key": _TEST_RESULTS_KEY}, {"_id": 0})
+        if doc:
+            for k in ("timestamp", "updated_at"):
+                if k in doc and hasattr(doc[k], "isoformat"):
+                    doc[k] = doc[k].isoformat()
+            return doc
+    except Exception:
+        pass
+    return {"is_running": False, "picks": [], "status": ""}
+
+
 def _default_saver(doc: Dict[str, Any]) -> None:
     from config.database import DatabaseConfig
     db = DatabaseConfig.get_database()
@@ -124,12 +153,6 @@ class PickerEngine:
 
     @staticmethod
     def _strip_preamble(text: str) -> str:
-        """裁掉模型在正式结论前夹带的复述题目/思考过程。
-
-        我们的输出格式以 Markdown 标题 `**优先关注**` 开头，因此把第一个
-        `**` 之前的所有内容（如「用户提供了…」「首先，我需要分析…」）全部去掉。
-        若模型没按格式输出（找不到 `**`），则原样返回（仅去首尾空白）。
-        """
         if not text:
             return ""
         idx = text.find("**")
@@ -138,7 +161,6 @@ class PickerEngine:
         return text.strip()
 
     def _generate_summary(self, picks: List[Dict[str, Any]]) -> str:
-        """让 LLM 对 top_n 选股结果做整体投资建议。"""
         if not picks:
             return ""
         try:
@@ -199,7 +221,6 @@ class PickerEngine:
 
     @staticmethod
     def _pick_item(analysis: Dict[str, Any], code: str) -> Dict[str, Any]:
-        """把 analyze() 结果转成 picks 列表条目。"""
         return {
             "code": analysis.get("code", code),
             "name": analysis.get("name", ""),
@@ -212,7 +233,6 @@ class PickerEngine:
         }
 
     def _factor_fallback(self, code: str) -> Optional[Dict[str, Any]]:
-        """LLM 超时/失败时用纯因子评分兜底（不调用 LLM）。失败返回 None。"""
         try:
             analysis = self.analysis_engine.analyze_factor_only(code)
             return self._pick_item(analysis, code)
@@ -220,63 +240,176 @@ class PickerEngine:
             logger.warning(f"factor fallback failed for {code}: {e}")
             return None
 
+    def preview(self, strategy: str = "preview", top_n: int = 10,
+                 candidate_pool: int = 30,
+                 weight_overrides: Optional[Dict[str, float]] = None,
+                 filter_overrides: Optional[Dict[str, Any]] = None,
+                 indicator_config: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+        """轻量预览：随机采样 100 只，Stage-1 因子筛选，无 LLM。"""
+        universe = self.dal.list_universe()
+        _save_test_result({"is_running": True, "progress": 2, "status": f"股票池 {len(universe)} 只，采样中...", "strategy": strategy, "picks": []})
+        import random
+        rng = random.Random(42)
+        sampled = rng.sample(universe, min(100, len(universe)))
+
+        screen_weights = dict(factors.SCREEN_WEIGHTS)
+        if weight_overrides:
+            screen_weights.update(weight_overrides)
+        hard_filters = {
+            "min_kline_bars": _MIN_KLINE_BARS,
+            "min_avg_amount": _MIN_AVG_AMOUNT,
+        }
+        if filter_overrides:
+            hard_filters.update(filter_overrides)
+
+        total_u = len(sampled)
+        _save_test_result({"is_running": True, "progress": 5, "status": f"扫描 {total_u} 只...", "strategy": strategy, "picks": []})
+        screened: List[tuple] = []
+        filtered: Dict[str, int] = {"st": 0, "insufficient_kline": 0, "low_liquidity": 0}
+        report_interval = max(1, total_u // 10)
+        for i, code in enumerate(sampled):
+            try:
+                fi = self.dal.get_factor_inputs(code, kline_limit=60)
+                reason = self._hard_filter(fi, hard_filters)
+                if reason:
+                    filtered[reason] += 1
+                else:
+                    screened.append((code, fi, self._screen_score(fi, weight_overrides, indicator_config)))
+            except Exception:
+                continue
+            if (i + 1) % report_interval == 0 or (i + 1) == total_u:
+                pct = 5 + int((i + 1) / total_u * 90)
+                _save_test_result({
+                    "is_running": True, "progress": pct,
+                    "status": f"扫描 {i + 1}/{total_u} 只...",
+                    "strategy": strategy, "picks": [],
+                })
+
+        _save_test_result({"is_running": True, "progress": 93, "status": "计算综合评分...", "strategy": strategy, "picks": []})
+        screened.sort(key=lambda x: x[2], reverse=True)
+        candidates = screened[:candidate_pool]
+
+        picks = []
+        for code, fi, _ in candidates[:top_n]:
+            dim_scores = {}
+            try:
+                fund_s, _ = factors.fundamental_score(roe=fi.roe, revenue_growth=fi.revenue_growth,
+                    profit_growth=fi.profit_growth, gross_margin=fi.gross_margin,
+                    debt_ratio=fi.debt_ratio, industry=fi.industry)
+                dim_scores["fundamental"] = fund_s
+            except Exception:
+                dim_scores["fundamental"] = 0
+            try:
+                tech_s, _ = factors.technical_score(list(reversed(fi.closes)), list(reversed(fi.volumes)))
+                dim_scores["technical"] = tech_s
+            except Exception:
+                dim_scores["technical"] = 0
+            try:
+                flow_s, _ = factors.fund_flow_detail_score(
+                    main_net_inflow=fi.main_net_inflow, total_amount=fi.total_amount,
+                    turnover_rate=fi.turnover_rate)
+                dim_scores["fund_flow"] = flow_s
+            except Exception:
+                dim_scores["fund_flow"] = 0
+            try:
+                val_s, _ = factors.valuation_detail_score(pe=fi.pe, pb=fi.pb, industry=fi.industry)
+                dim_scores["valuation"] = val_s
+            except Exception:
+                dim_scores["valuation"] = 0
+
+            picks.append({
+                "code": code,
+                "name": getattr(fi, "name", ""),
+                "industry": getattr(fi, "industry", ""),
+                "composite": (sum(dim_scores.values()) / len(dim_scores)) / 20 if dim_scores else 0,
+                "dim_scores": {k: v / 20 for k, v in dim_scores.items()},
+            })
+
+        return {
+            "strategy": strategy,
+            "picks": picks,
+            "candidate_count": len(candidates),
+            "universe_count": len(universe),
+            "filtered_count": sum(filtered.values()),
+            "filtered_detail": filtered,
+            "timestamp": beijing_now().isoformat(),
+        }
+
     @staticmethod
-    def _hard_filter(fi) -> Optional[str]:
-        """Stage-1 硬过滤。返回剔除原因，None 表示通过。"""
+    def _hard_filter(fi, filter_overrides: Optional[Dict[str, Any]] = None) -> Optional[str]:
         name = (fi.name or "").upper()
-        if "ST" in name or "退" in name:
-            return "st"
-        if len(fi.closes) < _MIN_KLINE_BARS:
+        if (filter_overrides or {}).get("exclude_st", True):
+            if "ST" in name or "退" in name:
+                return "st"
+        min_bars = (filter_overrides or {}).get("min_kline_bars", _MIN_KLINE_BARS)
+        if len(fi.closes) < min_bars:
             return "insufficient_kline"
-        if fi.total_amount is not None and fi.total_amount < _MIN_AVG_AMOUNT:
+        min_amount = (filter_overrides or {}).get("min_avg_amount", _MIN_AVG_AMOUNT)
+        if fi.total_amount is not None and fi.total_amount < min_amount:
             return "low_liquidity"
         return None
 
-    def _screen_score(self, fi) -> float:
-        """Stage-1 多因子初筛评分（无 LLM）。"""
+    def _screen_score(self, fi,
+                     weight_overrides: Optional[Dict[str, float]] = None,
+                     indicator_config: Optional[List[Dict[str, Any]]] = None) -> float:
         closes_asc = list(reversed(fi.closes))
         amounts_asc = list(reversed(fi.volumes))
 
         fund_s, fund_d = factors.fundamental_score(
-            roe=fi.roe,
-            revenue_growth=fi.revenue_growth,
-            profit_growth=fi.profit_growth,
-            gross_margin=fi.gross_margin,
-            debt_ratio=fi.debt_ratio,
-            industry=fi.industry,
+            roe=fi.roe, revenue_growth=fi.revenue_growth,
+            profit_growth=fi.profit_growth, gross_margin=fi.gross_margin,
+            debt_ratio=fi.debt_ratio, industry=fi.industry,
         )
         tech_s, tech_d = factors.technical_score(closes_asc, amounts_asc)
         flow_s, flow_d = factors.fund_flow_detail_score(
-            main_net_inflow=fi.main_net_inflow,
-            total_amount=fi.total_amount,
+            main_net_inflow=fi.main_net_inflow, total_amount=fi.total_amount,
             turnover_rate=fi.turnover_rate,
         )
         val_s, val_d = factors.valuation_detail_score(
             pe=fi.pe, pb=fi.pb, industry=fi.industry,
         )
 
-        # 透传各维度真实 data_available，K线不足/无资金数据时由 composite_score 重分配权重
         dim_scores = {
             "fundamental": (fund_s, fund_d),
             "technical":   (tech_s, tech_d),
             "fund_flow":   (flow_s, flow_d),
             "valuation":   (val_s, val_d),
         }
-        comp, _ = factors.composite_score(dim_scores, factors.SCREEN_WEIGHTS)
+        weights = dict(factors.SCREEN_WEIGHTS)
+        if weight_overrides:
+            weights.update(weight_overrides)
+        comp, _ = factors.composite_score(dim_scores, weights)
         return comp
 
     def run(self, strategy: str = "default", top_n: int = 10,
-            candidate_pool: int = 50, use_cache: bool = True) -> Dict[str, Any]:
-
+            candidate_pool: int = 50, use_cache: bool = True,
+            weight_overrides: Optional[Dict[str, float]] = None,
+            filter_overrides: Optional[Dict[str, Any]] = None,
+            indicator_config: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
         try:
-            return self._run_internal(strategy, top_n, candidate_pool, use_cache)
+            return self._run_internal(strategy, top_n, candidate_pool, use_cache,
+                                      weight_overrides, filter_overrides, indicator_config)
         except Exception as e:
             logger.error(f"PickerEngine.run failed: {e}")
             _update_progress(0, f"选股失败: {e}", is_running=False)
             raise
 
     def _run_internal(self, strategy: str, top_n: int,
-                      candidate_pool: int, use_cache: bool) -> Dict[str, Any]:
+                      candidate_pool: int, use_cache: bool,
+                      weight_overrides: Optional[Dict[str, float]] = None,
+                      filter_overrides: Optional[Dict[str, Any]] = None,
+                      indicator_config: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+
+        screen_weights = dict(factors.SCREEN_WEIGHTS)
+        if weight_overrides:
+            screen_weights.update(weight_overrides)
+
+        hard_filters = {
+            "min_kline_bars": _MIN_KLINE_BARS,
+            "min_avg_amount": _MIN_AVG_AMOUNT,
+        }
+        if filter_overrides:
+            hard_filters.update(filter_overrides)
 
         if not _acquire_run_lock():
             logger.warning("检测到另一选股任务正在运行（可能来自其他实例/调度器），本次跳过")
@@ -300,22 +433,22 @@ class PickerEngine:
         screened: List[tuple] = []
         screen_failures = 0
         filtered: Dict[str, int] = {"st": 0, "insufficient_kline": 0, "low_liquidity": 0}
-        report_interval = max(1, total_u // 20)  # 每5%报告一次
+        report_interval = max(1, total_u // 20)
         for i, code in enumerate(universe):
             try:
                 fi = self.dal.get_factor_inputs(code, kline_limit=60)
-                reason = self._hard_filter(fi)
+                reason = self._hard_filter(fi, hard_filters)
                 if reason:
                     filtered[reason] += 1
                 else:
-                    screened.append((code, self._screen_score(fi)))
+                    screened.append((code, self._screen_score(fi, weight_overrides, indicator_config)))
             except Exception as e:
                 screen_failures += 1
                 if screen_failures <= 5:
                     logger.warning(f"Stage-1 screen failed for {code}: {e!r}")
                 continue
             if (i + 1) % report_interval == 0:
-                pct = 15 + int((i + 1) / total_u * 30)  # 15~45
+                pct = 15 + int((i + 1) / total_u * 30)
                 _update_progress(pct, f"初筛 {i + 1}/{total_u} 只...")
 
         if screen_failures > total_u * 0.5:
@@ -330,11 +463,7 @@ class PickerEngine:
             f"Stage-1 done: {len(candidates)} candidates from {len(screened)} screened, "
             f"filtered={filtered}, {screen_failures} failed")
 
-        # ── Stage-2 深度评分（真并行）──
-        # 全部候选一次性提交线程池并行深研，按完成顺序收集；
-        # 总预算 = 30s × ceil(候选数/并行度)（即旧串行逐只30s的并行等价时间），
-        # 预算耗尽后仍未完成的候选统一降级为纯因子评分兜底，
-        # 绝不丢股票、绝不无限阻塞，进度保证推进到 100%。
+        # ── Stage-2 深度评分 ──
         from concurrent.futures import (
             ThreadPoolExecutor, as_completed, TimeoutError as _FutureTimeout,
         )
@@ -344,7 +473,7 @@ class PickerEngine:
         done_n = 0
 
         def _advance(status_n: int) -> None:
-            pct = 50 + int(status_n / total_c * 45)  # 50~95
+            pct = 50 + int(status_n / total_c * 45)
             _update_progress(pct, f"深度评分 {status_n}/{total_c} 只...")
 
         executor = ThreadPoolExecutor(max_workers=_STAGE2_WORKERS)
@@ -370,7 +499,6 @@ class PickerEngine:
                 logger.warning(
                     f"Stage-2 总预算 {budget}s 耗尽，剩余 {len(future_map)} 只降级为因子评分")
 
-            # 预算耗尽仍未完成的候选：取消排队任务并降级兜底
             for future, code in future_map.items():
                 future.cancel()
                 fb = self._factor_fallback(code)
@@ -379,10 +507,9 @@ class PickerEngine:
                 done_n += 1
                 _advance(done_n)
         finally:
-            # 不等待可能仍阻塞的深研线程，让它们在后台随 HTTP 超时自行退出
             executor.shutdown(wait=False)
 
-        # ── 精选：按综合分降序 + 单行业上限（避免热门赛道扎堆）──
+        # ── 精选 ──
         deep.sort(key=lambda x: x["composite"], reverse=True)
         picks: List[Dict[str, Any]] = []
         industry_count: Dict[str, int] = {}
