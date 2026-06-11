@@ -180,7 +180,7 @@
                     <div v-for="ps in ind.param_schema" :key="ps.key" class="sm-param-item">
                       <span class="sm-param-label">{{ ps.label }}</span>
                       <el-input-number
-                        v-model="ind.params[ps.key]"
+                        v-model="ind.params![ps.key]"
                         size="small"
                         :min="ps.min"
                         :max="ps.max"
@@ -383,7 +383,7 @@ function filterSummary(item: StrategyRule) {
   const parts: string[] = []
   if (f.exclude_st !== false) parts.push('去ST')
   if (f.min_kline_bars) parts.push(`K线≥${f.min_kline_bars}`)
-  if (f.min_avg_amount) parts.push(`成交≥${(f.min_avg_amount / 1e8).toFixed(1)}亿`)
+  if (f.min_avg_amount) parts.push(`成交≥${(Number(f.min_avg_amount) / 1e8).toFixed(1)}亿`)
   return parts.join(' ') || '默认'
 }
 
@@ -487,7 +487,7 @@ async function loadIndicatorCatalog() {
   try {
     const res = await strategyApi.getIndicators()
     const catalog = res.data?.data || []
-    form.value.indicators = catalog.map(c => ({
+    form.value.indicators = catalog.map((c: any) => ({
       key: c.key,
       dimension: c.dimension,
       label: c.label,
@@ -599,12 +599,12 @@ onUnmounted(() => { if (testPollTimer) clearInterval(testPollTimer) })
 .sm-toolbar-right { display: flex; align-items: center; gap: 8px; }
 
 /* ── 加载/空态 ── */
-.sm-loading { text-align: center; padding: 60px; color: #999; font-size: 14px; }
+.sm-loading { text-align: center; padding: 60px; color: var(--text-muted); font-size: 14px; }
 
 /* ── 卡片网格 ── */
 .sm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 14px; overflow-y: auto; padding-bottom: 20px; align-items: start; }
-.sm-card { border-radius: 10px; transition: all .25s; border: 1px solid #ebeef5; overflow: visible !important; display: flex; flex-direction: column; }
-.sm-card:hover { border-color: #c0c4cc; }
+.sm-card { border-radius: 10px; transition: all .25s; border: 1px solid var(--border-color); overflow: visible !important; display: flex; flex-direction: column; }
+.sm-card:hover { border-color: var(--text-faint); }
 .sm-card-disabled { opacity: .55; }
 .sm-card :deep(.el-card__body) { overflow: visible !important; padding: 18px; }
 
@@ -614,61 +614,61 @@ onUnmounted(() => { if (testPollTimer) clearInterval(testPollTimer) })
 .sm-card-title-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .sm-card-header-right { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 .sm-card-name { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sm-card-desc { font-size: 12px; color: #999; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin: 0; }
+.sm-card-desc { font-size: 12px; color: var(--text-muted); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin: 0; }
 
 /* ── 卡片权重可视化 ── */
 .sm-card-body { margin-bottom: 14px; }
-.sm-weight-vis { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: #f0f0f0; margin-bottom: 8px; }
+.sm-weight-vis { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--bg-soft); margin-bottom: 8px; }
 .sm-weight-seg { transition: width .3s; }
 .sm-weight-labels { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 8px; }
 .sm-weight-label-item { font-size: 11px; }
-.sm-indicator-summary { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #909399; }
+.sm-indicator-summary { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-muted); }
 
 /* ── 卡片操作 ── */
-.sm-card-actions { display: flex; gap: 6px; flex-wrap: wrap; border-top: 1px solid #f0f0f0; padding-top: 12px; margin-top: auto; }
+.sm-card-actions { display: flex; gap: 6px; flex-wrap: wrap; border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: auto; }
 
 /* ── 对话框双栏布局 ── */
 .sm-dialog-layout { display: flex; gap: 20px; max-height: 580px; }
 .sm-dialog-left { flex: 1; min-width: 0; overflow-y: auto; padding-right: 4px; }
 .sm-dialog-right { flex: 1; min-width: 0; overflow-y: auto; padding-right: 4px; }
 .sm-section-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 2px solid #409eff; display: flex; align-items: center; justify-content: space-between; }
-.sm-ind-count { font-size: 12px; font-weight: 400; color: #909399; }
+.sm-ind-count { font-size: 12px; font-weight: 400; color: var(--text-muted); }
 
 /* ── 权重编辑 ── */
 .sm-weight-editor { padding: 0 4px; }
 .sm-weight-row { display: flex; align-items: center; margin-bottom: 10px; gap: 4px; }
 .sm-weight-label { width: 56px; font-size: 12px; flex-shrink: 0; }
-.sm-weight-val { width: 36px; text-align: right; font-size: 12px; color: #666; flex-shrink: 0; }
-.sm-weight-total { text-align: right; font-size: 12px; padding-top: 4px; border-top: 1px solid #eee; }
+.sm-weight-val { width: 36px; text-align: right; font-size: 12px; color: var(--text-secondary); flex-shrink: 0; }
+.sm-weight-total { text-align: right; font-size: 12px; padding-top: 4px; border-top: 1px solid var(--border-color); }
 .sm-green { color: #67c23a; font-weight: 600; }
 .sm-red { color: #f56c6c; font-weight: 600; }
 .sm-weight-hint { color: #e6a23c; font-size: 11px; margin-left: 4px; }
 
 /* ── 指标编辑 ── */
 .sm-indicator-editor { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
-.sm-ind-group { border: 1px solid #eee; border-radius: 8px; padding: 8px; }
-.sm-ind-group-title { font-size: 12px; font-weight: 600; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid #f0f0f0; }
-.sm-indicator-row { display: flex; flex-direction: column; gap: 4px; padding: 6px 0; border-bottom: 1px solid #f8f8f8; }
+.sm-ind-group { border: 1px solid var(--border-color); border-radius: 8px; padding: 8px; }
+.sm-ind-group-title { font-size: 12px; font-weight: 600; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid var(--border-color); }
+.sm-indicator-row { display: flex; flex-direction: column; gap: 4px; padding: 6px 0; border-bottom: 1px solid var(--bg-soft); }
 .sm-indicator-row:last-child { border-bottom: none; }
 .sm-indicator-row > *:first-child { /* switch sits on its own line is not ideal, we want row layout */ }
 .sm-indicator-row { flex-direction: row; flex-wrap: wrap; align-items: flex-start; }
 .sm-ind-info { flex: 1; min-width: 0; }
 .sm-ind-label { font-size: 12px; display: block; line-height: 1.4; }
-.sm-ind-desc { font-size: 10px; color: #c0c4cc; display: block; }
-.sm-ind-disabled .sm-ind-label { color: #c0c4cc; }
-.sm-ind-disabled .sm-ind-desc { color: #dcdfe6; }
+.sm-ind-desc { font-size: 10px; color: var(--text-faint); display: block; }
+.sm-ind-disabled .sm-ind-label { color: var(--text-faint); }
+.sm-ind-disabled .sm-ind-desc { color: var(--text-faint); }
 .sm-ind-weight-editor { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
-.sm-ind-weight-label { font-size: 10px; color: #909399; }
-.sm-ind-weight-num { font-size: 11px; color: #666; width: 24px; text-align: right; font-variant-numeric: tabular-nums; }
+.sm-ind-weight-label { font-size: 10px; color: var(--text-muted); }
+.sm-ind-weight-num { font-size: 11px; color: var(--text-secondary); width: 24px; text-align: right; font-variant-numeric: tabular-nums; }
 .sm-ind-params { width: 100%; display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0 0 24px; }
 .sm-param-item { display: flex; align-items: center; gap: 4px; }
-.sm-param-label { font-size: 10px; color: #909399; white-space: nowrap; }
+.sm-param-label { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
 .sm-param-input { width: 110px; }
 
 /* ── 测试结果 ── */
 .sm-test-stats { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
 .sm-test-loading { text-align: center; padding: 40px 20px; }
-.sm-test-loading p { margin-top: 12px; font-size: 13px; color: #909399; }
+.sm-test-loading p { margin-top: 12px; font-size: 13px; color: var(--text-muted); }
 
 /* ── 响应式 ── */
 @media (max-width: 768px) {

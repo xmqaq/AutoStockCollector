@@ -618,10 +618,10 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
 .sp-page { display: flex; flex-direction: column; gap: 10px; }
 .sp-toolbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
 .sp-title-group { display: flex; align-items: baseline; gap: 10px; }
-.sp-title { font-size: 15px; font-weight: 700; color: #d8daf0; }
-.sp-subtitle { font-size: 12px; color: #606080; }
+.sp-title { font-size: 15px; font-weight: 700; color: var(--text-alt-primary); }
+.sp-subtitle { font-size: 12px; color: var(--text-alt-muted); }
 .sp-controls { display: flex; gap: 8px; align-items: center; }
-.sp-meta { display: flex; gap: 18px; font-size: 12px; color: #606080; }
+.sp-meta { display: flex; gap: 18px; font-size: 12px; color: var(--text-alt-muted); }
 
 /* 折叠选择区 */
 .sp-collapse-group {
@@ -629,8 +629,8 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
   background: transparent;
 }
 .sp-collapse-group :deep(.el-collapse-item) {
-  background: #1a1a2e;
-  border: 1px solid #2a2a4a;
+  background: var(--bg-card-alt);
+  border: 1px solid var(--border-alt);
   border-radius: 8px;
   margin-bottom: 10px;
   overflow: hidden;
@@ -641,7 +641,7 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
   padding: 10px 16px;
   background: transparent;
   border-bottom: none;
-  color: #b0b0d0;
+  color: var(--text-alt-body);
   font-size: 13px;
   font-weight: 600;
   line-height: 1.4;
@@ -661,8 +661,8 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
 }
 /* 买卖信号 */
 .sp-signals-box {
-  background: #1a1a2e;
-  border: 1px solid #2a2a4a;
+  background: var(--bg-card-alt);
+  border: 1px solid var(--border-alt);
   border-left: 3px solid #f0a040;
   border-radius: 6px;
   padding: 12px 14px;
@@ -677,7 +677,7 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
 .sp-ss-加仓 { color: #60a0f0; background: rgba(96,160,240,0.12); }
 .sp-ss-关注 { color: #a0d0a0; background: rgba(160,208,160,0.08); }
 .sp-ss-持有 { color: #fbbf24; background: rgba(251,191,36,0.10); }
-.sp-ss-观望 { color: #909098; background: rgba(144,144,152,0.10); }
+.sp-ss-观望 { color: var(--text-alt-muted); background: rgba(144,144,152,0.10); }
 .sp-ss-减仓 { color: #fb923c; background: rgba(251,146,60,0.12); }
 .sp-ss-卖出 { color: #f87171; background: rgba(248,113,113,0.12); }
 .sp-signals-table-wrap { overflow-x: auto; }
@@ -685,11 +685,11 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
   width: 100%; border-collapse: collapse; font-size: 12px;
 }
 .sp-signals-table th {
-  text-align: left; color: #707090; padding: 6px 8px; border-bottom: 1px solid #2a2a4a;
+  text-align: left; color: var(--text-alt-muted); padding: 6px 8px; border-bottom: 1px solid var(--border-alt);
   font-weight: 500; white-space: nowrap;
 }
-.sp-signals-table td { padding: 6px 8px; border-bottom: 1px solid #1e1e3a; color: #b0b0d0; }
-.sp-signal-row:hover td { background: rgba(255,255,255,0.03); }
+.sp-signals-table td { padding: 6px 8px; border-bottom: 1px solid var(--border-alt); color: var(--text-alt-body); }
+.sp-signal-row:hover td { background: var(--bg-hover-subtle); }
 .sp-sig-badge {
   display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 3px; font-weight: 600;
 }
@@ -697,14 +697,14 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
 .sp-sig-加仓 { color: #60a0f0; background: rgba(96,160,240,0.15); }
 .sp-sig-关注 { color: #a0d0a0; background: rgba(160,208,160,0.10); }
 .sp-sig-持有 { color: #fbbf24; background: rgba(251,191,36,0.12); }
-.sp-sig-观望 { color: #909098; background: rgba(144,144,152,0.12); }
+.sp-sig-观望 { color: var(--text-alt-muted); background: rgba(144,144,152,0.12); }
 .sp-sig-减仓 { color: #fb923c; background: rgba(251,146,60,0.15); }
 .sp-sig-卖出 { color: #f87171; background: rgba(248,113,113,0.15); }
 .sp-priority { font-size: 11px; }
 .sp-pri-高 { color: #f87171; }
 .sp-pri-中 { color: #fbbf24; }
-.sp-pri-低 { color: #909098; }
-.sp-signal-reason { font-size: 11px; color: #808098; max-width: 260px; }
+.sp-pri-低 { color: var(--text-alt-muted); }
+.sp-signal-reason { font-size: 11px; color: var(--text-alt-muted); max-width: 260px; }
 
 .sp-selector-header {
   display: flex;
@@ -712,61 +712,61 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
   align-items: center;
   margin-bottom: 8px;
 }
-.sp-selector-title { font-size: 13px; font-weight: 600; color: #b0b0d0; }
+.sp-selector-title { font-size: 13px; font-weight: 600; color: var(--text-alt-body); }
 .sp-strategy-list {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   min-height: 24px;
 }
-.sp-empty-hint { font-size: 12px; color: #606070; }
+.sp-empty-hint { font-size: 12px; color: var(--text-alt-muted); }
 .sp-strategy-chip {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
   border-radius: 6px;
-  border: 1px solid #2a2a4a;
-  background: #16162a;
+  border: 1px solid var(--border-alt);
+  background: var(--bg-deep-soft);
   cursor: pointer;
   transition: all 0.2s;
   user-select: none;
 }
-.sp-strategy-chip:hover { border-color: #4a4a6a; }
+.sp-strategy-chip:hover { border-color: var(--border-alt-hover); }
 .sp-strategy-chip.checked {
   border-color: #5a7af0;
   background: rgba(90, 122, 240, 0.12);
 }
 .sp-check { width: 14px; height: 14px; accent-color: #5a7af0; }
-.sp-chip-name { font-size: 12px; font-weight: 600; color: #c0c0e0; }
-.sp-chip-desc { font-size: 11px; color: #606080; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-chip-name { font-size: 12px; font-weight: 600; color: var(--text-alt-body); }
+.sp-chip-desc { font-size: 11px; color: var(--text-alt-muted); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .sp-strategy-chip.agent-chip {
-  border-color: #3a3a6a;
-  background: #12122a;
+  border-color: var(--border-alt);
+  background: var(--bg-deep);
 }
-.sp-strategy-chip.agent-chip:hover { border-color: #5a5a9a; }
+.sp-strategy-chip.agent-chip:hover { border-color: var(--border-alt-hover); }
 .sp-strategy-chip.agent-chip.checked {
   border-color: #7a5af0;
   background: rgba(122, 90, 240, 0.12);
 }
 .sp-progress-box {
-  background: #1a1a2e;
-  border: 1px solid #2a2a4a;
+  background: var(--bg-card-alt);
+  border: 1px solid var(--border-alt);
   border-radius: 8px;
   padding: 12px 16px;
 }
-.sp-progress-header { font-size: 13px; color: #b0b0d0; margin-bottom: 8px; }
-.sp-progress-status { font-size: 12px; color: #808098; margin-top: 6px; }
+.sp-progress-header { font-size: 13px; color: var(--text-alt-body); margin-bottom: 8px; }
+.sp-progress-status { font-size: 12px; color: var(--text-alt-muted); margin-top: 6px; }
 .sp-progress-done { font-size: 13px; color: #4ade80; text-align: center; padding: 4px 0; }
 
 /* 统计 */
 .sp-stats { display: flex; flex-wrap: wrap; gap: 8px; }
 .sp-stat-tag {
   font-size: 12px;
-  color: #b0b0d0;
-  background: #1a1a2e;
-  border: 1px solid #2a2a4a;
+  color: var(--text-alt-body);
+  background: var(--bg-card-alt);
+  border: 1px solid var(--border-alt);
   border-radius: 4px;
   padding: 3px 10px;
 }
@@ -775,16 +775,16 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
 /* 表格 */
 .sp-table { background: transparent; }
 .sp-table :deep(.el-table__row) { height: 42px; }
-.sp-table :deep(.el-table__row:hover > td) { background: rgba(255,255,255,0.04) !important; }
+.sp-table :deep(.el-table__row:hover > td) { background: var(--bg-hover) !important; }
 .sp-row-clickable { cursor: pointer; }
 .sp-code { color: #5a7af0; cursor: pointer; }
 .sp-code:hover { text-decoration: underline; }
-.sp-na { color: #505060; }
+.sp-na { color: var(--text-alt-muted); }
 .sp-score-cell { font-weight: 600; font-size: 13px; }
 .sp-strategy-tag {
   display: inline-block;
   font-size: 11px;
-  color: #a0a0c0;
+  color: var(--text-alt-body);
   background: rgba(90,122,240,0.08);
   padding: 1px 6px;
   border-radius: 3px;
@@ -814,40 +814,40 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
 .sp-action-green { color: #3aa856; background: rgba(82,196,26,0.14); }
 .sp-action-lightgreen { color: #7cc98a; background: rgba(82,196,26,0.07); }
 .sp-action-orange { color: #e8912a; background: rgba(250,173,20,0.14); }
-.sp-action-gray { color: #909098; background: rgba(144,144,152,0.12); }
+.sp-action-gray { color: var(--text-alt-muted); background: rgba(144,144,152,0.12); }
 
 /* 弹窗详情 */
 .sp-detail-dialog :deep(.el-dialog) {
-  background: #1a1a2e;
-  border: 1px solid #2a2a4a;
+  background: var(--bg-card-alt);
+  border: 1px solid var(--border-alt);
   border-radius: 10px;
-  color: #c0c0e0;
+  color: var(--text-alt-body);
 }
 .sp-detail-dialog :deep(.el-dialog__title) {
-  color: #c0c0e0;
+  color: var(--text-alt-body);
   font-size: 15px;
   font-weight: 600;
 }
 .sp-detail-dialog :deep(.el-dialog__headerbtn .el-dialog__close) {
-  color: #606080;
+  color: var(--text-alt-muted);
 }
 .sp-detail-dialog :deep(.el-dialog__body) {
   padding: 16px 20px;
 }
-.sp-detail-source { font-size: 12px; font-weight: 400; color: #707090; margin-bottom: 12px; }
+.sp-detail-source { font-size: 12px; font-weight: 400; color: var(--text-alt-muted); margin-bottom: 12px; }
 .sp-detail-body { display: flex; flex-direction: column; gap: 10px; }
-.sp-dim-block { background: #16162a; border-radius: 6px; padding: 10px 12px; }
+.sp-dim-block { background: var(--bg-deep-soft); border-radius: 6px; padding: 10px 12px; }
 .sp-dim-title {
   display: flex; align-items: center; gap: 10px;
 }
-.sp-dim-label { font-size: 13px; font-weight: 600; color: #b0b0d0; min-width: 48px; }
+.sp-dim-label { font-size: 13px; font-weight: 600; color: var(--text-alt-body); min-width: 48px; }
 .sp-dim-bar { flex: 1; max-width: 180px; }
-.sp-dim-score { font-size: 13px; font-weight: 600; color: #d8d8f0; }
-.sp-dim-weight { font-size: 11px; color: #707090; }
-.sp-dim-contrib { font-size: 11px; color: #808090; }
-.sp-detail-advice { margin-top: 10px; border-top: 1px solid #2a2a4a; padding-top: 10px; }
-.sp-advice-label { font-size: 12px; color: #808090; margin-bottom: 4px; }
-.sp-advice-text { font-size: 13px; color: #b0b0d0; line-height: 1.6; }
+.sp-dim-score { font-size: 13px; font-weight: 600; color: var(--text-alt-primary); }
+.sp-dim-weight { font-size: 11px; color: var(--text-alt-muted); }
+.sp-dim-contrib { font-size: 11px; color: var(--text-alt-muted); }
+.sp-detail-advice { margin-top: 10px; border-top: 1px solid var(--border-alt); padding-top: 10px; }
+.sp-advice-label { font-size: 12px; color: var(--text-alt-muted); margin-bottom: 4px; }
+.sp-advice-text { font-size: 13px; color: var(--text-alt-body); line-height: 1.6; }
 .sp-risk-section { margin-top: 8px; }
 .sp-risk-item {
   font-size: 12px;
@@ -860,8 +860,8 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
 
 /* AI 综合建议 */
 .sp-ai-summary {
-  background: #16162a;
-  border: 1px solid #2a2a4a;
+  background: var(--bg-deep-soft);
+  border: 1px solid var(--border-alt);
   border-left: 3px solid #5a7af0;
   border-radius: 6px;
   overflow: hidden;
@@ -874,12 +874,12 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
-  color: #b0b0d0;
+  color: var(--text-alt-body);
   user-select: none;
 }
-.sp-summary-toggle:hover { background: rgba(255,255,255,0.03); }
+.sp-summary-toggle:hover { background: var(--bg-hover-subtle); }
 .sp-summary-svg {
-  color: #606080;
+  color: var(--text-alt-muted);
   transition: transform 0.2s;
   vertical-align: middle;
 }
@@ -887,27 +887,27 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
 .sp-summary-body {
   padding: 0 14px 12px;
   font-size: 13px;
-  color: #c0c0d8;
+  color: var(--text-alt-body);
   line-height: 1.7;
 }
 
 /* Markdown */
 .md-content :deep(h1), .md-content :deep(h2), .md-content :deep(h3) {
-  font-size: 13px; font-weight: 600; color: #d8d8f0; margin: 10px 0 4px 0;
+  font-size: 13px; font-weight: 600; color: var(--text-alt-primary); margin: 10px 0 4px 0;
 }
 .md-content :deep(h1) { font-size: 14px; }
-.md-content :deep(strong) { color: #e8e8ff; font-weight: 600; }
-.md-content :deep(p) { margin: 4px 0; color: #c0c0d8; }
+.md-content :deep(strong) { color: var(--text-alt-primary); font-weight: 600; }
+.md-content :deep(p) { margin: 4px 0; color: var(--text-alt-body); }
 .md-content :deep(ul), .md-content :deep(ol) { padding-left: 16px; margin: 3px 0; }
-.md-content :deep(li) { margin: 2px 0; color: #c0c0d8; }
-.md-content :deep(code) { background: #22223a; padding: 1px 5px; border-radius: 3px; font-size: 12px; color: #d0a0f0; }
+.md-content :deep(li) { margin: 2px 0; color: var(--text-alt-body); }
+.md-content :deep(code) { background: var(--bg-deep-soft); padding: 1px 5px; border-radius: 3px; font-size: 12px; color: #d0a0f0; }
 
 /* 投资哲学 Agent 样式 */
 .sp-strategy-chip.philosophy-chip {
-  border-color: #3a3a5a;
-  background: #12122a;
+  border-color: var(--border-alt);
+  background: var(--bg-deep);
 }
-.sp-strategy-chip.philosophy-chip:hover { border-color: #5a5a7a; }
+.sp-strategy-chip.philosophy-chip:hover { border-color: var(--border-alt-hover); }
 .sp-strategy-chip.philosophy-chip.checked {
   border-color: #aa5af0;
   background: rgba(170, 90, 240, 0.12);
@@ -929,8 +929,8 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
 
 /* 辩论总览 */
 .sp-debate-overview {
-  background: #16162a;
-  border: 1px solid #2a2a4a;
+  background: var(--bg-deep-soft);
+  border: 1px solid var(--border-alt);
   border-left: 3px solid #aa5af0;
   border-radius: 6px;
   overflow: hidden;
@@ -943,25 +943,25 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
-  color: #b0b0d0;
+  color: var(--text-alt-body);
   user-select: none;
 }
-.sp-debate-overview-toggle:hover { background: rgba(255,255,255,0.03); }
+.sp-debate-overview-toggle:hover { background: var(--bg-hover-subtle); }
 .sp-debate-overview-body { padding: 0 14px 12px; display: flex; flex-direction: column; gap: 8px; }
 .sp-debate-stock-row {
-  background: #1a1a2e;
-  border: 1px solid #2a2a4a;
+  background: var(--bg-card-alt);
+  border: 1px solid var(--border-alt);
   border-radius: 6px;
   padding: 10px;
 }
 .sp-debate-stock-title {
   display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
 }
-.sp-debate-stock-name { font-size: 13px; font-weight: 600; color: #c0c0e0; }
+.sp-debate-stock-name { font-size: 13px; font-weight: 600; color: var(--text-alt-body); }
 .sp-debate-stock-consensus {
   font-size: 11px; padding: 1px 7px; border-radius: 3px; font-weight: 600;
 }
-.sp-debate-stock-meta { font-size: 11px; color: #707090; }
+.sp-debate-stock-meta { font-size: 11px; color: var(--text-alt-muted); }
 .sp-debate-vote-list { display: flex; flex-wrap: wrap; gap: 4px; }
 .sp-vote-tag {
   font-size: 10px;
@@ -977,21 +977,21 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
 .sp-vote-strong_sell { color: #ef4444; background: rgba(239,68,68,0.12); }
 
 /* 辩论信号详情 */
-.sp-debate-section { margin-top: 10px; border-top: 1px solid #2a2a4a; padding-top: 10px; }
+.sp-debate-section { margin-top: 10px; border-top: 1px solid var(--border-alt); padding-top: 10px; }
 .sp-debate-section-title { font-size: 12px; font-weight: 600; color: #aa5af0; margin-bottom: 8px; }
 .sp-consensus-bar {
-  display: flex; gap: 14px; font-size: 11px; color: #808098;
-  background: #12122a; border-radius: 4px; padding: 6px 10px; margin-bottom: 8px;
+  display: flex; gap: 14px; font-size: 11px; color: var(--text-alt-muted);
+  background: var(--bg-deep); border-radius: 4px; padding: 6px 10px; margin-bottom: 8px;
 }
 .sp-signal-row {
-  background: #12122a;
-  border: 1px solid #2a2a4a;
+  background: var(--bg-deep);
+  border: 1px solid var(--border-alt);
   border-radius: 6px;
   padding: 8px 10px;
   margin-bottom: 6px;
 }
 .sp-signal-header { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
-.sp-signal-name { font-size: 12px; font-weight: 600; color: #c0c0e0; }
+.sp-signal-name { font-size: 12px; font-weight: 600; color: var(--text-alt-body); }
 .sp-signal-action {
   font-size: 10px; padding: 1px 6px; border-radius: 3px; font-weight: 600;
 }
@@ -1001,10 +1001,10 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
 .sp-sig-watch { color: #fb923c; background: rgba(251,146,60,0.1); }
 .sp-sig-sell { color: #f87171; background: rgba(248,113,113,0.1); }
 .sp-sig-strong_sell { color: #ef4444; background: rgba(239,68,68,0.12); }
-.sp-signal-score { font-size: 11px; color: #707090; }
-.sp-signal-conf { font-size: 11px; color: #707090; }
+.sp-signal-score { font-size: 11px; color: var(--text-alt-muted); }
+.sp-signal-conf { font-size: 11px; color: var(--text-alt-muted); }
 .sp-signal-body { }
-.sp-signal-reasoning { font-size: 11px; color: #a0a0b8; line-height: 1.5; margin-bottom: 4px; }
+.sp-signal-reasoning { font-size: 11px; color: var(--text-alt-body); line-height: 1.5; margin-bottom: 4px; }
 .sp-signal-factors { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
 .sp-signal-factor {
   font-size: 10px; color: #60a0f0; background: rgba(96,160,240,0.08);
