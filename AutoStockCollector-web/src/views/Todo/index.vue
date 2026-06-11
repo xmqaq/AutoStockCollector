@@ -270,8 +270,8 @@ onMounted(load)
   display: flex;
   align-items: center;
   gap: 24px;
-  background: #1f1f1f;
-  border: 1px solid #2c2c2c;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   padding: 14px 20px;
   margin-bottom: 8px;
@@ -290,13 +290,13 @@ onMounted(load)
   line-height: 1.2;
 }
 
-.stat-num.total { color: #e5eaf3; }
+.stat-num.total { color: var(--text-primary); }
 .stat-num.done { color: #67c23a; }
 .stat-num.pending { color: #e6a23c; }
 
 .stat-lbl {
   font-size: 11px;
-  color: #909399;
+  color: var(--text-muted);
   margin-top: 2px;
 }
 
@@ -306,14 +306,14 @@ onMounted(load)
 }
 
 .section-card {
-  background: #1f1f1f;
-  border: 1px solid #2c2c2c;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
 }
 
 .section-card :deep(.el-card__header) {
-  border-bottom: 1px solid #2c2c2c;
+  border-bottom: 1px solid var(--border-color);
   padding: 12px 16px;
-  color: #e5eaf3;
+  color: var(--text-primary);
   font-size: 14px;
   font-weight: 600;
 }
@@ -347,11 +347,11 @@ onMounted(load)
   border: 1px solid transparent;
   margin-bottom: 6px;
   transition: all 0.2s;
-  background: #2c2c2c;
+  background: var(--border-color);
 }
 
 .todo-item:hover {
-  border-color: #3c3c3c;
+  border-color: var(--border-strong);
 }
 
 .todo-item.done {
@@ -372,12 +372,12 @@ onMounted(load)
 
 .todo-time {
   font-size: 11px;
-  color: #606266;
+  color: var(--text-faint);
 }
 
 .todo-text {
   font-size: 13px;
-  color: #e5eaf3;
+  color: var(--text-primary);
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
@@ -390,7 +390,7 @@ onMounted(load)
 
 .todo-text.line-through {
   text-decoration: line-through;
-  color: #606266;
+  color: var(--text-faint);
 }
 
 .todo-edit-row {
@@ -400,25 +400,25 @@ onMounted(load)
 }
 
 .todo-edit-row :deep(.el-input__wrapper) {
-  background: #1a1a1a;
-  box-shadow: 0 0 0 1px #3c3c3c inset;
+  background: var(--bg-elevated);
+  box-shadow: 0 0 0 1px var(--border-strong) inset;
 }
 
 .todo-edit-row :deep(.el-select .el-input__wrapper) {
-  background: #1a1a1a;
+  background: var(--bg-elevated);
 }
 
 .pagination-bar {
   display: flex;
   justify-content: flex-end;
   padding-top: 12px;
-  border-top: 1px solid #2c2c2c;
+  border-top: 1px solid var(--border-color);
   margin-top: 8px;
 }
 
 .pagination-bar :deep(.el-pagination) {
   --el-pagination-bg-color: transparent;
-  --el-pagination-button-bg-color: #2c2c2c;
+  --el-pagination-button-bg-color: var(--border-color);
   --el-pagination-hover-color: #409eff;
 }
 </style>

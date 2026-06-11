@@ -120,7 +120,7 @@ onMounted(() => {
 .heatmap-title {
   font-size: 14px;
   font-weight: 600;
-  color: #e5eaf3;
+  color: var(--text-primary);
 }
 
 .heatmap-container {
@@ -132,7 +132,7 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   height: 200px;
-  color: #606266;
+  color: var(--text-faint);
   font-size: 13px;
 }
 
@@ -158,7 +158,7 @@ onMounted(() => {
 
 .sector-name {
   font-size: 11px;
-  color: #e5eaf3;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -168,7 +168,7 @@ onMounted(() => {
 .sector-change {
   font-size: 12px;
   font-weight: 600;
-  color: #e5eaf3;
+  color: var(--text-primary);
 }
 
 .heatmap-legend {
@@ -181,7 +181,7 @@ onMounted(() => {
 
 .legend-label {
   font-size: 11px;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .legend-bar {
@@ -194,6 +194,6 @@ onMounted(() => {
 .legend-gradient {
   width: 100%;
   height: 100%;
-  background: linear-gradient(to right, #26a69a, #3c3c3c, #ef5350);
+  background: linear-gradient(to right, #26a69a, var(--border-strong), #ef5350);
 }
 </style>

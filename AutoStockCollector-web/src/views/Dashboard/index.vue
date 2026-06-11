@@ -289,8 +289,8 @@ onUnmounted(() => {
 }
 
 .metric-card {
-  background: #1f1f1f;
-  border: 1px solid #2c2c2c;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
 }
 
 .metric-card :deep(.el-card__body) {
@@ -308,19 +308,19 @@ onUnmounted(() => {
 
 .metric-label {
   font-size: 13px;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .metric-value {
   font-size: 24px;
   font-weight: 700;
-  color: #e5eaf3;
+  color: var(--text-primary);
 }
 
 .metric-sub {
   font-size: 14px;
   font-weight: normal;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .metric-icon {
@@ -332,14 +332,14 @@ onUnmounted(() => {
 .text-primary { color: #409eff; }
 
 .section-card {
-  background: #1f1f1f;
-  border: 1px solid #2c2c2c;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
 }
 
 .section-card :deep(.el-card__header) {
-  border-bottom: 1px solid #2c2c2c;
+  border-bottom: 1px solid var(--border-color);
   padding: 12px 16px;
-  color: #e5eaf3;
+  color: var(--text-primary);
   font-size: 14px;
   font-weight: 600;
 }
@@ -364,7 +364,7 @@ onUnmounted(() => {
 
 .news-item {
   padding: 10px 0;
-  border-bottom: 1px solid #2c2c2c;
+  border-bottom: 1px solid var(--border-color);
   cursor: pointer;
 }
 
@@ -374,7 +374,7 @@ onUnmounted(() => {
 
 .news-title {
   font-size: 13px;
-  color: #e5eaf3;
+  color: var(--text-primary);
   line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -388,7 +388,7 @@ onUnmounted(() => {
 
 .news-meta {
   font-size: 11px;
-  color: #606266;
+  color: var(--text-faint);
   margin-top: 4px;
 }
 
@@ -415,7 +415,7 @@ onUnmounted(() => {
 
 .health-stale-list {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .stale-name {
@@ -431,7 +431,7 @@ onUnmounted(() => {
 }
 
 .health-card {
-  background: #252525;
+  background: var(--bg-soft);
   border-radius: 6px;
   padding: 12px 14px;
   border-left: 3px solid transparent;
@@ -455,7 +455,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .hc-icon { font-size: 14px; }
@@ -468,20 +468,20 @@ onUnmounted(() => {
 .hc-count {
   font-size: 18px;
   font-weight: 700;
-  color: #e5eaf3;
+  color: var(--text-primary);
   line-height: 1.2;
 }
 
 .hc-unit {
   font-size: 11px;
   font-weight: normal;
-  color: #606266;
+  color: var(--text-faint);
   margin-left: 2px;
 }
 
 .hc-date {
   font-size: 11px;
-  color: #606266;
+  color: var(--text-faint);
 }
 
 .hc-date--stale {
@@ -501,9 +501,9 @@ onUnmounted(() => {
 .sk-line {
   background: linear-gradient(
     90deg,
-    rgba(255, 255, 255, 0.04) 25%,
+    var(--bg-hover-subtle) 25%,
     rgba(255, 255, 255, 0.10) 50%,
-    rgba(255, 255, 255, 0.04) 75%
+    var(--bg-hover-subtle) 75%
   );
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
@@ -526,9 +526,9 @@ onUnmounted(() => {
   border-radius: 50%;
   background: linear-gradient(
     90deg,
-    rgba(255, 255, 255, 0.04) 25%,
+    var(--bg-hover-subtle) 25%,
     rgba(255, 255, 255, 0.10) 50%,
-    rgba(255, 255, 255, 0.04) 75%
+    var(--bg-hover-subtle) 75%
   );
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
@@ -542,6 +542,6 @@ onUnmounted(() => {
 }
 
 .sk-health-card:hover {
-  background: #252525;
+  background: var(--bg-soft);
 }
 </style>

@@ -387,7 +387,7 @@ onMounted(() => {
 }
 
 .config-section {
-  background: #2c2c2c;
+  background: var(--border-color);
   border-radius: 8px;
   padding: 16px;
 }
@@ -398,7 +398,7 @@ onMounted(() => {
   gap: 8px;
   font-size: 14px;
   font-weight: 600;
-  color: #e5eaf3;
+  color: var(--text-primary);
   margin-bottom: 12px;
 }
 
@@ -416,13 +416,13 @@ onMounted(() => {
 
 .item-label {
   font-size: 13px;
-  color: #909399;
+  color: var(--text-muted);
   min-width: 120px;
 }
 
 .item-suffix {
   font-size: 12px;
-  color: #606266;
+  color: var(--text-faint);
 }
 
 .config-footer {
@@ -431,7 +431,7 @@ onMounted(() => {
   gap: 12px;
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px solid #2c2c2c;
+  border-top: 1px solid var(--border-color);
 }
 
 .stock-link {
@@ -453,18 +453,18 @@ onMounted(() => {
 
 .price-range {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .section-card {
-  background: #1f1f1f;
-  border: 1px solid #2c2c2c;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
 }
 
 .section-card :deep(.el-card__header) {
-  border-bottom: 1px solid #2c2c2c;
+  border-bottom: 1px solid var(--border-color);
   padding: 12px 16px;
-  color: #e5eaf3;
+  color: var(--text-primary);
   font-size: 14px;
   font-weight: 600;
   display: flex;

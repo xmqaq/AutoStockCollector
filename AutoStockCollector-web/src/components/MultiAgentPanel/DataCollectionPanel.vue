@@ -78,7 +78,7 @@ function toggleCollapse(tool: string) {
   gap: 10px;
 }
 .data-source-item {
-  background: #2c2c2c;
+  background: var(--border-color);
   border-radius: 8px;
   padding: 12px;
   display: flex;
@@ -105,7 +105,7 @@ function toggleCollapse(tool: string) {
 .ds-label {
   font-size: 12px;
   font-weight: 600;
-  color: #e5eaf3;
+  color: var(--text-primary);
   flex: 1;
 }
 .ds-badge {
@@ -122,9 +122,9 @@ function toggleCollapse(tool: string) {
 }
 .ds-detail {
   font-size: 11px;
-  color: #909399;
+  color: var(--text-muted);
   line-height: 1.6;
-  border-top: 1px solid #3c3c3c;
+  border-top: 1px solid var(--border-strong);
   padding-top: 6px;
   margin-top: 2px;
 }
@@ -132,7 +132,7 @@ function toggleCollapse(tool: string) {
   padding: 1px 0;
 }
 .ds-row.more {
-  color: #606266;
+  color: var(--text-faint);
 }
 .ds-news {
   display: flex;
@@ -147,16 +147,16 @@ function toggleCollapse(tool: string) {
 }
 .news-date {
   flex-shrink: 0;
-  color: #606266;
+  color: var(--text-faint);
 }
 .section-card {
-  background: #1f1f1f;
-  border: 1px solid #2c2c2c;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
 }
 .section-card :deep(.el-card__header) {
-  border-bottom: 1px solid #2c2c2c;
+  border-bottom: 1px solid var(--border-color);
   padding: 12px 16px;
-  color: #e5eaf3;
+  color: var(--text-primary);
   font-size: 14px;
   font-weight: 600;
   display: flex;

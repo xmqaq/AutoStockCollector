@@ -162,13 +162,13 @@ onMounted(loadData)
 
 <style scoped>
 .fund-flow-view { display: flex; flex-direction: column; gap: 16px; }
-.section-card { background: #1f1f1f; border: 1px solid #2c2c2c; }
+.section-card { background: var(--bg-card); border: 1px solid var(--border-color); }
 .section-card :deep(.el-card__header) {
-  border-bottom: 1px solid #2c2c2c; padding: 12px 16px;
-  color: #e5eaf3; font-size: 14px; font-weight: 600;
+  border-bottom: 1px solid var(--border-color); padding: 12px 16px;
+  color: var(--text-primary); font-size: 14px; font-weight: 600;
 }
 .filter-bar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-.date-label { font-size: 12px; color: #606266; }
+.date-label { font-size: 12px; color: var(--text-faint); }
 .code-link { color: #409eff; cursor: pointer; }
 .code-link:hover { text-decoration: underline; }
 .val-pos { color: #f56c6c; }

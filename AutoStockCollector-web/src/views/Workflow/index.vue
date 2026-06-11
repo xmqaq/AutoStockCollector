@@ -1382,8 +1382,8 @@ onUnmounted(() => {
 }
 
 .workflow-tabs {
-  background: #1f1f1f;
-  border: 1px solid #2c2c2c;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 16px;
 }
@@ -1393,7 +1393,7 @@ onUnmounted(() => {
 }
 
 .workflow-tabs :deep(.el-tabs__nav-wrap::after) {
-  background-color: #3c3c3c;
+  background-color: var(--border-strong);
 }
 
 .execution-badge {
@@ -1405,8 +1405,8 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: flex-start;
   padding: 16px 20px;
-  background: #1f1f1f;
-  border: 1px solid #2c2c2c;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
 }
 
@@ -1414,13 +1414,13 @@ onUnmounted(() => {
   margin: 0 0 8px 0;
   font-size: 20px;
   font-weight: 600;
-  color: #e5eaf3;
+  color: var(--text-primary);
 }
 
 .subtitle {
   margin: 0;
   font-size: 14px;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .header-actions {
@@ -1429,14 +1429,14 @@ onUnmounted(() => {
 }
 
 .workflow-list-card {
-  background: #1f1f1f;
-  border: 1px solid #2c2c2c;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
 }
 
 .workflow-list-card :deep(.el-card__header) {
-  border-bottom: 1px solid #2c2c2c;
+  border-bottom: 1px solid var(--border-color);
   padding: 12px 16px;
-  color: #e5eaf3;
+  color: var(--text-primary);
   font-size: 14px;
   font-weight: 600;
 }
@@ -1453,7 +1453,7 @@ onUnmounted(() => {
   justify-content: center;
   gap: 8px;
   padding: 48px;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .empty-state {
@@ -1462,7 +1462,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 16px;
   padding: 48px;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .workflow-grid {
@@ -1473,8 +1473,8 @@ onUnmounted(() => {
 }
 
 .workflow-card {
-  background: #2c2c2c;
-  border: 1px solid #3c3c3c;
+  background: var(--border-color);
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
   padding: 16px;
   cursor: pointer;
@@ -1497,13 +1497,13 @@ onUnmounted(() => {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  color: #e5eaf3;
+  color: var(--text-primary);
 }
 
 .workflow-description {
   margin: 0 0 12px 0;
   font-size: 13px;
-  color: #909399;
+  color: var(--text-muted);
   line-height: 1.5;
 }
 
@@ -1512,7 +1512,7 @@ onUnmounted(() => {
   gap: 16px;
   margin-bottom: 8px;
   font-size: 12px;
-  color: #606266;
+  color: var(--text-faint);
 }
 
 .workflow-meta span {
@@ -1532,7 +1532,7 @@ onUnmounted(() => {
   display: flex;
   gap: 8px;
   padding-top: 12px;
-  border-top: 1px solid #3c3c3c;
+  border-top: 1px solid var(--border-strong);
 }
 
 .template-grid {
@@ -1542,8 +1542,8 @@ onUnmounted(() => {
 }
 
 .template-card {
-  background: #2c2c2c;
-  border: 1px solid #3c3c3c;
+  background: var(--border-color);
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
   padding: 16px;
   cursor: pointer;
@@ -1558,13 +1558,13 @@ onUnmounted(() => {
   margin: 0 0 8px 0;
   font-size: 16px;
   font-weight: 600;
-  color: #e5eaf3;
+  color: var(--text-primary);
 }
 
 .template-card p {
   margin: 0 0 12px 0;
   font-size: 13px;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .template-tags {
@@ -1582,7 +1582,7 @@ onUnmounted(() => {
   display: flex;
   gap: 24px;
   padding: 16px;
-  background: #2c2c2c;
+  background: var(--border-color);
   border-radius: 8px;
 }
 
@@ -1594,7 +1594,7 @@ onUnmounted(() => {
 
 .stat-label {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .stat-value {
@@ -1611,7 +1611,7 @@ onUnmounted(() => {
   display: flex;
   gap: 16px;
   padding: 16px;
-  background: #2c2c2c;
+  background: var(--border-color);
   border-radius: 8px;
   margin: 16px 0;
 }
@@ -1621,7 +1621,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
   padding: 12px 20px;
-  background: #3c3c3c;
+  background: var(--border-strong);
   border-radius: 8px;
   flex: 1;
 }
@@ -1644,7 +1644,7 @@ onUnmounted(() => {
 
 .summary-label {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .score-badges {
@@ -1680,7 +1680,7 @@ onUnmounted(() => {
 .stat-card {
   flex: 1;
   padding: 16px;
-  background: #2c2c2c;
+  background: var(--border-color);
   border-radius: 8px;
   text-align: center;
   border-left: 3px solid #409eff;
@@ -1695,12 +1695,12 @@ onUnmounted(() => {
 .stat-value {
   font-size: 28px;
   font-weight: 700;
-  color: #e5eaf3;
+  color: var(--text-primary);
 }
 
 .stat-label {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-muted);
   margin-top: 4px;
 }
 
@@ -1709,7 +1709,7 @@ onUnmounted(() => {
   gap: 12px;
   margin-bottom: 16px;
   padding: 12px;
-  background: #2c2c2c;
+  background: var(--border-color);
   border-radius: 8px;
 }
 
@@ -1730,7 +1730,7 @@ onUnmounted(() => {
 .tips-list {
   margin: 0;
   padding-left: 20px;
-  color: #909399;
+  color: var(--text-muted);
   font-size: 13px;
   line-height: 1.8;
 }
@@ -1754,7 +1754,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
   font-size: 16px;
-  color: #e5eaf3;
+  color: var(--text-primary);
   padding: 8px 0;
 }
 
@@ -1763,19 +1763,19 @@ onUnmounted(() => {
 }
 
 .log-container {
-  border: 1px solid #3c3c3c;
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
   padding: 12px;
-  background: #1a1a1a;
+  background: var(--bg-elevated);
 }
 
 .log-title {
   font-size: 14px;
   font-weight: 600;
-  color: #909399;
+  color: var(--text-muted);
   margin-bottom: 12px;
   padding-bottom: 8px;
-  border-bottom: 1px solid #2c2c2c;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .log-list {
@@ -1788,8 +1788,8 @@ onUnmounted(() => {
   padding: 4px 8px;
   margin-bottom: 4px;
   border-radius: 4px;
-  background: #252525;
-  color: #c0c4cc;
+  background: var(--bg-soft);
+  color: var(--text-secondary);
   transition: all 0.3s;
 }
 
@@ -1822,7 +1822,7 @@ onUnmounted(() => {
 }
 
 .execution-table :deep(.el-table__header th) {
-  background: #2c2c2c !important;
+  background: var(--border-color) !important;
 }
 
 .execution-actions {
@@ -1841,7 +1841,7 @@ onUnmounted(() => {
 }
 
 .text-muted {
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .ai-analysis-preview {
@@ -1861,7 +1861,7 @@ onUnmounted(() => {
 
 /* Cancelled row style */
 .execution-table :deep(.row-cancelled td) {
-  color: #909399 !important;
+  color: var(--text-muted) !important;
   opacity: 0.7;
 }
 
@@ -1875,20 +1875,20 @@ onUnmounted(() => {
 
 /* Step list in progress dialog */
 .step-list-container {
-  border: 1px solid #3c3c3c;
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
   padding: 12px;
-  background: #1a1a1a;
+  background: var(--bg-elevated);
   margin-bottom: 8px;
 }
 
 .step-list-title {
   font-size: 13px;
   font-weight: 600;
-  color: #909399;
+  color: var(--text-muted);
   margin-bottom: 8px;
   padding-bottom: 6px;
-  border-bottom: 1px solid #2c2c2c;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .step-list {
@@ -1903,9 +1903,9 @@ onUnmounted(() => {
   gap: 8px;
   padding: 4px 8px;
   border-radius: 4px;
-  background: #252525;
+  background: var(--bg-soft);
   font-size: 12px;
-  color: #c0c4cc;
+  color: var(--text-secondary);
 }
 
 .step-item.step-current {
@@ -1914,7 +1914,7 @@ onUnmounted(() => {
 }
 
 .step-index {
-  color: #606266;
+  color: var(--text-faint);
   font-size: 11px;
   min-width: 18px;
 }
@@ -1934,7 +1934,7 @@ onUnmounted(() => {
 }
 
 .step-time {
-  color: #606266;
+  color: var(--text-faint);
   font-size: 11px;
   flex-shrink: 0;
 }
@@ -1962,7 +1962,7 @@ onUnmounted(() => {
 }
 .qs-label {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-muted);
   margin-top: 4px;
 }
 .quant-score-badges {

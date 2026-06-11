@@ -1366,8 +1366,8 @@ onUnmounted(() => {
 
 /* ── IC回测 进度 ── */
 .bt-progress {
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  border: 1px solid #2a2a4a;
+  background: linear-gradient(135deg, var(--bg-card-alt) 0%, #16213e 100%);
+  border: 1px solid var(--border-alt);
   border-radius: 10px;
   padding: 24px;
   margin-bottom: 16px;
@@ -1389,7 +1389,7 @@ onUnmounted(() => {
 }
 .bt-metric-card {
   background: #1e1e30;
-  border: 1px solid #2a2a45;
+  border: 1px solid var(--border-alt);
   border-radius: 8px;
   padding: 10px 14px;
   flex: 1;
@@ -1410,7 +1410,7 @@ onUnmounted(() => {
   font-size: 12px;
 }
 .bt-metric-label {
-  color: #606880;
+  color: var(--text-alt-muted);
 }
 .bt-metric-val {
   font-weight: 700;
@@ -1429,8 +1429,8 @@ onUnmounted(() => {
 .bt-chart-box {
   flex: 1;
   min-width: 300px;
-  background: #1a1a2e;
-  border: 1px solid #2a2a45;
+  background: var(--bg-card-alt);
+  border: 1px solid var(--border-alt);
   border-radius: 8px;
   padding: 10px 12px 6px;
   transition: all 0.3s ease;
@@ -1451,13 +1451,13 @@ onUnmounted(() => {
   font-weight: 600;
 }
 .bt-expand-btn {
-  color: #606880 !important;
+  color: var(--text-alt-muted) !important;
   font-size: 14px !important;
   padding: 0 4px !important;
   min-height: 20px !important;
 }
 .bt-expand-btn:hover {
-  color: #c0c4cc !important;
+  color: var(--text-secondary) !important;
 }
 
 /* ── 趋势箭头 ── */
@@ -1485,8 +1485,8 @@ onUnmounted(() => {
 .bt-trend-chart {
   height: 260px;
   margin-top: 8px;
-  background: #1a1a2e;
-  border: 1px solid #2a2a45;
+  background: var(--bg-card-alt);
+  border: 1px solid var(--border-alt);
   border-radius: 8px;
   padding: 8px;
 }
@@ -1499,8 +1499,8 @@ onUnmounted(() => {
 
 /* ── 评分进度弹窗 ── */
 .sc-progress-box {
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  border: 1px solid #2a2a4a;
+  background: linear-gradient(135deg, var(--bg-card-alt) 0%, #16213e 100%);
+  border: 1px solid var(--border-alt);
   border-radius: 10px;
   padding: 28px 20px;
 }
@@ -1526,7 +1526,7 @@ onUnmounted(() => {
   transition: width 0.4s ease, box-shadow 0.4s ease;
 }
 .sc-progress-eta {
-  text-align: center; color: #606880; font-size: 11px;
+  text-align: center; color: var(--text-alt-muted); font-size: 11px;
   margin-top: 8px; font-family: 'SF Mono', 'Fira Code', monospace;
 }
 .sc-progress-hint {
@@ -1535,26 +1535,26 @@ onUnmounted(() => {
 }
 
 /* ── 相关性 ── */
-.heatmap-wrapper { background: #1a1a2e; border: 1px solid #333; border-radius: 6px; padding: 8px; }
+.heatmap-wrapper { background: var(--bg-card-alt); border: 1px solid #333; border-radius: 6px; padding: 8px; }
 .corr-legend { display: flex; gap: 16px; margin-top: 8px; justify-content: center; flex-wrap: wrap; }
 .corr-legend-item { font-size: 12px; color: #a0aec0; display: flex; align-items: center; }
 
 /* ── 使用说明 ── */
 .help-card { line-height: 1.8; font-size: 14px; }
-.help-card h3 { color: #e5eaf3; }
-.help-card h4 { color: #c0c4cc; margin: 16px 0 8px; font-size: 15px; }
+.help-card h3 { color: var(--text-primary); }
+.help-card h4 { color: var(--text-secondary); margin: 16px 0 8px; font-size: 15px; }
 .help-card h5 { color: #a0aec0; margin: 12px 0 6px; font-size: 14px; }
-.help-card p { color: #909399; }
+.help-card p { color: var(--text-muted); }
 .help-card ul { padding-left: 20px; }
-.help-card li { color: #909399; margin: 4px 0; }
-.help-card li b { color: #c0c4cc; }
+.help-card li { color: var(--text-muted); margin: 4px 0; }
+.help-card li b { color: var(--text-secondary); }
 .help-card code {
-  background: #1a1a2e; color: #c3e88d; padding: 1px 6px;
+  background: var(--bg-card-alt); color: #c3e88d; padding: 1px 6px;
   border-radius: 3px; font-size: 13px;
 }
 .help-code {
   background: #0d1117; color: #e0e0e0; padding: 16px; border-radius: 6px;
-  font-size: 13px; border: 1px solid #2a2a45; overflow-x: auto;
+  font-size: 13px; border: 1px solid var(--border-alt); overflow-x: auto;
   line-height: 1.6; font-family: 'SF Mono', 'Fira Code', monospace;
 }
 
@@ -1575,7 +1575,7 @@ onUnmounted(() => {
 
 /* ── 权重总和告警 ── */
 .weight-sum-label {
-  color: #909399; font-size: 12px; margin-right: 8px;
+  color: var(--text-muted); font-size: 12px; margin-right: 8px;
 }
 .weight-ok {
   color: #67c23a; font-size: 14px;
@@ -1599,10 +1599,10 @@ onUnmounted(() => {
 .validity-ic { font-weight: 600; }
 .ic-positive { color: #67c23a; }
 .ic-negative { color: #f56c6c; }
-.validity-sep { color: #606880; margin: 0 2px; font-size: 10px; }
+.validity-sep { color: var(--text-alt-muted); margin: 0 2px; font-size: 10px; }
 .validity-ir { font-weight: 500; }
 .ir-good { color: #67c23a; }
-.ir-weak { color: #909399; }
+.ir-weak { color: var(--text-muted); }
 .validity-na { color: #505050; font-size: 11px; }
 
 /* ── 紧凑表格 ── */

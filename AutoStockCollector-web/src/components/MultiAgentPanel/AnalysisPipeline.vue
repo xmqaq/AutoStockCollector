@@ -89,14 +89,14 @@ const stages = computed(() => [
 
 <style scoped>
 .section-card {
-  background: #1f1f1f;
-  border: 1px solid #2c2c2c;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
   margin-bottom: 4px;
 }
 .section-card :deep(.el-card__header) {
-  border-bottom: 1px solid #2c2c2c;
+  border-bottom: 1px solid var(--border-color);
   padding: 10px 16px;
-  color: #e5eaf3;
+  color: var(--text-primary);
   font-size: 14px;
   font-weight: 600;
 }
@@ -121,7 +121,7 @@ const stages = computed(() => [
   transition: background 0.15s;
 }
 .pipeline-stage:hover {
-  background: #2c2c2c;
+  background: var(--border-color);
 }
 .stage-indicator {
   display: flex;
@@ -151,9 +151,9 @@ const stages = computed(() => [
   animation: pulse 1.5s ease-in-out infinite;
 }
 .stage-icon.pending {
-  background: #2c2c2c;
-  color: #606266;
-  border: 1px solid #3c3c3c;
+  background: var(--border-color);
+  color: var(--text-faint);
+  border: 1px solid var(--border-strong);
 }
 @keyframes pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(64,158,255,0.4); }
@@ -162,7 +162,7 @@ const stages = computed(() => [
 .stage-line {
   width: 2px;
   height: 16px;
-  background: #3c3c3c;
+  background: var(--border-strong);
   border-radius: 1px;
 }
 .stage-line.done {
@@ -175,16 +175,16 @@ const stages = computed(() => [
 .stage-label {
   font-size: 12px;
   font-weight: 600;
-  color: #e5eaf3;
+  color: var(--text-primary);
 }
 .stage-desc {
   font-size: 10px;
-  color: #606266;
+  color: var(--text-faint);
   margin-top: 1px;
 }
 .stage-progress-bar {
   height: 2px;
-  background: #2c2c2c;
+  background: var(--border-color);
   border-radius: 1px;
   margin-top: 4px;
   overflow: hidden;
@@ -196,7 +196,7 @@ const stages = computed(() => [
   transition: width 0.5s ease;
 }
 .pipeline-stage.pending .stage-label {
-  color: #606266;
+  color: var(--text-faint);
 }
 .pipeline-stage.pending .stage-desc {
   color: #4a4a4a;

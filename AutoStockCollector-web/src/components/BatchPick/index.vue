@@ -423,12 +423,12 @@ onMounted(() => {
 
 .config-label {
   font-size: 13px;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .config-tip {
   font-size: 12px;
-  color: #606266;
+  color: var(--text-faint);
 }
 
 .toolbar-actions {
@@ -511,7 +511,7 @@ onMounted(() => {
 .card-value {
   font-size: 24px;
   font-weight: 600;
-  color: #e5eaf3;
+  color: var(--text-primary);
 }
 
 .summary-card.good .card-value { color: #67c23a; }
@@ -521,7 +521,7 @@ onMounted(() => {
 
 .card-label {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-muted);
   margin-top: 4px;
 }
 
@@ -536,14 +536,14 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 10px 12px;
-  background: #2c2c2c;
+  background: var(--border-color);
   border-radius: 4px;
   cursor: pointer;
   transition: background 0.2s;
 }
 
 .history-item:hover {
-  background: #3c3c3c;
+  background: var(--border-strong);
 }
 
 .history-info {
@@ -553,7 +553,7 @@ onMounted(() => {
 
 .history-time {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .history-count {
@@ -562,14 +562,14 @@ onMounted(() => {
 }
 
 .section-card {
-  background: #1f1f1f;
-  border: 1px solid #2c2c2c;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
 }
 
 .section-card :deep(.el-card__header) {
-  border-bottom: 1px solid #2c2c2c;
+  border-bottom: 1px solid var(--border-color);
   padding: 12px 16px;
-  color: #e5eaf3;
+  color: var(--text-primary);
   font-size: 14px;
   font-weight: 600;
 }

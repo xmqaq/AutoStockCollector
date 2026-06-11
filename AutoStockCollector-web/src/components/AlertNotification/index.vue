@@ -185,7 +185,7 @@ defineExpose({ addMockAlert })
 .alert-title {
   font-size: 14px;
   font-weight: 600;
-  color: #e5eaf3;
+  color: var(--text-primary);
 }
 
 .alert-tabs {
@@ -202,7 +202,7 @@ defineExpose({ addMockAlert })
   align-items: flex-start;
   gap: 12px;
   padding: 12px;
-  background: #2c2c2c;
+  background: var(--border-color);
   border-radius: 8px;
   margin-bottom: 8px;
   cursor: pointer;
@@ -210,7 +210,7 @@ defineExpose({ addMockAlert })
 }
 
 .alert-item:hover {
-  background: #3c3c3c;
+  background: var(--border-strong);
 }
 
 .alert-item.unread {
@@ -231,7 +231,7 @@ defineExpose({ addMockAlert })
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: #3c3c3c;
+  background: var(--border-strong);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -252,23 +252,23 @@ defineExpose({ addMockAlert })
 .alert-stock {
   font-size: 13px;
   font-weight: 600;
-  color: #e5eaf3;
+  color: var(--text-primary);
 }
 
 .alert-time {
   font-size: 11px;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .alert-message {
   font-size: 12px;
-  color: #e5eaf3;
+  color: var(--text-primary);
   margin-bottom: 2px;
 }
 
 .alert-detail {
   font-size: 11px;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .alert-actions {
@@ -278,7 +278,7 @@ defineExpose({ addMockAlert })
 }
 
 .alert-settings {
-  background: #2c2c2c;
+  background: var(--border-color);
   border-radius: 8px;
   padding: 12px;
 }
@@ -289,7 +289,7 @@ defineExpose({ addMockAlert })
   gap: 12px;
   padding: 8px 0;
   font-size: 13px;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .setting-item span:first-child {

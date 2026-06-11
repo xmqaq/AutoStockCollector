@@ -227,7 +227,7 @@ function scoreColor(score: number): string {
 .total-count { color: #409eff; }
 .overview-label {
   font-size: 11px;
-  color: #606266;
+  color: var(--text-faint);
   margin-top: 2px;
 }
 .signal-groups {
@@ -256,27 +256,27 @@ function scoreColor(score: number): string {
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
-  background: #2c2c2c;
+  background: var(--border-color);
   border-radius: 6px;
   cursor: pointer;
   transition: background 0.15s;
 }
 .compact-signal:hover {
-  background: #3c3c3c;
+  background: var(--border-strong);
 }
 .signal-source {
   font-size: 10px;
   padding: 1px 6px;
   border-radius: 4px;
-  background: #1f1f1f;
-  color: #606266;
+  background: var(--bg-card);
+  color: var(--text-faint);
 }
 .signal-source.src-traditional { color: #409eff; }
 .signal-source.src-philosophy { color: #b37feb; }
 .signal-source.src-research { color: #67c23a; }
 .signal-name-text {
   font-size: 12px;
-  color: #e5eaf3;
+  color: var(--text-primary);
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -305,19 +305,19 @@ function scoreColor(score: number): string {
   align-items: center;
   gap: 6px;
   padding: 8px 12px;
-  background: #2c2c2c;
+  background: var(--border-color);
   cursor: pointer;
   font-size: 12px;
-  color: #c0c4cc;
+  color: var(--text-secondary);
   border-radius: 6px;
   transition: background 0.15s;
 }
 .toggle-header:hover {
-  background: #3c3c3c;
+  background: var(--border-strong);
 }
 .toggle-content {
   padding: 12px;
-  background: #1f1f1f;
+  background: var(--bg-card);
 }
 .signals-grid {
   display: grid;
@@ -325,10 +325,10 @@ function scoreColor(score: number): string {
   gap: 10px;
 }
 .signal-card {
-  background: #2c2c2c;
+  background: var(--border-color);
   border-radius: 8px;
   padding: 12px;
-  border: 1px solid #3c3c3c;
+  border: 1px solid var(--border-strong);
 }
 .signal-header-row {
   display: flex;
@@ -339,7 +339,7 @@ function scoreColor(score: number): string {
 .signal-name {
   font-size: 13px;
   font-weight: 600;
-  color: #e5eaf3;
+  color: var(--text-primary);
 }
 .signal-score-row {
   display: flex;
@@ -351,21 +351,21 @@ function scoreColor(score: number): string {
 .score-high { color: #67c23a; }
 .score-mid { color: #409eff; }
 .score-low { color: #f56c6c; }
-.score-label { font-size: 11px; color: #909399; }
-.confidence-sep { font-size: 11px; color: #606266; }
+.score-label { font-size: 11px; color: var(--text-muted); }
+.confidence-sep { font-size: 11px; color: var(--text-faint); }
 .signal-reasoning {
   font-size: 11px;
-  color: #909399;
+  color: var(--text-muted);
   line-height: 1.5;
 }
 .section-card {
-  background: #1f1f1f;
-  border: 1px solid #2c2c2c;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
 }
 .section-card :deep(.el-card__header) {
-  border-bottom: 1px solid #2c2c2c;
+  border-bottom: 1px solid var(--border-color);
   padding: 12px 16px;
-  color: #e5eaf3;
+  color: var(--text-primary);
   font-size: 14px;
   font-weight: 600;
   display: flex;

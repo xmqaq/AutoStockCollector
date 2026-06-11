@@ -156,8 +156,8 @@ function copyFullContent() {
 
 <style scoped>
 .llm-dialogue-panel {
-  background: #1f1f1f;
-  border: 1px solid #2c2c2c;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -167,8 +167,8 @@ function copyFullContent() {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  background: #252525;
-  border-bottom: 1px solid #2c2c2c;
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--border-color);
 }
 
 .panel-title {
@@ -177,7 +177,7 @@ function copyFullContent() {
   gap: 8px;
   font-size: 14px;
   font-weight: 600;
-  color: #e5eaf3;
+  color: var(--text-primary);
 }
 
 .panel-actions {
@@ -195,7 +195,7 @@ function copyFullContent() {
   margin-bottom: 12px;
   border-radius: 8px;
   overflow: hidden;
-  border: 1px solid #2c2c2c;
+  border: 1px solid var(--border-color);
 }
 
 .message-item.user {
@@ -214,7 +214,7 @@ function copyFullContent() {
   align-items: center;
   padding: 8px 12px;
   background: rgba(0, 0, 0, 0.2);
-  border-bottom: 1px solid #2c2c2c;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .message-role {
@@ -223,7 +223,7 @@ function copyFullContent() {
   gap: 6px;
   font-size: 12px;
   font-weight: 500;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .message-meta {
@@ -234,7 +234,7 @@ function copyFullContent() {
 
 .message-time {
   font-size: 11px;
-  color: #606266;
+  color: var(--text-faint);
 }
 
 .message-body {
@@ -256,7 +256,7 @@ function copyFullContent() {
   gap: 16px;
   padding: 8px 12px;
   background: rgba(0, 0, 0, 0.1);
-  border-top: 1px solid #2c2c2c;
+  border-top: 1px solid var(--border-color);
 }
 
 .stat-item {
@@ -264,7 +264,7 @@ function copyFullContent() {
   align-items: center;
   gap: 4px;
   font-size: 11px;
-  color: #606266;
+  color: var(--text-faint);
 }
 
 .summary-bar {
@@ -276,7 +276,7 @@ function copyFullContent() {
 
 .summary-text {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -288,7 +288,7 @@ function copyFullContent() {
   align-items: center;
   justify-content: center;
   padding: 40px 20px;
-  color: #606266;
+  color: var(--text-faint);
 }
 
 .empty-state p {

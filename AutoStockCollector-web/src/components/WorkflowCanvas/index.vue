@@ -1179,7 +1179,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   height: 80vh;
-  background: #1f1f1f;
+  background: var(--bg-card);
   border-radius: 8px;
 }
 
@@ -1188,8 +1188,8 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  background: #2c2c2c;
-  border-bottom: 1px solid #3c3c3c;
+  background: var(--border-color);
+  border-bottom: 1px solid var(--border-strong);
 }
 
 .toolbar-left, .toolbar-right {
@@ -1210,8 +1210,8 @@ onMounted(() => {
 
 .node-palette {
   width: 180px;
-  background: #2c2c2c;
-  border-right: 1px solid #3c3c3c;
+  background: var(--border-color);
+  border-right: 1px solid var(--border-strong);
   padding: 16px;
   overflow-y: auto;
 }
@@ -1219,7 +1219,7 @@ onMounted(() => {
 .palette-title {
   font-size: 12px;
   font-weight: 600;
-  color: #909399;
+  color: var(--text-muted);
   margin-bottom: 12px;
   text-transform: uppercase;
 }
@@ -1230,7 +1230,7 @@ onMounted(() => {
   gap: 8px;
   padding: 8px 12px;
   margin-bottom: 8px;
-  background: #3c3c3c;
+  background: var(--border-strong);
   border-radius: 6px;
   cursor: grab;
   transition: all 0.2s;
@@ -1249,7 +1249,7 @@ onMounted(() => {
   flex: 1;
   position: relative;
   overflow: auto;
-  background: #252525;
+  background: var(--bg-soft);
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
@@ -1259,7 +1259,7 @@ onMounted(() => {
 .workflow-node {
   position: absolute;
   width: 200px;
-  background: #3c3c3c;
+  background: var(--border-strong);
   border: 2px solid var(--node-color, #4c4c4c);
   border-radius: 8px;
   cursor: move;
@@ -1302,7 +1302,7 @@ onMounted(() => {
   border-radius: 6px 6px 0 0;
   font-size: 13px;
   font-weight: 600;
-  color: #e5eaf3;
+  color: var(--text-primary);
   border-bottom: 3px solid var(--node-color, #409eff);
 }
 
@@ -1312,7 +1312,7 @@ onMounted(() => {
 
 .node-type-label {
   font-size: 11px;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .node-ports {
@@ -1333,8 +1333,8 @@ onMounted(() => {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #606266;
-  border: 2px solid #909399;
+  background: var(--text-faint);
+  border: 2px solid var(--text-muted);
   transition: all 0.2s;
 }
 
@@ -1367,7 +1367,7 @@ onMounted(() => {
 
 .port-label {
   font-size: 10px;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .edges-svg {
@@ -1391,8 +1391,8 @@ onMounted(() => {
 
 .properties-panel {
   width: 300px;
-  background: #2c2c2c;
-  border-left: 1px solid #3c3c3c;
+  background: var(--border-color);
+  border-left: 1px solid var(--border-strong);
   overflow-y: auto;
 }
 
@@ -1401,11 +1401,11 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  background: #3c3c3c;
+  background: var(--border-strong);
   border-bottom: 1px solid #4c4c4c;
   font-size: 13px;
   font-weight: 600;
-  color: #e5eaf3;
+  color: var(--text-primary);
 }
 
 .panel-body {
@@ -1417,7 +1417,7 @@ onMounted(() => {
 }
 
 .panel-body :deep(.el-form-item__label) {
-  color: #909399;
+  color: var(--text-muted);
   font-size: 12px;
 }
 
@@ -1434,7 +1434,7 @@ onMounted(() => {
 
 .connecting-hint .hint-sub {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .node-preview {
@@ -1444,16 +1444,16 @@ onMounted(() => {
 .preview-title {
   font-size: 14px;
   font-weight: 600;
-  color: #e5eaf3;
+  color: var(--text-primary);
   margin-bottom: 4px;
 }
 
 .preview-type {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-muted);
   margin-bottom: 12px;
   padding-bottom: 8px;
-  border-bottom: 1px solid #3c3c3c;
+  border-bottom: 1px solid var(--border-strong);
 }
 
 .preview-config {
@@ -1468,11 +1468,11 @@ onMounted(() => {
 }
 
 .preview-key {
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .preview-value {
-  color: #e5eaf3;
+  color: var(--text-primary);
   max-width: 150px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1482,7 +1482,7 @@ onMounted(() => {
 .preview-ports {
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid #3c3c3c;
+  border-top: 1px solid var(--border-strong);
 }
 
 .preview-port {

@@ -677,11 +677,11 @@ onMounted(() => {
 .da-header {
   display: flex; align-items: center; gap: 20px;
   padding: 14px 18px; border-radius: 8px;
-  background: #0c0c14; border: 1px solid #18182a;
+  background: #0c0c14; border: 1px solid var(--bg-deep-soft);
 }
 .da-header-left { display: flex; align-items: center; gap: 8px; }
-.da-name { font-size: 18px; font-weight: 700; color: #e0e2f0; }
-.da-code { font-size: 13px; color: #8888a8; }
+.da-name { font-size: 18px; font-weight: 700; color: var(--text-alt-primary); }
+.da-code { font-size: 13px; color: var(--text-alt-secondary); }
 .da-header-center { margin-left: auto; display: flex; align-items: baseline; gap: 10px; }
 .da-price { font-size: 26px; font-weight: 800; }
 .da-change { font-size: 14px; font-weight: 600; }
@@ -690,11 +690,11 @@ onMounted(() => {
 .da-header-right { display: flex; gap: 18px; margin-left: 24px; }
 .da-meta { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .da-meta label { font-size: 10px; color: #606080; }
-.da-meta span { font-size: 14px; color: #c8cae8; font-weight: 600; }
+.da-meta span { font-size: 14px; color: var(--text-alt-body); font-weight: 600; }
 
 /* ── 通用卡片 ── */
-.da-card { background: #0c0c14; border: 1px solid #18182a; }
-.da-card :deep(.el-card__header) { color: #c8cae8; font-size: 13.5px; font-weight: 600; padding: 12px 18px; border-bottom-color: #18182a; }
+.da-card { background: #0c0c14; border: 1px solid var(--bg-deep-soft); }
+.da-card :deep(.el-card__header) { color: var(--text-alt-body); font-size: 13.5px; font-weight: 600; padding: 12px 18px; border-bottom-color: var(--bg-deep-soft); }
 .da-card :deep(.el-card__body) { padding: 14px 18px; }
 
 /* ── 评分区 ── */
@@ -704,8 +704,8 @@ onMounted(() => {
 .da-score-label { font-size: 12px; color: #606080; margin-top: 6px; }
 .da-score-dims { flex: 1; display: flex; flex-direction: column; gap: 10px; }
 .da-dim { display: grid; grid-template-columns: 56px 1fr 36px; align-items: center; gap: 8px; }
-.da-dim-name { font-size: 12px; color: #8888a8; }
-.da-dim-val { font-size: 12px; color: #c8cae8; text-align: right; }
+.da-dim-name { font-size: 12px; color: var(--text-alt-secondary); }
+.da-dim-val { font-size: 12px; color: var(--text-alt-body); text-align: right; }
 .da-score-header { display: flex; justify-content: space-between; align-items: center; }
 .da-time-hint { font-size: 11px; color: #606080; font-weight: 400; }
 .da-score-note { font-size: 11px; color: #505068; text-align: center; margin-top: 10px; }
@@ -715,21 +715,21 @@ onMounted(() => {
 }
 .da-expand-toggle:hover { color: #409eff; }
 .da-score-details {
-  margin-top: 14px; padding-top: 14px; border-top: 1px solid #18182a;
+  margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--bg-deep-soft);
   display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
 }
 .da-detail-group {}
-.da-detail-title { font-size: 12px; color: #8888a8; margin-bottom: 6px; font-weight: 600; }
+.da-detail-title { font-size: 12px; color: var(--text-alt-secondary); margin-bottom: 6px; font-weight: 600; }
 .da-detail-items { display: flex; flex-direction: column; gap: 4px; }
 .da-detail-item { display: grid; grid-template-columns: 70px 1fr 50px; gap: 6px; font-size: 11px; }
 .da-detail-k { color: #606080; }
-.da-detail-v { color: #c0c2dd; }
-.da-detail-s { color: #8888a8; text-align: right; }
+.da-detail-v { color: var(--text-alt-body); }
+.da-detail-s { color: var(--text-alt-secondary); text-align: right; }
 
 /* ── K线图 ── */
 .da-kline-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
 .da-kline-meta { display: flex; gap: 14px; font-size: 12px; color: #606080; }
-.da-kline-meta em { color: #c8cae8; font-style: normal; font-weight: 500; }
+.da-kline-meta em { color: var(--text-alt-body); font-style: normal; font-weight: 500; }
 
 /* ── 财务区 ── */
 .da-fin-summary {
@@ -738,7 +738,7 @@ onMounted(() => {
 }
 .da-fin-item { display: flex; flex-direction: column; gap: 2px; }
 .da-fin-item label { font-size: 10px; color: #606080; }
-.da-fin-item span { font-size: 15px; color: #c8cae8; font-weight: 600; }
+.da-fin-item span { font-size: 15px; color: var(--text-alt-body); font-weight: 600; }
 .da-fin-item em { font-size: 11px; font-style: normal; }
 .da-fin-item em.rise { color: #ef5350; }
 .da-fin-item em.fall { color: #26a69a; }
@@ -746,52 +746,52 @@ onMounted(() => {
 /* ── AI分析报告 ── */
 .da-ai-trigger { text-align: center; padding: 20px 0; }
 .da-ai-hint { font-size: 12px; color: #606080; margin-top: 8px; }
-.da-ai-loading { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 30px 0; color: #8888a8; }
+.da-ai-loading { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 30px 0; color: var(--text-alt-secondary); }
 .da-ai-report {}
-.da-ai-content { color: #c0c2dd; line-height: 1.8; font-size: 13.5px; }
-.da-ai-content :deep(h2) { font-size: 15px; color: #e0e2f0; margin: 18px 0 8px; padding-bottom: 6px; border-bottom: 1px solid #1a1a2e; }
+.da-ai-content { color: var(--text-alt-body); line-height: 1.8; font-size: 13.5px; }
+.da-ai-content :deep(h2) { font-size: 15px; color: var(--text-alt-primary); margin: 18px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--bg-card-alt); }
 .da-ai-content :deep(h2:first-child) { margin-top: 0; }
 .da-ai-content :deep(p) { margin: 6px 0; }
 .da-ai-content :deep(ul), .da-ai-content :deep(ol) { padding-left: 20px; margin: 6px 0; }
-.da-ai-content :deep(strong) { color: #e0e2f0; }
+.da-ai-content :deep(strong) { color: var(--text-alt-primary); }
 .da-ai-meta { margin-top: 12px; font-size: 11px; color: #44445a; }
 
 /* ── 买卖建议 ── */
 .da-advice-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
 .da-advice-inputs { display: flex; gap: 8px; }
 .da-advice-body { display: flex; flex-direction: column; gap: 12px; }
-.da-advice-reason { color: #c0c2dd; line-height: 1.7; font-size: 13px; }
+.da-advice-reason { color: var(--text-alt-body); line-height: 1.7; font-size: 13px; }
 .da-advice-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .da-advice-grid div { display: flex; flex-direction: column; gap: 4px; }
 .da-advice-grid label { font-size: 11px; color: #606080; }
-.da-advice-grid span { font-size: 13px; color: #c8cae8; }
+.da-advice-grid span { font-size: 13px; color: var(--text-alt-body); }
 
 /* ── 新闻列表 ── */
 .da-news-list { display: flex; flex-direction: column; }
-.da-news-item { padding: 10px 0; border-bottom: 1px solid #18182a; cursor: pointer; }
+.da-news-item { padding: 10px 0; border-bottom: 1px solid var(--bg-deep-soft); cursor: pointer; }
 .da-news-item:last-child { border-bottom: none; }
 .da-news-item:hover .da-news-title { color: #409eff; }
 .da-news-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
-.da-news-title { font-size: 13px; color: #c0c2dd; flex: 1; }
+.da-news-title { font-size: 13px; color: var(--text-alt-body); flex: 1; }
 .da-news-meta { font-size: 11px; color: #606080; white-space: nowrap; }
-.da-news-content { margin-top: 8px; font-size: 12px; color: #8888a8; line-height: 1.6; }
+.da-news-content { margin-top: 8px; font-size: 12px; color: var(--text-alt-secondary); line-height: 1.6; }
 
 .da-method-note { font-size: 11px; color: #44445a; text-align: center; margin-top: 8px; }
 
 /* ── 历史预测复盘 ── */
 .da-block-hint { font-size: 12px; color: #606080; line-height: 1.7; }
-.da-reflect-stats { display: flex; gap: 18px; margin-bottom: 12px; font-size: 12px; color: #8888a8; }
-.da-reflect-stat em { font-style: normal; font-weight: 700; color: #c8cae8; }
+.da-reflect-stats { display: flex; gap: 18px; margin-bottom: 12px; font-size: 12px; color: var(--text-alt-secondary); }
+.da-reflect-stat em { font-style: normal; font-weight: 700; color: var(--text-alt-body); }
 .da-reflect-stat.ok em { color: #3a8a52; }
 .da-reflect-stat.bad em { color: #a04040; }
 .da-reflect-list { display: flex; flex-direction: column; gap: 8px; }
 .da-reflect-item { display: flex; align-items: center; gap: 10px; }
-.da-reflect-summary { flex: 1; font-size: 12.5px; color: #c0c2dd; }
+.da-reflect-summary { flex: 1; font-size: 12.5px; color: var(--text-alt-body); }
 .da-reflect-return { font-size: 12.5px; font-weight: 600; }
-.da-history-title { font-size: 12px; color: #8888a8; font-weight: 600; margin-bottom: 8px; }
+.da-history-title { font-size: 12px; color: var(--text-alt-secondary); font-weight: 600; margin-bottom: 8px; }
 .da-history-list { display: flex; flex-direction: column; gap: 6px; }
 .da-history-item { display: flex; align-items: center; gap: 12px; }
-.da-history-date { font-size: 12px; color: #8888a8; min-width: 120px; }
+.da-history-date { font-size: 12px; color: var(--text-alt-secondary); min-width: 120px; }
 
 /* ── 多Agent辩论区块 ── */
 .da-ma-head { display: flex; justify-content: space-between; align-items: center; }

@@ -534,7 +534,7 @@ onBeforeUnmount(stopProgressPolling)
 /* 表格 */
 .ap-table { background: transparent; }
 .ap-table :deep(.el-table__row) { height: 42px; }
-.ap-table :deep(.el-table__row:hover > td) { background: rgba(255,255,255,0.04) !important; }
+.ap-table :deep(.el-table__row:hover > td) { background: var(--bg-hover-subtle) !important; }
 .ap-row-clickable { cursor: pointer; }
 .ap-row-active :deep(td) {
   background: rgba(90,122,240,0.08) !important;
@@ -580,19 +580,19 @@ onBeforeUnmount(stopProgressPolling)
 
 /* 进度条 */
 .ap-progress-box {
-  background: #1a1a2e;
-  border: 1px solid #2a2a4a;
+  background: var(--bg-card-alt);
+  border: 1px solid var(--border-alt);
   border-radius: 8px;
   padding: 12px 16px;
 }
-.ap-progress-header { font-size: 13px; color: #b0b0d0; margin-bottom: 8px; }
+.ap-progress-header { font-size: 13px; color: var(--text-alt-body); margin-bottom: 8px; }
 .ap-progress-status { font-size: 12px; color: #808098; margin-top: 6px; }
 .ap-progress-done { font-size: 13px; color: #4ade80; text-align: center; padding: 4px 0; }
 
 /* 展开详情面板 */
 .ap-detail-panel {
-  background: #1a1a2e;
-  border: 1px solid #2a2a4a;
+  background: var(--bg-card-alt);
+  border: 1px solid var(--border-alt);
   border-radius: 8px;
   padding: 14px;
   margin-top: -4px;
@@ -606,7 +606,7 @@ onBeforeUnmount(stopProgressPolling)
 .ap-dim-title {
   display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
 }
-.ap-dim-label { font-size: 13px; font-weight: 600; color: #b0b0d0; min-width: 48px; }
+.ap-dim-label { font-size: 13px; font-weight: 600; color: var(--text-alt-body); min-width: 48px; }
 .ap-dim-bar { flex: 1; max-width: 180px; }
 .ap-dim-score { font-size: 13px; font-weight: 600; color: #d8d8f0; }
 .ap-dim-weight { font-size: 11px; color: #707090; }
@@ -665,14 +665,14 @@ onBeforeUnmount(stopProgressPolling)
   line-height: 1.4;
 }
 .ap-detail-empty { color: #606070; font-size: 13px; text-align: center; padding: 16px 0; }
-.ap-detail-advice { margin-top: 10px; border-top: 1px solid #2a2a4a; padding-top: 10px; }
+.ap-detail-advice { margin-top: 10px; border-top: 1px solid var(--border-alt); padding-top: 10px; }
 .ap-advice-label { font-size: 12px; color: #808090; margin-bottom: 4px; }
-.ap-advice-text { font-size: 13px; color: #b0b0d0; line-height: 1.6; }
+.ap-advice-text { font-size: 13px; color: var(--text-alt-body); line-height: 1.6; }
 
 /* AI 综合投资建议（折叠式） */
 .ap-ai-summary {
   background: #16162a;
-  border: 1px solid #2a2a4a;
+  border: 1px solid var(--border-alt);
   border-left: 3px solid #5a7af0;
   border-radius: 6px;
   overflow: hidden;
@@ -685,10 +685,10 @@ onBeforeUnmount(stopProgressPolling)
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
-  color: #b0b0d0;
+  color: var(--text-alt-body);
   user-select: none;
 }
-.ap-summary-toggle:hover { background: rgba(255,255,255,0.03); }
+.ap-summary-toggle:hover { background: var(--bg-hover-subtle); }
 .ap-summary-svg {
   color: #606080;
   transition: transform 0.2s;
@@ -698,7 +698,7 @@ onBeforeUnmount(stopProgressPolling)
 .ap-summary-body {
   padding: 0 14px 12px;
   font-size: 13px;
-  color: #c0c0d8;
+  color: var(--text-alt-body);
   line-height: 1.7;
 }
 
@@ -709,7 +709,7 @@ onBeforeUnmount(stopProgressPolling)
 .ap-track-meta { font-size: 11px; color: #606080; }
 .ap-track-table { font-size: 12px; }
 .ap-track-excess { font-weight: 600; }
-.ap-track-runs-title { font-size: 12px; font-weight: 600; color: #b0b0d0; margin-top: 4px; }
+.ap-track-runs-title { font-size: 12px; font-weight: 600; color: var(--text-alt-body); margin-top: 4px; }
 
 /* Markdown 渲染样式 */
 .md-content :deep(h1),
@@ -727,7 +727,7 @@ onBeforeUnmount(stopProgressPolling)
 }
 .md-content :deep(p) {
   margin: 4px 0;
-  color: #c0c0d8;
+  color: var(--text-alt-body);
 }
 .md-content :deep(ul),
 .md-content :deep(ol) {
@@ -736,7 +736,7 @@ onBeforeUnmount(stopProgressPolling)
 }
 .md-content :deep(li) {
   margin: 2px 0;
-  color: #c0c0d8;
+  color: var(--text-alt-body);
 }
 .md-content :deep(em) {
   color: #a0a0c0;

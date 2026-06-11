@@ -335,14 +335,14 @@ onUnmounted(() => clearInterval(refreshTimer))
   margin-bottom: 16px;
 }
 .index-card {
-  background: #1f1f1f;
-  border: 1px solid #2c2c2c;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   padding: 16px;
 }
 .index-name {
   font-size: 13px;
-  color: #909399;
+  color: var(--text-muted);
   margin-bottom: 8px;
 }
 .index-price {
@@ -367,11 +367,11 @@ onUnmounted(() => clearInterval(refreshTimer))
 }
 .update-time {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-muted);
 }
 .auto-tip {
   font-size: 11px;
-  color: #606266;
+  color: var(--text-faint);
 }
 .watchlist-toolbar {
   display: flex;
@@ -380,16 +380,16 @@ onUnmounted(() => clearInterval(refreshTimer))
   align-items: center;
 }
 .quotes-table {
-  background: #1f1f1f;
+  background: var(--bg-card);
   border-radius: 6px;
 }
 .quotes-table :deep(.el-table__header th) {
-  background: #1f1f1f;
-  color: #909399;
+  background: var(--bg-card);
+  color: var(--text-muted);
 }
 .rise-text, .rise { color: #ef5350; }
 .fall-text, .fall { color: #26a69a; }
-.flat-text, .flat { color: #909399; }
+.flat-text, .flat { color: var(--text-muted); }
 .valuation-status {
   display: inline-flex;
   align-items: center;
@@ -398,7 +398,7 @@ onUnmounted(() => clearInterval(refreshTimer))
 }
 .valuation-time {
   font-size: 11px;
-  color: #909399;
+  color: var(--text-muted);
 }
 @media (max-width: 768px) {
   .indices-grid { grid-template-columns: repeat(2, 1fr); }

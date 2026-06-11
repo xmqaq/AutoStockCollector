@@ -185,14 +185,14 @@ onMounted(() => loadData())
 }
 
 .section-card {
-  background: #1f1f1f;
-  border: 1px solid #2c2c2c;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
 }
 
 .section-card :deep(.el-card__header) {
-  border-bottom: 1px solid #2c2c2c;
+  border-bottom: 1px solid var(--border-color);
   padding: 12px 16px;
-  color: #e5eaf3;
+  color: var(--text-primary);
   font-size: 14px;
   font-weight: 600;
 }
@@ -212,7 +212,7 @@ onMounted(() => loadData())
 }
 
 .text-muted {
-  color: #606266;
+  color: var(--text-faint);
   font-size: 12px;
 }
 </style>

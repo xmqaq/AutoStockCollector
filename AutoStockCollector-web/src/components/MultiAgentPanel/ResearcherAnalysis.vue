@@ -152,7 +152,7 @@ function scoreColor(score: number): string {
 .header-tabs {
   display: flex;
   gap: 4px;
-  background: #2c2c2c;
+  background: var(--border-color);
   border-radius: 6px;
   padding: 2px;
 }
@@ -162,7 +162,7 @@ function scoreColor(score: number): string {
   padding: 3px 10px;
   border-radius: 4px;
   cursor: pointer;
-  color: #909399;
+  color: var(--text-muted);
   transition: all 0.15s;
 }
 .tab-btn.active {
@@ -170,7 +170,7 @@ function scoreColor(score: number): string {
   color: #fff;
 }
 .tab-btn:hover:not(.active) {
-  color: #e5eaf3;
+  color: var(--text-primary);
 }
 .researcher-groups {
   display: flex;
@@ -188,13 +188,13 @@ function scoreColor(score: number): string {
   gap: 6px;
   font-size: 13px;
   font-weight: 600;
-  color: #e5eaf3;
+  color: var(--text-primary);
 }
 .group-icon { font-size: 16px; }
 .group-count {
   font-size: 11px;
   font-weight: 400;
-  color: #909399;
+  color: var(--text-muted);
 }
 .signals-grid {
   display: grid;
@@ -202,10 +202,10 @@ function scoreColor(score: number): string {
   gap: 10px;
 }
 .signal-card {
-  background: #2c2c2c;
+  background: var(--border-color);
   border-radius: 8px;
   padding: 12px;
-  border: 1px solid #3c3c3c;
+  border: 1px solid var(--border-strong);
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -229,7 +229,7 @@ function scoreColor(score: number): string {
 .signal-name {
   font-size: 13px;
   font-weight: 600;
-  color: #e5eaf3;
+  color: var(--text-primary);
 }
 .signal-tag {
   font-size: 10px;
@@ -249,7 +249,7 @@ function scoreColor(score: number): string {
 .confidence-bar {
   flex: 1;
   height: 4px;
-  background: #1f1f1f;
+  background: var(--bg-card);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -263,7 +263,7 @@ function scoreColor(score: number): string {
 .confidence-fill.neutral { background: #e6a23c; }
 .confidence-text {
   font-size: 11px;
-  color: #909399;
+  color: var(--text-muted);
   white-space: nowrap;
 }
 .signal-score-row {
@@ -276,17 +276,17 @@ function scoreColor(score: number): string {
 .score-high { color: #67c23a; }
 .score-mid { color: #409eff; }
 .score-low { color: #f56c6c; }
-.score-label { font-size: 11px; color: #909399; }
-.confidence-sep { font-size: 11px; color: #606266; }
+.score-label { font-size: 11px; color: var(--text-muted); }
+.confidence-sep { font-size: 11px; color: var(--text-faint); }
 .signal-reasoning {
   font-size: 11px;
-  color: #909399;
+  color: var(--text-muted);
   line-height: 1.5;
   margin-bottom: 6px;
 }
 .signal-findings {
   font-size: 11px;
-  color: #909399;
+  color: var(--text-muted);
   line-height: 1.6;
   margin-bottom: 6px;
 }
@@ -302,8 +302,8 @@ function scoreColor(score: number): string {
   font-size: 10px;
   padding: 1px 6px;
   border-radius: 4px;
-  background: #1f1f1f;
-  color: #606266;
+  background: var(--bg-card);
+  color: var(--text-faint);
 }
 .factor-tag {
   font-size: 10px;
@@ -313,13 +313,13 @@ function scoreColor(score: number): string {
   color: #409eff;
 }
 .section-card {
-  background: #1f1f1f;
-  border: 1px solid #2c2c2c;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
 }
 .section-card :deep(.el-card__header) {
-  border-bottom: 1px solid #2c2c2c;
+  border-bottom: 1px solid var(--border-color);
   padding: 12px 16px;
-  color: #e5eaf3;
+  color: var(--text-primary);
   font-size: 14px;
   font-weight: 600;
   display: flex;

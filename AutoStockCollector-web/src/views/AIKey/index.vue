@@ -504,7 +504,7 @@ onMounted(loadKeys)
 /* ── 卡片 ── */
 .ak-card {
   display: flex; border-radius: 10px; overflow: hidden;
-  background: #0c0c14; border: 1px solid #18182a;
+  background: #0c0c14; border: 1px solid var(--bg-deep-soft);
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 .ak-card:hover { border-color: #222238; box-shadow: 0 2px 20px rgba(0,0,0,0.4); }
@@ -526,7 +526,7 @@ onMounted(loadKeys)
 .ak-provider-name { font-size: 13.5px; font-weight: 700; color: #ffffff; white-space: nowrap; }
 .ak-provider-id {
   font-size: 10px; color: #9090d0; padding: 1px 5px;
-  background: #0e0e1e; border: 1px solid #1a1a2e; border-radius: 4px;
+  background: #0e0e1e; border: 1px solid var(--bg-card-alt); border-radius: 4px;
   font-family: 'JetBrains Mono', 'SF Mono', monospace;
 }
 
@@ -554,7 +554,7 @@ onMounted(loadKeys)
 /* ── Key 行 ── */
 .ak-key-row { flex: 1; display: flex; gap: 7px; }
 .ak-key-input { flex: 1; }
-.ak-key-input :deep(.el-input__wrapper) { background: #0e0e1c !important; box-shadow: none !important; border: 1px solid #1a1a2e !important; }
+.ak-key-input :deep(.el-input__wrapper) { background: var(--bg-deep) !important; box-shadow: none !important; border: 1px solid var(--bg-card-alt) !important; }
 .ak-key-input :deep(.el-input__wrapper:hover) { border-color: #252545 !important; }
 .ak-key-input :deep(.el-input__wrapper.is-focus) { border-color: var(--accent) !important; }
 .ak-key-input :deep(.el-input__inner) { color: #ffffff; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
@@ -570,9 +570,9 @@ onMounted(loadKeys)
 /* ── 模型行 ── */
 .ak-model-row { flex: 1; display: flex; align-items: center; gap: 6px; }
 .ak-model-select { flex: 1; }
-.ak-model-select :deep(.el-input__wrapper) { background: #0e0e1c !important; box-shadow: none !important; border: 1px solid #1a1a2e !important; }
+.ak-model-select :deep(.el-input__wrapper) { background: var(--bg-deep) !important; box-shadow: none !important; border: 1px solid var(--bg-card-alt) !important; }
 .ak-model-select :deep(.el-input__wrapper:hover) { border-color: #252545 !important; }
-.ak-model-select :deep(.el-select__wrapper) { background: #0e0e1c !important; box-shadow: none !important; border: 1px solid #1a1a2e !important; }
+.ak-model-select :deep(.el-select__wrapper) { background: var(--bg-deep) !important; box-shadow: none !important; border: 1px solid var(--bg-card-alt) !important; }
 .ak-model-select :deep(.el-select__selected-item) { color: #ffffff !important; font-weight: 500; }
 .ak-model-select :deep(.el-select__placeholder) { color: #7070b0 !important; }
 .ak-model-select :deep(.el-select-dropdown__item) { color: #ffffff !important; }
@@ -580,7 +580,7 @@ onMounted(loadKeys)
 .ak-model-select :deep(.el-select-dropdown__item.selected) { color: #ffffff !important; font-weight: 600; }
 
 .ak-fetch-btn {
-  border: 1px solid #1a1a2e; background: #0e0e1c; color: #505080;
+  border: 1px solid var(--bg-card-alt); background: var(--bg-deep); color: #505080;
 }
 .ak-fetch-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .ak-fetch-btn.loading { opacity: 0.5; cursor: wait; }
@@ -613,7 +613,7 @@ onMounted(loadKeys)
 /* ── 通用按钮 ── */
 .ak-btn {
   flex-shrink: 0; padding: 4px 11px; font-size: 12px; border-radius: 5px;
-  cursor: pointer; border: 1px solid #1c1c2e; background: #0e0e1c; color: #8080c0;
+  cursor: pointer; border: 1px solid #1c1c2e; background: var(--bg-deep); color: #8080c0;
   transition: all 0.15s; white-space: nowrap;
 }
 .ak-btn:disabled { opacity: 0.3; cursor: not-allowed; }

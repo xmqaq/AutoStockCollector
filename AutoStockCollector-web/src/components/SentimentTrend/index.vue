@@ -251,7 +251,7 @@ function getKeywordSize(weight: number): number {
   gap: 24px;
   margin-bottom: 16px;
   padding: 16px;
-  background: #2c2c2c;
+  background: var(--border-color);
   border-radius: 8px;
 }
 
@@ -273,7 +273,7 @@ function getKeywordSize(weight: number): number {
 
 .score-label {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-muted);
   margin-top: 4px;
 }
 
@@ -292,13 +292,13 @@ function getKeywordSize(weight: number): number {
 
 .detail-label {
   font-size: 11px;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .detail-value {
   font-size: 16px;
   font-weight: 600;
-  color: #e5eaf3;
+  color: var(--text-primary);
 }
 
 .detail-value.rise { color: #67c23a; }
@@ -336,13 +336,13 @@ function getKeywordSize(weight: number): number {
 .marker-line {
   flex: 1;
   width: 2px;
-  background: #2c2c2c;
+  background: var(--border-color);
   margin-top: 4px;
 }
 
 .event-content {
   flex: 1;
-  background: #2c2c2c;
+  background: var(--border-color);
   border-radius: 8px;
   padding: 12px;
 }
@@ -356,19 +356,19 @@ function getKeywordSize(weight: number): number {
 
 .event-date {
   font-size: 11px;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .event-title {
   font-size: 14px;
   font-weight: 600;
-  color: #e5eaf3;
+  color: var(--text-primary);
   margin-bottom: 4px;
 }
 
 .event-desc {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-muted);
   line-height: 1.5;
   margin-bottom: 8px;
 }
@@ -378,7 +378,7 @@ function getKeywordSize(weight: number): number {
   align-items: center;
   gap: 8px;
   font-size: 11px;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .keywords-cloud {
@@ -412,19 +412,19 @@ function getKeywordSize(weight: number): number {
 }
 
 .keyword-low {
-  background: #2c2c2c;
-  color: #909399;
+  background: var(--border-color);
+  color: var(--text-muted);
 }
 
 .section-card {
-  background: #1f1f1f;
-  border: 1px solid #2c2c2c;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
 }
 
 .section-card :deep(.el-card__header) {
-  border-bottom: 1px solid #2c2c2c;
+  border-bottom: 1px solid var(--border-color);
   padding: 12px 16px;
-  color: #e5eaf3;
+  color: var(--text-primary);
   font-size: 14px;
   font-weight: 600;
 }

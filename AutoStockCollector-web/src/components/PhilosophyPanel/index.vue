@@ -357,13 +357,13 @@ onMounted(() => {
   align-items: center;
 }
 .section-card {
-  background: #1f1f1f;
-  border: 1px solid #2c2c2c;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
 }
 .section-card :deep(.el-card__header) {
-  border-bottom: 1px solid #2c2c2c;
+  border-bottom: 1px solid var(--border-color);
   padding: 12px 16px;
-  color: #e5eaf3;
+  color: var(--text-primary);
   font-size: 14px;
   font-weight: 600;
 }
@@ -374,7 +374,7 @@ onMounted(() => {
 }
 .selected-count {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-muted);
   font-weight: 400;
 }
 .philosophy-groups {
@@ -407,17 +407,17 @@ onMounted(() => {
   align-items: center;
   gap: 4px;
   padding: 4px 12px;
-  background: #2c2c2c;
+  background: var(--border-color);
   border-radius: 16px;
   font-size: 12px;
-  color: #c0c4cc;
+  color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s;
   border: 1px solid transparent;
 }
 .agent-chip:hover {
   border-color: #409eff;
-  color: #e5eaf3;
+  color: var(--text-primary);
 }
 .agent-chip.selected {
   background: rgba(64, 158, 255, 0.15);
@@ -436,10 +436,10 @@ onMounted(() => {
   gap: 12px;
 }
 .signal-card {
-  background: #2c2c2c;
+  background: var(--border-color);
   border-radius: 8px;
   padding: 12px;
-  border: 1px solid #3c3c3c;
+  border: 1px solid var(--border-strong);
 }
 .signal-header {
   display: flex;
@@ -450,7 +450,7 @@ onMounted(() => {
 .signal-name {
   font-size: 13px;
   font-weight: 600;
-  color: #e5eaf3;
+  color: var(--text-primary);
 }
 .signal-score {
   display: flex;
@@ -464,14 +464,14 @@ onMounted(() => {
 }
 .score-label {
   font-size: 11px;
-  color: #909399;
+  color: var(--text-muted);
 }
 .score-high { color: #67c23a; }
 .score-mid { color: #409eff; }
 .score-low { color: #f56c6c; }
 .signal-reasoning {
   font-size: 11px;
-  color: #909399;
+  color: var(--text-muted);
   line-height: 1.5;
   margin-bottom: 8px;
 }
@@ -481,9 +481,9 @@ onMounted(() => {
   gap: 4px;
 }
 .signal-tags :deep(.el-tag) {
-  background: #1f1f1f;
+  background: var(--bg-card);
   border: none;
-  color: #c0c4cc;
+  color: var(--text-secondary);
 }
 .signal-footer {
   display: flex;
@@ -506,24 +506,24 @@ onMounted(() => {
 }
 .detail-label {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-muted);
 }
 .detail-value {
   font-size: 15px;
-  color: #e5eaf3;
+  color: var(--text-primary);
   font-weight: 600;
 }
 .detail-unit {
   font-size: 12px;
-  color: #606266;
+  color: var(--text-faint);
   font-weight: 400;
 }
 .detail-content {
-  background: #2c2c2c;
+  background: var(--border-color);
   padding: 12px;
   border-radius: 6px;
   font-size: 13px;
-  color: #c0c4cc;
+  color: var(--text-secondary);
   line-height: 1.7;
   white-space: pre-wrap;
 }
@@ -553,7 +553,7 @@ onMounted(() => {
 }
 .stat-label {
   font-size: 11px;
-  color: #606266;
+  color: var(--text-faint);
   margin-top: 2px;
 }
 .score-bull { color: #67c23a; }
@@ -565,6 +565,6 @@ onMounted(() => {
   gap: 12px;
   justify-content: center;
   font-size: 12px;
-  color: #909399;
+  color: var(--text-muted);
 }
 </style>

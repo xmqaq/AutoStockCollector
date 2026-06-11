@@ -156,7 +156,7 @@ function badgeLabel(row: CollectProgress): string {
   color: #f56c6c;
 }
 .text-muted {
-  color: #909399;
+  color: var(--text-muted);
   font-size: 12px;
 }
 .text-count {
@@ -168,9 +168,9 @@ function badgeLabel(row: CollectProgress): string {
   font-size: 11px;
 }
 .fresh-ok { color: #67c23a; }
-.fresh-mid { color: #909399; }
+.fresh-mid { color: var(--text-muted); }
 .fresh-stale { color: #e6a23c; }
-.fresh-none { color: #606266; }
+.fresh-none { color: var(--text-faint); }
 
 .status-tag {
   display: inline-flex;
@@ -197,8 +197,8 @@ function badgeLabel(row: CollectProgress): string {
 .status-cancelled  .status-dot { background: #e6a23c; }
 .status-pending,
 .status-not_started,
-.status-unknown    { color: #909399; background: rgba(144,147,153,.12); }
+.status-unknown    { color: var(--text-muted); background: rgba(144,147,153,.12); }
 .status-pending    .status-dot,
 .status-not_started .status-dot,
-.status-unknown    .status-dot { background: #909399; }
+.status-unknown    .status-dot { background: var(--text-muted); }
 </style>

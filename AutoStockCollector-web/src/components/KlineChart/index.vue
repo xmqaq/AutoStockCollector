@@ -399,7 +399,7 @@ watch(() => props.data, () => {
 
 <style scoped>
 .kline-chart-wrapper {
-  background: #1f1f1f;
+  background: var(--bg-card);
   border-radius: 4px;
   padding: 12px;
 }

@@ -817,8 +817,8 @@ onUnmounted(() => {
 }
 
 .toolbar-card {
-  background: #1f1f1f;
-  border: 1px solid #2c2c2c;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
 }
 
 .toolbar-card :deep(.el-card__body) {
@@ -833,19 +833,19 @@ onUnmounted(() => {
 
 .auto-refresh-tip {
   font-size: 12px;
-  color: #606266;
+  color: var(--text-faint);
   margin-left: 8px;
 }
 
 .section-card {
-  background: #1f1f1f;
-  border: 1px solid #2c2c2c;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
 }
 
 .section-card :deep(.el-card__header) {
-  border-bottom: 1px solid #2c2c2c;
+  border-bottom: 1px solid var(--border-color);
   padding: 12px 16px;
-  color: #e5eaf3;
+  color: var(--text-primary);
   font-size: 14px;
   font-weight: 600;
 }
@@ -861,9 +861,9 @@ onUnmounted(() => {
   flex-direction: column;
   line-height: 1.3;
 }
-.prog-main { color: #e5eaf3; font-size: 13px; }
+.prog-main { color: var(--text-primary); font-size: 13px; }
 .prog-pct { color: #409eff; font-size: 12px; margin-left: 4px; }
-.prog-sub { color: #909399; font-size: 11px; }
+.prog-sub { color: var(--text-muted); font-size: 11px; }
 .prog-fail { color: #f56c6c; }
 .prog-eta { color: #e6a23c; }
 
@@ -874,7 +874,7 @@ onUnmounted(() => {
 }
 .table-pagination :deep(.el-pagination__total),
 .table-pagination :deep(.el-pagination__sizes .el-select .el-input__wrapper) {
-  color: #909399;
+  color: var(--text-muted);
 }
 .stale-days {
   color: #e6a23c;
@@ -892,7 +892,7 @@ onUnmounted(() => {
 }
 .type-hint {
   font-size: 11px;
-  color: #909399;
+  color: var(--text-muted);
   margin-top: 2px;
   margin-left: 24px;
   line-height: 1.4;
@@ -901,8 +901,8 @@ onUnmounted(() => {
 /* 数据缺口展开行 */
 .gap-detail {
   padding: 12px 16px 12px 40px;
-  background: #252525;
-  border-top: 1px solid #2c2c2c;
+  background: var(--bg-soft);
+  border-top: 1px solid var(--border-color);
 }
 .gap-section {
   display: flex;
@@ -913,13 +913,13 @@ onUnmounted(() => {
 }
 .gap-completeness {
   font-size: 13px;
-  color: #e5eaf3;
+  color: var(--text-primary);
   margin-bottom: 8px;
 }
 .gap-ok-label { color: #67c23a; font-size: 13px; }
 .gap-err-label { color: #f56c6c; font-size: 13px; }
 .gap-pct { color: #409eff; font-size: 12px; margin-left: 4px; }
-.gap-hint { font-size: 12px; color: #606266; font-style: italic; }
+.gap-hint { font-size: 12px; color: var(--text-faint); font-style: italic; }
 .gap-error { font-size: 12px; color: #f56c6c; }
 .gap-missing { flex-wrap: wrap; }
 
@@ -930,20 +930,20 @@ onUnmounted(() => {
 .no-seq-desc p {
   margin: 2px 0;
   font-size: 13px;
-  color: #e5eaf3;
+  color: var(--text-primary);
 }
 .no-seq-sub {
-  color: #909399 !important;
+  color: var(--text-muted) !important;
   font-size: 12px !important;
 }
 
 .run-count {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-muted);
 }
 .run-count-zero {
   font-size: 12px;
-  color: #606266;
+  color: var(--text-faint);
 }
 
 /* 仪表盘布局：左侧仪表 + 右侧时效性面板 */
@@ -958,12 +958,12 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 10px;
   padding: 12px 16px;
-  background: #252525;
+  background: var(--bg-soft);
   border-radius: 6px;
 }
 .freshness-title {
   font-size: 13px;
-  color: #909399;
+  color: var(--text-muted);
   font-weight: 600;
   margin-bottom: 4px;
 }
@@ -975,11 +975,11 @@ onUnmounted(() => {
 .freshness-count {
   font-size: 18px;
   font-weight: bold;
-  color: #e5eaf3;
+  color: var(--text-primary);
 }
 .freshness-hint {
   font-size: 11px;
-  color: #606266;
+  color: var(--text-faint);
   margin-top: 4px;
 }
 </style>

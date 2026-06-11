@@ -154,9 +154,9 @@ onMounted(() => {
 }
 .data-date {
   font-size: 12px;
-  color: #c0c4cc;
+  color: var(--text-secondary);
   font-weight: 600;
-  background: #2c2c2c;
+  background: var(--border-color);
   padding: 1px 8px;
   border-radius: 4px;
   white-space: nowrap;
@@ -165,7 +165,7 @@ onMounted(() => {
 .sentiment-title {
   font-size: 14px;
   font-weight: 600;
-  color: #e5eaf3;
+  color: var(--text-primary);
 }
 
 .sentiment-grid {
@@ -176,21 +176,21 @@ onMounted(() => {
 }
 
 .sentiment-item {
-  background: #2c2c2c;
+  background: var(--border-color);
   border-radius: 6px;
   padding: 10px;
 }
 
 .item-label {
   font-size: 11px;
-  color: #909399;
+  color: var(--text-muted);
   margin-bottom: 4px;
 }
 
 .item-value {
   font-size: 18px;
   font-weight: 600;
-  color: #e5eaf3;
+  color: var(--text-primary);
   margin-bottom: 4px;
 }
 
@@ -200,7 +200,7 @@ onMounted(() => {
 
 .heat-bar {
   height: 4px;
-  background: #3c3c3c;
+  background: var(--border-strong);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -220,7 +220,7 @@ onMounted(() => {
 
 .index-item {
   flex-shrink: 0;
-  background: #2c2c2c;
+  background: var(--border-color);
   border-radius: 6px;
   padding: 8px 12px;
   min-width: 100px;
@@ -229,14 +229,14 @@ onMounted(() => {
 
 .index-name {
   font-size: 11px;
-  color: #909399;
+  color: var(--text-muted);
   margin-bottom: 4px;
 }
 
 .index-price {
   font-size: 14px;
   font-weight: 600;
-  color: #e5eaf3;
+  color: var(--text-primary);
 }
 
 .index-change {

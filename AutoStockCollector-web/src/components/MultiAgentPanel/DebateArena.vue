@@ -142,18 +142,18 @@ function bearHeight(c: { bulls: number; bears: number }): number {
 }
 .consensus-text {
   font-size: 12px;
-  color: #606266;
+  color: var(--text-faint);
   font-weight: 400;
 }
 .consensus-chart {
-  background: #2c2c2c;
+  background: var(--border-color);
   border-radius: 8px;
   padding: 12px;
   margin-bottom: 12px;
 }
 .chart-title {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-muted);
   margin-bottom: 8px;
 }
 .chart-bars {
@@ -187,7 +187,7 @@ function bearHeight(c: { bulls: number; bears: number }): number {
 .bar.bear { background: linear-gradient(180deg, #f56c6c, #ff7875); }
 .bar-label {
   font-size: 10px;
-  color: #606266;
+  color: var(--text-faint);
 }
 .chart-legend {
   display: flex;
@@ -200,7 +200,7 @@ function bearHeight(c: { bulls: number; bears: number }): number {
   align-items: center;
   gap: 4px;
   font-size: 11px;
-  color: #909399;
+  color: var(--text-muted);
 }
 .dot {
   width: 8px;
@@ -219,8 +219,8 @@ function bearHeight(c: { bulls: number; bears: number }): number {
   font-size: 12px;
   padding: 5px 12px;
   border-radius: 6px;
-  background: #2c2c2c;
-  color: #909399;
+  background: var(--border-color);
+  color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s;
   display: flex;
@@ -232,7 +232,7 @@ function bearHeight(c: { bulls: number; bears: number }): number {
   color: #fff;
 }
 .round-tab:hover:not(.active) {
-  color: #e5eaf3;
+  color: var(--text-primary);
 }
 .shift {
   font-size: 10px;
@@ -250,7 +250,7 @@ function bearHeight(c: { bulls: number; bears: number }): number {
   gap: 0;
 }
 .arena-divider {
-  background: #3c3c3c;
+  background: var(--border-strong);
   height: 100%;
 }
 .arena-col {
@@ -288,22 +288,22 @@ function bearHeight(c: { bulls: number; bears: number }): number {
 .arg-agent-name {
   font-size: 11px;
   font-weight: 600;
-  color: #c0c4cc;
+  color: var(--text-secondary);
 }
 .arg-text {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-muted);
   line-height: 1.5;
 }
 .section-card {
-  background: #1f1f1f;
-  border: 1px solid #2c2c2c;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
   margin-top: 16px;
 }
 .section-card :deep(.el-card__header) {
-  border-bottom: 1px solid #2c2c2c;
+  border-bottom: 1px solid var(--border-color);
   padding: 12px 16px;
-  color: #e5eaf3;
+  color: var(--text-primary);
   font-size: 14px;
   font-weight: 600;
   display: flex;

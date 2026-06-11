@@ -251,7 +251,7 @@ onUnmounted(() => {
 
 <style scoped>
 .analysis-progress {
-  background: #2c2c2c;
+  background: var(--border-color);
   border-radius: 8px;
   padding: 16px;
 }
@@ -272,7 +272,7 @@ onUnmounted(() => {
 .task-name {
   font-size: 14px;
   font-weight: 600;
-  color: #e5eaf3;
+  color: var(--text-primary);
 }
 
 .header-actions {
@@ -295,12 +295,12 @@ onUnmounted(() => {
 .stat-value {
   font-size: 20px;
   font-weight: 600;
-  color: #e5eaf3;
+  color: var(--text-primary);
 }
 
 .stat-label {
   font-size: 11px;
-  color: #909399;
+  color: var(--text-muted);
   margin-top: 2px;
 }
 
@@ -312,7 +312,7 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   font-size: 12px;
-  color: #909399;
+  color: var(--text-muted);
   margin-top: 4px;
 }
 
@@ -325,10 +325,10 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: #3c3c3c;
+  background: var(--border-strong);
   border-radius: 4px;
   font-size: 12px;
-  color: #909399;
+  color: var(--text-muted);
   margin-bottom: 12px;
 }
 
@@ -355,7 +355,7 @@ onUnmounted(() => {
 
 .more-count {
   font-size: 11px;
-  color: #909399;
+  color: var(--text-muted);
   align-self: center;
 }
 </style>

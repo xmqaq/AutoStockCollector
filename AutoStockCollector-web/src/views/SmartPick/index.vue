@@ -288,7 +288,7 @@ onMounted(() => {
 }
 
 .toolbar-label {
-  color: #909399;
+  color: var(--text-muted);
   font-size: 13px;
 }
 
@@ -320,7 +320,7 @@ onMounted(() => {
 
 .score-value {
   font-size: 12px;
-  color: #e5eaf3;
+  color: var(--text-primary);
   width: 24px;
 }
 
@@ -337,14 +337,14 @@ onMounted(() => {
 }
 
 .section-card {
-  background: #1f1f1f;
-  border: 1px solid #2c2c2c;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
 }
 
 .section-card :deep(.el-card__header) {
-  border-bottom: 1px solid #2c2c2c;
+  border-bottom: 1px solid var(--border-color);
   padding: 12px 16px;
-  color: #e5eaf3;
+  color: var(--text-primary);
   font-size: 14px;
   font-weight: 600;
 }
@@ -368,12 +368,12 @@ onMounted(() => {
 
 .dist-label {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .dist-bar-container {
   height: 8px;
-  background: #2c2c2c;
+  background: var(--border-color);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -386,7 +386,7 @@ onMounted(() => {
 
 .dist-count {
   font-size: 12px;
-  color: #e5eaf3;
+  color: var(--text-primary);
   text-align: right;
 }
 </style>

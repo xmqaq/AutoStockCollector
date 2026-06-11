@@ -26,7 +26,7 @@ const alertRef = ref<InstanceType<typeof AlertNotification> | null>(null)
 }
 
 .monitor-view :deep(.el-tabs__item) {
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .monitor-view :deep(.el-tabs__item.is-active) {

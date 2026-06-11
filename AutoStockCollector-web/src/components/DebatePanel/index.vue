@@ -144,16 +144,16 @@ onMounted(() => {
 .header-toolbar { display: flex; justify-content: space-between; align-items: center; }
 .task-config { display: flex; gap: 12px; align-items: center; }
 .section-header { display: flex; justify-content: space-between; align-items: center; }
-.section-card { background: #1f1f1f; border: 1px solid #2c2c2c; }
+.section-card { background: var(--bg-card); border: 1px solid var(--border-color); }
 .section-card :deep(.el-card__header) {
-  border-bottom: 1px solid #2c2c2c; padding: 12px 16px;
-  color: #e5eaf3; font-size: 14px; font-weight: 600;
+  border-bottom: 1px solid var(--border-color); padding: 12px 16px;
+  color: var(--text-primary); font-size: 14px; font-weight: 600;
 }
 .node-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 .node-item {
   display: flex; align-items: center; gap: 6px;
   padding: 6px 12px; border-radius: 6px;
-  font-size: 12px; background: #2c2c2c; color: #909399;
+  font-size: 12px; background: var(--border-color); color: var(--text-muted);
   border: 1px solid transparent;
 }
 .node-item.completed { color: #67c23a; border-color: #67c23a; }
@@ -165,9 +165,9 @@ onMounted(() => {
 .node-icon.error { color: #f56c6c; }
 .node-icon.idle { color: #4a4a4a; }
 .verdict-card { border: 1px solid #409eff; }
-.verdict-content { font-size: 13px; color: #c0c4cc; line-height: 1.7; padding: 8px 0; }
+.verdict-content { font-size: 13px; color: var(--text-secondary); line-height: 1.7; padding: 8px 0; }
 .error-card { border: 1px solid #f56c6c; }
 .error-card p { color: #f56c6c; font-size: 13px; }
-.md-content :deep(strong) { color: #e5eaf3; }
-.md-content :deep(h2), .md-content :deep(h3), .md-content :deep(h4) { color: #e5eaf3; margin: 8px 0 4px; }
+.md-content :deep(strong) { color: var(--text-primary); }
+.md-content :deep(h2), .md-content :deep(h3), .md-content :deep(h4) { color: var(--text-primary); margin: 8px 0 4px; }
 </style>

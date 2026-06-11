@@ -112,7 +112,7 @@ const tendencyClass = computed(() => {
 }
 .stat-label {
   font-size: 11px;
-  color: #606266;
+  color: var(--text-faint);
   margin-top: 2px;
 }
 .score-bull { color: #67c23a; }
@@ -121,7 +121,7 @@ const tendencyClass = computed(() => {
 .verdict-section { }
 .section-subtitle {
   font-size: 13px;
-  color: #c0c4cc;
+  color: var(--text-secondary);
   font-weight: 600;
   margin-bottom: 8px;
   display: flex;
@@ -137,7 +137,7 @@ const tendencyClass = computed(() => {
 .insight-list li {
   padding: 4px 0;
   font-size: 12px;
-  color: #909399;
+  color: var(--text-muted);
   line-height: 1.5;
 }
 .insight-list li::before {
@@ -150,13 +150,13 @@ const tendencyClass = computed(() => {
   gap: 6px;
 }
 .section-card {
-  background: #1f1f1f;
-  border: 1px solid #2c2c2c;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
 }
 .section-card :deep(.el-card__header) {
-  border-bottom: 1px solid #2c2c2c;
+  border-bottom: 1px solid var(--border-color);
   padding: 12px 16px;
-  color: #e5eaf3;
+  color: var(--text-primary);
   font-size: 14px;
   font-weight: 600;
   display: flex;
