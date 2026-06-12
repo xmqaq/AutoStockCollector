@@ -128,7 +128,8 @@
   --el-border-radius-base: var(--radius-sm);
 }
 
-html.dark {
+/* 特异性需高于上方 :root:root(0,2,0),否则暗色下浅色 token 反杀 */
+:root:root.dark {
   --bg-page: #12161c;
   --bg-card: #1a2129;
   --bg-elevated: #161c23;
