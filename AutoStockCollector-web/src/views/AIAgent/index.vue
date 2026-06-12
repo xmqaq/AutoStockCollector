@@ -264,6 +264,7 @@ import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { aiAgentApi, type AIAgent, philosophyApi, type PhilosophyAgentDetail, skillApi } from '@/api/ai'
 import { Plus, Loading } from '@element-plus/icons-vue'
+import { sanitizeHtml } from '@/utils/markdown'
 
 const activeTab = ref('general')
 
@@ -419,9 +420,9 @@ async function runTest() {
 }
 
 function formatResult(text: string): string {
-  return text
+  return sanitizeHtml(text
     .replace(/\n/g, '<br>')
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>'))
 }
 
 const schoolColors: Record<string, string> = {

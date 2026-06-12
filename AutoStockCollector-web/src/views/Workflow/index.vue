@@ -641,6 +641,7 @@ import { use } from 'echarts/core'
 import { RadarChart } from 'echarts/charts'
 import { RadarComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
+import { sanitizeHtml } from '@/utils/markdown'
 use([RadarChart, RadarComponent, TooltipComponent, CanvasRenderer])
 
 const loading = ref(false)
@@ -1354,9 +1355,9 @@ function getAiAnalysis(row: any): string {
 }
 
 function formatResult(text: string): string {
-  return text
+  return sanitizeHtml(text
     .replace(/\n/g, '<br>')
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>'))
 }
 
 function openFactorRadar(row: any) {

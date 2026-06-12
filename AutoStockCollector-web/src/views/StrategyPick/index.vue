@@ -429,7 +429,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { marked } from 'marked'
+import { renderMd } from '@/utils/markdown'
 import dayjs from 'dayjs'
 import { strategyPickApi, type StrategyPickItem, type StrategyPickResult, type StrategyPickProgress, type StrategyPickHistoryItem, type PortfolioMetrics, type StrategyPickAgent, type DebateConsensus } from '@/api/strategyPick'
 import type { StrategyRule } from '@/types'
@@ -441,12 +441,7 @@ import { CanvasRenderer } from 'echarts/renderers'
 import { getChartTheme as ct } from '@/utils/chartTheme'
 use([PieChart, RadarChart, TooltipComponent, LegendComponent, CanvasRenderer])
 
-marked.setOptions({ breaks: true, gfm: true })
 
-function renderMd(text: string): string {
-  if (!text) return ''
-  return marked.parse(text) as string
-}
 
 const router = useRouter()
 

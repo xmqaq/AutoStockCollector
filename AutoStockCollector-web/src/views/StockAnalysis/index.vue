@@ -305,7 +305,7 @@ import { getChartTheme as ct } from '@/utils/chartTheme'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Loading, ArrowUp, ArrowDown, Setting } from '@element-plus/icons-vue'
-import { marked } from 'marked'
+import { renderMd } from '@/utils/markdown'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CandlestickChart, BarChart, LineChart } from 'echarts/charts'
@@ -327,8 +327,6 @@ use([
   GridComponent, TooltipComponent, LegendComponent,
   DataZoomComponent, MarkLineComponent, CanvasRenderer,
 ])
-
-marked.setOptions({ breaks: true, gfm: true })
 
 const route = useRoute()
 const inputCode = ref('')
@@ -459,11 +457,6 @@ function actionType(action: string): string {
   if (['买入参考', '关注', '持有'].some(a => action.includes(a))) return 'success'
   if (['减仓', '回避', '卖出'].some(a => action.includes(a))) return 'danger'
   return 'info'
-}
-
-function renderMd(text: string): string {
-  if (!text) return ''
-  return marked.parse(text) as string
 }
 
 const detailLabelMap: Record<string, string> = {

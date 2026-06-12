@@ -138,6 +138,7 @@ import { useRoute } from 'vue-router'
 import { ChatDotRound, MagicStick, User, UserFilled } from '@element-plus/icons-vue'
 import { aiAgentApi, aiKeyApi, type AIAgent, type AIKeyConfig } from '@/api/ai'
 import { stockApi } from '@/api/stock'
+import { sanitizeHtml } from '@/utils/markdown'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -251,11 +252,11 @@ function handleClose(done: () => void) {
 }
 
 function formatMessage(content: string): string {
-  return content
+  return sanitizeHtml(content
     .replace(/\\n/g, '<br>')
     .replace(/\n/g, '<br>')
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/`(.*?)`/g, '<code>$1</code>')
+    .replace(/`(.*?)`/g, '<code>$1</code>'))
 }
 
 function getTime(): string {

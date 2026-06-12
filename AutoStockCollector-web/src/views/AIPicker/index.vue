@@ -218,17 +218,12 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { marked } from 'marked'
+import { renderMd } from '@/utils/markdown'
 import dayjs from 'dayjs'
 import { aiServiceApi, type AIPickResult, type AIPick, type PickTrackData } from '@/api/ai'
 import { RISE_COLOR, FALL_COLOR, FLAT_COLOR } from '@/utils/format'
 
-marked.setOptions({ breaks: true, gfm: true })
 
-function renderMd(text: string): string {
-  if (!text) return ''
-  return marked.parse(text) as string
-}
 
 const router = useRouter()
 const result = ref<AIPickResult | null>(null)
