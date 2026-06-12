@@ -624,7 +624,7 @@ PE:{_v(fi.get('pe'), '倍')},PB:{_v(fi.get('pb'), '倍')}
 
 【资金面】
 主力净流入:{_v(ff.get('main_net_inflow_yi'), '亿元')}  主力占比:{_v(ff.get('inflow_ratio'), '%')}  换手率:{_v(ff.get('turnover_rate'), '%')}
-龙虎榜:近30天上榜{dm.get('dragon_count_30d', 0)}次,净买入合计{_v(dm.get('dragon_net_buy_yi'), '亿元')}
+龙虎榜:近期上榜{dm.get('dragon_count_30d', 0)}次(最多统计最近10条),净买入合计{_v(dm.get('dragon_net_buy_yi'), '亿元')}
 融资融券:融资余额{_v(dm.get('margin_balance_yi'), '亿元')},区间变化{_v(dm.get('margin_trend_pct'), '%')}
 
 【近期新闻】
