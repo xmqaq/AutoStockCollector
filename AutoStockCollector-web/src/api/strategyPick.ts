@@ -181,6 +181,7 @@ export interface StrategyPickResult {
   portfolio_suggestion?: PortfolioSuggestion
   portfolio_metrics?: PortfolioMetrics
   timestamp: string
+  created_at?: string
   pick_config?: {
     strategy_ids: string[]
     agent_ids: string[]

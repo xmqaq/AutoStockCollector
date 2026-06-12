@@ -929,7 +929,7 @@ onMounted(async () => {
   // Restore config from localStorage first, fall back to pick_config from result
   const stored = loadConfig()
   if (stored) {
-    const validStrategyIds = stored.selectedIds?.filter(id => strategies.value.some(s => s._id === id)) || []
+    const validStrategyIds = stored.selectedIds?.filter((id: string) => strategies.value.some(s => s._id === id)) || []
     if (validStrategyIds.length) selectedIds.value = validStrategyIds
     if (stored.selectedAgentIds?.length) selectedAgentIds.value = stored.selectedAgentIds
     if (stored.selectedPhilosophyIds?.length) selectedPhilosophyIds.value = stored.selectedPhilosophyIds
