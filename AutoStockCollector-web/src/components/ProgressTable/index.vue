@@ -150,26 +150,26 @@ function badgeLabel(row: CollectProgress): string {
 
 <style scoped>
 .text-success {
-  color: #67c23a;
+  color: var(--el-color-success);
 }
 .text-danger {
-  color: #f56c6c;
+  color: var(--el-color-danger);
 }
 .text-muted {
   color: var(--text-muted);
   font-size: 12px;
 }
 .text-count {
-  color: #409eff;
+  color: var(--el-color-primary);
   font-size: 13px;
   font-weight: 500;
 }
 .date-range {
   font-size: 11px;
 }
-.fresh-ok { color: #67c23a; }
+.fresh-ok { color: var(--el-color-success); }
 .fresh-mid { color: var(--text-muted); }
-.fresh-stale { color: #e6a23c; }
+.fresh-stale { color: var(--el-color-warning); }
 .fresh-none { color: var(--text-faint); }
 
 .status-tag {
@@ -187,14 +187,14 @@ function badgeLabel(row: CollectProgress): string {
   border-radius: 50%;
   flex-shrink: 0;
 }
-.status-completed  { color: #67c23a; background: rgba(103,194,58,.12); }
-.status-completed  .status-dot { background: #67c23a; }
-.status-running    { color: #409eff; background: rgba(64,158,255,.12); }
-.status-running    .status-dot { background: #409eff; box-shadow: 0 0 4px #409eff; }
-.status-failed     { color: #f56c6c; background: rgba(245,108,108,.12); }
-.status-failed     .status-dot { background: #f56c6c; }
-.status-cancelled  { color: #e6a23c; background: rgba(230,162,60,.12); }
-.status-cancelled  .status-dot { background: #e6a23c; }
+.status-completed  { color: var(--el-color-success); background: rgba(52, 138, 93, .12); }
+.status-completed  .status-dot { background: var(--el-color-success); }
+.status-running    { color: var(--el-color-primary); background: rgba(21, 89, 140, .12); }
+.status-running    .status-dot { background: var(--el-color-primary); box-shadow: 0 0 4px var(--el-color-primary); }
+.status-failed     { color: var(--el-color-danger); background: rgba(196, 69, 60, .12); }
+.status-failed     .status-dot { background: var(--el-color-danger); }
+.status-cancelled  { color: var(--el-color-warning); background: rgba(185, 134, 46, .12); }
+.status-cancelled  .status-dot { background: var(--el-color-warning); }
 .status-pending,
 .status-not_started,
 .status-unknown    { color: var(--text-muted); background: rgba(144,147,153,.12); }

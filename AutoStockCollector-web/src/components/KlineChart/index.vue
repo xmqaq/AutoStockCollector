@@ -356,8 +356,8 @@ const chartOption = computed(() => {
         end: 100,
         textStyle: { color: ct().textColor },
         borderColor: ct().tooltipBorder,
-        fillerColor: 'rgba(64,158,255,0.1)',
-        handleStyle: { color: '#409eff' },
+        fillerColor: 'rgba(63, 127, 174, 0.1)',
+        handleStyle: { color: '#3f7fae' },
       },
     ],
     series: allSeries,
@@ -366,19 +366,19 @@ const chartOption = computed(() => {
 
 function getAnnotationStyle(type: AIAnnotation['type']): { color: string; borderColor: string } {
   switch (type) {
-    case 'buy': return { color: '#67c23a', borderColor: '#67c23a' }
-    case 'sell': return { color: '#f56c6c', borderColor: '#f56c6c' }
-    case 'hold': return { color: '#409eff', borderColor: '#409eff' }
-    case 'alert': return { color: '#e6a23c', borderColor: '#e6a23c' }
+    case 'buy': return { color: '#3f9d70', borderColor: '#3f9d70' }
+    case 'sell': return { color: '#d05a51', borderColor: '#d05a51' }
+    case 'hold': return { color: '#3f7fae', borderColor: '#3f7fae' }
+    case 'alert': return { color: '#c9943a', borderColor: '#c9943a' }
   }
 }
 
 function getAnnotationColor(type: AIAnnotation['type']): string {
   switch (type) {
-    case 'buy': return '#67c23a'
-    case 'sell': return '#f56c6c'
-    case 'hold': return '#409eff'
-    case 'alert': return '#e6a23c'
+    case 'buy': return '#3f9d70'
+    case 'sell': return '#d05a51'
+    case 'hold': return '#3f7fae'
+    case 'alert': return '#c9943a'
   }
 }
 
@@ -425,8 +425,8 @@ watch(() => props.data, () => {
   gap: 4px;
 }
 
-.legend-item.buy { color: #67c23a; }
-.legend-item.sell { color: #f56c6c; }
-.legend-item.hold { color: #409eff; }
-.legend-item.alert { color: #e6a23c; }
+.legend-item.buy { color: var(--el-color-success); }
+.legend-item.sell { color: var(--el-color-danger); }
+.legend-item.hold { color: var(--el-color-primary); }
+.legend-item.alert { color: var(--el-color-warning); }
 </style>

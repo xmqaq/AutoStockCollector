@@ -30,10 +30,10 @@ const alertRef = ref<InstanceType<typeof AlertNotification> | null>(null)
 }
 
 .monitor-view :deep(.el-tabs__item.is-active) {
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 
 .monitor-view :deep(.el-tabs__active-bar) {
-  background-color: #409eff;
+  background-color: var(--el-color-primary);
 }
 </style>

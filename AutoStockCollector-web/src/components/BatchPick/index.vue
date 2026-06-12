@@ -459,7 +459,7 @@ onMounted(() => {
 }
 
 .stock-link {
-  color: #409eff;
+  color: var(--el-color-primary);
   text-decoration: none;
 }
 
@@ -472,7 +472,7 @@ onMounted(() => {
 }
 
 .stop-loss {
-  color: #f56c6c;
+  color: var(--el-color-danger);
 }
 
 .summary-cards {
@@ -489,23 +489,23 @@ onMounted(() => {
 }
 
 .summary-card.good {
-  background: rgba(103, 194, 58, 0.1);
-  border: 1px solid rgba(103, 194, 58, 0.3);
+  background: rgba(52, 138, 93, 0.1);
+  border: 1px solid rgba(52, 138, 93, 0.3);
 }
 
 .summary-card.fair {
-  background: rgba(64, 158, 255, 0.1);
-  border: 1px solid rgba(64, 158, 255, 0.3);
+  background: rgba(21, 89, 140, 0.1);
+  border: 1px solid rgba(21, 89, 140, 0.3);
 }
 
 .summary-card.poor {
-  background: rgba(245, 108, 108, 0.1);
-  border: 1px solid rgba(245, 108, 108, 0.3);
+  background: rgba(196, 69, 60, 0.1);
+  border: 1px solid rgba(196, 69, 60, 0.3);
 }
 
 .summary-card.avg {
-  background: rgba(230, 162, 60, 0.1);
-  border: 1px solid rgba(230, 162, 60, 0.3);
+  background: rgba(185, 134, 46, 0.1);
+  border: 1px solid rgba(185, 134, 46, 0.3);
 }
 
 .card-value {
@@ -514,10 +514,10 @@ onMounted(() => {
   color: var(--text-primary);
 }
 
-.summary-card.good .card-value { color: #67c23a; }
-.summary-card.fair .card-value { color: #409eff; }
-.summary-card.poor .card-value { color: #f56c6c; }
-.summary-card.avg .card-value { color: #e6a23c; }
+.summary-card.good .card-value { color: var(--el-color-success); }
+.summary-card.fair .card-value { color: var(--el-color-primary); }
+.summary-card.poor .card-value { color: var(--el-color-danger); }
+.summary-card.avg .card-value { color: var(--el-color-warning); }
 
 .card-label {
   font-size: 12px;
@@ -558,7 +558,7 @@ onMounted(() => {
 
 .history-count {
   font-size: 12px;
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 
 .section-card {

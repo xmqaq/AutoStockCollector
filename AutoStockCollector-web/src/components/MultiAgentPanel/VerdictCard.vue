@@ -82,7 +82,7 @@ const tendencyClass = computed(() => {
 
 <style scoped>
 .verdict-card {
-  border: 1px solid #e6a23c;
+  border: 1px solid var(--el-color-warning);
   margin-top: 16px;
 }
 .section-header {
@@ -108,16 +108,16 @@ const tendencyClass = computed(() => {
 .stat-value {
   font-size: 24px;
   font-weight: 700;
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 .stat-label {
   font-size: 11px;
   color: var(--text-faint);
   margin-top: 2px;
 }
-.score-bull { color: #67c23a; }
-.score-bear { color: #f56c6c; }
-.score-neutral { color: #e6a23c; }
+.score-bull { color: var(--el-color-success); }
+.score-bear { color: var(--el-color-danger); }
+.score-neutral { color: var(--el-color-warning); }
 .verdict-section { }
 .section-subtitle {
   font-size: 13px;
@@ -142,7 +142,7 @@ const tendencyClass = computed(() => {
 }
 .insight-list li::before {
   content: '▶ ';
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 .risk-tags {
   display: flex;

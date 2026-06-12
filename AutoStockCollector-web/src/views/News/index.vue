@@ -268,11 +268,11 @@ onMounted(() => {
 }
 
 .news-list :deep(.el-collapse-item:hover) {
-  border-left-color: #409eff;
+  border-left-color: var(--el-color-primary);
 }
 
 .news-list :deep(.el-collapse-item.is-active) {
-  border-left-color: #409eff;
+  border-left-color: var(--el-color-primary);
 }
 
 .news-list :deep(.el-collapse-item__header) {
@@ -375,10 +375,10 @@ onMounted(() => {
 .stat-value {
   font-size: 18px;
   font-weight: 600;
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 
 .stat-value.breaking {
-  color: #f56c6c;
+  color: var(--el-color-danger);
 }
 </style>

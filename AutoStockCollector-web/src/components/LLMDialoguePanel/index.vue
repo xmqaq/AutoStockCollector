@@ -199,13 +199,13 @@ function copyFullContent() {
 }
 
 .message-item.user {
-  background: rgba(64, 158, 255, 0.05);
-  border-color: rgba(64, 158, 255, 0.2);
+  background: rgba(21, 89, 140, 0.05);
+  border-color: rgba(21, 89, 140, 0.2);
 }
 
 .message-item.assistant {
-  background: rgba(103, 194, 58, 0.05);
-  border-color: rgba(103, 194, 58, 0.2);
+  background: rgba(52, 138, 93, 0.05);
+  border-color: rgba(52, 138, 93, 0.2);
 }
 
 .message-header {

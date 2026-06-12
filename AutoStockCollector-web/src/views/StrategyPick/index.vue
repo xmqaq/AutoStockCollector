@@ -26,7 +26,7 @@
                   <span>
                     <span class="sp-history-time">{{ h.created_at ? dayjs(h.created_at).format('MM-DD HH:mm') : '未知' }}</span>
                     <span class="sp-history-meta">{{ h.selected_count || 0 }}只</span>
-                    <span v-if="h.portfolio_metrics" class="sp-history-meta" style="color:#67c23a">
+                    <span v-if="h.portfolio_metrics" class="sp-history-meta" style="color:#3f9d70">
                       {{ h.portfolio_metrics.avg_composite.toFixed(1) }}分 · {{ h.portfolio_metrics.industry_count }}行业
                     </span>
                     <span class="sp-history-meta" style="display:block;line-height:1.4">
@@ -556,7 +556,7 @@ const signalGroups = computed(() => {
 })
 
 const theme = computed(() => ct())
-const palette = ['#5a7af0', '#f56c6c', '#67c23a', '#e6a23c', '#909399', '#36cfc9', '#b37feb', '#ff85c0', '#597ef7', '#95de64']
+const palette = ['#5a7af0', '#d05a51', '#3f9d70', '#c9943a', '#909399', '#36cfc9', '#b37feb', '#ff85c0', '#597ef7', '#95de64']
 
 const industryPieOption = computed(() => {
   const picks = result.value?.picks || []
@@ -1239,7 +1239,7 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
   margin-top: 14px;
   background: var(--bg-deep-soft);
   border: 1px solid var(--border-alt);
-  border-left: 3px solid #67c23a;
+  border-left: 3px solid var(--el-color-success);
   border-radius: 6px;
   overflow: hidden;
 }
@@ -1417,7 +1417,7 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
   margin-top: 14px;
   background: var(--bg-deep-soft);
   border: 1px solid var(--border-alt);
-  border-left: 3px solid #409eff;
+  border-left: 3px solid var(--el-color-primary);
   border-radius: 6px;
   overflow: hidden;
 }
@@ -1429,7 +1429,7 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
 .sp-ps-table th { text-align: left; color: var(--text-alt-muted); padding: 5px 8px; border-bottom: 1px solid var(--border-alt); font-weight: 500; white-space: nowrap; }
 .sp-ps-table td { padding: 5px 8px; border-bottom: 1px solid var(--border-alt); color: var(--text-alt-body); }
 .sp-ps-row:hover td { background: var(--bg-hover-subtle); }
-.sp-ps-weight { font-weight: 600; color: #409eff; }
+.sp-ps-weight { font-weight: 600; color: var(--el-color-primary); }
 .sp-ps-cum { font-size: 11px; color: var(--text-alt-muted); }
 
 /* 对比 */

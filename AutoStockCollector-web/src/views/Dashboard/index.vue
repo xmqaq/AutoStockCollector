@@ -21,7 +21,7 @@
               {{ collectStore.backendOnline ? '正常运行' : '离线' }}
             </div>
           </div>
-          <el-icon class="metric-icon" :color="collectStore.backendOnline ? '#67c23a' : '#f56c6c'" size="36">
+          <el-icon class="metric-icon" :color="collectStore.backendOnline ? '#3f9d70' : '#d05a51'" size="36">
             <Monitor />
           </el-icon>
         </el-card>
@@ -35,7 +35,7 @@
               <span class="metric-sub"> / 8 类</span>
             </div>
           </div>
-          <el-icon class="metric-icon" color="#409eff" size="36">
+          <el-icon class="metric-icon" color="#3f7fae" size="36">
             <DataAnalysis />
           </el-icon>
         </el-card>
@@ -46,7 +46,7 @@
             <div class="metric-label">累计成功条数</div>
             <div class="metric-value text-primary">{{ fmtAmount(collectStore.totalSuccessCount) }}</div>
           </div>
-          <el-icon class="metric-icon" color="#e6a23c" size="36">
+          <el-icon class="metric-icon" color="#c9943a" size="36">
             <TrendCharts />
           </el-icon>
         </el-card>
@@ -327,9 +327,9 @@ onUnmounted(() => {
   opacity: 0.7;
 }
 
-.text-success { color: #67c23a; }
-.text-danger { color: #f56c6c; }
-.text-primary { color: #409eff; }
+.text-success { color: var(--el-color-success); }
+.text-danger { color: var(--el-color-danger); }
+.text-primary { color: var(--el-color-primary); }
 
 .section-card {
   background: var(--bg-card);
@@ -383,7 +383,7 @@ onUnmounted(() => {
 }
 
 .news-title:hover {
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 
 .news-meta {
@@ -419,7 +419,7 @@ onUnmounted(() => {
 }
 
 .stale-name {
-  color: #e6a23c;
+  color: var(--el-color-warning);
   font-weight: 600;
 }
 
@@ -446,9 +446,9 @@ onUnmounted(() => {
   background: var(--bg-soft);
 }
 
-.health-card--ok    { border-left-color: #67c23a; }
-.health-card--stale { border-left-color: #e6a23c; }
-.health-card--error { border-left-color: #f56c6c; background: rgba(245,108,108,0.05); }
+.health-card--ok    { border-left-color: var(--el-color-success); }
+.health-card--stale { border-left-color: var(--el-color-warning); }
+.health-card--error { border-left-color: var(--el-color-danger); background: rgba(196, 69, 60, 0.05); }
 
 .hc-icon-name {
   display: flex;
@@ -485,7 +485,7 @@ onUnmounted(() => {
 }
 
 .hc-date--stale {
-  color: #e6a23c;
+  color: var(--el-color-warning);
 }
 
 .hc-status {

@@ -9,7 +9,7 @@
       <el-menu
         :default-active="activeMenu"
         :default-openeds="openedMenus"
-        active-text-color="#409eff"
+        active-text-color="#3f7fae"
         @select="handleMenuSelect"
       >
         <template v-for="group in menuGroups" :key="group.key">
@@ -324,13 +324,13 @@ onUnmounted(() => {
 }
 
 .status-dot.online {
-  background: #67c23a;
-  box-shadow: 0 0 6px #67c23a;
+  background: var(--el-color-success);
+  box-shadow: 0 0 6px var(--el-color-success);
 }
 
 .status-dot.offline {
-  background: #f56c6c;
-  box-shadow: 0 0 6px #f56c6c;
+  background: var(--el-color-danger);
+  box-shadow: 0 0 6px var(--el-color-danger);
 }
 
 .status-text {

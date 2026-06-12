@@ -190,7 +190,7 @@ function scoreColor(score: number): string {
 
 <style scoped>
 .dashboard-card {
-  border: 1px solid #409eff;
+  border: 1px solid var(--el-color-primary);
   margin-top: 16px;
 }
 .section-header {
@@ -219,12 +219,12 @@ function scoreColor(score: number): string {
 .overview-value {
   font-size: 28px;
   font-weight: 700;
-  color: #409eff;
+  color: var(--el-color-primary);
 }
-.bullish-count { color: #67c23a; }
-.bearish-count { color: #f56c6c; }
-.neutral-count { color: #e6a23c; }
-.total-count { color: #409eff; }
+.bullish-count { color: var(--el-color-success); }
+.bearish-count { color: var(--el-color-danger); }
+.neutral-count { color: var(--el-color-warning); }
+.total-count { color: var(--el-color-primary); }
 .overview-label {
   font-size: 11px;
   color: var(--text-faint);
@@ -243,9 +243,9 @@ function scoreColor(score: number): string {
   margin-bottom: 8px;
   font-weight: 600;
 }
-.signal-group-header.green { color: #67c23a; }
-.signal-group-header.yellow { color: #e6a23c; }
-.signal-group-header.red { color: #f56c6c; }
+.signal-group-header.green { color: var(--el-color-success); }
+.signal-group-header.yellow { color: var(--el-color-warning); }
+.signal-group-header.red { color: var(--el-color-danger); }
 .signal-cards {
   display: flex;
   flex-direction: column;
@@ -271,9 +271,9 @@ function scoreColor(score: number): string {
   background: var(--bg-card);
   color: var(--text-faint);
 }
-.signal-source.src-traditional { color: #409eff; }
+.signal-source.src-traditional { color: var(--el-color-primary); }
 .signal-source.src-philosophy { color: #b37feb; }
-.signal-source.src-research { color: #67c23a; }
+.signal-source.src-research { color: var(--el-color-success); }
 .signal-name-text {
   font-size: 12px;
   color: var(--text-primary);
@@ -288,9 +288,9 @@ function scoreColor(score: number): string {
   min-width: 28px;
   text-align: right;
 }
-.signal-score.green { color: #67c23a; }
-.signal-score.yellow { color: #e6a23c; }
-.signal-score.red { color: #f56c6c; }
+.signal-score.green { color: var(--el-color-success); }
+.signal-score.yellow { color: var(--el-color-warning); }
+.signal-score.red { color: var(--el-color-danger); }
 .bottom-toggles {
   display: flex;
   flex-direction: column;
@@ -348,9 +348,9 @@ function scoreColor(score: number): string {
   margin-bottom: 4px;
 }
 .score-value { font-size: 16px; font-weight: 700; }
-.score-high { color: #67c23a; }
-.score-mid { color: #409eff; }
-.score-low { color: #f56c6c; }
+.score-high { color: var(--el-color-success); }
+.score-mid { color: var(--el-color-primary); }
+.score-low { color: var(--el-color-danger); }
 .score-label { font-size: 11px; color: var(--text-muted); }
 .confidence-sep { font-size: 11px; color: var(--text-faint); }
 .signal-reasoning {

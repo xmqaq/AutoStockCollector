@@ -177,7 +177,7 @@ onMounted(() => {
 }
 
 .code-link {
-  color: #409eff;
+  color: var(--el-color-primary);
   cursor: pointer;
 }
 .code-link:hover {

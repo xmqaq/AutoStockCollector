@@ -142,11 +142,11 @@ const stages = computed(() => [
   flex-shrink: 0;
 }
 .stage-icon.done {
-  background: #67c23a;
+  background: var(--el-color-success);
   color: #fff;
 }
 .stage-icon.active {
-  background: #409eff;
+  background: var(--el-color-primary);
   color: #fff;
   animation: pulse 1.5s ease-in-out infinite;
 }
@@ -156,8 +156,8 @@ const stages = computed(() => [
   border: 1px solid var(--border-strong);
 }
 @keyframes pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(64,158,255,0.4); }
-  50% { box-shadow: 0 0 0 6px rgba(64,158,255,0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(21, 89, 140, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(21, 89, 140, 0); }
 }
 .stage-line {
   width: 2px;
@@ -166,7 +166,7 @@ const stages = computed(() => [
   border-radius: 1px;
 }
 .stage-line.done {
-  background: #67c23a;
+  background: var(--el-color-success);
 }
 .stage-content {
   flex: 1;
@@ -191,7 +191,7 @@ const stages = computed(() => [
 }
 .stage-progress-fill {
   height: 100%;
-  background: #409eff;
+  background: var(--el-color-primary);
   border-radius: 1px;
   transition: width 0.5s ease;
 }

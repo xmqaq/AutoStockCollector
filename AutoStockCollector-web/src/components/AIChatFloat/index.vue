@@ -392,22 +392,22 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   padding: 12px 16px;
-  background: linear-gradient(135deg, #409eff 0%, #337ecc 100%);
+  background: linear-gradient(135deg, var(--el-color-primary) 0%, #337ecc 100%);
   border-radius: 24px;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.4);
+  box-shadow: 0 4px 12px rgba(21, 89, 140, 0.4);
   transition: all 0.3s ease;
   color: #fff;
 }
 
 .fab-button:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(64, 158, 255, 0.5);
+  box-shadow: 0 6px 16px rgba(21, 89, 140, 0.5);
 }
 
 .fab-button.fab-active {
-  background: linear-gradient(135deg, #67c23a 0%, #529b2e 100%);
-  box-shadow: 0 4px 12px rgba(103, 194, 58, 0.4);
+  background: linear-gradient(135deg, var(--el-color-success) 0%, #529b2e 100%);
+  box-shadow: 0 4px 12px rgba(52, 138, 93, 0.4);
 }
 
 .fab-label {
@@ -467,7 +467,7 @@ onMounted(() => {
 }
 
 .agent-welcome .el-icon {
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 
 .welcome-title {
@@ -518,12 +518,12 @@ onMounted(() => {
 }
 
 .message.user .message-avatar {
-  background: #409eff;
+  background: var(--el-color-primary);
   color: #fff;
 }
 
 .message.assistant .message-avatar {
-  background: #67c23a;
+  background: var(--el-color-success);
   color: #fff;
 }
 
@@ -535,7 +535,7 @@ onMounted(() => {
 }
 
 .message.user .message-content {
-  background: #409eff;
+  background: var(--el-color-primary);
   color: #fff;
 }
 
@@ -553,7 +553,7 @@ onMounted(() => {
 }
 
 .message-text :deep(strong) {
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 
 .message.user .message-text :deep(strong) {

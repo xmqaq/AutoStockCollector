@@ -17,7 +17,7 @@
         :percentage="donePercent"
         :stroke-width="10"
         class="stat-progress"
-        :color="donePercent === 100 ? '#67c23a' : '#409eff'"
+        :color="donePercent === 100 ? '#3f9d70' : '#3f7fae'"
       />
     </div>
 
@@ -291,8 +291,8 @@ onMounted(load)
 }
 
 .stat-num.total { color: var(--text-primary); }
-.stat-num.done { color: #67c23a; }
-.stat-num.pending { color: #e6a23c; }
+.stat-num.done { color: var(--el-color-success); }
+.stat-num.pending { color: var(--el-color-warning); }
 
 .stat-lbl {
   font-size: 11px;
@@ -385,7 +385,7 @@ onMounted(load)
 }
 
 .todo-text:hover {
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 
 .todo-text.line-through {
@@ -419,6 +419,6 @@ onMounted(load)
 .pagination-bar :deep(.el-pagination) {
   --el-pagination-bg-color: transparent;
   --el-pagination-button-bg-color: var(--border-color);
-  --el-pagination-hover-color: #409eff;
+  --el-pagination-hover-color: var(--el-color-primary);
 }
 </style>

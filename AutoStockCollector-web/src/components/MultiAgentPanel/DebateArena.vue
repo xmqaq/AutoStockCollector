@@ -183,8 +183,8 @@ function bearHeight(c: { bulls: number; bears: number }): number {
   transition: height 0.5s ease;
   min-height: 4px;
 }
-.bar.bull { background: linear-gradient(180deg, #67c23a, #95de64); }
-.bar.bear { background: linear-gradient(180deg, #f56c6c, #ff7875); }
+.bar.bull { background: linear-gradient(180deg, var(--el-color-success), #95de64); }
+.bar.bear { background: linear-gradient(180deg, var(--el-color-danger), #ff7875); }
 .bar-label {
   font-size: 10px;
   color: var(--text-faint);
@@ -207,8 +207,8 @@ function bearHeight(c: { bulls: number; bears: number }): number {
   height: 8px;
   border-radius: 2px;
 }
-.dot.bull { background: #67c23a; }
-.dot.bear { background: #f56c6c; }
+.dot.bull { background: var(--el-color-success); }
+.dot.bear { background: var(--el-color-danger); }
 .round-tabs {
   display: flex;
   gap: 6px;
@@ -228,7 +228,7 @@ function bearHeight(c: { bulls: number; bears: number }): number {
   gap: 4px;
 }
 .round-tab.active {
-  background: #409eff;
+  background: var(--el-color-primary);
   color: #fff;
 }
 .round-tab:hover:not(.active) {
@@ -238,8 +238,8 @@ function bearHeight(c: { bulls: number; bears: number }): number {
   font-size: 10px;
   font-weight: 600;
 }
-.shift.bull { color: #67c23a; }
-.shift.bear { color: #f56c6c; }
+.shift.bull { color: var(--el-color-success); }
+.shift.bear { color: var(--el-color-danger); }
 .round-arena {
   border-radius: 8px;
   overflow: hidden;
@@ -264,19 +264,19 @@ function bearHeight(c: { bulls: number; bears: number }): number {
   font-weight: 600;
   margin-bottom: 4px;
 }
-.bull-header { color: #67c23a; }
-.bear-header { color: #f56c6c; }
+.bull-header { color: var(--el-color-success); }
+.bear-header { color: var(--el-color-danger); }
 .arg-card {
   padding: 10px;
   border-radius: 6px;
 }
 .bull-arg {
-  background: rgba(103,194,58,0.06);
-  border: 1px solid rgba(103,194,58,0.15);
+  background: rgba(52, 138, 93, 0.06);
+  border: 1px solid rgba(52, 138, 93, 0.15);
 }
 .bear-arg {
-  background: rgba(245,108,108,0.06);
-  border: 1px solid rgba(245,108,108,0.15);
+  background: rgba(196, 69, 60, 0.06);
+  border: 1px solid rgba(196, 69, 60, 0.15);
 }
 .arg-agent-row {
   display: flex;

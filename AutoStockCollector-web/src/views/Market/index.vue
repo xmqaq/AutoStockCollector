@@ -301,7 +301,7 @@ watch([chartVisible, chartData], ([visible, data]) => {
       xAxis: { type: 'category', data: data.map(d => d.time.slice(-8)), axisLabel: { color: '#909399', fontSize: 10 } },
       yAxis: { type: 'value', min: min - pad, max: max + pad, axisLabel: { color: '#909399', fontSize: 10 } },
       tooltip: { trigger: 'axis' },
-      series: [{ type: 'line', data, smooth: true, symbol: 'none', lineStyle: { color: '#409eff', width: 2 } }]
+      series: [{ type: 'line', data, smooth: true, symbol: 'none', lineStyle: { color: '#3f7fae', width: 2 } }]
     }
   }
 })

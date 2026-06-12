@@ -50,7 +50,7 @@
     </div>
     
     <div class="current-item" v-if="currentItem">
-      <el-icon class="is-loading" color="#409eff"><Loading /></el-icon>
+      <el-icon class="is-loading" color="#3f7fae"><Loading /></el-icon>
       <span>正在分析: {{ currentItem }}</span>
     </div>
     
@@ -317,7 +317,7 @@ onUnmounted(() => {
 }
 
 .speed {
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 
 .current-item {
@@ -333,7 +333,7 @@ onUnmounted(() => {
 }
 
 .failed-list {
-  background: rgba(245, 108, 108, 0.1);
+  background: rgba(196, 69, 60, 0.1);
   border-radius: 4px;
   padding: 12px;
 }
@@ -344,7 +344,7 @@ onUnmounted(() => {
   align-items: center;
   margin-bottom: 8px;
   font-size: 12px;
-  color: #f56c6c;
+  color: var(--el-color-danger);
 }
 
 .failed-items {

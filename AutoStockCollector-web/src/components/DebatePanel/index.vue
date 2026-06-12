@@ -156,18 +156,18 @@ onMounted(() => {
   font-size: 12px; background: var(--border-color); color: var(--text-muted);
   border: 1px solid transparent;
 }
-.node-item.completed { color: #67c23a; border-color: #67c23a; }
-.node-item.running { color: #e6a23c; border-color: #e6a23c; }
-.node-item.error { color: #f56c6c; border-color: #f56c6c; }
+.node-item.completed { color: var(--el-color-success); border-color: var(--el-color-success); }
+.node-item.running { color: var(--el-color-warning); border-color: var(--el-color-warning); }
+.node-item.error { color: var(--el-color-danger); border-color: var(--el-color-danger); }
 .node-icon { font-size: 14px; }
-.node-icon.done { color: #67c23a; }
-.node-icon.loading { color: #e6a23c; }
-.node-icon.error { color: #f56c6c; }
+.node-icon.done { color: var(--el-color-success); }
+.node-icon.loading { color: var(--el-color-warning); }
+.node-icon.error { color: var(--el-color-danger); }
 .node-icon.idle { color: var(--text-faint); }
-.verdict-card { border: 1px solid #409eff; }
+.verdict-card { border: 1px solid var(--el-color-primary); }
 .verdict-content { font-size: 13px; color: var(--text-secondary); line-height: 1.7; padding: 8px 0; }
-.error-card { border: 1px solid #f56c6c; }
-.error-card p { color: #f56c6c; font-size: 13px; }
+.error-card { border: 1px solid var(--el-color-danger); }
+.error-card p { color: var(--el-color-danger); font-size: 13px; }
 .md-content :deep(strong) { color: var(--text-primary); }
 .md-content :deep(h2), .md-content :deep(h3), .md-content :deep(h4) { color: var(--text-primary); margin: 8px 0 4px; }
 </style>

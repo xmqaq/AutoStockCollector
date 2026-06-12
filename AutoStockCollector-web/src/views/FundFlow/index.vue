@@ -95,8 +95,8 @@ const dataDate = ref('')
 const topN = ref(50)
 const direction = ref<'inflow' | 'outflow'>('inflow')
 
-const RISE_COLOR = '#f56c6c'
-const FALL_COLOR = '#67c23a'
+const RISE_COLOR = '#d05a51'
+const FALL_COLOR = '#3f9d70'
 
 function fmtAmount(v: unknown): string {
   const n = typeof v === 'number' ? v : parseFloat(String(v || 0))
@@ -170,8 +170,8 @@ onMounted(loadData)
 }
 .filter-bar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .date-label { font-size: 12px; color: var(--text-faint); }
-.code-link { color: #409eff; cursor: pointer; }
+.code-link { color: var(--el-color-primary); cursor: pointer; }
 .code-link:hover { text-decoration: underline; }
-.val-pos { color: #f56c6c; }
-.val-neg { color: #67c23a; }
+.val-pos { color: var(--el-color-danger); }
+.val-neg { color: var(--el-color-success); }
 </style>

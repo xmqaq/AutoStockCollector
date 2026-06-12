@@ -225,35 +225,35 @@
           <el-table-column prop="industry" label="行业" width="120" />
           <el-table-column label="综合评分" width="100">
             <template #default="{ row }">
-              <span :style="{ color: row.composite >= 70 ? '#67c23a' : row.composite >= 50 ? '#e6a23c' : '#f56c6c' }">
+              <span :style="{ color: row.composite >= 70 ? '#3f9d70' : row.composite >= 50 ? '#c9943a' : '#d05a51' }">
                 {{ row.composite.toFixed(1) }}
               </span>
             </template>
           </el-table-column>
           <el-table-column label="基本面" width="80">
             <template #default="{ row }">
-              <span :style="{ color: row.dim_scores?.fundamental >= 70 ? '#67c23a' : '#e6a23c' }">
+              <span :style="{ color: row.dim_scores?.fundamental >= 70 ? '#3f9d70' : '#c9943a' }">
                 {{ (row.dim_scores?.fundamental || 0).toFixed(0) }}
               </span>
             </template>
           </el-table-column>
           <el-table-column label="技术面" width="80">
             <template #default="{ row }">
-              <span :style="{ color: row.dim_scores?.technical >= 70 ? '#67c23a' : '#e6a23c' }">
+              <span :style="{ color: row.dim_scores?.technical >= 70 ? '#3f9d70' : '#c9943a' }">
                 {{ (row.dim_scores?.technical || 0).toFixed(0) }}
               </span>
             </template>
           </el-table-column>
           <el-table-column label="资金面" width="80">
             <template #default="{ row }">
-              <span :style="{ color: row.dim_scores?.fund_flow >= 70 ? '#67c23a' : '#e6a23c' }">
+              <span :style="{ color: row.dim_scores?.fund_flow >= 70 ? '#3f9d70' : '#c9943a' }">
                 {{ (row.dim_scores?.fund_flow || 0).toFixed(0) }}
               </span>
             </template>
           </el-table-column>
           <el-table-column label="估值面" width="80">
             <template #default="{ row }">
-              <span :style="{ color: row.dim_scores?.valuation >= 70 ? '#67c23a' : '#e6a23c' }">
+              <span :style="{ color: row.dim_scores?.valuation >= 70 ? '#3f9d70' : '#c9943a' }">
                 {{ (row.dim_scores?.valuation || 0).toFixed(0) }}
               </span>
             </template>
@@ -350,8 +350,8 @@ const dimLabels: Record<string, string> = {
 function dimLabel(d: string) { return dimLabels[d] || d }
 function dimColor(d: string) {
   const c: Record<string, string> = {
-    fundamental: '#409eff', technical: '#e6a23c', fund_flow: '#67c23a',
-    valuation: '#f56c6c', entry: '#909399', exit: '#909399',
+    fundamental: '#3f7fae', technical: '#c9943a', fund_flow: '#3f9d70',
+    valuation: '#d05a51', entry: '#909399', exit: '#909399',
   }
   return c[d] || '#909399'
 }
@@ -631,7 +631,7 @@ onUnmounted(() => { if (testPollTimer) clearInterval(testPollTimer) })
 .sm-dialog-layout { display: flex; gap: 20px; max-height: 580px; }
 .sm-dialog-left { flex: 1; min-width: 0; overflow-y: auto; padding-right: 4px; }
 .sm-dialog-right { flex: 1; min-width: 0; overflow-y: auto; padding-right: 4px; }
-.sm-section-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 2px solid #409eff; display: flex; align-items: center; justify-content: space-between; }
+.sm-section-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 2px solid var(--el-color-primary); display: flex; align-items: center; justify-content: space-between; }
 .sm-ind-count { font-size: 12px; font-weight: 400; color: var(--text-muted); }
 
 /* ── 权重编辑 ── */
@@ -640,9 +640,9 @@ onUnmounted(() => { if (testPollTimer) clearInterval(testPollTimer) })
 .sm-weight-label { width: 56px; font-size: 12px; flex-shrink: 0; }
 .sm-weight-val { width: 36px; text-align: right; font-size: 12px; color: var(--text-secondary); flex-shrink: 0; }
 .sm-weight-total { text-align: right; font-size: 12px; padding-top: 4px; border-top: 1px solid var(--border-color); }
-.sm-green { color: #67c23a; font-weight: 600; }
-.sm-red { color: #f56c6c; font-weight: 600; }
-.sm-weight-hint { color: #e6a23c; font-size: 11px; margin-left: 4px; }
+.sm-green { color: var(--el-color-success); font-weight: 600; }
+.sm-red { color: var(--el-color-danger); font-weight: 600; }
+.sm-weight-hint { color: var(--el-color-warning); font-size: 11px; margin-left: 4px; }
 
 /* ── 指标编辑 ── */
 .sm-indicator-editor { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }

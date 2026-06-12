@@ -28,9 +28,9 @@
         @click="handleAlertClick(alert)"
       >
         <div class="alert-icon">
-          <el-icon v-if="alert.type === 'price'" color="#e6a23c"><TrendCharts /></el-icon>
-          <el-icon v-else-if="alert.type === 'volume'" color="#409eff"><Histogram /></el-icon>
-          <el-icon v-else-if="alert.type === 'flow'" color="#67c23a"><Money /></el-icon>
+          <el-icon v-if="alert.type === 'price'" color="#c9943a"><TrendCharts /></el-icon>
+          <el-icon v-else-if="alert.type === 'volume'" color="#3f7fae"><Histogram /></el-icon>
+          <el-icon v-else-if="alert.type === 'flow'" color="#3f9d70"><Money /></el-icon>
           <el-icon v-else color="#909399"><Bell /></el-icon>
         </div>
         <div class="alert-content">
@@ -214,16 +214,16 @@ defineExpose({ addMockAlert })
 }
 
 .alert-item.unread {
-  background: rgba(64, 158, 255, 0.1);
-  border-left: 3px solid #409eff;
+  background: rgba(21, 89, 140, 0.1);
+  border-left: 3px solid var(--el-color-primary);
 }
 
 .alert-item.warning {
-  border-left: 3px solid #e6a23c;
+  border-left: 3px solid var(--el-color-warning);
 }
 
 .alert-item.danger {
-  border-left: 3px solid #f56c6c;
+  border-left: 3px solid var(--el-color-danger);
 }
 
 .alert-icon {

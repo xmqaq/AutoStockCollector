@@ -143,7 +143,7 @@
         <svg class="edges-svg" v-if="edges.length > 0">
           <defs>
             <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-              <polygon points="0 0, 10 3.5, 0 7" fill="#409eff" />
+              <polygon points="0 0, 10 3.5, 0 7" fill="#3f7fae" />
             </marker>
           </defs>
           <path
@@ -151,7 +151,7 @@
             :key="edge.id"
             :d="getEdgePath(edge)"
             fill="none"
-            stroke="#409eff"
+            stroke="#3f7fae"
             stroke-width="2"
             marker-end="url(#arrowhead)"
             class="workflow-edge"
@@ -328,9 +328,9 @@ const canUndo = computed(() => undoStack.value.length > 0)
 const canRedo = computed(() => redoStack.value.length > 0)
 
 const nodeTypes = [
-  { type: 'start', label: '起始节点', icon: 'play', color: '#67c23a', description: '定义数据来源' },
-  { type: 'filter', label: '筛选节点', icon: 'filter', color: '#409eff', description: '按条件过滤' },
-  { type: 'score', label: '评分节点', icon: 'star', color: '#e6a23c', description: '多维度评分' },
+  { type: 'start', label: '起始节点', icon: 'play', color: '#3f9d70', description: '定义数据来源' },
+  { type: 'filter', label: '筛选节点', icon: 'filter', color: '#3f7fae', description: '按条件过滤' },
+  { type: 'score', label: '评分节点', icon: 'star', color: '#c9943a', description: '多维度评分' },
   { type: 'ai_agent', label: 'AI节点', icon: 'robot', color: '#9b59b6', description: 'AI深度分析' },
   { type: 'combine', label: '组合节点', icon: 'collection', color: '#3498db', description: '结果组合' },
   { type: 'risk_control', label: '风控节点', icon: 'shield', color: '#e74c3c', description: '风险控制' },
@@ -636,7 +636,7 @@ function getNodeTypeLabel(type: string) {
 
 function getNodeColor(type: string): string {
   const node = nodeTypes.find(n => n.type === type)
-  return node?.color || '#409eff'
+  return node?.color || '#3f7fae'
 }
 
 function getNodeConfigSchema(type: string) {
@@ -1237,7 +1237,7 @@ onMounted(() => {
 }
 
 .palette-item:hover {
-  background: #409eff;
+  background: var(--el-color-primary);
   color: #fff;
 }
 
@@ -1273,20 +1273,20 @@ onMounted(() => {
 
 .workflow-node.hovering {
   z-index: 100;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 0 2px var(--node-color, #409eff);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 0 2px var(--node-color, var(--el-color-primary));
 }
 
 .workflow-node.selected {
-  border-color: var(--node-color, #409eff);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--node-color, #409eff) 30%, transparent);
+  border-color: var(--node-color, var(--el-color-primary));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--node-color, var(--el-color-primary)) 30%, transparent);
 }
 
 .workflow-node.node-type-start {
-  border-color: #67c23a;
+  border-color: var(--el-color-success);
 }
 
 .workflow-node.node-type-end {
-  border-color: #f56c6c;
+  border-color: var(--el-color-danger);
 }
 
 .workflow-node.node-type-ai_agent {
@@ -1303,7 +1303,7 @@ onMounted(() => {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
-  border-bottom: 3px solid var(--node-color, #409eff);
+  border-bottom: 3px solid var(--node-color, var(--el-color-primary));
 }
 
 .node-body {
@@ -1339,14 +1339,14 @@ onMounted(() => {
 }
 
 .port:hover .port-dot {
-  background: #409eff;
-  border-color: #409eff;
+  background: var(--el-color-primary);
+  border-color: var(--el-color-primary);
   transform: scale(1.2);
 }
 
 .port.connecting .port-dot {
-  background: #e6a23c;
-  border-color: #e6a23c;
+  background: var(--el-color-warning);
+  border-color: var(--el-color-warning);
   animation: pulse 1s infinite;
 }
 
@@ -1356,13 +1356,13 @@ onMounted(() => {
 }
 
 .port-input .port-dot {
-  background: #67c23a;
-  border-color: #67c23a;
+  background: var(--el-color-success);
+  border-color: var(--el-color-success);
 }
 
 .port-output .port-dot {
-  background: #409eff;
-  border-color: #409eff;
+  background: var(--el-color-primary);
+  border-color: var(--el-color-primary);
 }
 
 .port-label {
@@ -1428,7 +1428,7 @@ onMounted(() => {
 
 .connecting-hint p {
   margin: 0 0 8px 0;
-  color: #e6a23c;
+  color: var(--el-color-warning);
   font-size: 14px;
 }
 
@@ -1487,7 +1487,7 @@ onMounted(() => {
 
 .preview-port {
   font-size: 11px;
-  color: #67c23a;
+  color: var(--el-color-success);
   padding: 2px 0;
 }
 </style>

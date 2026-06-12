@@ -61,7 +61,7 @@ const chartOption = computed(() => {
           type: 'linear',
           x: 0, y: 0, x2: 0, y2: 1,
           colorStops: [
-            { offset: 0, color: values[values.length - 1] >= 0 ? 'rgba(103,194,58,0.4)' : 'rgba(245,108,108,0.4)' },
+            { offset: 0, color: values[values.length - 1] >= 0 ? 'rgba(63, 157, 112, 0.4)' : 'rgba(208, 90, 81, 0.4)' },
             { offset: 1, color: 'rgba(0,0,0,0)' },
           ],
         },

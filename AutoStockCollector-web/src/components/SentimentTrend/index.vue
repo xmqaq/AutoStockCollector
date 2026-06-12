@@ -141,7 +141,7 @@ const sentimentOption = computed(() => {
       formatter: (params: unknown[]) => {
         const p = params[0] as { axisValue: string; value: number }
         const score = p.value
-        const color = score >= 60 ? '#67c23a' : score >= 40 ? '#e6a23c' : '#f56c6c'
+        const color = score >= 60 ? '#3f9d70' : score >= 40 ? '#c9943a' : '#d05a51'
         return `<div style="padding:8px">
           <div style="font-weight:bold;color:${ct().tooltipText}">${p.axisValue}</div>
           <div style="color:${color}">舆情指数: ${score}</div>
@@ -174,17 +174,17 @@ const sentimentOption = computed(() => {
           type: 'linear',
           x: 0, y: 0, x2: 0, y2: 1,
           colorStops: [
-            { offset: 0, color: 'rgba(103,194,58,0.4)' },
-            { offset: 0.5, color: 'rgba(230,162,60,0.2)' },
-            { offset: 1, color: 'rgba(245,108,108,0)' },
+            { offset: 0, color: 'rgba(63, 157, 112, 0.4)' },
+            { offset: 0.5, color: 'rgba(201, 148, 58, 0.2)' },
+            { offset: 1, color: 'rgba(208, 90, 81, 0)' },
           ],
         },
       },
       markLine: {
         silent: true,
         data: [
-          { yAxis: 60, lineStyle: { color: '#67c23a', type: 'dashed' }, label: { formatter: '偏正面', color: '#67c23a' } },
-          { yAxis: 40, lineStyle: { color: '#f56c6c', type: 'dashed' }, label: { formatter: '偏负面', color: '#f56c6c' } },
+          { yAxis: 60, lineStyle: { color: '#3f9d70', type: 'dashed' }, label: { formatter: '偏正面', color: '#3f9d70' } },
+          { yAxis: 40, lineStyle: { color: '#d05a51', type: 'dashed' }, label: { formatter: '偏负面', color: '#d05a51' } },
         ],
       },
     }],
@@ -259,7 +259,7 @@ function getKeywordSize(weight: number): number {
 .overview-score {
   text-align: center;
   padding: 16px 24px;
-  background: rgba(103, 194, 58, 0.1);
+  background: rgba(52, 138, 93, 0.1);
   border-radius: 8px;
 }
 
@@ -268,9 +268,9 @@ function getKeywordSize(weight: number): number {
   font-weight: 600;
 }
 
-.score-high { color: #67c23a; }
-.score-mid { color: #e6a23c; }
-.score-low { color: #f56c6c; }
+.score-high { color: var(--el-color-success); }
+.score-mid { color: var(--el-color-warning); }
+.score-low { color: var(--el-color-danger); }
 
 .score-label {
   font-size: 12px;
@@ -302,8 +302,8 @@ function getKeywordSize(weight: number): number {
   color: var(--text-primary);
 }
 
-.detail-value.rise { color: #67c23a; }
-.detail-value.fall { color: #f56c6c; }
+.detail-value.rise { color: var(--el-color-success); }
+.detail-value.fall { color: var(--el-color-danger); }
 
 .events-timeline {
   display: flex;
@@ -327,12 +327,12 @@ function getKeywordSize(weight: number): number {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: #409eff;
+  background: var(--el-color-primary);
   flex-shrink: 0;
 }
 
-.event-item.positive .marker-dot { background: #67c23a; }
-.event-item.negative .marker-dot { background: #f56c6c; }
+.event-item.positive .marker-dot { background: var(--el-color-success); }
+.event-item.negative .marker-dot { background: var(--el-color-danger); }
 
 .marker-line {
   flex: 1;
@@ -402,14 +402,14 @@ function getKeywordSize(weight: number): number {
 }
 
 .keyword-high {
-  background: rgba(103, 194, 58, 0.2);
-  color: #67c23a;
+  background: rgba(52, 138, 93, 0.2);
+  color: var(--el-color-success);
   font-weight: 600;
 }
 
 .keyword-mid {
-  background: rgba(64, 158, 255, 0.2);
-  color: #409eff;
+  background: rgba(21, 89, 140, 0.2);
+  color: var(--el-color-primary);
 }
 
 .keyword-low {

@@ -394,7 +394,7 @@ onMounted(() => {
 }
 .group-label {
   font-size: 13px;
-  color: #409eff;
+  color: var(--el-color-primary);
   font-weight: 600;
 }
 .group-agents {
@@ -416,13 +416,13 @@ onMounted(() => {
   border: 1px solid transparent;
 }
 .agent-chip:hover {
-  border-color: #409eff;
+  border-color: var(--el-color-primary);
   color: var(--text-primary);
 }
 .agent-chip.selected {
-  background: rgba(64, 158, 255, 0.15);
-  border-color: #409eff;
-  color: #409eff;
+  background: rgba(21, 89, 140, 0.15);
+  border-color: var(--el-color-primary);
+  color: var(--el-color-primary);
 }
 .phase-indicator {
   margin-bottom: 16px;
@@ -466,9 +466,9 @@ onMounted(() => {
   font-size: 11px;
   color: var(--text-muted);
 }
-.score-high { color: #67c23a; }
-.score-mid { color: #409eff; }
-.score-low { color: #f56c6c; }
+.score-high { color: var(--el-color-success); }
+.score-mid { color: var(--el-color-primary); }
+.score-low { color: var(--el-color-danger); }
 .signal-reasoning {
   font-size: 11px;
   color: var(--text-muted);
@@ -533,7 +533,7 @@ onMounted(() => {
   gap: 6px;
 }
 .verdict-card {
-  border: 1px solid #409eff;
+  border: 1px solid var(--el-color-primary);
 }
 .verdict-stats {
   display: flex;
@@ -549,16 +549,16 @@ onMounted(() => {
 .stat-value {
   font-size: 24px;
   font-weight: 700;
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 .stat-label {
   font-size: 11px;
   color: var(--text-faint);
   margin-top: 2px;
 }
-.score-bull { color: #67c23a; }
-.score-bear { color: #f56c6c; }
-.score-neutral { color: #e6a23c; }
+.score-bull { color: var(--el-color-success); }
+.score-bear { color: var(--el-color-danger); }
+.score-neutral { color: var(--el-color-warning); }
 .verdict-meta {
   display: flex;
   align-items: center;

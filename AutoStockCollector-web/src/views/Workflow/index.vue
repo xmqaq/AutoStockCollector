@@ -312,7 +312,7 @@
       <div class="progress-container">
         <div class="progress-header">
           <el-icon class="is-loading" :size="24" v-if="isRunning"><Loading /></el-icon>
-          <el-icon :size="24" v-else :color="currentExecution?.status === 'completed' ? '#67c23a' : '#f56c6c'">
+          <el-icon :size="24" v-else :color="currentExecution?.status === 'completed' ? '#3f9d70' : '#d05a51'">
             <CircleCheck v-if="currentExecution?.status === 'completed'" />
             <CircleClose v-else-if="currentExecution?.status === 'failed'" />
             <Warning v-else />
@@ -684,14 +684,14 @@ const factorRadarOptions = computed(() => {
       center: ['50%', '55%'],
       radius: '65%',
       axisName: { color: ct().legendText, fontSize: 13 },
-      splitArea: { areaStyle: { color: ['rgba(64,158,255,0.02)', 'rgba(64,158,255,0.05)'] } },
+      splitArea: { areaStyle: { color: ['rgba(63, 127, 174, 0.02)', 'rgba(63, 127, 174, 0.05)'] } },
     },
     series: [{
       type: 'radar',
       data: [{ value: dims.map(d => d.value), name: s.name || s.code }],
-      areaStyle: { color: 'rgba(64,158,255,0.2)' },
-      lineStyle: { color: '#409EFF', width: 2 },
-      itemStyle: { color: '#409EFF' },
+      areaStyle: { color: 'rgba(63, 127, 174, 0.2)' },
+      lineStyle: { color: '#3f7fae', width: 2 },
+      itemStyle: { color: '#3f7fae' },
     }],
   }
 })
@@ -1484,7 +1484,7 @@ onUnmounted(() => {
 }
 
 .workflow-card:hover {
-  border-color: #409eff;
+  border-color: var(--el-color-primary);
   transform: translateY(-2px);
 }
 
@@ -1553,7 +1553,7 @@ onUnmounted(() => {
 }
 
 .template-card:hover {
-  border-color: #409eff;
+  border-color: var(--el-color-primary);
 }
 
 .template-card h4 {
@@ -1602,7 +1602,7 @@ onUnmounted(() => {
 .stat-value {
   font-size: 20px;
   font-weight: 600;
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 
 .result-table {
@@ -1641,7 +1641,7 @@ onUnmounted(() => {
 .summary-value {
   font-size: 24px;
   font-weight: 600;
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 
 .summary-label {
@@ -1668,8 +1668,8 @@ onUnmounted(() => {
 }
 
 .price-item.stop-loss {
-  color: #f56c6c;
-  background: rgba(245, 108, 108, 0.1);
+  color: var(--el-color-danger);
+  background: rgba(196, 69, 60, 0.1);
 }
 
 .execution-stats {
@@ -1685,13 +1685,13 @@ onUnmounted(() => {
   background: var(--border-color);
   border-radius: 8px;
   text-align: center;
-  border-left: 3px solid #409eff;
+  border-left: 3px solid var(--el-color-primary);
 }
 
-.stat-card.stat-total { border-left-color: #409eff; }
-.stat-card.stat-completed { border-left-color: #67c23a; }
-.stat-card.stat-running { border-left-color: #e6a23c; }
-.stat-card.stat-failed { border-left-color: #f56c6c; }
+.stat-card.stat-total { border-left-color: var(--el-color-primary); }
+.stat-card.stat-completed { border-left-color: var(--el-color-success); }
+.stat-card.stat-running { border-left-color: var(--el-color-warning); }
+.stat-card.stat-failed { border-left-color: var(--el-color-danger); }
 .stat-card.stat-success-rate { border-left-color: #909eff; }
 
 .stat-value {
@@ -1721,8 +1721,8 @@ onUnmounted(() => {
 }
 
 .price-item.target {
-  color: #67c23a;
-  background: rgba(103, 194, 58, 0.1);
+  color: var(--el-color-success);
+  background: rgba(52, 138, 93, 0.1);
 }
 
 .result-tips {
@@ -1800,27 +1800,27 @@ onUnmounted(() => {
 }
 
 .log-success {
-  background: rgba(103, 194, 58, 0.1);
-  color: #67c23a;
-  border-left: 3px solid #67c23a;
+  background: rgba(52, 138, 93, 0.1);
+  color: var(--el-color-success);
+  border-left: 3px solid var(--el-color-success);
 }
 
 .log-error {
-  background: rgba(245, 108, 108, 0.1);
-  color: #f56c6c;
-  border-left: 3px solid #f56c6c;
+  background: rgba(196, 69, 60, 0.1);
+  color: var(--el-color-danger);
+  border-left: 3px solid var(--el-color-danger);
 }
 
 .log-info {
-  background: rgba(64, 158, 255, 0.1);
-  color: #409eff;
-  border-left: 3px solid #409eff;
+  background: rgba(21, 89, 140, 0.1);
+  color: var(--el-color-primary);
+  border-left: 3px solid var(--el-color-primary);
 }
 
 .log-warning {
-  background: rgba(230, 162, 60, 0.1);
-  color: #e6a23c;
-  border-left: 3px solid #e6a23c;
+  background: rgba(185, 134, 46, 0.1);
+  color: var(--el-color-warning);
+  border-left: 3px solid var(--el-color-warning);
 }
 
 .execution-table :deep(.el-table__header th) {
@@ -1833,7 +1833,7 @@ onUnmounted(() => {
 }
 
 .result-link {
-  color: #409eff;
+  color: var(--el-color-primary);
   cursor: pointer;
   font-size: 13px;
 }
@@ -1868,11 +1868,11 @@ onUnmounted(() => {
 }
 
 .execution-table :deep(.row-failed td) {
-  color: #f56c6c !important;
+  color: var(--el-color-danger) !important;
 }
 
 .execution-table :deep(.row-paused td) {
-  color: #e6a23c !important;
+  color: var(--el-color-warning) !important;
 }
 
 /* Step list in progress dialog */
@@ -1911,8 +1911,8 @@ onUnmounted(() => {
 }
 
 .step-item.step-current {
-  background: rgba(64, 158, 255, 0.1);
-  border-left: 2px solid #409eff;
+  background: rgba(21, 89, 140, 0.1);
+  border-left: 2px solid var(--el-color-primary);
 }
 
 .step-index {
@@ -1922,7 +1922,7 @@ onUnmounted(() => {
 }
 
 .step-node {
-  color: #409eff;
+  color: var(--el-color-primary);
   font-weight: 500;
   min-width: 80px;
   flex-shrink: 0;
@@ -1960,7 +1960,7 @@ onUnmounted(() => {
 .qs-value {
   font-size: 24px;
   font-weight: 700;
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 .qs-label {
   font-size: 12px;

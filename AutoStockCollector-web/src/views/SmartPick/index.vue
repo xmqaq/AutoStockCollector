@@ -189,10 +189,10 @@ const resultTypeLabel = computed(() => {
 
 const distributionData = computed(() => {
   const dist = [
-    { label: '强烈推荐(≥75)', min: 75, max: 100, color: '#67c23a' },
-    { label: '买入(65-75)', min: 65, max: 74.99, color: '#409eff' },
-    { label: '观望(55-65)', min: 55, max: 64.99, color: '#e6a23c' },
-    { label: '回避(<55)', min: 0, max: 54.99, color: '#f56c6c' },
+    { label: '强烈推荐(≥75)', min: 75, max: 100, color: '#3f9d70' },
+    { label: '买入(65-75)', min: 65, max: 74.99, color: '#3f7fae' },
+    { label: '观望(55-65)', min: 55, max: 64.99, color: '#c9943a' },
+    { label: '回避(<55)', min: 0, max: 54.99, color: '#d05a51' },
   ]
   return dist.map(d => {
     const count = results.value.filter(r => r.score >= d.min && r.score <= d.max).length
@@ -222,10 +222,10 @@ function riskTagType(risk: string): string {
 }
 
 function scoreColor(score: number): string {
-  if (score >= 75) return '#67c23a'
-  if (score >= 60) return '#409eff'
-  if (score >= 50) return '#e6a23c'
-  return '#f56c6c'
+  if (score >= 75) return '#3f9d70'
+  if (score >= 60) return '#3f7fae'
+  if (score >= 50) return '#c9943a'
+  return '#d05a51'
 }
 
 function formatPrice(price: number): string {
@@ -304,7 +304,7 @@ onMounted(() => {
 }
 
 .stock-link {
-  color: #409eff;
+  color: var(--el-color-primary);
   text-decoration: none;
 }
 
@@ -329,11 +329,11 @@ onMounted(() => {
 }
 
 .stop-loss {
-  color: #f56c6c;
+  color: var(--el-color-danger);
 }
 
 .target-price {
-  color: #67c23a;
+  color: var(--el-color-success);
 }
 
 .section-card {

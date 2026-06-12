@@ -166,7 +166,7 @@ function scoreColor(score: number): string {
   transition: all 0.15s;
 }
 .tab-btn.active {
-  background: #409eff;
+  background: var(--el-color-primary);
   color: #fff;
 }
 .tab-btn:hover:not(.active) {
@@ -210,16 +210,16 @@ function scoreColor(score: number): string {
   transition: all 0.2s;
 }
 .signal-card:hover {
-  border-color: #409eff;
+  border-color: var(--el-color-primary);
   transform: translateY(-1px);
 }
-.signal-card.bullish { border-left: 3px solid #67c23a; }
-.signal-card.bearish { border-left: 3px solid #f56c6c; }
-.signal-card.neutral { border-left: 3px solid #e6a23c; }
-.signal-card.philosophy { border-left: 3px solid #409eff; }
-.signal-card.philosophy.success { border-left-color: #67c23a; }
-.signal-card.philosophy.danger { border-left-color: #f56c6c; }
-.signal-card.philosophy.info { border-left-color: #e6a23c; }
+.signal-card.bullish { border-left: 3px solid var(--el-color-success); }
+.signal-card.bearish { border-left: 3px solid var(--el-color-danger); }
+.signal-card.neutral { border-left: 3px solid var(--el-color-warning); }
+.signal-card.philosophy { border-left: 3px solid var(--el-color-primary); }
+.signal-card.philosophy.success { border-left-color: var(--el-color-success); }
+.signal-card.philosophy.danger { border-left-color: var(--el-color-danger); }
+.signal-card.philosophy.info { border-left-color: var(--el-color-warning); }
 .signal-header-row {
   display: flex;
   justify-content: space-between;
@@ -237,9 +237,9 @@ function scoreColor(score: number): string {
   border-radius: 8px;
   font-weight: 600;
 }
-.signal-tag.bullish { background: rgba(103,194,58,0.15); color: #67c23a; }
-.signal-tag.bearish { background: rgba(245,108,108,0.15); color: #f56c6c; }
-.signal-tag.neutral { background: rgba(230,162,60,0.15); color: #e6a23c; }
+.signal-tag.bullish { background: rgba(52, 138, 93, 0.15); color: var(--el-color-success); }
+.signal-tag.bearish { background: rgba(196, 69, 60, 0.15); color: var(--el-color-danger); }
+.signal-tag.neutral { background: rgba(185, 134, 46, 0.15); color: var(--el-color-warning); }
 .signal-body {
   display: flex;
   align-items: center;
@@ -258,9 +258,9 @@ function scoreColor(score: number): string {
   border-radius: 2px;
   transition: width 0.5s ease;
 }
-.confidence-fill.bullish { background: #67c23a; }
-.confidence-fill.bearish { background: #f56c6c; }
-.confidence-fill.neutral { background: #e6a23c; }
+.confidence-fill.bullish { background: var(--el-color-success); }
+.confidence-fill.bearish { background: var(--el-color-danger); }
+.confidence-fill.neutral { background: var(--el-color-warning); }
 .confidence-text {
   font-size: 11px;
   color: var(--text-muted);
@@ -273,9 +273,9 @@ function scoreColor(score: number): string {
   margin-bottom: 6px;
 }
 .score-value { font-size: 16px; font-weight: 700; }
-.score-high { color: #67c23a; }
-.score-mid { color: #409eff; }
-.score-low { color: #f56c6c; }
+.score-high { color: var(--el-color-success); }
+.score-mid { color: var(--el-color-primary); }
+.score-low { color: var(--el-color-danger); }
 .score-label { font-size: 11px; color: var(--text-muted); }
 .confidence-sep { font-size: 11px; color: var(--text-faint); }
 .signal-reasoning {
@@ -309,8 +309,8 @@ function scoreColor(score: number): string {
   font-size: 10px;
   padding: 1px 6px;
   border-radius: 4px;
-  background: rgba(64,158,255,0.1);
-  color: #409eff;
+  background: rgba(21, 89, 140, 0.1);
+  color: var(--el-color-primary);
 }
 .section-card {
   background: var(--bg-card);

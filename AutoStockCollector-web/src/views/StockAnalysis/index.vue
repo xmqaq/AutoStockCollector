@@ -607,10 +607,10 @@ const finChartOption = computed(() => {
       { type: 'value', name: '%', nameTextStyle: { color: ct().textColor, fontSize: 10 }, axisLabel: { color: ct().textColor, fontSize: 10 }, splitLine: { show: false }, axisLine: { lineStyle: { color: ct().axisLineColor } } },
     ],
     series: [
-      { name: '营收(亿)', type: 'bar', data: reversed.map(h => h.revenue_yi), barMaxWidth: 30, itemStyle: { color: '#409eff', borderRadius: [2, 2, 0, 0] } },
-      { name: '净利润(亿)', type: 'bar', data: reversed.map(h => h.net_profit_yi), barMaxWidth: 30, itemStyle: { color: '#67c23a', borderRadius: [2, 2, 0, 0] } },
-      { name: 'ROE(%)', type: 'line', data: reversed.map(h => h.roe), yAxisIndex: 1, smooth: true, showSymbol: true, symbolSize: 6, lineStyle: { color: '#e6a23c' }, itemStyle: { color: '#e6a23c' } },
-      { name: '毛利率(%)', type: 'line', data: reversed.map(h => h.gross_margin), yAxisIndex: 1, smooth: true, showSymbol: true, symbolSize: 6, lineStyle: { color: '#f56c6c' }, itemStyle: { color: '#f56c6c' } },
+      { name: '营收(亿)', type: 'bar', data: reversed.map(h => h.revenue_yi), barMaxWidth: 30, itemStyle: { color: '#3f7fae', borderRadius: [2, 2, 0, 0] } },
+      { name: '净利润(亿)', type: 'bar', data: reversed.map(h => h.net_profit_yi), barMaxWidth: 30, itemStyle: { color: '#3f9d70', borderRadius: [2, 2, 0, 0] } },
+      { name: 'ROE(%)', type: 'line', data: reversed.map(h => h.roe), yAxisIndex: 1, smooth: true, showSymbol: true, symbolSize: 6, lineStyle: { color: '#c9943a' }, itemStyle: { color: '#c9943a' } },
+      { name: '毛利率(%)', type: 'line', data: reversed.map(h => h.gross_margin), yAxisIndex: 1, smooth: true, showSymbol: true, symbolSize: 6, lineStyle: { color: '#d05a51' }, itemStyle: { color: '#d05a51' } },
     ],
   }
 })
@@ -788,7 +788,7 @@ onMounted(() => {
   text-align: center; padding: 8px 0 0; cursor: pointer;
   font-size: 12px; color: var(--text-alt-muted); display: flex; align-items: center; justify-content: center; gap: 4px;
 }
-.da-expand-toggle:hover { color: #409eff; }
+.da-expand-toggle:hover { color: var(--el-color-primary); }
 .da-score-details {
   margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--bg-deep-soft);
   display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
@@ -846,7 +846,7 @@ onMounted(() => {
 .da-news-list { display: flex; flex-direction: column; }
 .da-news-item { padding: 10px 0; border-bottom: 1px solid var(--bg-deep-soft); cursor: pointer; }
 .da-news-item:last-child { border-bottom: none; }
-.da-news-item:hover .da-news-title { color: #409eff; }
+.da-news-item:hover .da-news-title { color: var(--el-color-primary); }
 .da-news-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
 .da-news-title { font-size: 13px; color: var(--text-alt-body); flex: 1; }
 .da-news-meta { font-size: 11px; color: var(--text-alt-muted); white-space: nowrap; }

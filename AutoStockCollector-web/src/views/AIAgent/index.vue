@@ -555,10 +555,10 @@ onMounted(() => {
   font-size: 14px;
 }
 .agent-tabs :deep(.el-tabs__item.is-active) {
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 .agent-tabs :deep(.el-tabs__active-bar) {
-  background-color: #409eff;
+  background-color: var(--el-color-primary);
 }
 .weight-bars {
   display: flex;
@@ -580,9 +580,9 @@ onMounted(() => {
 .weight-item :deep(.el-progress) {
   width: 70px;
 }
-.risk-high { color: #f56c6c; font-weight: 600; }
-.risk-mid { color: #e6a23c; font-weight: 600; }
-.risk-low { color: #67c23a; font-weight: 600; }
+.risk-high { color: var(--el-color-danger); font-weight: 600; }
+.risk-mid { color: var(--el-color-warning); font-weight: 600; }
+.risk-low { color: var(--el-color-success); font-weight: 600; }
 .philosophy-detail {
   display: flex;
   flex-direction: column;
@@ -616,8 +616,8 @@ onMounted(() => {
   background: var(--border-color); border-radius: 8px; padding: 16px;
   border: 1px solid var(--border-strong); cursor: pointer; transition: all 0.2s;
 }
-.skill-card:hover { border-color: #409eff; }
-.skill-card.active { border-color: #409eff; box-shadow: 0 0 8px rgba(64,158,255,0.3); }
+.skill-card:hover { border-color: var(--el-color-primary); }
+.skill-card.active { border-color: var(--el-color-primary); box-shadow: 0 0 8px rgba(21, 89, 140, 0.3); }
 .skill-name { font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
 .skill-desc { font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-bottom: 8px; }
 .skill-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

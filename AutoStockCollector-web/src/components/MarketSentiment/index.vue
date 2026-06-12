@@ -67,9 +67,9 @@ const heatIndex = computed(() => {
 
 const heatColor = computed(() => {
   const h = heatIndex.value
-  if (h >= 70) return '#67c23a'
-  if (h >= 40) return '#e6a23c'
-  return '#f56c6c'
+  if (h >= 70) return '#3f9d70'
+  if (h >= 40) return '#c9943a'
+  return '#d05a51'
 })
 
 const sentimentLabel = computed(() => {

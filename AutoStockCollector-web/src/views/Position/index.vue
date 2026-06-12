@@ -834,10 +834,10 @@ onUnmounted(() => {
 
 .price-indicator { display: flex; align-items: center; gap: 6px; margin-left: auto; margin-right: 8px; }
 .indicator-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-.indicator-live { background: #67c23a; box-shadow: 0 0 4px #67c23a; }
+.indicator-live { background: var(--el-color-success); box-shadow: 0 0 4px var(--el-color-success); }
 .indicator-close { background: var(--text-faint); }
 .indicator-text { font-size: 12px; color: var(--text-muted); }
-.indicator-live-text { color: #67c23a; font-size: 12px; font-weight: 600; }
+.indicator-live-text { color: var(--el-color-success); font-size: 12px; font-weight: 600; }
 .indicator-close-text { color: var(--text-muted); font-size: 12px; }
 
 .section-card { background: var(--bg-card); border: 1px solid var(--border-color); }
@@ -847,13 +847,13 @@ onUnmounted(() => {
 }
 .card-header { display: flex; justify-content: space-between; align-items: center; }
 
-.stock-link { color: #409eff; text-decoration: none; }
+.stock-link { color: var(--el-color-primary); text-decoration: none; }
 .stock-link:hover { text-decoration: underline; }
 
 .text-rise { color: #ef5350; }
 .text-fall { color: #26a69a; }
 .text-neutral { color: var(--text-muted); }
-.text-primary { color: #409eff; }
+.text-primary { color: var(--el-color-primary); }
 
 .trade-list { display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow-y: auto; }
 .trade-item { padding: 8px 10px; background: var(--border-color); border-radius: 4px; }
@@ -861,7 +861,7 @@ onUnmounted(() => {
 .trade-code { font-size: 13px; font-weight: 600; color: var(--text-primary); }
 .trade-detail { font-size: 12px; color: var(--text-muted); margin-top: 4px; display: flex; justify-content: space-between; }
 .trade-time { color: var(--text-faint); }
-.trade-signal { font-size: 11px; color: #e6a23c; margin-top: 2px; }
+.trade-signal { font-size: 11px; color: var(--el-color-warning); margin-top: 2px; }
 
 .distribution-chart { display: flex; flex-direction: column; gap: 8px; }
 .distribution-item { display: flex; flex-direction: column; gap: 4px; }
@@ -869,10 +869,10 @@ onUnmounted(() => {
 .dist-label { color: var(--text-primary); }
 .dist-percent { color: var(--text-muted); }
 .dist-bar-container { height: 6px; background: var(--border-color); border-radius: 3px; overflow: hidden; }
-.dist-bar { height: 100%; background: #409eff; border-radius: 3px; transition: width 0.3s ease; }
+.dist-bar { height: 100%; background: var(--el-color-primary); border-radius: 3px; transition: width 0.3s ease; }
 
 
-.dialog-warn { color: #f56c6c; font-size: 12px; margin-top: 8px; padding-left: 100px; }
+.dialog-warn { color: var(--el-color-danger); font-size: 12px; margin-top: 8px; padding-left: 100px; }
 .dialog-info { color: var(--text-muted); font-size: 12px; margin-top: 4px; padding-left: 100px; }
 
 .trade-dialog-header {
@@ -894,17 +894,17 @@ onUnmounted(() => {
 }
 .confirm-row:last-child { border-bottom: none; }
 .confirm-row span:first-child { color: var(--text-muted); }
-.confirm-row-danger { background: rgba(245, 108, 108, 0.08); border-radius: 4px; padding: 6px 8px !important; }
+.confirm-row-danger { background: rgba(196, 69, 60, 0.08); border-radius: 4px; padding: 6px 8px !important; }
 
 .price-loading { color: var(--text-muted); font-size: 13px; }
 
 .cash-warning {
   margin-top: 8px; padding: 10px 12px;
-  background: rgba(245, 108, 108, 0.1); border: 1px solid rgba(245, 108, 108, 0.3);
+  background: rgba(196, 69, 60, 0.1); border: 1px solid rgba(196, 69, 60, 0.3);
   border-radius: 4px;
 }
-.cash-warning-text { font-size: 13px; color: #f56c6c; }
-.cash-warning-hint { font-size: 12px; color: #e6a23c; margin-top: 6px; }
-.max-buy-link { color: #409eff; cursor: pointer; text-decoration: underline; }
+.cash-warning-text { font-size: 13px; color: var(--el-color-danger); }
+.cash-warning-hint { font-size: 12px; color: var(--el-color-warning); margin-top: 6px; }
+.max-buy-link { color: var(--el-color-primary); cursor: pointer; text-decoration: underline; }
 .max-buy-link:hover { color: #66b1ff; }
 </style>

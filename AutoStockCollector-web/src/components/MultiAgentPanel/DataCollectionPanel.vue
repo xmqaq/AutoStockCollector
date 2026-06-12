@@ -89,7 +89,7 @@ function toggleCollapse(tool: string) {
   border: 1px solid transparent;
 }
 .data-source-item:hover {
-  border-color: #409eff;
+  border-color: var(--el-color-primary);
 }
 .data-source-item.collapsed {
   cursor: pointer;
@@ -114,11 +114,11 @@ function toggleCollapse(tool: string) {
   border-radius: 8px;
   font-weight: 600;
 }
-.ds-badge.ok { background: rgba(103,194,58,0.15); color: #67c23a; }
-.ds-badge.err { background: rgba(245,108,108,0.15); color: #f56c6c; }
+.ds-badge.ok { background: rgba(52, 138, 93, 0.15); color: var(--el-color-success); }
+.ds-badge.err { background: rgba(196, 69, 60, 0.15); color: var(--el-color-danger); }
 .ds-summary {
   font-size: 11px;
-  color: #67c23a;
+  color: var(--el-color-success);
 }
 .ds-detail {
   font-size: 11px;

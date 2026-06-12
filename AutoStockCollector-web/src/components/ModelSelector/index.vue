@@ -271,7 +271,7 @@ defineExpose({
 }
 
 .selector-error {
-  color: #f56c6c;
+  color: var(--el-color-danger);
 }
 
 .model-option {

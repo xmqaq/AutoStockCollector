@@ -862,10 +862,10 @@ onUnmounted(() => {
   line-height: 1.3;
 }
 .prog-main { color: var(--text-primary); font-size: 13px; }
-.prog-pct { color: #409eff; font-size: 12px; margin-left: 4px; }
+.prog-pct { color: var(--el-color-primary); font-size: 12px; margin-left: 4px; }
 .prog-sub { color: var(--text-muted); font-size: 11px; }
-.prog-fail { color: #f56c6c; }
-.prog-eta { color: #e6a23c; }
+.prog-fail { color: var(--el-color-danger); }
+.prog-eta { color: var(--el-color-warning); }
 
 .table-pagination {
   margin-top: 12px;
@@ -877,7 +877,7 @@ onUnmounted(() => {
   color: var(--text-muted);
 }
 .stale-days {
-  color: #e6a23c;
+  color: var(--el-color-warning);
   font-weight: 600;
 }
 .history-types-grid {
@@ -916,11 +916,11 @@ onUnmounted(() => {
   color: var(--text-primary);
   margin-bottom: 8px;
 }
-.gap-ok-label { color: #67c23a; font-size: 13px; }
-.gap-err-label { color: #f56c6c; font-size: 13px; }
-.gap-pct { color: #409eff; font-size: 12px; margin-left: 4px; }
+.gap-ok-label { color: var(--el-color-success); font-size: 13px; }
+.gap-err-label { color: var(--el-color-danger); font-size: 13px; }
+.gap-pct { color: var(--el-color-primary); font-size: 12px; margin-left: 4px; }
 .gap-hint { font-size: 12px; color: var(--text-faint); font-style: italic; }
-.gap-error { font-size: 12px; color: #f56c6c; }
+.gap-error { font-size: 12px; color: var(--el-color-danger); }
 .gap-missing { flex-wrap: wrap; }
 
 /* 无日期序列类型展开说明 */
