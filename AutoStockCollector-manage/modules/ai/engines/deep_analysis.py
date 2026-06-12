@@ -58,6 +58,8 @@ class DeepAnalysisService:
             "technical": technical,
             "scores": scores,
             "news": news,
+            "dragon_margin": self._build_dragon_margin(bundle),
+            "data_freshness": self._build_freshness(kline_data, financial, fund_flow),
             "reflection": reflection,
             "analysis_history": analysis_history,
             "analysis_time": _dt.now(beijing).strftime("%Y-%m-%d %H:%M"),
@@ -249,6 +251,9 @@ class DeepAnalysisService:
             "high_52w": high_52w,
             "low_52w": low_52w,
             "volume_ratio": volume_ratio,
+            "position_52w": (_safe_round((current - low_52w) / (high_52w - low_52w) * 100, 1)
+                             if current and high_52w and low_52w and high_52w > low_52w
+                             else None),
         }
 
     @staticmethod
@@ -481,6 +486,56 @@ class DeepAnalysisService:
             })
         return result
 
+    def _build_dragon_margin(self, bundle) -> Dict[str, Any]:
+        """龙虎榜/两融摘要。字段名按集合实际存储多候选解析。"""
+        out = {"dragon_count_30d": 0, "dragon_net_buy_yi": None,
+               "margin_balance_yi": None, "margin_trend_pct": None}
+        try:
+            dragons = bundle.dragon_tiger or []
+            out["dragon_count_30d"] = len(dragons)
+            net = [
+                _parse_amount_yuan(d.get("net_buy") or d.get("净买额") or d.get("龙虎榜净买额"))
+                for d in dragons
+            ]
+            net = [v for v in net if v is not None]
+            if net:
+                out["dragon_net_buy_yi"] = _safe_round(sum(net) / 1e8, 2)
+        except Exception:
+            pass
+        try:
+            margins = bundle.margin or []
+            bals = [
+                _parse_amount_yuan(m.get("rzye") or m.get("融资余额") or m.get("margin_balance"))
+                for m in margins
+            ]
+            bals = [v for v in bals if v is not None]
+            if bals:
+                out["margin_balance_yi"] = _safe_round(bals[0] / 1e8, 2)
+                if len(bals) >= 2 and bals[-1]:
+                    out["margin_trend_pct"] = _safe_round((bals[0] - bals[-1]) / bals[-1] * 100, 2)
+        except Exception:
+            pass
+        return out
+
+    @staticmethod
+    def _build_freshness(kline_data, financial, fund_flow) -> Dict[str, Any]:
+        from datetime import datetime, timedelta
+        from utils.helpers import beijing_now
+        kline_date = kline_data[-1]["date"] if kline_data else None
+        stale = False
+        if kline_date:
+            try:
+                gap = (beijing_now() - datetime.fromisoformat(kline_date)).days
+                stale = gap > 5  # 日历日>5≈缺3个交易日以上
+            except ValueError:
+                stale = True
+        return {
+            "kline_date": kline_date,
+            "report_date": financial.get("report_date"),
+            "fund_flow_date": str(fund_flow.get("date") or "")[:10] or None,
+            "kline_stale": stale,
+        }
+
     def _build_context_sections(self, data: Dict, user_id: str) -> str:
         """构建用户画像/历史预测复盘/历史分析记录的 prompt 附加段落。"""
         sections = []
@@ -532,58 +587,73 @@ class DeepAnalysisService:
                 return default
             return f"{val}{suffix}"
 
-        return f"""请对以下股票进行深度分析：
+        dm = data.get("dragon_margin", {})
+        fresh = data.get("data_freshness", {})
+        news_lines = "\n".join(
+            f"- [{(n.get('publish_time') or '')[:10]}] {n.get('title', '')}"
+            for n in (data.get("news") or [])[:10]) or "（近期无相关新闻）"
+        hist_lines = "\n".join(
+            f"| {h.get('report_date')} {h.get('report_type', '')} | {_v(h.get('revenue_yi'))} | "
+            f"{_v(h.get('net_profit_yi'))} | {_v(h.get('roe'))} | {_v(h.get('gross_margin'))} |"
+            for h in (fi.get("history") or [])[:6])
+        stale_warn = ("\n⚠️ 注意:K线数据滞后(最新仅到{}),分析时必须明确提示数据滞后风险。"
+                      .format(fresh.get("kline_date")) if fresh.get("kline_stale") else "")
+
+        return f"""请对以下股票进行深度分析:
+
+【数据截止】K线:{_v(fresh.get('kline_date'))} | 财报:{_v(fresh.get('report_date'))}({_v(fi.get('report_type'))}) | 资金流:{_v(fresh.get('fund_flow_date'))}{stale_warn}
 
 【基本信息】
-股票：{bi.get('name', '')}（{bi.get('code', '')}）
-行业：{bi.get('industry', 'N/A')}
-当前价格：{_v(pi.get('current_price'), '元')}
-市值：{_v(bi.get('market_cap_yi'), '亿元')}
+股票:{bi.get('name', '')}（{bi.get('code', '')}）  行业:{bi.get('industry', 'N/A')}
+当前价格:{_v(pi.get('current_price'), '元')}  市值:{_v(bi.get('market_cap_yi'), '亿元')}
+52周区间:{_v(pi.get('low_52w'))}~{_v(pi.get('high_52w'))}元,52周位置:{_v(pi.get('position_52w'), '%')}(0%=年内最低,100%=年内最高)
+量比:{_v(pi.get('volume_ratio'))}
 
-【财务数据（{_v(fi.get('report_date'))} {_v(fi.get('report_type'))}）】
-营收：{_v(fi.get('revenue_yi'), '亿元')}，同比{_v(fi.get('revenue_growth'), '%')}
-净利润：{_v(fi.get('net_profit_yi'), '亿元')}，同比{_v(fi.get('profit_growth'), '%')}
-毛利率：{_v(fi.get('gross_margin'), '%')}
-ROE：{_v(fi.get('roe'), '%')}
-资产负债率：{_v(fi.get('debt_ratio'), '%')}
-PE(TTM)：{_v(fi.get('pe'), '倍')}，PB：{_v(fi.get('pb'), '倍')}
+【财务数据({_v(fi.get('report_date'))} {_v(fi.get('report_type'))})】
+营收:{_v(fi.get('revenue_yi'), '亿元')},同比{_v(fi.get('revenue_growth'), '%')}
+净利润:{_v(fi.get('net_profit_yi'), '亿元')},同比{_v(fi.get('profit_growth'), '%')}
+毛利率:{_v(fi.get('gross_margin'), '%')}  ROE:{_v(fi.get('roe'), '%')}  资产负债率:{_v(fi.get('debt_ratio'), '%')}
+PE:{_v(fi.get('pe'), '倍')},PB:{_v(fi.get('pb'), '倍')}
+
+【财务趋势(近{len(fi.get('history') or [])}期)】
+| 报告期 | 营收(亿) | 净利润(亿) | ROE% | 毛利率% |
+{hist_lines}
 
 【技术面】
-均线趋势：{_v(te.get('trend'))}
-MACD信号：{_v(te.get('macd_signal'))}
-RSI(14)：{_v(te.get('rsi14'))}
-20日价格动量：{_v(te.get('momentum_20d'), '%')}
+均线趋势:{_v(te.get('trend'))}  MACD:{_v(te.get('macd_signal'))}  RSI(14):{_v(te.get('rsi14'))}  20日动量:{_v(te.get('momentum_20d'), '%')}
 
 【资金面】
-主力净流入：{_v(ff.get('main_net_inflow_yi'), '亿元')}
-主力占比：{_v(ff.get('inflow_ratio'), '%')}
-换手率：{_v(ff.get('turnover_rate'), '%')}
+主力净流入:{_v(ff.get('main_net_inflow_yi'), '亿元')}  主力占比:{_v(ff.get('inflow_ratio'), '%')}  换手率:{_v(ff.get('turnover_rate'), '%')}
+龙虎榜:近30天上榜{dm.get('dragon_count_30d', 0)}次,净买入合计{_v(dm.get('dragon_net_buy_yi'), '亿元')}
+融资融券:融资余额{_v(dm.get('margin_balance_yi'), '亿元')},区间变化{_v(dm.get('margin_trend_pct'), '%')}
 
-【量化评分（0-100分）】
-基本面：{_v(sc.get('fundamental', {}).get('score'), '分')}
-技术面：{_v(sc.get('technical', {}).get('score'), '分')}
-资金面：{_v(sc.get('fund_flow', {}).get('score'), '分')}
-估值面：{_v(sc.get('valuation', {}).get('score'), '分')}
-综合：{_v(sc.get('composite'), '分')}{context_sections}
+【近期新闻】
+{news_lines}
 
-补充要求：
-- 如提供了【用户画像】，综合评级和操作建议需贴合该风险偏好与持仓周期
-- 如提供了【历史预测复盘】，需在综合评级中用一句话回应上次预测的对错及本次修正
+【量化评分(0-100分)】
+基本面:{_v(sc.get('fundamental', {}).get('score'), '分')} 技术面:{_v(sc.get('technical', {}).get('score'), '分')} 资金面:{_v(sc.get('fund_flow', {}).get('score'), '分')} 估值面:{_v(sc.get('valuation', {}).get('score'), '分')} 综合:{_v(sc.get('composite'), '分')}{context_sections}
 
-请按以下格式输出分析报告：
+硬性要求:
+- 只允许使用上面提供的数据,任何字段为 N/A 时不得臆测,该维度明确说"数据缺失"
+- 如数据截止日期明显滞后,须在报告开头提示
+- 如提供了【用户画像】,综合评级和操作建议需贴合该风险偏好与持仓周期
+- 如提供了【历史预测复盘】,需在综合评级中用一句话回应上次预测的对错及本次修正
+- 新闻仅作事件参考,不要把新闻标题当事实复述,需结合数据判断
+
+请按以下格式输出分析报告:
 
 ## 公司基本面解读
-（基于财务数据，分析公司盈利能力、成长性、财务健康度）
+（盈利能力、成长性、财务健康度,结合财务趋势表看变化方向）
 
 ## 技术面分析
-（基于均线、MACD、RSI、动量，判断当前趋势和潜在支撑压力）
+（均线、MACD、RSI、动量、52周位置,判断趋势和支撑压力）
 
 ## 资金面解读
-（基于主力净流入、换手率，判断主力意图）
+（主力净流入、换手率、龙虎榜、两融变化,判断主力意图）
 
 ## 估值分析
-（基于PE/PB，结合行业特点判断估值是否合理）
+（PE/PB结合行业与52周位置,判断估值是否合理）
 
 ## 综合评级
-给出：强烈关注/适度关注/中性观望/谨慎回避 四选一
-并用1-2句话说明理由"""
+1-2句话说明理由,然后最后单独一行严格输出:
+【评级】强烈关注/适度关注/中性观望/谨慎回避（四选一）"""
