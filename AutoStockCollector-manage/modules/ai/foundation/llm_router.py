@@ -22,6 +22,8 @@ class LLMResult:
 
 
 class LLMRouter:
+    _RETRY_BACKOFF_SECONDS: float = 1.0  # 网络类瞬时错误重试间隔（秒），测试可置 0
+
     def __init__(
         self,
         providers: Optional[List[str]] = None,
@@ -204,29 +206,42 @@ class LLMRouter:
         if self._caller_accepts("max_tokens"):
             call_kwargs["max_tokens"] = max_tokens
         for provider in self.providers:
-            try:
-                if send_messages is not None:
-                    raw = self.caller(provider, full_prompt, messages=send_messages, **call_kwargs)
-                else:
-                    raw = self.caller(provider, full_prompt, **call_kwargs)
-                if schema:
-                    data = self._parse_json(raw)
-                    if data is None:
-                        last_error = "non-json response"
-                        continue
-                else:
-                    data = {"content": raw}
-                self._log_history(provider, task_type, True)
-                if use_cache:
-                    self._cache[key] = {
-                        "provider": provider, "data": data,
-                        "raw": raw, "ts": beijing_now(),
-                    }
-                return LLMResult(success=True, provider=provider, data=data, raw=raw)
-            except Exception as e:
-                last_error = str(e)
-                self._log_history(provider, task_type, False, str(e))
+            raw = None
+            got_response = False
+            for attempt in (1, 2):  # 网络类瞬时错误重试 1 次再降级下一家
+                try:
+                    if send_messages is not None:
+                        raw = self.caller(provider, full_prompt, messages=send_messages, **call_kwargs)
+                    else:
+                        raw = self.caller(provider, full_prompt, **call_kwargs)
+                    got_response = True
+                    break
+                except ValueError as e:        # 配置错误，不重试
+                    last_error = str(e)
+                    self._log_history(provider, task_type, False, str(e))
+                    break
+                except Exception as e:
+                    last_error = str(e)
+                    self._log_history(provider, task_type, False, str(e))
+                    if attempt == 1:
+                        import time
+                        time.sleep(self._RETRY_BACKOFF_SECONDS)
+            if not got_response:
                 continue
+            if schema:
+                data = self._parse_json(raw)
+                if data is None:
+                    last_error = "non-json response"
+                    continue
+            else:
+                data = {"content": raw}
+            self._log_history(provider, task_type, True)
+            if use_cache:
+                self._cache[key] = {
+                    "provider": provider, "data": data,
+                    "raw": raw, "ts": beijing_now(),
+                }
+            return LLMResult(success=True, provider=provider, data=data, raw=raw)
 
         return LLMResult(success=False, error=last_error or "all providers failed")
 

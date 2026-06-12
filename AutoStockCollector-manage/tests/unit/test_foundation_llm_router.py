@@ -157,5 +157,39 @@ class TestDefaultCallerParamForwarding(unittest.TestCase):
         self.assertEqual(captured, {"temperature": 0.4, "max_tokens": 4000})
 
 
+class TestRetry(unittest.TestCase):
+    def setUp(self):
+        self._orig_backoff = LLMRouter._RETRY_BACKOFF_SECONDS
+        LLMRouter._RETRY_BACKOFF_SECONDS = 0
+
+    def tearDown(self):
+        LLMRouter._RETRY_BACKOFF_SECONDS = self._orig_backoff
+
+    def test_chat_retries_once_on_transient_error(self):
+        attempts = []
+
+        def flaky(provider, prompt, **kw):
+            attempts.append(provider)
+            if len(attempts) == 1:
+                raise ConnectionError("reset by peer")
+            return "ok"
+
+        r = LLMRouter(providers=["p1"], caller=flaky).chat("hi", use_cache=False)
+        self.assertTrue(r.success)
+        self.assertEqual(r.provider, "p1")
+        self.assertEqual(attempts, ["p1", "p1"])
+
+    def test_chat_no_retry_on_config_error(self):
+        attempts = []
+
+        def bad(provider, prompt, **kw):
+            attempts.append(provider)
+            raise ValueError("未找到 provider 配置")
+
+        r = LLMRouter(providers=["p1"], caller=bad).chat("hi", use_cache=False)
+        self.assertFalse(r.success)
+        self.assertEqual(attempts, ["p1"])   # ValueError 配置错误不重试
+
+
 if __name__ == "__main__":
     unittest.main()
