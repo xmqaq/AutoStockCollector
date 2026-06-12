@@ -3,10 +3,10 @@
     <!-- Toolbar -->
     <el-card shadow="never" class="toolbar-card">
       <div class="toolbar">
-        <el-button type="primary" @click="showHistoryModal = true">
+        <el-button @click="showHistoryModal = true">
           <el-icon><VideoPlay /></el-icon> 补历史
         </el-button>
-        <el-button type="success" @click="openUpdateModal">
+        <el-button type="primary" @click="openUpdateModal">
           <el-icon><Refresh /></el-icon> 更新到最新
         </el-button>
         <el-button @click="handleClearTasks">
@@ -833,8 +833,16 @@ onUnmounted(() => {
 
 .auto-refresh-tip {
   font-size: 12px;
-  color: var(--text-faint);
+  color: var(--text-muted);
   margin-left: 8px;
+}
+
+.header-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-left: 12px;
 }
 
 .section-card {

@@ -53,21 +53,21 @@ const displayedSectors = computed(() => {
 function getCellStyle(changeRate: number): Record<string, string> {
   let bgColor: string
   if (changeRate >= 3) {
-    bgColor = 'rgba(239, 83, 80, 0.7)'
+    bgColor = 'rgba(208, 90, 81, 0.7)'
   } else if (changeRate >= 1) {
     const alpha = 0.3 + (changeRate / 3) * 0.4
-    bgColor = `rgba(239, 83, 80, ${alpha})`
+    bgColor = `rgba(208, 90, 81, ${alpha})`
   } else if (changeRate >= 0) {
     const alpha = 0.1 + (changeRate / 3) * 0.2
-    bgColor = `rgba(239, 83, 80, ${alpha})`
+    bgColor = `rgba(208, 90, 81, ${alpha})`
   } else if (changeRate >= -1) {
     const alpha = 0.1 + Math.abs(changeRate) / 3 * 0.2
-    bgColor = `rgba(38, 166, 154, ${alpha})`
+    bgColor = `rgba(63, 157, 112, ${alpha})`
   } else if (changeRate >= -3) {
     const alpha = 0.3 + Math.abs(changeRate) / 3 * 0.4
-    bgColor = `rgba(38, 166, 154, ${alpha})`
+    bgColor = `rgba(63, 157, 112, ${alpha})`
   } else {
-    bgColor = 'rgba(38, 166, 154, 0.7)'
+    bgColor = 'rgba(63, 157, 112, 0.7)'
   }
   return { backgroundColor: bgColor }
 }
@@ -194,6 +194,6 @@ onMounted(() => {
 .legend-gradient {
   width: 100%;
   height: 100%;
-  background: linear-gradient(to right, #26a69a, var(--border-strong), #ef5350);
+  background: linear-gradient(to right, var(--dn), var(--border-strong), var(--up));
 }
 </style>
