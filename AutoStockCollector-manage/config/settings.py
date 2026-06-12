@@ -40,7 +40,10 @@ class Settings:
     API_CONFIG = {
         "host": "0.0.0.0",
         "port": 5555,
-        "debug": os.getenv("FLASK_DEBUG", "true").lower() in ("true", "1"),
+        # 默认关闭 debug:生产容器曾因默认 true 跑在 debug 模式
+        # (werkzeug 调试器可被利用 RCE,且 reloader 双进程白耗内存)。
+        # 本地开发需要热重载时显式 export FLASK_DEBUG=true
+        "debug": os.getenv("FLASK_DEBUG", "false").lower() in ("true", "1"),
     }
 
     AI_MODEL_CONFIG = {
