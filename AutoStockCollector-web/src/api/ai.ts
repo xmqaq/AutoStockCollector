@@ -222,6 +222,7 @@ export interface DeepPriceInfo {
   high_52w: number | null
   low_52w: number | null
   volume_ratio: number | null
+  position_52w?: number | null
 }
 
 export interface DeepKlineItem {
@@ -330,6 +331,20 @@ export interface DeepAnalysisHistoryItem {
   recommendation: string
 }
 
+export interface DataFreshness {
+  kline_date: string | null
+  report_date: string | null
+  fund_flow_date: string | null
+  kline_stale: boolean
+}
+
+export interface DragonMargin {
+  dragon_count_30d: number
+  dragon_net_buy_yi: number | null
+  margin_balance_yi: number | null
+  margin_trend_pct: number | null
+}
+
 export interface DeepAnalysisData {
   basic_info: DeepBasicInfo
   price_info: DeepPriceInfo
@@ -342,6 +357,8 @@ export interface DeepAnalysisData {
   reflection?: DeepReflection
   analysis_history?: DeepAnalysisHistoryItem[]
   analysis_time: string
+  data_freshness?: DataFreshness
+  dragon_margin?: DragonMargin
 }
 
 export interface AIReportResult {

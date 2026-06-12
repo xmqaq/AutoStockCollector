@@ -19,6 +19,21 @@
     <el-empty v-if="!data && !loading" description="输入股票代码开始分析" />
 
     <template v-if="data">
+      <!-- 数据新鲜度 -->
+      <template v-if="data.data_freshness">
+        <el-alert
+          v-if="data.data_freshness.kline_stale"
+          type="warning"
+          :closable="false"
+          show-icon
+          :title="`K线数据滞后：最新仅到 ${data.data_freshness.kline_date}，分析结论可能过时，请先到采集中心补数据`"
+          style="margin-bottom: 12px;"
+        />
+        <div v-else class="da-freshness">
+          数据截止：K线 {{ data.data_freshness.kline_date }} · 财报 {{ data.data_freshness.report_date }} · 资金流 {{ data.data_freshness.fund_flow_date }}
+        </div>
+      </template>
+
       <!-- 区块一：基本信息栏 -->
       <div class="da-header">
         <div class="da-header-left">
@@ -705,6 +720,9 @@ onMounted(() => {
 <style scoped>
 .da-page { display: flex; flex-direction: column; gap: 14px; max-width: 1200px; }
 .da-toolbar { display: flex; align-items: center; gap: 10px; }
+
+/* ── 数据新鲜度 ── */
+.da-freshness { font-size: 12px; color: var(--text-alt-muted); margin-bottom: 8px; }
 
 /* ── 基本信息栏 ── */
 .da-header {
