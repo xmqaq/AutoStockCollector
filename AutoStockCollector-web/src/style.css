@@ -1,5 +1,6 @@
 /* ============ Theme tokens:浅色为主战场,html.dark=暗色 ============ */
-:root {
+/* :root:root 提升特异性:element-plus theme-chalk/base.css 会在本文件之后注入,同为 :root 时按顺序会反杀 */
+:root:root {
   /* 品牌色阶(墨青/深海蓝) */
   --brand-50: #eff5fa;
   --brand-100: #dbe9f3;
