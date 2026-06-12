@@ -107,6 +107,9 @@ class FactorInputs:
 class StockDAL:
     """股票数据访问层。storage 依赖注入，便于测试。"""
 
+    _TTM_NEG_CACHE: Dict[str, Any] = {}  # bare_code -> 失败时间，2小时内不重试
+    _TTM_NEG_TTL_HOURS = 2
+
     def __init__(
         self,
         kline_storage=None,
@@ -231,25 +234,49 @@ class StockDAL:
         return result
 
     @staticmethod
-    def _fetch_ttm_valuation(bare_code: str) -> Dict[str, Optional[float]]:
-        """通过百度估值接口拉取 TTM PE / PB / 总市值（API fallback）。"""
-        result: Dict[str, Optional[float]] = {"pe": None, "pb": None, "total_mv": None}
+    def _fetch_one_ttm_indicator(bare_code: str, field: str, ind: str) -> Optional[float]:
+        """拉取单个百度估值指标，失败返回 None。"""
         try:
             import akshare as ak
-            for field, ind in [("pe", "市盈率(TTM)"), ("pb", "市净率"), ("total_mv_yi", "总市值")]:
-                try:
-                    df = ak.stock_zh_valuation_baidu(symbol=bare_code, indicator=ind, period="近一年")
-                    if df is not None and not df.empty:
-                        val = df.iloc[-1].get("value")
-                        if val is not None:
-                            if field == "total_mv_yi":
-                                result["total_mv"] = float(val) * 1e8
-                            else:
-                                result[field] = float(val)
-                except Exception:
-                    continue
+            df = ak.stock_zh_valuation_baidu(symbol=bare_code, indicator=ind, period="近一年")
+            if df is not None and not df.empty:
+                val = df.iloc[-1].get("value")
+                if val is not None:
+                    return float(val)
         except Exception:
             pass
+        return None
+
+    @classmethod
+    def _fetch_ttm_valuation(cls, bare_code: str, _fetch_one=None) -> Dict[str, Optional[float]]:
+        """百度估值接口拉 TTM PE/PB/总市值。三指标并行；全部失败负缓存2小时。"""
+        from datetime import timedelta
+        from utils.helpers import beijing_now
+        result: Dict[str, Optional[float]] = {"pe": None, "pb": None, "total_mv": None}
+
+        failed_at = cls._TTM_NEG_CACHE.get(bare_code)
+        if failed_at and beijing_now() - failed_at < timedelta(hours=cls._TTM_NEG_TTL_HOURS):
+            return result
+
+        fetch = _fetch_one or cls._fetch_one_ttm_indicator
+        plan = [("pe", "市盈率(TTM)"), ("pb", "市净率"), ("total_mv_yi", "总市值")]
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=3) as ex:
+            futs = {ex.submit(fetch, bare_code, f, ind): f for f, ind in plan}
+            for fut, field in futs.items():
+                try:
+                    val = fut.result(timeout=15)
+                except Exception:
+                    val = None
+                if val is None:
+                    continue
+                if field == "total_mv_yi":
+                    result["total_mv"] = val * 1e8
+                else:
+                    result[field] = val
+
+        if all(v is None for v in result.values()):
+            cls._TTM_NEG_CACHE[bare_code] = beijing_now()
         return result
 
     @staticmethod

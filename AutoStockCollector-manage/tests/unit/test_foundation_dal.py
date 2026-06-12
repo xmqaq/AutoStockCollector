@@ -134,5 +134,36 @@ class TestReportQuarter(unittest.TestCase):
         self.assertEqual(self._q("2025年三季报"), 3)
 
 
+class TestTTMValuationNegCache(unittest.TestCase):
+    def test_ttm_valuation_negative_cache_skips_repeated_failures(self):
+        from modules.ai.foundation.dal import StockDAL
+        calls = []
+
+        def failing_fetch(bare, field, ind):
+            calls.append(field)
+            return None
+
+        StockDAL._TTM_NEG_CACHE.clear()
+        r1 = StockDAL._fetch_ttm_valuation("600000", _fetch_one=failing_fetch)
+        self.assertEqual(r1, {"pe": None, "pb": None, "total_mv": None})
+        n_first = len(calls)
+        self.assertEqual(n_first, 3)
+        r2 = StockDAL._fetch_ttm_valuation("600000", _fetch_one=failing_fetch)
+        self.assertEqual(len(calls), n_first)  # 负缓存生效，第二次不再发请求
+        StockDAL._TTM_NEG_CACHE.clear()
+
+    def test_ttm_valuation_success_not_neg_cached(self):
+        from modules.ai.foundation.dal import StockDAL
+
+        def ok_fetch(bare, field, ind):
+            return 12.5 if field == "pe" else None
+
+        StockDAL._TTM_NEG_CACHE.clear()
+        r = StockDAL._fetch_ttm_valuation("600000", _fetch_one=ok_fetch)
+        self.assertEqual(r["pe"], 12.5)
+        self.assertNotIn("600000", StockDAL._TTM_NEG_CACHE)
+        StockDAL._TTM_NEG_CACHE.clear()
+
+
 if __name__ == "__main__":
     unittest.main()
