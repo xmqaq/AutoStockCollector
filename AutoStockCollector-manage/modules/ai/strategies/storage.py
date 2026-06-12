@@ -1,5 +1,6 @@
 from typing import Any, Dict, List, Optional
 from datetime import datetime
+from utils.helpers import beijing_now
 from core.storage.mongo_storage import MongoStorage
 
 
@@ -19,7 +20,7 @@ class StrategyStorage(MongoStorage):
         return self.find_one({"name": name})
 
     def upsert_strategy(self, doc: Dict[str, Any]) -> str:
-        now = datetime.now()
+        now = beijing_now()
         doc["updated_at"] = now
         if "_id" not in doc:
             doc["created_at"] = now

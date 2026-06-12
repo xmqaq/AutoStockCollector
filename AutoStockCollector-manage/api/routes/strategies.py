@@ -1,6 +1,7 @@
 """策略管理 API：选股策略 + 交易策略 CRUD。"""
 from flask import Blueprint, jsonify, request
 from datetime import datetime
+from utils.helpers import beijing_now
 from bson import ObjectId
 from typing import Any, Dict
 
@@ -77,8 +78,8 @@ def create_strategy():
         "indicators": data.get("indicators", []),
         "weights": data.get("weights", {}),
         "filters": data.get("filters", {}),
-        "created_at": datetime.now(),
-        "updated_at": datetime.now(),
+        "created_at": beijing_now(),
+        "updated_at": beijing_now(),
     }
     oid = storage.insert_one(doc)
     doc["_id"] = oid
@@ -95,7 +96,7 @@ def update_strategy(sid):
     if not doc:
         return jsonify({"success": False, "error": "策略不存在"}), 404
 
-    upd: Dict[str, Any] = {"updated_at": datetime.now()}
+    upd: Dict[str, Any] = {"updated_at": beijing_now()}
     for field in ("name", "type", "description", "enabled", "indicators", "weights", "filters"):
         if field in data:
             upd[field] = data[field]
@@ -247,11 +248,11 @@ def _seed_presets():
     if existing > 0:
         return
     for doc in get_selection_presets():
-        doc["created_at"] = datetime.now()
-        doc["updated_at"] = datetime.now()
+        doc["created_at"] = beijing_now()
+        doc["updated_at"] = beijing_now()
         storage.upsert_strategy(doc)
     for doc in get_trading_presets():
-        doc["created_at"] = datetime.now()
-        doc["updated_at"] = datetime.now()
+        doc["created_at"] = beijing_now()
+        doc["updated_at"] = beijing_now()
         storage.upsert_strategy(doc)
     logger.info(f"已注入 {len(get_selection_presets()) + len(get_trading_presets())} 条预设策略")

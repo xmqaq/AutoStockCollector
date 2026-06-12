@@ -877,10 +877,10 @@ def list_selection_strategies():
         existing = storage.count_documents({})
         if existing == 0:
             for doc in get_selection_presets():
-                doc["created_at"] = datetime.now(); doc["updated_at"] = datetime.now()
+                doc["created_at"] = beijing_now(); doc["updated_at"] = beijing_now()
                 storage.upsert_strategy(doc)
             for doc in get_trading_presets():
-                doc["created_at"] = datetime.now(); doc["updated_at"] = datetime.now()
+                doc["created_at"] = beijing_now(); doc["updated_at"] = beijing_now()
                 storage.upsert_strategy(doc)
         items = storage.list_by_type("selection", enabled_only=True)
     return jsonify({"success": True, "data": [_serialize(d) for d in items]})

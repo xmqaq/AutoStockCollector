@@ -108,12 +108,6 @@ const router = createRouter({
           meta: { title: '工作流管理' },
         },
         {
-          path: 'factor-lab',
-          name: 'FactorLab',
-          component: () => import('@/views/FactorLab/index.vue'),
-          meta: { title: '因子平台' },
-        },
-        {
           path: 'strategy-pick',
           name: 'StrategyPick',
           component: () => import('@/views/StrategyPick/index.vue'),
