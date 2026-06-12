@@ -14,6 +14,7 @@ def _full_data():
                       "net_profit_yi": 150.0, "profit_growth": 3.0,
                       "gross_margin": None, "debt_ratio": 91.0,
                       "pe": 5.0, "pb": 0.5,
+                      "pe_basis": "TTM", "roe_annualized_note": "",
                       "history": [{"report_date": "2026-03-31", "report_type": "一季报",
                                    "revenue_yi": 500.0, "net_profit_yi": 150.0,
                                    "roe": 10.0, "gross_margin": None}]},
@@ -80,3 +81,21 @@ def test_completeness_warning_when_dims_missing():
 def test_no_warning_when_dims_complete():
     svc = DeepAnalysisService(dal=object(), router=object())
     assert "数据不足" not in svc._build_ai_prompt(_full_data())
+
+
+def test_financial_carries_pe_basis():
+    """_build_financial 返回 pe_basis:有 bundle.pe 为 TTM,否则为 估算(年化EPS)。"""
+    class FakeStorage:
+        def find_many(self, *a, **k): return []
+    class FakeDal:
+        financial_storage = FakeStorage()
+    class FakeBundle:
+        realtime_price = 10.0; closes = [10.0]; pe = 5.0; pb = 0.5
+        roe = None; revenue_growth = None; profit_growth = None
+        gross_margin = None; debt_ratio = None; financials = []
+    svc = DeepAnalysisService(dal=FakeDal(), router=object())
+    fi = svc._build_financial("sh600000", FakeBundle())
+    assert fi["pe_basis"] == "TTM"
+    FakeBundle.pe = None
+    fi2 = svc._build_financial("sh600000", FakeBundle())
+    assert fi2["pe_basis"] == "估算(年化EPS)"

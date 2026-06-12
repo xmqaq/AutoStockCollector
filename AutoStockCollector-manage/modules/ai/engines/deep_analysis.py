@@ -399,6 +399,8 @@ class DeepAnalysisService:
             "pe": _safe_round(pe if pe else bundle.pe),
             "pb": _safe_round(pb if pb else bundle.pb),
             "history": history[:6],
+            "pe_basis": "TTM" if bundle.pe is not None else "估算(年化EPS)",
+            "roe_annualized_note": "年化估算" if q and q < 4 else "",
         }
 
     def _build_fund_flow(self, code: str, bundle) -> Dict[str, Any]:
@@ -660,7 +662,7 @@ class DeepAnalysisService:
 营收:{_v(fi.get('revenue_yi'), '亿元')},同比{_v(fi.get('revenue_growth'), '%')}
 净利润:{_v(fi.get('net_profit_yi'), '亿元')},同比{_v(fi.get('profit_growth'), '%')}
 毛利率:{_v(fi.get('gross_margin'), '%')}  ROE:{_v(fi.get('roe'), '%')}  资产负债率:{_v(fi.get('debt_ratio'), '%')}
-PE:{_v(fi.get('pe'), '倍')},PB:{_v(fi.get('pb'), '倍')}
+PE:{_v(fi.get('pe'), '倍')}（口径:{_v(fi.get('pe_basis'), default='TTM')}）,PB:{_v(fi.get('pb'), '倍')}
 
 【财务趋势(近{len(fi.get('history') or [])}期)】
 | 报告期 | 营收(亿) | 净利润(亿) | ROE% | 毛利率% |

@@ -51,7 +51,10 @@
         </div>
         <div class="da-header-right">
           <div class="da-meta"><label>市值</label><span>{{ fmtYi(data.basic_info.market_cap_yi) }}</span></div>
-          <div class="da-meta"><label>PE</label><span>{{ fmtNum(data.financial.pe, 1) }}</span></div>
+          <div class="da-meta">
+            <label>PE<template v-if="data.financial.pe_basis"> · {{ data.financial.pe_basis }}</template></label>
+            <span>{{ fmtNum(data.financial.pe, 1) }}</span>
+          </div>
           <div class="da-meta"><label>PB</label><span>{{ fmtNum(data.financial.pb, 2) }}</span></div>
         </div>
       </div>
@@ -125,7 +128,7 @@
         <div class="da-fin-summary">
           <div class="da-fin-item"><label>营收</label><span>{{ fmtYi(data.financial.revenue_yi) }}</span><em :class="growthClass(data.financial.revenue_growth)">{{ fmtGrowth(data.financial.revenue_growth) }}</em></div>
           <div class="da-fin-item"><label>净利润</label><span>{{ fmtYi(data.financial.net_profit_yi) }}</span><em :class="growthClass(data.financial.profit_growth)">{{ fmtGrowth(data.financial.profit_growth) }}</em></div>
-          <div class="da-fin-item"><label>ROE</label><span>{{ fmtPct(data.financial.roe) }}</span></div>
+          <div class="da-fin-item"><label>ROE</label><span>{{ fmtPct(data.financial.roe) }}<em v-if="data.financial.roe_annualized_note" class="da-annualized-note">（年化估算）</em></span></div>
           <div class="da-fin-item"><label>毛利率</label><span>{{ fmtPct(data.financial.gross_margin) }}</span></div>
           <div class="da-fin-item"><label>负债率</label><span>{{ fmtPct(data.financial.debt_ratio) }}</span></div>
           <div class="da-fin-item"><label>EPS</label><span>{{ fmtNum(data.financial.eps, 2) }}</span></div>
@@ -793,6 +796,7 @@ onMounted(() => {
 .da-fin-item em { font-size: 11px; font-style: normal; }
 .da-fin-item em.rise { color: #ef5350; }
 .da-fin-item em.fall { color: #26a69a; }
+.da-annualized-note { font-size: 10px; color: var(--text-alt-muted); margin-left: 2px; }
 
 /* ── AI分析报告 ── */
 .da-ai-trigger { text-align: center; padding: 20px 0; }

@@ -258,6 +258,8 @@ export interface DeepFinancial {
   pe: number | null
   pb: number | null
   history: DeepFinancialHistory[]
+  pe_basis?: string
+  roe_annualized_note?: string
 }
 
 export interface DeepFundFlow {
