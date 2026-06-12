@@ -119,5 +119,22 @@ class TestTemperatureMaxTokensPassthrough(unittest.TestCase):
         self.assertTrue(r.success)
 
 
+class TestDefaultCallerParamForwarding(unittest.TestCase):
+    def test_default_caller_forwards_params_to_provider_caller(self):
+        """生产路径:chat→_default_caller→ProviderCaller 参数必须透传。"""
+        captured = {}
+
+        class FakeProviderCaller:
+            def __call__(self, provider, prompt, temperature=0.7, max_tokens=2000, messages=None):
+                captured.update(temperature=temperature, max_tokens=max_tokens)
+                return "ok"
+
+        router = LLMRouter(providers=["p1"])          # 不注入 caller,走 _default_caller
+        router._provider_caller = FakeProviderCaller() # 预置实例,绕过真实 ProviderCaller 构造
+        r = router.chat("hi", use_cache=False, temperature=0.4, max_tokens=4000)
+        self.assertTrue(r.success)
+        self.assertEqual(captured, {"temperature": 0.4, "max_tokens": 4000})
+
+
 if __name__ == "__main__":
     unittest.main()
