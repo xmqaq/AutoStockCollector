@@ -66,3 +66,17 @@ def test_extract_rating_falls_back_to_rfind():
 def test_extract_rating_default_neutral():
     svc = DeepAnalysisService(dal=object(), router=object())
     assert svc._extract_rating("没有评级词的文本") == "中性观望"
+
+
+def test_completeness_warning_when_dims_missing():
+    svc = DeepAnalysisService(dal=object(), router=object())
+    d = _full_data()
+    d["scores"]["fundamental"]["details"] = {"data_available": False}
+    d["scores"]["fund_flow"]["details"] = {"data_available": False}
+    p = svc._build_ai_prompt(d)
+    assert "数据不足" in p and "基本面" in p
+
+
+def test_no_warning_when_dims_complete():
+    svc = DeepAnalysisService(dal=object(), router=object())
+    assert "数据不足" not in svc._build_ai_prompt(_full_data())

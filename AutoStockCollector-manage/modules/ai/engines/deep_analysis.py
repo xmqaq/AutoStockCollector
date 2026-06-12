@@ -93,6 +93,8 @@ class DeepAnalysisService:
         )
         if result.success and result.raw:
             content, _ = sanitize_text(result.raw)
+            if len(self._missing_dims(data.get("scores") or {})) >= 2:
+                content = "> ⚠️ 本报告生成时部分维度数据缺失,结论仅供参考\n\n" + content
             if not result.from_cache:
                 self._record_outcome(code, content, user_id)
             return {
@@ -128,6 +130,8 @@ class DeepAnalysisService:
             yield chunk
         if full:
             content, _ = sanitize_text(full)
+            if len(self._missing_dims(data.get("scores") or {})) >= 2:
+                content = "> ⚠️ 本报告生成时部分维度数据缺失,结论仅供参考\n\n" + content
             self._record_outcome(code, content, user_id)
 
     # ==================== 反思与记忆融合 ====================
@@ -138,6 +142,18 @@ class DeepAnalysisService:
         "中性观望": (50, 50),
         "谨慎回避": (30, 70),
     }
+
+    _DIM_NAMES = {"fundamental": "基本面", "technical": "技术面",
+                  "fund_flow": "资金面", "valuation": "估值面"}
+
+    @classmethod
+    def _missing_dims(cls, scores: Dict[str, Any]) -> List[str]:
+        missing = []
+        for dim, label in cls._DIM_NAMES.items():
+            details = (scores.get(dim) or {}).get("details") or {}
+            if details.get("data_available", True) is False:
+                missing.append(label)
+        return missing
 
     def _build_reflection(self, code: str) -> Dict[str, Any]:
         """补评估历史决策（事后用真实K线核对），返回复盘数据。"""
@@ -625,10 +641,14 @@ class DeepAnalysisService:
             for h in (fi.get("history") or [])[:6])
         stale_warn = ("\n⚠️ 注意:K线数据滞后(最新仅到{}),分析时必须明确提示数据滞后风险。"
                       .format(fresh.get("kline_date")) if fresh.get("kline_stale") else "")
+        missing = self._missing_dims(sc)
+        completeness_warn = (
+            f"\n⚠️ 数据不足:{'、'.join(missing)}维度数据缺失,结论仅供参考,"
+            "报告开头必须注明此局限。" if len(missing) >= 2 else "")
 
         return f"""请对以下股票进行深度分析:
 
-【数据截止】K线:{_v(fresh.get('kline_date'))} | 财报:{_v(fresh.get('report_date'))}({_v(fi.get('report_type'))}) | 资金流:{_v(fresh.get('fund_flow_date'))}{stale_warn}
+【数据截止】K线:{_v(fresh.get('kline_date'))} | 财报:{_v(fresh.get('report_date'))}({_v(fi.get('report_type'))}) | 资金流:{_v(fresh.get('fund_flow_date'))}{stale_warn}{completeness_warn}
 
 【基本信息】
 股票:{bi.get('name', '')}（{bi.get('code', '')}）  行业:{bi.get('industry', 'N/A')}
