@@ -12,7 +12,7 @@
         @click="$emit('scroll-to', stage.id)"
       >
         <div class="stage-indicator">
-          <div v-if="stage.status === 'done'" class="stage-icon done">✓</div>
+          <div v-if="stage.status === 'done'" class="stage-icon done"><el-icon><Check /></el-icon></div>
           <div v-else-if="stage.status === 'active'" class="stage-icon active">{{ i + 1 }}</div>
           <div v-else class="stage-icon pending">{{ i + 1 }}</div>
           <div v-if="i < stages.length - 1" :class="['stage-line', stage.status === 'done' ? 'done' : '']"></div>

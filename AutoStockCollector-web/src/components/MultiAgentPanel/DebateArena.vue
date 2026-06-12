@@ -51,11 +51,11 @@
     <div v-if="currentRound" class="round-arena">
       <div class="arena-columns">
         <div class="arena-col bull-col">
-          <div class="col-header bull-header">🐂 多头观点</div>
+          <div class="col-header bull-header">多头观点</div>
           <div v-for="(arg, ai) in currentRound.arguments" :key="ai">
             <div v-if="arg.stance === 'bullish'" class="arg-card bull-arg">
               <div class="arg-agent-row">
-                <span class="arg-agent-icon">🐂</span>
+                <span class="arg-agent-icon">▲</span>
                 <span class="arg-agent-name">{{ arg.agent_name }}</span>
               </div>
               <div class="arg-text">{{ arg.argument }}</div>
@@ -65,11 +65,11 @@
         </div>
         <div class="arena-divider"></div>
         <div class="arena-col bear-col">
-          <div class="col-header bear-header">🐻 空头观点</div>
+          <div class="col-header bear-header">空头观点</div>
           <div v-for="(arg, ai) in currentRound.arguments" :key="ai">
             <div v-if="arg.stance === 'bearish'" class="arg-card bear-arg">
               <div class="arg-agent-row">
-                <span class="arg-agent-icon">🐻</span>
+                <span class="arg-agent-icon">▼</span>
                 <span class="arg-agent-name">{{ arg.agent_name }}</span>
               </div>
               <div class="arg-text">{{ arg.argument }}</div>

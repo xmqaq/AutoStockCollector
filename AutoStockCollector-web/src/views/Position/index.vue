@@ -285,7 +285,7 @@
             <span>{{ buyAfterRatio.toFixed(1) }}%</span>
           </div>
           <div class="cash-warning" v-if="buyCashInsufficient">
-            <div class="cash-warning-text">⚠️ 可用现金不足，当前现金 {{ formatAmount(account?.cash_balance ?? 0) }}，还需 {{ formatAmount(Math.abs(buyAfterCash)) }}</div>
+            <div class="cash-warning-text"><el-icon style="color: var(--el-color-warning)"><WarningFilled /></el-icon> 可用现金不足，当前现金 {{ formatAmount(account?.cash_balance ?? 0) }}，还需 {{ formatAmount(Math.abs(buyAfterCash)) }}</div>
             <div class="cash-warning-hint" v-if="buyMaxAffordableShares > 0">
               最多可买 <a class="max-buy-link" @click="fillMaxAffordableShares">{{ buyMaxAffordableShares }} 股</a>（{{ formatAmount(buyMaxAffordableShares * (buyCurrentPrice ?? 0)) }}）
             </div>

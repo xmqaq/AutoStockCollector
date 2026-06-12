@@ -37,7 +37,7 @@
     <div class="signal-groups">
       <div class="signal-group">
         <div class="signal-group-header green">
-          <span>🟢 看多信号 ({{ bullishSignals.length }})</span>
+          <span>看多信号 ({{ bullishSignals.length }})</span>
         </div>
         <div class="signal-cards">
           <div v-for="s in bullishSignals" :key="s.id" class="compact-signal" @click="$emit('show-detail', s)">
@@ -51,7 +51,7 @@
 
       <div class="signal-group">
         <div class="signal-group-header yellow">
-          <span>🟡 中性信号 ({{ neutralSignals.length }})</span>
+          <span>中性信号 ({{ neutralSignals.length }})</span>
         </div>
         <div class="signal-cards">
           <div v-for="s in neutralSignals" :key="s.id" class="compact-signal" @click="$emit('show-detail', s)">
@@ -65,7 +65,7 @@
 
       <div class="signal-group">
         <div class="signal-group-header red">
-          <span>🔴 看空信号 ({{ bearishSignals.length }})</span>
+          <span>看空信号 ({{ bearishSignals.length }})</span>
         </div>
         <div class="signal-cards">
           <div v-for="s in bearishSignals" :key="s.id" class="compact-signal" @click="$emit('show-detail', s)">

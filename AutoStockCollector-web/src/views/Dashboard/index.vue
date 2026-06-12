@@ -96,9 +96,9 @@
       <template v-else>
         <!-- Summary row -->
         <div class="health-summary-row">
-          <el-tag type="success" size="small">✅ 最新 {{ healthOk }} 类</el-tag>
-          <el-tag type="warning" size="small">⚠️ 需更新 {{ healthStale }} 类</el-tag>
-          <el-tag type="danger" size="small">❌ 异常 {{ healthError }} 类</el-tag>
+          <el-tag type="success" size="small">最新 {{ healthOk }} 类</el-tag>
+          <el-tag type="warning" size="small">需更新 {{ healthStale }} 类</el-tag>
+          <el-tag type="danger" size="small">异常 {{ healthError }} 类</el-tag>
           <span class="health-stale-list" v-if="staleTypes.length">
             需更新：<span v-for="(t, i) in staleTypes" :key="t" class="stale-name">{{ t }}<span v-if="i < staleTypes.length - 1">、</span></span>
           </span>
@@ -118,9 +118,9 @@
             <div class="hc-count">{{ row.record_count != null ? row.record_count.toLocaleString() : '--' }}<span class="hc-unit">{{ row.unit }}</span></div>
             <div :class="['hc-date', row.health === 'stale' ? 'hc-date--stale' : '']">{{ row.latest_date ?? '--' }}</div>
             <div class="hc-status">
-              <el-tag v-if="row.health === 'ok'" type="success" size="small">✅ 最新</el-tag>
-              <el-tag v-else-if="row.health === 'stale'" type="warning" size="small">⚠️ 需更新</el-tag>
-              <el-tag v-else type="danger" size="small">❌ 异常</el-tag>
+              <el-tag v-if="row.health === 'ok'" type="success" size="small">最新</el-tag>
+              <el-tag v-else-if="row.health === 'stale'" type="warning" size="small">需更新</el-tag>
+              <el-tag v-else type="danger" size="small">异常</el-tag>
             </div>
           </div>
         </div>
@@ -198,14 +198,14 @@ const staleTypes = computed(() =>
 )
 
 const CARD_META: Record<string, { icon: string; unit: string }> = {
-  kline:        { icon: '📈', unit: '条' },
-  financial:    { icon: '💰', unit: '条' },
-  dragon_tiger: { icon: '🐯', unit: '条' },
-  margin:       { icon: '💳', unit: '条' },
-  news:         { icon: '📰', unit: '条' },
-  fund_flow:    { icon: '💹', unit: '条' },
-  sector:       { icon: '📊', unit: '条' },
-  stock_info:   { icon: '📋', unit: '只' },
+  kline:        { icon: '', unit: '条' },
+  financial:    { icon: '', unit: '条' },
+  dragon_tiger: { icon: '', unit: '条' },
+  margin:       { icon: '', unit: '条' },
+  news:         { icon: '', unit: '条' },
+  fund_flow:    { icon: '', unit: '条' },
+  sector:       { icon: '', unit: '条' },
+  stock_info:   { icon: '', unit: '只' },
 }
 
 const CARD_ORDER = ['kline', 'financial', 'dragon_tiger', 'margin', 'news', 'fund_flow', 'sector', 'stock_info']
@@ -215,7 +215,7 @@ const healthCards = computed(() => {
   collectStore.progressList.forEach(p => { byType[p.task_type] = p })
   return CARD_ORDER.map(key => {
     const p = byType[key] || {}
-    const meta = CARD_META[key] || { icon: '📦', unit: '条' }
+    const meta = CARD_META[key] || { icon: '', unit: '条' }
     return {
       value: key,
       label: (TYPE_LABEL as Record<string, string>)[key] || key,

@@ -18,12 +18,12 @@
     <!-- 进度条 -->
     <div v-if="progressData.is_running || showDoneTip" class="ap-progress-box">
       <template v-if="progressData.is_running">
-        <div class="ap-progress-header">🔄 量化选股执行中</div>
+        <div class="ap-progress-header">量化选股执行中</div>
         <el-progress :percentage="progressData.progress" :stroke-width="14" :color="'#5a7af0'" />
         <div class="ap-progress-status">{{ progressData.status }}</div>
       </template>
       <template v-else-if="showDoneTip">
-        <div class="ap-progress-done">✅ 选股完成，结果已更新</div>
+        <div class="ap-progress-done">选股完成，结果已更新</div>
       </template>
     </div>
 
@@ -131,7 +131,7 @@
               </div>
             </div>
           </div>
-          <div v-for="w in dimWarnings(dim)" :key="w" class="ap-dim-warning">⚠️ {{ w }}</div>
+          <div v-for="w in dimWarnings(dim)" :key="w" class="ap-dim-warning"><el-icon style="color: var(--el-color-warning)"><WarningFilled /></el-icon> {{ w }}</div>
         </div>
       </div>
       <div v-else class="ap-detail-empty">
@@ -147,7 +147,7 @@
     <!-- AI 综合投资建议（折叠式） -->
     <div v-if="result?.ai_summary" class="ap-ai-summary">
       <div class="ap-summary-toggle" @click="summaryExpanded = !summaryExpanded">
-        <span>🤖 AI 综合投资建议</span>
+        <span class="section-title">AI 综合投资建议</span>
         <svg class="ap-summary-svg" :class="{ 'is-expanded': summaryExpanded }" viewBox="0 0 12 12" width="12" height="12">
           <path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
@@ -158,7 +158,7 @@
     <!-- 历史选股效果（折叠式，首次展开时加载） -->
     <div class="ap-ai-summary ap-track">
       <div class="ap-summary-toggle" @click="toggleTrack">
-        <span>📈 历史选股效果 <span class="ap-track-sub">vs 等权全市场基准</span></span>
+        <span class="section-title">历史选股效果 <span class="ap-track-sub">vs 等权全市场基准</span></span>
         <svg class="ap-summary-svg" :class="{ 'is-expanded': trackExpanded }" viewBox="0 0 12 12" width="12" height="12">
           <path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>

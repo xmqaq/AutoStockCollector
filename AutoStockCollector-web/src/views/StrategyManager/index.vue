@@ -3,8 +3,8 @@
     <!-- 顶部操作栏 -->
     <div class="sm-toolbar">
       <el-radio-group v-model="activeTab" size="small" @change="loadList">
-        <el-radio-button value="selection">📊 选股策略 <el-tag size="small" type="info" round>{{ selectionCount }}</el-tag></el-radio-button>
-        <el-radio-button value="trading">🪙 交易策略 <el-tag size="small" type="info" round>{{ tradingCount }}</el-tag></el-radio-button>
+        <el-radio-button value="selection">选股策略 <el-tag size="small" type="info" round>{{ selectionCount }}</el-tag></el-radio-button>
+        <el-radio-button value="trading">交易策略 <el-tag size="small" type="info" round>{{ tradingCount }}</el-tag></el-radio-button>
       </el-radio-group>
       <div class="sm-toolbar-right">
         <el-input v-model="searchText" size="small" placeholder="搜索策略..." clearable prefix-icon="Search" style="width:200px" @input="filterList" />
@@ -204,7 +204,7 @@
   <!-- 测试结果对话框 -->
     <el-dialog
       v-model="testDialogVisible"
-      title="📋 策略测试结果"
+      title="策略测试结果"
       width="860px"
       top="5vh"
       :close-on-click-modal="false"

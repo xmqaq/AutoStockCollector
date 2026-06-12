@@ -77,7 +77,7 @@
                 @click="saveKey(row)"
               >
                 <span v-if="row._saving" class="spin">◌</span>
-                <span v-else-if="row._saved">✓ 已保存</span>
+                <span v-else-if="row._saved">已保存</span>
                 <span v-else>保存</span>
               </button>
             </div>
@@ -191,7 +191,9 @@
       </div>
 
       <div v-if="!loading && keys.length === 0" class="ak-empty">
-        <div class="ak-empty-icon">⚷</div>
+        <div class="ak-empty-icon">
+          <el-icon :size="32"><Key /></el-icon>
+        </div>
         <p>暂无配置，点击右上角新增厂商</p>
       </div>
     </div>

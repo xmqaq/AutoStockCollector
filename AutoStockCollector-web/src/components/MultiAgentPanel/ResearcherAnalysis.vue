@@ -15,7 +15,7 @@
       <div class="researcher-groups">
         <div v-if="visibleDebate.length" class="agent-group-block">
           <div class="group-title">
-            <span class="group-icon">🗣️</span>
+            <span class="group-icon">◈</span>
             <span>辩论研究员</span>
             <span class="group-count">{{ visibleDebate.length }} 位</span>
           </div>
@@ -46,7 +46,7 @@
         </div>
         <div v-if="visiblePhilosophy.length" class="agent-group-block">
           <div class="group-title">
-            <span class="group-icon">🧠</span>
+            <span class="group-icon">◆</span>
             <span>投资哲学 Agent</span>
             <span class="group-count">{{ visiblePhilosophy.length }} 位</span>
           </div>

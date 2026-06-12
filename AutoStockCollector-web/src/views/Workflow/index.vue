@@ -368,10 +368,10 @@
                 :key="index"
                 class="log-item"
                 :class="{
-                  'log-success': log.includes('✅') || log.includes('成功'),
-                  'log-error': log.includes('❌') || log.includes('失败'),
-                  'log-warning': log.includes('⚠️') || log.includes('取消'),
-                  'log-info': log.includes('⏳') || log.includes('⏱️') || log.includes('📊') || log.includes('🚀') || log.includes('正在')
+                  'log-success': log.includes('成功') || log.includes('[ok]'),
+                  'log-error': log.includes('失败'),
+                  'log-warning': log.includes('取消'),
+                  'log-info': log.includes('正在') || log.includes('启动') || log.includes('执行中') || log.includes('监控')
                 }"
               >
                 {{ log }}
@@ -406,7 +406,7 @@
     <el-dialog v-model="showRunDialog" title="选股结果" width="1000px">
       <div v-if="runResult" class="run-result">
         <el-alert
-          :title="runResult.success ? '✅ 工作流执行成功' : '❌ 工作流执行失败'"
+          :title="runResult.success ? '工作流执行成功' : '工作流执行失败'"
           :type="runResult.success ? 'success' : 'error'"
           :description="runResult.error || '通过多维度筛选和智能评分，系统为您精选出以下优质股票'"
           show-icon
@@ -414,21 +414,21 @@
 
         <div v-if="runResult.success" class="result-summary">
           <div class="summary-item">
-            <div class="summary-icon">📈</div>
+            <div class="summary-icon"><el-icon><TrendCharts /></el-icon></div>
             <div class="summary-info">
               <div class="summary-value">{{ runResult.result_count }}</div>
               <div class="summary-label">选股数量</div>
             </div>
           </div>
           <div class="summary-item">
-            <div class="summary-icon">⏱️</div>
+            <div class="summary-icon"><el-icon><Timer /></el-icon></div>
             <div class="summary-info">
               <div class="summary-value">{{ runResult.duration.toFixed(2) }}s</div>
               <div class="summary-label">执行时间</div>
             </div>
           </div>
           <div class="summary-item">
-            <div class="summary-icon">🎯</div>
+            <div class="summary-icon"><el-icon><Aim /></el-icon></div>
             <div class="summary-info">
               <div class="summary-value">{{ getAverageScore() }}</div>
               <div class="summary-label">平均评分</div>
@@ -854,7 +854,7 @@ async function pollExecutionProgress(workflowId: string, executionId: string) {
       const steps: any[] = execution.steps || []
       const existingStepCount = runLogs.value.filter((l: string) => l.startsWith('[')).length
       if (steps.length > existingStepCount) {
-        const icon = execution.status === 'completed' ? '✅' : execution.status === 'failed' ? '❌' : '⏳'
+        const icon = execution.status === 'completed' ? '[ok]' : execution.status === 'failed' ? '[err]' : '...'
         for (let i = existingStepCount; i < steps.length; i++) {
           const step = steps[i]
           runLogs.value.push(
@@ -871,9 +871,9 @@ async function pollExecutionProgress(workflowId: string, executionId: string) {
 
         if (execution.status === 'completed' && execution.result) {
           runResult.value = execution.result
-          runLogs.value.push(`✅ 工作流执行成功`)
-          runLogs.value.push(`📈 筛选出 ${execution.result.result_count || 0} 只符合条件的股票`)
-          runLogs.value.push(`⏱️ 总耗时: ${(execution.result.duration || 0).toFixed(2)} 秒`)
+          runLogs.value.push(`工作流执行成功`)
+          runLogs.value.push(`筛选出 ${execution.result.result_count || 0} 只符合条件的股票`)
+          runLogs.value.push(`总耗时: ${(execution.result.duration || 0).toFixed(2)} 秒`)
           showProgressDialog.value = false
           if (execution.result.result_type === 'quant_multi_factor') {
             quantResult.value = execution.result
@@ -882,10 +882,10 @@ async function pollExecutionProgress(workflowId: string, executionId: string) {
             showRunDialog.value = true
           }
         } else if (execution.status === 'failed') {
-          runLogs.value.push(`❌ 执行失败: ${execution.error || '未知错误'}`)
+          runLogs.value.push(`执行失败: ${execution.error || '未知错误'}`)
           ElMessage.error(execution.error || '工作流执行失败')
         } else if (execution.status === 'cancelled') {
-          runLogs.value.push(`⚠️ 执行已取消`)
+          runLogs.value.push(`执行已取消`)
           ElMessage.warning('工作流已取消')
         }
 
@@ -913,27 +913,27 @@ async function runWorkflow(workflow: Workflow) {
   showProgressDialog.value = true
 
   try {
-    addLog(`🚀 正在启动工作流: ${workflow.name}`)
-    addLog(`📊 工作流包含 ${workflow.nodes.length} 个节点`)
+    addLog(`正在启动工作流: ${workflow.name}`)
+    addLog(`工作流包含 ${workflow.nodes.length} 个节点`)
 
     const res = await workflowApi.run(workflow.id)
 
     if (res.data?.success) {
       const data = res.data
       currentExecutionId.value = data.execution_id
-      addLog(`✅ 工作流已启动 (ID: ${data.execution_id})`)
-      addLog(`⏳ 正在执行中，请稍候...`)
+      addLog(`工作流已启动 (ID: ${data.execution_id})`)
+      addLog(`正在执行中，请稍候...`)
 
       pollExecutionProgress(workflow.id, data.execution_id)
     } else {
       const errorMsg = res.data?.error || '启动失败'
-      addLog(`❌ 启动失败: ${errorMsg}`)
+      addLog(`启动失败: ${errorMsg}`)
       ElMessage.error(errorMsg)
       isRunning.value = false
     }
   } catch (e: any) {
     const errorMsg = e?.response?.data?.error || e.message || '运行失败'
-    addLog(`❌ 执行失败: ${errorMsg}`)
+    addLog(`执行失败: ${errorMsg}`)
     ElMessage.error(errorMsg)
     isRunning.value = false
   }
@@ -952,7 +952,7 @@ async function cancelWorkflow() {
     const workflow = workflows.value.find(w => w.id === currentExecution.value?.workflow_id)
     if (workflow) {
       await workflowApi.cancelExecution(workflow.id, currentExecutionId.value)
-      addLog(`⚠️ 已请求取消执行...`)
+      addLog(`已请求取消执行...`)
     }
   } catch {
     // cancelled or continue
@@ -1047,7 +1047,7 @@ async function resumeExecution(execution: any) {
       currentExecution.value = execution
       isRunning.value = true
       showProgressDialog.value = true
-      addLog(`▶️ 从步骤 ${execution.paused_node_idx + 1} 继续执行...`)
+      addLog(`从步骤 ${execution.paused_node_idx + 1} 继续执行...`)
       pollExecutionProgress(execution.workflow_id, execution.id)
     } else {
       ElMessage.error(res.data?.error || '恢复失败')
@@ -1092,21 +1092,20 @@ async function viewExecutionProgress(execution: any) {
 
   if (execution.steps && execution.steps.length > 0) {
     for (const step of execution.steps) {
-      const icon = execution.status === 'completed' ? '✅' : execution.status === 'failed' ? '❌' : '⏳'
+      const icon = execution.status === 'completed' ? '[ok]' : execution.status === 'failed' ? '[err]' : '...'
       runLogs.value.push(`[${new Date(step.timestamp).toLocaleTimeString('zh-CN')}] ${icon} ${step.node_label}: ${step.step}`)
     }
   }
 
   if (alreadyDone) {
-    const icon = execution.status === 'completed' ? '✅' : execution.status === 'failed' ? '❌' : '⚠️'
-    addLog(`${icon} 任务已${getStatusLabel(execution.status)}`)
+    addLog(`任务已${getStatusLabel(execution.status)}`)
     if (execution.status === 'completed' && execution.result) {
       runResult.value = execution.result
     }
     return
   }
 
-  addLog(`⏳ 正在监控工作流执行...`)
+  addLog(`正在监控工作流执行...`)
 
   const pollId = window.setInterval(async () => {
     try {
@@ -1121,7 +1120,7 @@ async function viewExecutionProgress(execution: any) {
         if (latestStepCount > currentLogCount && latest.steps) {
           for (let i = currentLogCount; i < latestStepCount; i++) {
             const step = latest.steps[i]
-            const icon = latest.status === 'completed' ? '✅' : latest.status === 'failed' ? '❌' : '⏳'
+            const icon = latest.status === 'completed' ? '[ok]' : latest.status === 'failed' ? '[err]' : '...'
             runLogs.value.push(`[${new Date(step.timestamp).toLocaleTimeString('zh-CN')}] ${icon} ${step.node_label}: ${step.step}`)
           }
         }
@@ -1132,13 +1131,13 @@ async function viewExecutionProgress(execution: any) {
 
           if (latest.status === 'completed' && latest.result) {
             runResult.value = latest.result
-            runLogs.value.push(`✅ 工作流执行成功`)
-            runLogs.value.push(`📈 筛选出 ${latest.result.result_count || 0} 只符合条件的股票`)
-            runLogs.value.push(`⏱️ 总耗时: ${(latest.result.duration || 0).toFixed(2)} 秒`)
+            runLogs.value.push(`工作流执行成功`)
+            runLogs.value.push(`筛选出 ${latest.result.result_count || 0} 只符合条件的股票`)
+            runLogs.value.push(`总耗时: ${(latest.result.duration || 0).toFixed(2)} 秒`)
           } else if (latest.status === 'failed') {
-            runLogs.value.push(`❌ 执行失败: ${latest.error || '未知错误'}`)
+            runLogs.value.push(`执行失败: ${latest.error || '未知错误'}`)
           } else if (latest.status === 'cancelled') {
-            runLogs.value.push(`⚠️ 执行已取消`)
+            runLogs.value.push(`执行已取消`)
           }
         }
       }

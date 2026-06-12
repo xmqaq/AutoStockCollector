@@ -251,12 +251,12 @@ interface CombinedSignal {
 
 // ── Data source meta ──
 const dataSourceMeta: Record<string, { label: string; icon: string }> = {
-  dragon_tiger_analysis: { label: '龙虎榜席位分析', icon: '🚀' },
-  news_sentiment: { label: '新闻舆情分析', icon: '📰' },
-  fund_flow_analysis: { label: '资金流向分析', icon: '💰' },
-  financial_analysis: { label: '财务数据分析', icon: '📊' },
-  kline_trend: { label: 'K线趋势分析', icon: '📈' },
-  market_capital_flow: { label: '全市场资金流向', icon: '🌐' },
+  dragon_tiger_analysis: { label: '龙虎榜席位分析', icon: '' },
+  news_sentiment: { label: '新闻舆情分析', icon: '' },
+  fund_flow_analysis: { label: '资金流向分析', icon: '' },
+  financial_analysis: { label: '财务数据分析', icon: '' },
+  kline_trend: { label: 'K线趋势分析', icon: '' },
+  market_capital_flow: { label: '全市场资金流向', icon: '' },
 }
 
 const researchEvidence = computed(() => {

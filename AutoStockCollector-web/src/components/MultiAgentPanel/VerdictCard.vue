@@ -33,14 +33,14 @@
       </div>
 
       <div v-if="verdict.key_insights?.length" class="verdict-section">
-        <div class="section-subtitle"><span class="section-icon">💡</span> 关键洞察</div>
+        <div class="section-subtitle section-title"> 关键洞察</div>
         <ul class="insight-list">
           <li v-for="(insight, i) in verdict.key_insights" :key="i">{{ insight }}</li>
         </ul>
       </div>
 
       <div v-if="verdict.risk_flags?.length" class="verdict-section">
-        <div class="section-subtitle"><span class="section-icon">⚠️</span> 风险提示</div>
+        <div class="section-subtitle section-title"> 风险提示</div>
         <div class="risk-tags">
           <el-tag v-for="(flag, i) in verdict.risk_flags" :key="i" type="danger" size="small">{{ flag }}</el-tag>
         </div>

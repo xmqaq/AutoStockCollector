@@ -28,12 +28,12 @@
         <div class="card-header">
           <span>数据完整性（{{ coverage?.ref_date || '--' }}）</span>
           <div class="header-chips">
-            <el-tag v-if="freshnessStale > 0" type="warning" size="small">⚠️ {{ freshnessStale }} 类需更新</el-tag>
-            <el-tag v-if="freshnessError > 0" type="danger" size="small">❌ {{ freshnessError }} 类异常</el-tag>
-            <el-tag v-if="freshnessStale === 0 && freshnessError === 0" type="success" size="small">✅ {{ freshnessOk }} 类时效正常</el-tag>
-            <el-tag v-if="coverage?.overall === 'bad'" type="danger" size="small">❌ 有数据缺口</el-tag>
-            <el-tag v-else-if="coverage?.overall === 'warn'" type="warning" size="small">⚠️ 覆盖偏低</el-tag>
-            <el-tag v-else-if="coverage" type="success" size="small">✅ 覆盖完整</el-tag>
+            <el-tag v-if="freshnessStale > 0" type="warning" size="small">{{ freshnessStale }} 类需更新</el-tag>
+            <el-tag v-if="freshnessError > 0" type="danger" size="small">{{ freshnessError }} 类异常</el-tag>
+            <el-tag v-if="freshnessStale === 0 && freshnessError === 0" type="success" size="small">{{ freshnessOk }} 类时效正常</el-tag>
+            <el-tag v-if="coverage?.overall === 'bad'" type="danger" size="small">有数据缺口</el-tag>
+            <el-tag v-else-if="coverage?.overall === 'warn'" type="warning" size="small">覆盖偏低</el-tag>
+            <el-tag v-else-if="coverage" type="success" size="small">覆盖完整</el-tag>
           </div>
         </div>
       </template>
@@ -76,7 +76,7 @@
       <template #header>
         <div class="card-header">
           <span>定时任务状态</span>
-          <el-tag v-if="cronHasAlert" type="danger" size="small">⚠️ 有任务连续失败</el-tag>
+          <el-tag v-if="cronHasAlert" type="danger" size="small">有任务连续失败</el-tag>
           <el-tag v-else-if="cronJobs.length === 0" type="info" size="small">服务未运行</el-tag>
           <el-tag v-else type="success" size="small">运行中</el-tag>
         </div>
@@ -93,9 +93,9 @@
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
             <el-tag v-if="row.last_run == null" type="info" size="small">待首次</el-tag>
-            <el-tag v-else-if="row.alert" type="danger" size="small">❌ 连续失败</el-tag>
-            <el-tag v-else-if="!row.last_ok" type="warning" size="small">⚠️ 上次失败</el-tag>
-            <el-tag v-else type="success" size="small">✅ 正常</el-tag>
+            <el-tag v-else-if="row.alert" type="danger" size="small">连续失败</el-tag>
+            <el-tag v-else-if="!row.last_ok" type="warning" size="small">上次失败</el-tag>
+            <el-tag v-else type="success" size="small">正常</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="last_msg" label="最近信息" min-width="180" show-overflow-tooltip />
@@ -160,12 +160,12 @@
               </template>
               <template v-else-if="row.value === 'financial'">
                 <div v-if="gapData[row.value].covered_quarters?.length" class="gap-section">
-                  <span class="gap-ok-label">✅ 已有报告期：</span>
+                  <span class="gap-ok-label">已有报告期：</span>
                   <span>{{ gapData[row.value].covered_quarters?.slice(-4).join(' / ') }}</span>
                   <span class="gap-pct"> 完整度 {{ gapData[row.value].completeness_pct }}%</span>
                 </div>
                 <div v-if="gapData[row.value].missing_quarters?.length" class="gap-section gap-missing">
-                  <span class="gap-err-label">❌ 缺失季度：</span>
+                  <span class="gap-err-label">缺失季度：</span>
                   <span v-for="q in gapData[row.value].missing_quarters?.slice(0, 8)" :key="q">
                     <el-tag size="small" type="danger" style="margin:2px"
                       @click="() => { const [s,e] = quarterToRange(q); fillGap(row.value, s, e) }">
@@ -179,10 +179,10 @@
                   完整度 <strong>{{ gapData[row.value].completeness_pct }}%</strong>
                 </div>
                 <div v-for="seg in gapData[row.value].covered_ranges" :key="seg.start" class="gap-section">
-                  <el-tag size="small" type="success">✅ {{ seg.start }} ~ {{ seg.end }}（{{ seg.days }}个交易日）</el-tag>
+                  <el-tag size="small" type="success">{{ seg.start }} ~ {{ seg.end }}（{{ seg.days }}个交易日）</el-tag>
                 </div>
                 <div v-for="seg in gapData[row.value].gap_ranges" :key="seg.start" class="gap-section">
-                  <el-tag size="small" type="danger">❌ 缺口：{{ seg.start }} ~ {{ seg.end }}（{{ seg.days }}天）</el-tag>
+                  <el-tag size="small" type="danger">缺口：{{ seg.start }} ~ {{ seg.end }}（{{ seg.days }}天）</el-tag>
                   <el-button size="small" link type="primary" @click="fillGap(row.value, seg.start, seg.end)">
                     点击补采此区间
                   </el-button>
@@ -222,9 +222,9 @@
         </el-table-column>
         <el-table-column label="健康状态" width="100" align="center">
           <template #default="{ row }">
-            <el-tag v-if="row.health === 'ok'" type="success" size="small">✅ 最新</el-tag>
-            <el-tag v-else-if="row.health === 'stale'" type="warning" size="small">⚠️ 需更新</el-tag>
-            <el-tag v-else type="danger" size="small">❌ 异常</el-tag>
+            <el-tag v-if="row.health === 'ok'" type="success" size="small">最新</el-tag>
+            <el-tag v-else-if="row.health === 'stale'" type="warning" size="small">需更新</el-tag>
+            <el-tag v-else type="danger" size="small">异常</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="180" align="center">

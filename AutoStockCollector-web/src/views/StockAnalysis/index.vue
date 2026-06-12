@@ -691,7 +691,7 @@ async function runAIReport() {
   } catch {
     // 已生成较多内容时保留现场并提示重试,避免静默整体重新生成(再等一遍且翻倍调用成本)
     if (streamed && (aiReport.value?.content?.length || 0) > 200) {
-      aiReport.value!.content += '\n\n> ⚠️ 生成中断（AI服务响应超时），以上为已生成部分，可点击「重新生成」补全'
+      aiReport.value!.content += '\n\n> 生成中断（AI服务响应超时），以上为已生成部分，可点击「重新生成」补全'
     } else {
       // 几乎没产出:降级回非流式接口整体生成
       try {
