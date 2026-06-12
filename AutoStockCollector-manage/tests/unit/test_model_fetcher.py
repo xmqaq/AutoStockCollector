@@ -176,24 +176,12 @@ class TestModelListFetcher:
         assert len(result) == 2
         assert result[0]['id'] == 'valid-model'
 
-    def test_get_fallback_models(self):
-        """测试获取备用模型"""
+    def test_get_default_model_returns_none(self):
+        """现行契约:不内置默认模型(硬编码模型名会腐烂),需用户手动配置。"""
         fetcher = ModelListFetcher()
 
-        models = fetcher._get_fallback_models('openai')
-        assert len(models) > 0
-        assert models[0]['id'] == 'gpt-4o-mini'
-
-        unknown_models = fetcher._get_fallback_models('unknown')
-        assert unknown_models == []
-
-    def test_get_default_model(self):
-        """测试获取默认模型"""
-        fetcher = ModelListFetcher()
-
-        assert fetcher.get_default_model('openai') == 'gpt-4o-mini'
-        assert fetcher.get_default_model('anthropic') == 'claude-3-5-sonnet-latest'
-        assert fetcher.get_default_model('minimax') == 'MiniMax-Text-01'
+        assert fetcher.get_default_model('openai') is None
+        assert fetcher.get_default_model('anthropic') is None
         assert fetcher.get_default_model('unknown') is None
 
     def test_invalidate_cache(self):
@@ -250,19 +238,19 @@ class TestModelListFetcherWithMock:
         mock_get.assert_not_called()
 
     @patch('requests.get')
-    def test_fetch_models_api_failure_uses_fallback(self, mock_get):
-        """测试API失败时使用备用模型"""
+    def test_fetch_models_api_failure_returns_empty(self, mock_get):
+        """现行契约:API失败返回空列表,由前端提示用户检查Key/网络,不给假模型名。"""
         mock_get.side_effect = Exception("Network error")
 
         fetcher = ModelListFetcher()
         models = fetcher.fetch_models('openai', 'test-key')
 
-        assert len(models) > 0
+        assert models == []
         assert mock_get.called
 
     @patch('requests.get')
-    def test_fetch_models_401_returns_fallback(self, mock_get):
-        """测试401错误时返回备用模型"""
+    def test_fetch_models_401_returns_empty(self, mock_get):
+        """401(Key无效)返回空列表。"""
         mock_response = Mock()
         mock_response.status_code = 401
         mock_get.return_value = mock_response
@@ -270,12 +258,11 @@ class TestModelListFetcherWithMock:
         fetcher = ModelListFetcher()
         models = fetcher.fetch_models('openai', 'invalid-key')
 
-        assert len(models) > 0
-        assert models[0]['id'] == 'gpt-4o-mini'
+        assert models == []
 
     @patch('requests.get')
-    def test_fetch_models_429_returns_fallback(self, mock_get):
-        """测试429错误时返回备用模型"""
+    def test_fetch_models_429_returns_empty(self, mock_get):
+        """429(限流)返回空列表。"""
         mock_response = Mock()
         mock_response.status_code = 429
         mock_get.return_value = mock_response
@@ -283,7 +270,7 @@ class TestModelListFetcherWithMock:
         fetcher = ModelListFetcher()
         models = fetcher.fetch_models('openai', 'test-key')
 
-        assert len(models) > 0
+        assert models == []
 
 
 if __name__ == '__main__':
