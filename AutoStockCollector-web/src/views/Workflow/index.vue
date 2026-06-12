@@ -369,9 +369,9 @@
                 class="log-item"
                 :class="{
                   'log-success': log.includes('成功') || log.includes('[ok]'),
-                  'log-error': log.includes('失败'),
+                  'log-error': log.includes('失败') || log.includes('[err]'),
                   'log-warning': log.includes('取消'),
-                  'log-info': log.includes('正在') || log.includes('启动') || log.includes('执行中') || log.includes('监控')
+                  'log-info': log.includes('正在') || log.includes('启动') || log.includes('执行中') || log.includes('监控') || log.includes('...')
                 }"
               >
                 {{ log }}
