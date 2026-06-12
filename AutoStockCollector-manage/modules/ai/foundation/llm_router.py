@@ -23,6 +23,9 @@ class LLMResult:
 
 class LLMRouter:
     _RETRY_BACKOFF_SECONDS: float = 1.0  # 网络类瞬时错误重试间隔（秒），测试可置 0
+    # 进程级共享缓存:深度分析等每请求新建 router,实例级缓存跨请求必 miss;
+    # key 含 prompt+messages 哈希,与 provider 无关,跨实例共享安全。测试可注入 cache 隔离。
+    _GLOBAL_CACHE: Dict[str, Dict[str, Any]] = {}
 
     def __init__(
         self,
@@ -30,10 +33,11 @@ class LLMRouter:
         caller: Optional[Callable[[str, str], str]] = None,
         cache_ttl_hours: int = 6,
         memory_synthesizer=None,
+        cache: Optional[Dict[str, Dict[str, Any]]] = None,
     ):
         self.providers = providers or self._load_providers_from_keys()
         self.caller = caller or self._default_caller
-        self._cache: Dict[str, Dict[str, Any]] = {}
+        self._cache = cache if cache is not None else LLMRouter._GLOBAL_CACHE
         self._cache_ttl = timedelta(hours=cache_ttl_hours)
         self.memory_synthesizer = memory_synthesizer
 
@@ -295,6 +299,7 @@ class LLMRouter:
         full_prompt = self._build_prompt(prompt, schema)
 
         for provider in self.providers:
+            yielded = False
             try:
                 from modules.ai.foundation.llm_caller import ProviderCaller
                 caller = ProviderCaller()
@@ -302,6 +307,7 @@ class LLMRouter:
 
                 for chunk in chunks:
                     if chunk:
+                        yielded = True
                         yield chunk
 
                 self._log_history(provider, task_type, True)
@@ -309,6 +315,9 @@ class LLMRouter:
 
             except Exception as e:
                 self._log_history(provider, task_type, False, str(e))
+                if yielded:
+                    # 已产出部分内容:换下一家会从头重播导致内容重复,直接上抛让上游报错/降级
+                    raise
                 continue
 
         yield from []

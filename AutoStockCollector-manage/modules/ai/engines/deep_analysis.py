@@ -95,8 +95,10 @@ class DeepAnalysisService:
             content, _ = sanitize_text(result.raw)
             if len(self._missing_dims(data.get("scores") or {})) >= 2:
                 content = "> ⚠️ 本报告生成时部分维度数据缺失,结论仅供参考\n\n" + content
-            if not result.from_cache:
-                self._record_outcome(code, content, user_id)
+            # 缓存命中也同步决策记录(同日 upsert 幂等),保证展示报告与落库评级一致;
+            # 但分析历史记忆只在新生成时写,避免重复刷记录
+            self._record_outcome(code, content, user_id,
+                                 decision_only=result.from_cache)
             return {
                 "success": True,
                 "content": content,
@@ -219,8 +221,12 @@ class DeepAnalysisService:
                 best, best_pos = rating, pos
         return best
 
-    def _record_outcome(self, code: str, content: str, user_id: str):
-        """报告生成后：落决策记录（供下次复盘）+ 写入分析历史记忆。"""
+    def _record_outcome(self, code: str, content: str, user_id: str,
+                        decision_only: bool = False):
+        """报告生成后：落决策记录（供下次复盘）+ 写入分析历史记忆。
+
+        decision_only=True（缓存命中场景）只 upsert 决策记录保持展示/落库一致，
+        不重复写分析历史记忆。"""
         rating = self._extract_rating(content)
         bull, bear = self.RATING_SCORES[rating]
         try:
@@ -232,6 +238,8 @@ class DeepAnalysisService:
             )
         except Exception as e:
             logger.warning(f"Decision log failed for {code}: {e}")
+        if decision_only:
+            return
         try:
             from utils.helpers import beijing_now
             from modules.memory.episodic_memory import EpisodicMemory

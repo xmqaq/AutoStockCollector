@@ -99,3 +99,22 @@ def test_financial_carries_pe_basis():
     FakeBundle.pe = None
     fi2 = svc._build_financial("sh600000", FakeBundle())
     assert fi2["pe_basis"] == "估算(年化EPS)"
+
+
+def test_ai_report_records_decision_on_cache_hit(monkeypatch):
+    """缓存命中也要同步决策记录(decision_only),保证展示报告与落库评级一致。"""
+    from modules.ai.foundation.llm_router import LLMResult
+
+    class FakeRouter:
+        def chat(self, *a, **k):
+            return LLMResult(success=True, provider="p",
+                             raw="报告正文\n【评级】中性观望", from_cache=True)
+
+    svc = DeepAnalysisService(dal=object(), router=FakeRouter())
+    seen = {}
+    monkeypatch.setattr(
+        svc, "_record_outcome",
+        lambda code, content, user_id, decision_only=False: seen.update(d=decision_only))
+    r = svc.ai_report("sh600000", data=_full_data())
+    assert r["from_cache"] is True
+    assert seen == {"d": True}

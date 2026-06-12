@@ -53,7 +53,7 @@ class TestLLMRouter(unittest.TestCase):
             calls.append(provider)
             return '{"n": 1}'
 
-        router = LLMRouter(providers=["qwen"], caller=caller)
+        router = LLMRouter(providers=["qwen"], caller=caller, cache={})
         r1 = router.chat("same prompt", use_cache=True)
         r2 = router.chat("same prompt", use_cache=True)
         self.assertEqual(len(calls), 1)
@@ -107,7 +107,7 @@ class TestTemperatureMaxTokensPassthrough(unittest.TestCase):
             return "ok"
 
         r = LLMRouter(providers=["p1"], caller=caller).chat(
-            "hi", temperature=0.4, max_tokens=4000)
+            "hi", use_cache=False, temperature=0.4, max_tokens=4000)
         self.assertTrue(r.success)
         self.assertEqual(captured, {"temperature": 0.4, "max_tokens": 4000})
 
@@ -115,7 +115,7 @@ class TestTemperatureMaxTokensPassthrough(unittest.TestCase):
         def caller(provider, prompt):
             return "ok"
 
-        r = LLMRouter(providers=["p1"], caller=caller).chat("hi", temperature=0.4)
+        r = LLMRouter(providers=["p1"], caller=caller).chat("hi", use_cache=False, temperature=0.4)
         self.assertTrue(r.success)
 
 
@@ -127,7 +127,7 @@ class TestMessagesCache(unittest.TestCase):
             calls.append(1)
             return "report"
 
-        router = LLMRouter(providers=["p1"], caller=caller)
+        router = LLMRouter(providers=["p1"], caller=caller, cache={})
         msgs = [{"role": "system", "content": "s"}, {"role": "user", "content": "u"}]
         r1 = router.chat("u", use_cache=True, messages=msgs)
         r2 = router.chat("u", use_cache=True, messages=msgs)
@@ -189,6 +189,72 @@ class TestRetry(unittest.TestCase):
         r = LLMRouter(providers=["p1"], caller=bad).chat("hi", use_cache=False)
         self.assertFalse(r.success)
         self.assertEqual(attempts, ["p1"])   # ValueError 配置错误不重试
+
+
+class TestSharedCache(unittest.TestCase):
+    def setUp(self):
+        LLMRouter._GLOBAL_CACHE.clear()
+
+    def tearDown(self):
+        LLMRouter._GLOBAL_CACHE.clear()
+
+    def test_cache_shared_across_router_instances(self):
+        """深度分析每请求新建 router,缓存必须跨实例命中。"""
+        calls = []
+
+        def caller(provider, prompt, **kw):
+            calls.append(1)
+            return "ok"
+
+        r1 = LLMRouter(providers=["p1"], caller=caller).chat("shared-xyz", use_cache=True)
+        r2 = LLMRouter(providers=["p1"], caller=caller).chat("shared-xyz", use_cache=True)
+        self.assertFalse(r1.from_cache)
+        self.assertTrue(r2.from_cache)
+        self.assertEqual(len(calls), 1)
+
+    def test_injected_cache_isolated(self):
+        calls = []
+
+        def caller(provider, prompt, **kw):
+            calls.append(1)
+            return "ok"
+
+        LLMRouter(providers=["p1"], caller=caller, cache={}).chat("shared-xyz", use_cache=True)
+        r2 = LLMRouter(providers=["p1"], caller=caller, cache={}).chat("shared-xyz", use_cache=True)
+        self.assertFalse(r2.from_cache)
+        self.assertEqual(len(calls), 2)
+
+
+class TestStreamMidFailure(unittest.TestCase):
+    def test_raises_after_partial_yield_no_failover_duplication(self):
+        """provider 产出部分内容后失败:不许换家重播(会重复开头),应上抛让上游降级。"""
+        from unittest.mock import patch
+
+        def fake_stream(self_pc, provider, prompt, messages=None):
+            if provider == "p1":
+                yield "部分"
+                raise ConnectionError("mid-stream broken")
+            yield "完整回答"
+
+        router = LLMRouter(providers=["p1", "p2"])
+        with patch("modules.ai.foundation.llm_caller.ProviderCaller.stream_call", fake_stream):
+            chunks = []
+            with self.assertRaises(ConnectionError):
+                for c in router.chat_stream("hi"):
+                    chunks.append(c)
+        self.assertEqual(chunks, ["部分"])  # 不会拼上 p2 的"完整回答"
+
+    def test_failover_when_nothing_yielded(self):
+        from unittest.mock import patch
+
+        def fake_stream(self_pc, provider, prompt, messages=None):
+            if provider == "p1":
+                raise ConnectionError("connect fail")
+            yield "ok"
+
+        router = LLMRouter(providers=["p1", "p2"])
+        with patch("modules.ai.foundation.llm_caller.ProviderCaller.stream_call", fake_stream):
+            self.assertEqual(list(router.chat_stream("hi")), ["ok"])
 
 
 if __name__ == "__main__":
