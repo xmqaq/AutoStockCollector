@@ -7,9 +7,16 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _default_kline_loader(code: str, limit: int) -> list:
+    from core.storage.mongo_storage import KlineStorage
+    return list(KlineStorage().find_many(
+        {"code": code}, sort=[("date", -1)], limit=limit)) or []
+
+
 class ReflectionEvaluator:
-    def __init__(self):
-        self.collection = get_collection("trading_memory")
+    def __init__(self, collection=None, kline_loader=None):
+        self.collection = collection if collection is not None else get_collection("trading_memory")
+        self.kline_loader = kline_loader or _default_kline_loader
 
     def evaluate(self, record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         stock_code = record.get("stock_code", "")
@@ -25,29 +32,19 @@ class ReflectionEvaluator:
             return None
 
         try:
-            from core.storage.mongo_storage import KlineStorage
-            storage = KlineStorage()
-            klines = list(storage.find_many(
-                {"code": stock_code},
-                sort=[("date", -1)],
-                limit=1,
-            ))
+            klines = self.kline_loader(stock_code, days_elapsed + 10)
             if not klines:
                 return None
             current_price = float(klines[0].get("close", 0))
 
-            klines_at_decision = list(storage.find_many(
-                {"code": stock_code},
-                sort=[("date", -1)],
-                limit=days_elapsed + 5,
-            ))
+            decision_day = timestamp_str[:10]
             decision_price = None
-            for k in reversed(klines_at_decision):
-                if k.get("date", "") <= timestamp_str[:10]:
+            for k in klines:  # 降序:从最新往回,首个 date<=决策日 即最接近决策日的一根
+                if str(k.get("date", ""))[:10] <= decision_day:
                     decision_price = float(k.get("close", 0))
                     break
             if not decision_price:
-                decision_price = float(klines_at_decision[-1].get("close", 0)) if klines_at_decision else current_price
+                return None
 
             realized_return = (current_price - decision_price) / decision_price * 100 if decision_price else 0
             predicted = record.get("predicted_direction", "neutral")
