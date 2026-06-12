@@ -1,75 +1,204 @@
-/* ============ Theme tokens：:root=浅色，html.dark=暗色（暗色值=改造前硬编码值） ============ */
+/* ============ Theme tokens:浅色为主战场,html.dark=暗色 ============ */
 :root {
-  --bg-page: #f5f7fa;
+  /* 品牌色阶(墨青/深海蓝) */
+  --brand-50: #eff5fa;
+  --brand-100: #dbe9f3;
+  --brand-200: #b7d3e7;
+  --brand-300: #8ab6d4;
+  --brand-400: #5d97bd;
+  --brand-500: #3478a4;
+  --brand-600: #15598c;
+  --brand-700: #114a75;
+  --brand-800: #0e3c5f;
+  --brand-900: #0b2f4b;
+
+  /* 语义色(沉稳化,替代 EP 默认艳色) */
+  --color-success: #348a5d;
+  --color-warning: #b9862e;
+  --color-danger: #c4453c;
+  /* 涨跌(A股红涨绿跌) */
+  --up: #c4453c;
+  --dn: #348a5d;
+  --up-tint: #faf0ef;
+  --dn-tint: #edf5f0;
+
+  /* 中性色 */
+  --bg-page: #f4f6f9;
   --bg-card: #ffffff;
-  --bg-elevated: #fafbfc;
-  --bg-soft: #f0f2f5;
-  --bg-hover: rgba(0, 0, 0, 0.04);
-  --bg-hover-subtle: rgba(0, 0, 0, 0.02);
-  --border-color: #e4e7ed;
-  --border-strong: #dcdfe6;
-  --border-heavy: #c0c4cc;
-  --text-primary: #303133;
-  --text-secondary: #606266;
-  --text-muted: #909399;
-  --text-faint: #a8abb2;
-  /* 深蓝紫家族（FactorLab/AIKey/AIPicker/StockAnalysis） */
-  --bg-deep: #eef1f6;
-  --bg-deep-soft: #f5f7fa;
+  --bg-elevated: #f9fafc;
+  --bg-soft: #eef1f5;
+  --bg-hover: rgba(21, 89, 140, 0.06);
+  --bg-hover-subtle: rgba(21, 89, 140, 0.03);
+  --border-color: #e3e7ed;
+  --border-strong: #d4dae2;
+  --border-heavy: #b9c2cd;
+  --text-primary: #1f2d3a;
+  --text-secondary: #51626f;
+  --text-muted: #7d8b97;
+  --text-faint: #a4b0ba;
+
+  /* 原"深蓝紫家族"(AIKey/AIPicker/StockAnalysis 仍引用)→ 归并到中性蓝灰 */
+  --bg-deep: #edf1f6;
+  --bg-deep-soft: #f4f6f9;
   --bg-card-alt: #ffffff;
-  --border-alt: #e4e7ed;
-  --border-alt-hover: #c0c4cc;
-  --text-alt-muted: #909399;
-  --text-alt-secondary: #606266;
-  --text-alt-body: #606266;
-  --text-alt-primary: #303133;
-  --text-alt-strong: #303133;
-  /* 弱化链接/高亮文字 */
-  --color-link-soft: #409eff;
-  --code-text: #3a8a52;
-  /* 状态浅底 */
-  --tint-success-bg: #f0f9eb;
-  --tint-danger-bg: #fef0f0;
-  /* 半透明遮罩 */
+  --border-alt: #e3e7ed;
+  --border-alt-hover: #b9c2cd;
+  --text-alt-muted: #7d8b97;
+  --text-alt-secondary: #51626f;
+  --text-alt-body: #51626f;
+  --text-alt-primary: #1f2d3a;
+  --text-alt-strong: #1f2d3a;
+
+  --color-link-soft: var(--brand-500);
+  --code-text: #2f7d4f;
+  --tint-success-bg: #edf5f0;
+  --tint-danger-bg: #faf0ef;
   --bg-overlay: rgba(255, 255, 255, 0.85);
-  /* 滚动条 */
-  --scrollbar-track: #f0f2f5;
-  --scrollbar-thumb: #c0c4cc;
-  --scrollbar-thumb-hover: #909399;
+  --scrollbar-track: #eef1f5;
+  --scrollbar-thumb: #c3ccd6;
+  --scrollbar-thumb-hover: #9aa7b3;
+
+  /* 圆角/阴影 */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 2px rgba(15, 40, 60, 0.05);
+  --shadow-md: 0 2px 8px rgba(15, 40, 60, 0.08);
+  --shadow-lg: 0 8px 24px rgba(15, 40, 60, 0.12);
+
+  /* 字体 */
+  --font-sans: -apple-system, 'PingFang SC', 'Hiragino Sans GB',
+    'Source Han Sans SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'IBM Plex Mono', 'SF Mono', Menlo, Consolas, monospace;
+
+  /* 字阶五级:页面标题/卡片标题/大数据数字/正文/辅助 */
+  --fs-page-title: 18px;
+  --fs-card-title: 14px;
+  --fs-data-lg: 24px;
+  --fs-body: 14px;
+  --fs-caption: 12px;
+
+  /* ===== Element Plus 接管(浅色) ===== */
+  --el-color-primary: var(--brand-600);
+  --el-color-primary-light-3: var(--brand-500);
+  --el-color-primary-light-5: var(--brand-300);
+  --el-color-primary-light-7: var(--brand-200);
+  --el-color-primary-light-8: var(--brand-100);
+  --el-color-primary-light-9: var(--brand-50);
+  --el-color-primary-dark-2: var(--brand-700);
+  --el-color-success: var(--color-success);
+  --el-color-success-light-3: #5da981;
+  --el-color-success-light-5: #8ec4a6;
+  --el-color-success-light-7: #c0dfcd;
+  --el-color-success-light-8: #d8ecdf;
+  --el-color-success-light-9: var(--dn-tint);
+  --el-color-success-dark-2: #2a6e4a;
+  --el-color-danger: var(--color-danger);
+  --el-color-danger-light-3: #d06a62;
+  --el-color-danger-light-5: #de958f;
+  --el-color-danger-light-7: #ecc0bc;
+  --el-color-danger-light-8: #f3d6d3;
+  --el-color-danger-light-9: var(--up-tint);
+  --el-color-danger-dark-2: #9d3730;
+  --el-color-error: var(--color-danger);
+  --el-color-error-light-3: #d06a62;
+  --el-color-error-light-5: #de958f;
+  --el-color-error-light-7: #ecc0bc;
+  --el-color-error-light-8: #f3d6d3;
+  --el-color-error-light-9: var(--up-tint);
+  --el-color-error-dark-2: #9d3730;
+  --el-color-warning: var(--color-warning);
+  --el-color-warning-light-3: #c79e57;
+  --el-color-warning-light-5: #d6b884;
+  --el-color-warning-light-7: #e8d6b8;
+  --el-color-warning-light-8: #f1e4cf;
+  --el-color-warning-light-9: #f9f2e5;
+  --el-color-warning-dark-2: #946b25;
+  --el-text-color-primary: var(--text-primary);
+  --el-text-color-regular: var(--text-secondary);
+  --el-text-color-secondary: var(--text-muted);
+  --el-text-color-placeholder: var(--text-faint);
+  --el-border-color: var(--border-color);
+  --el-border-color-light: var(--border-color);
+  --el-border-color-lighter: var(--border-color);
+  --el-bg-color: var(--bg-card);
+  --el-bg-color-page: var(--bg-page);
+  --el-fill-color-light: var(--bg-soft);
+  --el-border-radius-base: var(--radius-sm);
 }
 
 html.dark {
-  --bg-page: #141414;
-  --bg-card: #1f1f1f;
-  --bg-elevated: #1a1a1a;
-  --bg-soft: #252525;
-  --bg-hover: rgba(255, 255, 255, 0.06);
-  --bg-hover-subtle: rgba(255, 255, 255, 0.03);
-  --border-color: #2c2c2c;
-  --border-strong: #3c3c3c;
-  --border-heavy: #434343;
-  --text-primary: #e5eaf3;
-  --text-secondary: #c0c4cc;
-  --text-muted: #909399;
-  --text-faint: #606266;
-  --bg-deep: #0e0e1c;
-  --bg-deep-soft: #18182a;
-  --bg-card-alt: #1a1a2e;
-  --border-alt: #2a2a45;
-  --border-alt-hover: #4a4a6a;
-  --text-alt-muted: #606080;
-  --text-alt-secondary: #8888a8;
-  --text-alt-body: #c0c2dd;
-  --text-alt-primary: #e0e2f0;
+  --bg-page: #12161c;
+  --bg-card: #1a2129;
+  --bg-elevated: #161c23;
+  --bg-soft: #222a34;
+  --bg-hover: rgba(133, 178, 212, 0.08);
+  --bg-hover-subtle: rgba(133, 178, 212, 0.04);
+  --border-color: #2a333e;
+  --border-strong: #38434f;
+  --border-heavy: #46525f;
+  --text-primary: #e3e9ef;
+  --text-secondary: #aeb9c4;
+  --text-muted: #7f8c99;
+  --text-faint: #566472;
+
+  --bg-deep: #10151b;
+  --bg-deep-soft: #161c23;
+  --bg-card-alt: #1a2129;
+  --border-alt: #2a333e;
+  --border-alt-hover: #46525f;
+  --text-alt-muted: #7f8c99;
+  --text-alt-secondary: #aeb9c4;
+  --text-alt-body: #aeb9c4;
+  --text-alt-primary: #e3e9ef;
   --text-alt-strong: #ffffff;
-  --color-link-soft: #a0cfff;
-  --code-text: #c3e88d;
-  --tint-success-bg: #0f2014;
-  --tint-danger-bg: #2a1515;
-  --bg-overlay: rgba(31, 31, 31, 0.8);
-  --scrollbar-track: #1f1f1f;
-  --scrollbar-thumb: #434343;
-  --scrollbar-thumb-hover: #5a5a5a;
+
+  --color-success: #4caf82;
+  --color-warning: #d4a04c;
+  --color-danger: #e06c5f;
+  --up: #e06c5f;
+  --dn: #4caf82;
+  --up-tint: #2b1a17;
+  --dn-tint: #15261d;
+
+  --color-link-soft: #8ab6d4;
+  --code-text: #9ece8f;
+  --tint-success-bg: #15261d;
+  --tint-danger-bg: #2b1a17;
+  --bg-overlay: rgba(18, 22, 28, 0.8);
+  --scrollbar-track: #1a2129;
+  --scrollbar-thumb: #38434f;
+  --scrollbar-thumb-hover: #46525f;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+
+  /* ===== Element Plus 接管(暗色,覆盖 EP dark css-vars) ===== */
+  --el-color-primary: #6aa3cf;
+  --el-color-primary-light-3: #85b6da;
+  --el-color-primary-light-5: #a7cbe6;
+  --el-color-primary-light-7: #27425a;
+  --el-color-primary-light-8: #1d3349;
+  --el-color-primary-light-9: #172838;
+  --el-color-primary-dark-2: #4f8cba;
+  --el-color-success: var(--color-success);
+  --el-color-success-light-9: var(--dn-tint);
+  --el-color-danger: var(--color-danger);
+  --el-color-danger-light-9: var(--up-tint);
+  --el-color-error: var(--color-danger);
+  --el-color-error-light-9: var(--up-tint);
+  --el-color-warning: var(--color-warning);
+  --el-text-color-primary: var(--text-primary);
+  --el-text-color-regular: var(--text-secondary);
+  --el-text-color-secondary: var(--text-muted);
+  --el-text-color-placeholder: var(--text-faint);
+  --el-border-color: var(--border-color);
+  --el-border-color-light: var(--border-color);
+  --el-border-color-lighter: var(--border-color);
+  --el-bg-color: var(--bg-card);
+  --el-bg-color-page: var(--bg-page);
+  --el-fill-color-light: var(--bg-soft);
 }
 
 *, *::before, *::after {
@@ -83,7 +212,7 @@ html, body {
   width: 100%;
   background: var(--bg-page);
   color: var(--text-primary);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family: var(--font-sans);
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -92,6 +221,31 @@ html, body {
 #app {
   height: 100%;
   width: 100%;
+}
+
+/* ===== 工具类 ===== */
+/* 数据数字:等宽 + 表格数字,用于价格/涨跌幅/评分/代码 */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* 卡片区块标题:替代 emoji 标题 */
+.section-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.section-title::before {
+  content: '';
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--el-color-primary);
 }
 
 /* Scrollbar styling */
@@ -118,6 +272,11 @@ html, body {
   background: transparent !important;
   --el-table-bg-color: transparent !important;
   --el-table-tr-bg-color: transparent !important;
+}
+
+/* 表格内数字列对齐 */
+.el-table .cell {
+  font-variant-numeric: tabular-nums;
 }
 
 .el-table tr,
