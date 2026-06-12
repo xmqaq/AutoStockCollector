@@ -13,7 +13,6 @@
         @click="toggleCollapse(ds.tool)"
       >
         <div class="ds-header">
-          <span class="ds-icon">{{ ds.icon }}</span>
           <span class="ds-label">{{ ds.label }}</span>
           <span class="ds-badge" :class="ds.badgeClass">{{ ds.badgeText }}</span>
         </div>
@@ -98,9 +97,6 @@ function toggleCollapse(tool: string) {
   display: flex;
   align-items: center;
   gap: 6px;
-}
-.ds-icon {
-  font-size: 16px;
 }
 .ds-label {
   font-size: 12px;

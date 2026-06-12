@@ -112,7 +112,6 @@
             @click="router.push('/data-monitor')"
           >
             <div class="hc-icon-name">
-              <span class="hc-icon">{{ row.icon }}</span>
               <span class="hc-name">{{ row.label }}</span>
             </div>
             <div class="hc-count num">{{ row.record_count != null ? row.record_count.toLocaleString() : '--' }}<span class="hc-unit">{{ row.unit }}</span></div>
@@ -197,15 +196,15 @@ const staleTypes = computed(() =>
     .map(p => (TYPE_LABEL as Record<string, string>)[p.task_type] || p.task_type)
 )
 
-const CARD_META: Record<string, { icon: string; unit: string }> = {
-  kline:        { icon: '', unit: '条' },
-  financial:    { icon: '', unit: '条' },
-  dragon_tiger: { icon: '', unit: '条' },
-  margin:       { icon: '', unit: '条' },
-  news:         { icon: '', unit: '条' },
-  fund_flow:    { icon: '', unit: '条' },
-  sector:       { icon: '', unit: '条' },
-  stock_info:   { icon: '', unit: '只' },
+const CARD_META: Record<string, { unit: string }> = {
+  kline:        { unit: '条' },
+  financial:    { unit: '条' },
+  dragon_tiger: { unit: '条' },
+  margin:       { unit: '条' },
+  news:         { unit: '条' },
+  fund_flow:    { unit: '条' },
+  sector:       { unit: '条' },
+  stock_info:   { unit: '只' },
 }
 
 const CARD_ORDER = ['kline', 'financial', 'dragon_tiger', 'margin', 'news', 'fund_flow', 'sector', 'stock_info']
@@ -215,11 +214,10 @@ const healthCards = computed(() => {
   collectStore.progressList.forEach(p => { byType[p.task_type] = p })
   return CARD_ORDER.map(key => {
     const p = byType[key] || {}
-    const meta = CARD_META[key] || { icon: '', unit: '条' }
+    const meta = CARD_META[key] || { unit: '条' }
     return {
       value: key,
       label: (TYPE_LABEL as Record<string, string>)[key] || key,
-      icon: meta.icon,
       unit: meta.unit,
       record_count: (p.record_count ?? (p as any).record_count) as number | null,
       latest_date: ((p as any).latest_date ?? (p as any).date_to) as string | null,
@@ -458,7 +456,6 @@ onUnmounted(() => {
   color: var(--text-muted);
 }
 
-.hc-icon { font-size: 14px; }
 
 .hc-name {
   font-weight: 600;
