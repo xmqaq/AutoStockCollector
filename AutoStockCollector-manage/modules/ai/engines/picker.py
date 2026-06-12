@@ -440,8 +440,8 @@ class PickerEngine:
                 if reason:
                     return ("filtered", reason)
                 return ("ok", code, self._screen_score(fi, weight_overrides, indicator_config))
-            except Exception:
-                return ("fail",)
+            except Exception as e:
+                return ("fail", repr(e))
 
         screened: List[tuple] = []
         screen_failures = 0
@@ -460,6 +460,10 @@ class PickerEngine:
                         filtered[result[1]] = filtered.get(result[1], 0) + 1
                     elif tag == "ok":
                         screened.append((result[1], result[2]))
+                    else:
+                        screen_failures += 1
+                        if screen_failures <= 5:
+                            logger.warning(f"Stage-1 screen failed for {code}: {result[1] if len(result) > 1 else 'unknown'}")
                 except Exception:
                     screen_failures += 1
                     if screen_failures <= 5:
