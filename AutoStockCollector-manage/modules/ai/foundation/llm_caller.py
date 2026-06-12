@@ -58,7 +58,8 @@ class ProviderCaller:
             # Anthropic 不支持 system role 混在 messages 里，过滤出 system 单独传
             system_msgs = [m["content"] for m in msg_list if m.get("role") == "system"]
             user_msgs = [m for m in msg_list if m.get("role") != "system"]
-            payload: Dict[str, Any] = {"model": model, "max_tokens": max_tokens, "messages": user_msgs}
+            payload: Dict[str, Any] = {"model": model, "max_tokens": max_tokens,
+                                       "temperature": temperature, "messages": user_msgs}
             if system_msgs:
                 payload["system"] = system_msgs[0]
             data = self.poster(

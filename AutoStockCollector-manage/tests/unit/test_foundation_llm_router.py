@@ -98,5 +98,26 @@ class TestDefaultCallerWiring(unittest.TestCase):
         self.assertEqual(result.data, {"ok": True})
 
 
+class TestTemperatureMaxTokensPassthrough(unittest.TestCase):
+    def test_chat_passes_temperature_and_max_tokens_to_capable_caller(self):
+        captured = {}
+
+        def caller(provider, prompt, temperature=0.7, max_tokens=2000, **kw):
+            captured.update(temperature=temperature, max_tokens=max_tokens)
+            return "ok"
+
+        r = LLMRouter(providers=["p1"], caller=caller).chat(
+            "hi", temperature=0.4, max_tokens=4000)
+        self.assertTrue(r.success)
+        self.assertEqual(captured, {"temperature": 0.4, "max_tokens": 4000})
+
+    def test_chat_keeps_compat_with_two_arg_caller(self):
+        def caller(provider, prompt):
+            return "ok"
+
+        r = LLMRouter(providers=["p1"], caller=caller).chat("hi", temperature=0.4)
+        self.assertTrue(r.success)
+
+
 if __name__ == "__main__":
     unittest.main()

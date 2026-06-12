@@ -56,22 +56,29 @@ class LLMRouter:
             self._provider_caller = ProviderCaller()
         return self._provider_caller(provider, prompt, messages=messages)
 
+    def _caller_accepts(self, name: str) -> bool:
+        """检测 caller 是否支持某关键字参数（结果缓存）。"""
+        cache = getattr(self, "_caller_param_cache", None)
+        if cache is None:
+            cache = self._caller_param_cache = {}
+        if name not in cache:
+            import inspect
+            try:
+                params = inspect.signature(self.caller).parameters.values()
+                cache[name] = any(
+                    p.name == name or p.kind == inspect.Parameter.VAR_KEYWORD
+                    for p in params
+                )
+            except (TypeError, ValueError):
+                cache[name] = False
+        return cache[name]
+
     def _caller_accepts_messages(self) -> bool:
         """检测注入/默认 caller 是否支持 messages 参数（缓存结果）。
 
         测试里注入的 2 参 caller(provider, prompt) 不支持，走单 prompt 路径，保持兼容。
         """
-        if not hasattr(self, "_caller_msgs_ok"):
-            import inspect
-            try:
-                params = inspect.signature(self.caller).parameters.values()
-                self._caller_msgs_ok = any(
-                    p.name == "messages" or p.kind == inspect.Parameter.VAR_KEYWORD
-                    for p in params
-                )
-            except (TypeError, ValueError):
-                self._caller_msgs_ok = False
-        return self._caller_msgs_ok
+        return self._caller_accepts("messages")
 
     def _build_prompt(self, prompt: str, schema: Optional[Dict[str, Any]]) -> str:
         if not schema:
@@ -184,12 +191,17 @@ class LLMRouter:
 
         last_error = ""
         send_messages = messages if (messages and self._caller_accepts_messages()) else None
+        call_kwargs: Dict[str, Any] = {}
+        if self._caller_accepts("temperature"):
+            call_kwargs["temperature"] = temperature
+        if self._caller_accepts("max_tokens"):
+            call_kwargs["max_tokens"] = max_tokens
         for provider in self.providers:
             try:
                 if send_messages is not None:
-                    raw = self.caller(provider, full_prompt, messages=send_messages)
+                    raw = self.caller(provider, full_prompt, messages=send_messages, **call_kwargs)
                 else:
-                    raw = self.caller(provider, full_prompt)
+                    raw = self.caller(provider, full_prompt, **call_kwargs)
                 if schema:
                     data = self._parse_json(raw)
                     if data is None:
