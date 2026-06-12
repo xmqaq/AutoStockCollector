@@ -94,6 +94,14 @@ class TestStockDAL(unittest.TestCase):
 
     @patch.object(StockDAL, "_fetch_ttm_valuation", return_value={"pe": None, "pb": None, "total_mv": None})
     @patch.object(StockDAL, "_fetch_realtime_price", return_value=None)
+    def test_bundle_carries_financials_list(self, _mock_price, _mock_ttm):
+        """get_stock_bundle 返回的 bundle.financials 应是财报列表(复用,不再二次查询)。"""
+        dal = _make_dal()
+        b = dal.get_stock_bundle("SH600519")
+        assert isinstance(b.financials, list)
+
+    @patch.object(StockDAL, "_fetch_ttm_valuation", return_value={"pe": None, "pb": None, "total_mv": None})
+    @patch.object(StockDAL, "_fetch_realtime_price", return_value=None)
     def test_q1_eps_annualized(self, _mock_price, _mock_ttm):
         """Q1 报告（ISO 日期 -03-31）的 EPS 应乘以 4 年化。"""
         dal = _make_dal()

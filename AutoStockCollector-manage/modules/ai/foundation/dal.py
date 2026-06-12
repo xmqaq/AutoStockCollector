@@ -77,6 +77,7 @@ class StockDataBundle:
     fund_flow_date: str = ""                          # 最新资金流向日期
     industry: str = ""                       # 所属行业
     financial: Dict[str, Any] = field(default_factory=dict)
+    financials: List[Dict[str, Any]] = field(default_factory=list)
     news: List[Dict[str, Any]] = field(default_factory=list)
     dragon_tiger: List[Dict[str, Any]] = field(default_factory=list)
     margin: List[Dict[str, Any]] = field(default_factory=list)
@@ -596,6 +597,7 @@ class StockDAL:
             fund_flow_date=ff_avg["fund_flow_date"],
             industry=industry,
             financial=financial,
+            financials=financials,
             news=news,
             dragon_tiger=dragon,
             margin=margin,

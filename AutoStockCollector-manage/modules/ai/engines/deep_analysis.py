@@ -316,9 +316,8 @@ class DeepAnalysisService:
         return result
 
     def _build_financial(self, code: str, bundle) -> Dict[str, Any]:
-        financials = self.dal.financial_storage.find_many(
-            {"code": code}, sort=[("report_date", -1)], limit=8
-        ) or []
+        financials = bundle.financials or self.dal.financial_storage.find_many(
+            {"code": code}, sort=[("report_date", -1)], limit=8) or []
         latest = financials[0] if financials else {}
 
         report_date = str(latest.get("report_date", "") or "")
