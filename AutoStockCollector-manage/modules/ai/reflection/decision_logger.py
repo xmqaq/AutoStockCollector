@@ -11,7 +11,8 @@ class DecisionLogger:
         self.collection = collection if collection is not None else get_collection("trading_memory")
 
     def log_decision(self, run_id: str, stock_code: str, decision: Dict[str, Any]) -> str:
-        date_key = beijing_now().strftime("%Y-%m-%d")
+        now = beijing_now()  # date_key 与 timestamp 取同一时刻,避免跨午夜不一致
+        date_key = now.strftime("%Y-%m-%d")
         record = {
             "type": "trading_decision",
             "run_id": run_id,
@@ -21,7 +22,7 @@ class DecisionLogger:
             "bull_score": decision.get("bull_score"),
             "bear_score": decision.get("bear_score"),
             "confidence": decision.get("confidence"),
-            "timestamp": beijing_now().isoformat(),
+            "timestamp": now.isoformat(),
             "evaluated": False,
         }
         if decision.get("bull_score", 50) > decision.get("bear_score", 50):
