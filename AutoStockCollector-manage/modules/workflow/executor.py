@@ -3,7 +3,6 @@
 """
 from typing import List, Dict, Any, Optional, Callable
 from datetime import datetime
-from utils.helpers import beijing_now
 from core.storage.mongo_storage import StockInfoStorage, KlineStorage, FundFlowStorage, NewsStorage
 from modules.ai_selector.strategies.base import SelectionResult, RiskLevel
 from utils.logger import get_logger
@@ -102,7 +101,7 @@ class WorkflowExecutor:
         codes_override: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         logger.info(f"Starting workflow execution: {self.workflow_id} (start_from_idx={start_from_idx})")
-        start_time = beijing_now()
+        start_time = datetime.now()
         execution_log: List[Dict[str, Any]] = []
 
         try:
@@ -142,7 +141,7 @@ class WorkflowExecutor:
                         "workflow_id": self.workflow_id,
                         "error": "Execution cancelled by user",
                         "cancelled": True,
-                        "execution_time": beijing_now().isoformat(),
+                        "execution_time": datetime.now().isoformat(),
                         "execution_log": execution_log
                     }
 
@@ -155,7 +154,7 @@ class WorkflowExecutor:
                         "paused_node_idx": idx,
                         "codes": self.codes,
                         "workflow_id": self.workflow_id,
-                        "execution_time": beijing_now().isoformat(),
+                        "execution_time": datetime.now().isoformat(),
                         "execution_log": execution_log
                     }
 
@@ -172,11 +171,11 @@ class WorkflowExecutor:
                         "paused_node_idx": idx + 1,
                         "codes": self.codes,
                         "workflow_id": self.workflow_id,
-                        "execution_time": beijing_now().isoformat(),
+                        "execution_time": datetime.now().isoformat(),
                         "execution_log": execution_log
                     }
 
-            duration = (beijing_now() - start_time).total_seconds()
+            duration = (datetime.now() - start_time).total_seconds()
             self._report_progress("end", "完成", f"执行完成，耗时 {duration:.2f}s", 100)
             return {
                 "success": True,
@@ -184,7 +183,7 @@ class WorkflowExecutor:
                 "result_count": len(self.results),
                 "duration": duration,
                 "results": [r.to_dict() for r in self.results],
-                "execution_time": beijing_now().isoformat(),
+                "execution_time": datetime.now().isoformat(),
                 "execution_log": execution_log
             }
         except Exception as e:
@@ -193,7 +192,7 @@ class WorkflowExecutor:
                 "success": False,
                 "workflow_id": self.workflow_id,
                 "error": str(e),
-                "execution_time": beijing_now().isoformat(),
+                "execution_time": datetime.now().isoformat(),
                 "execution_log": execution_log
             }
 

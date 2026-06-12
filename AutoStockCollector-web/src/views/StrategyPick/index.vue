@@ -13,7 +13,34 @@
         <el-button type="primary" size="small" :loading="running" :disabled="running || selectedIds.length === 0" @click="runPick">
           {{ running ? '分析中...' : '开始选股' }}
         </el-button>
+        <el-button v-if="running" type="danger" size="small" @click="cancelPick">取消</el-button>
         <el-button size="small" :loading="loading" @click="loadResult">刷新结果</el-button>
+        <el-dropdown v-if="historyItems.length" trigger="click" @command="loadHistoryResult">
+          <el-button size="small">
+            历史结果<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item v-for="h in historyItems" :key="h.run_id" :command="h.run_id">
+                <span class="sp-history-item">
+                  <span>
+                    <span class="sp-history-time">{{ h.created_at ? dayjs(h.created_at).format('MM-DD HH:mm') : '未知' }}</span>
+                    <span class="sp-history-meta">{{ h.selected_count || 0 }}只</span>
+                    <span v-if="h.portfolio_metrics" class="sp-history-meta" style="color:#67c23a">
+                      {{ h.portfolio_metrics.avg_composite.toFixed(1) }}分 · {{ h.portfolio_metrics.industry_count }}行业
+                    </span>
+                    <span class="sp-history-meta" style="display:block;line-height:1.4">
+                      {{ (h.pick_config?.strategy_ids || []).map(id => strategyNameMap[id] || id.slice(0,6)).join('、').slice(0, 40) }}{{ (h.pick_config?.strategy_ids?.length || 0) > 1 ? '…' : '' }}
+                      <template v-if="h.pick_config?.agent_ids?.length"> | {{ h.pick_config.agent_ids.length }}Agent</template>
+                    </span>
+                  </span>
+                  <el-checkbox v-if="compareRunIds.length < 3 || compareRunIds.includes(h.run_id)" size="small" :model-value="compareRunIds.includes(h.run_id)" @click.stop="toggleCompare(h.run_id)" class="sp-compare-check" />
+                </span>
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <el-button v-if="compareRunIds.length >= 2" size="small" type="warning" @click="showCompareDialog = true">对比 {{ compareRunIds.length }} 个结果</el-button>
       </div>
     </div>
 
@@ -99,6 +126,30 @@
     </div>
 
     <!-- 买卖信号 -->
+    <!-- 持仓组合建议 -->
+    <div v-if="result?.portfolio_suggestion?.positions?.length" class="sp-portfolio-suggestion">
+      <div class="sp-ps-header">
+        <span class="sp-ps-title">持仓组合建议</span>
+        <span class="sp-ps-meta">{{ result.portfolio_suggestion.total_count }}只 · {{ result.portfolio_suggestion.industry_count }}个行业 · 最大行业{{ result.portfolio_suggestion.max_industry_pct }}%</span>
+      </div>
+      <div class="sp-ps-table-wrap">
+        <table class="sp-ps-table">
+          <thead><tr><th>代码</th><th>名称</th><th>行业</th><th>评分</th><th>动作</th><th>建议仓位</th><th>累计</th></tr></thead>
+          <tbody>
+            <tr v-for="pos in result.portfolio_suggestion.positions" :key="pos.code" class="sp-ps-row">
+              <td>{{ pos.code }}</td>
+              <td>{{ pos.name }}</td>
+              <td>{{ pos.industry }}</td>
+              <td><span class="sp-score-badge" :style="{color: scoreColor(pos.composite)}">{{ pos.composite.toFixed(1) }}</span></td>
+              <td><span class="sp-sig-badge" :class="'sp-sig-' + pos.action">{{ pos.action }}</span></td>
+              <td><span class="sp-ps-weight">{{ pos.weight }}%</span></td>
+              <td><span class="sp-ps-cum">{{ pos.cumulative }}%</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <div v-if="result?.trade_signals?.length" class="sp-signals-box">
       <div class="sp-signals-header">
         <span class="sp-signals-title">买卖信号建议（基于当前持仓）</span>
@@ -198,18 +249,55 @@
         <div class="sp-detail-source">策略: {{ detailPick.from_strategy }} | 策略评分: {{ detailPick.strategy_score }}</div>
 
         <div v-if="detailPick.score_details && Object.keys(detailPick.score_details).length" class="sp-detail-body">
-          <div v-for="dim in orderedDimensions" :key="dim.key" class="sp-dim-block">
-            <div class="sp-dim-title">
-              <span class="sp-dim-label">{{ dim.label }}</span>
-              <el-progress class="sp-dim-bar" :percentage="Math.round(dim.score)" :color="scoreColor(dim.score)" :stroke-width="8" />
-              <span class="sp-dim-score">{{ dim.score }}分</span>
-              <span class="sp-dim-weight">权重{{ Math.round(dim.weight * 100) }}%</span>
-              <span class="sp-dim-contrib">贡献{{ dim.contribution }}分</span>
+          <div class="sp-dim-table">
+            <div class="sp-dim-tr sp-dim-th">
+              <span class="sp-dim-td sp-dim-td-label">维度</span>
+              <span class="sp-dim-td sp-dim-td-score">评分</span>
+              <span class="sp-dim-td sp-dim-td-weight">权重</span>
+              <span class="sp-dim-td sp-dim-td-contrib">贡献</span>
+              <span class="sp-dim-td sp-dim-td-bar">进度</span>
+            </div>
+            <div v-for="dim in orderedDimensions" :key="dim.key" class="sp-dim-tr">
+              <span class="sp-dim-td sp-dim-td-label">{{ dim.label }}</span>
+              <span class="sp-dim-td sp-dim-td-score">
+                <span class="sp-score-badge" :style="{color: scoreColor(dim.score), fontWeight: 600}">{{ dim.score }}</span>
+              </span>
+              <span class="sp-dim-td sp-dim-td-weight">{{ Math.round(dim.weight * 100) }}%</span>
+              <span class="sp-dim-td sp-dim-td-contrib">{{ dim.contribution }}</span>
+              <span class="sp-dim-td sp-dim-td-bar">
+                <el-progress :percentage="Math.round(dim.score)" :color="scoreColor(dim.score)" :stroke-width="6" />
+              </span>
+            </div>
+          </div>
+          <div v-for="dim in orderedDimensionsWithDetails" :key="dim.key" class="sp-dim-detail-row">
+            <div class="sp-dim-detail-toggle" @click="dim.expanded = !dim.expanded">
+              <el-icon :class="{ 'is-expanded': dim.expanded }" style="transition:transform .2s;vertical-align:middle"><ArrowDown /></el-icon>
+              {{ dim.label }}明细
+            </div>
+            <div v-if="dim.expanded" class="sp-dim-detail-body">
+              <div v-for="(val, key) in dim.details" :key="key" class="sp-dim-detail-item">
+                <span class="sp-dim-detail-key">{{ key }}</span>
+                <span class="sp-dim-detail-val">{{ typeof val === 'number' ? val.toFixed(2) : val }}</span>
+              </div>
+              <el-empty v-if="!Object.keys(dim.details).length" description="无明细数据" :image-size="40" />
             </div>
           </div>
         </div>
 
-        <div v-if="detailPick.llm" class="sp-detail-advice">
+        <div v-if="agentAnalyses.length" class="sp-detail-advice">
+          <div v-for="(agent, ai) in agentAnalyses" :key="ai" class="sp-agent-advice">
+            <div class="sp-agent-advice-header">{{ agent.agent_name || 'AI分析' }}</div>
+            <div v-if="agent.recommendation" class="sp-advice-section">
+              <div class="sp-advice-label">操作建议：</div>
+              <div class="sp-advice-text md-content" v-html="renderMd(agent.recommendation)"></div>
+            </div>
+            <div v-if="agent.risk_factors?.length" class="sp-risk-section">
+              <div class="sp-advice-label">风险提示：</div>
+              <div v-for="(risk, ri) in agent.risk_factors" :key="ri" class="sp-risk-item">{{ risk }}</div>
+            </div>
+          </div>
+        </div>
+        <div v-else-if="detailPick.llm" class="sp-detail-advice">
           <div v-if="detailPick.llm.recommendation" class="sp-advice-section">
             <div class="sp-advice-label">AI分析建议：</div>
             <div class="sp-advice-text md-content" v-html="renderMd(detailPick.llm.recommendation)"></div>
@@ -285,18 +373,73 @@
       <div v-if="summaryExpanded" class="sp-summary-body md-content" v-html="renderMd(result.debate_summary)"></div>
     </div>
 
+    <!-- 组合分析 -->
+    <div v-if="result?.portfolio_metrics && result.picks?.length" class="sp-portfolio-section">
+      <div class="sp-summary-toggle" @click="portfolioExpanded = !portfolioExpanded">
+        <span>组合分析</span>
+        <svg class="sp-summary-svg" :class="{ 'is-expanded': portfolioExpanded }" viewBox="0 0 12 12" width="12" height="12">
+          <path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div v-if="portfolioExpanded" class="sp-portfolio-body">
+        <!-- 指标卡片 -->
+        <div class="sp-metrics-row">
+          <div class="sp-metric-card"><span class="sp-metric-value">{{ result.portfolio_metrics.avg_composite }}</span><span class="sp-metric-label">平均评分</span></div>
+          <div class="sp-metric-card"><span class="sp-metric-value">{{ result.portfolio_metrics.composite_std }}</span><span class="sp-metric-label">评分标准差</span></div>
+          <div class="sp-metric-card"><span class="sp-metric-value">{{ result.portfolio_metrics.composite_max }}~{{ result.portfolio_metrics.composite_min }}</span><span class="sp-metric-label">评分范围</span></div>
+          <div class="sp-metric-card"><span class="sp-metric-value">{{ result.portfolio_metrics.industry_count }}</span><span class="sp-metric-label">覆盖行业</span></div>
+          <div class="sp-metric-card"><span class="sp-metric-value">{{ result.portfolio_metrics.industry_hhi }}</span><span class="sp-metric-label">行业集中度</span></div>
+          <div class="sp-metric-card"><span class="sp-metric-value">{{ result.portfolio_metrics.top_industry_pct }}%</span><span class="sp-metric-label">{{ result.portfolio_metrics.top_industry }}占比</span></div>
+        </div>
+        <!-- 图表 -->
+        <div class="sp-charts-row">
+          <div class="sp-chart-box">
+            <div class="sp-chart-title">行业分布</div>
+            <v-chart :option="industryPieOption" style="height:260px" autoresize />
+          </div>
+          <div class="sp-chart-box">
+            <div class="sp-chart-title">多维度评分对比</div>
+            <v-chart :option="dimRadarOption" style="height:260px" autoresize />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 对比弹窗 -->
+    <el-dialog v-model="showCompareDialog" title="历史结果对比" width="800px" top="5vh" class="sp-compare-dialog" destroy-on-close>
+      <div v-loading="compareLoading" class="sp-compare-body">
+        <div v-for="(cr, ci) in compareResults" :key="cr.run_id" class="sp-compare-col">
+          <div class="sp-compare-header">{{ cr.created_at ? dayjs(cr.created_at).format('MM-DD HH:mm') : '未知' }}</div>
+          <div class="sp-metrics-row" style="flex-direction:column;gap:4px">
+            <div class="sp-metric-card" style="flex:none"><span class="sp-metric-value">{{ cr.portfolio_metrics?.avg_composite ?? '-' }}</span><span class="sp-metric-label">平均分</span></div>
+            <div class="sp-metric-card" style="flex:none"><span class="sp-metric-value">{{ cr.portfolio_metrics?.composite_std ?? '-' }}</span><span class="sp-metric-label">标准差</span></div>
+            <div class="sp-metric-card" style="flex:none"><span class="sp-metric-value">{{ cr.portfolio_metrics?.industry_count ?? '-' }}</span><span class="sp-metric-label">行业数</span></div>
+            <div class="sp-metric-card" style="flex:none"><span class="sp-metric-value">{{ cr.portfolio_metrics?.industry_hhi ?? '-' }}</span><span class="sp-metric-label">集中度</span></div>
+          </div>
+          <v-chart v-if="cr.picks?.length" :option="comparePieOption(cr.picks)" style="height:200px" autoresize />
+        </div>
+      </div>
+    </el-dialog>
+
     <el-empty v-if="!result?.picks?.length && !loading && !running" description="选择策略后点击「开始选股」" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { marked } from 'marked'
 import dayjs from 'dayjs'
-import { strategyPickApi, type StrategyPickItem, type StrategyPickResult, type StrategyPickProgress, type StrategyPickAgent, type DebateConsensus } from '@/api/strategyPick'
+import { strategyPickApi, type StrategyPickItem, type StrategyPickResult, type StrategyPickProgress, type StrategyPickHistoryItem, type PortfolioMetrics, type StrategyPickAgent, type DebateConsensus } from '@/api/strategyPick'
 import type { StrategyRule } from '@/types'
+import VChart from 'vue-echarts'
+import { use } from 'echarts/core'
+import { PieChart, RadarChart } from 'echarts/charts'
+import { TooltipComponent, LegendComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+import { getChartTheme as ct } from '@/utils/chartTheme'
+use([PieChart, RadarChart, TooltipComponent, LegendComponent, CanvasRenderer])
 
 marked.setOptions({ breaks: true, gfm: true })
 
@@ -308,6 +451,13 @@ function renderMd(text: string): string {
 const router = useRouter()
 
 const strategies = ref<StrategyRule[]>([])
+const strategyNameMap = computed(() => {
+  const m: Record<string, string> = {}
+  for (const s of strategies.value) {
+    if (s._id) m[s._id] = s.name
+  }
+  return m
+})
 const strategiesLoading = ref(false)
 const selectedIds = ref<string[]>([])
 const agents = ref<StrategyPickAgent[]>([])
@@ -323,11 +473,37 @@ const topN = ref(20)
 const showDoneTip = ref(false)
 const summaryExpanded = ref(true)
 const debateOverviewExpanded = ref(true)
+const portfolioExpanded = ref(true)
 const collapseActive = ref<string[]>([])
 const detailDialogVisible = ref(false)
 const detailPick = ref<StrategyPickItem | null>(null)
 
+const STORAGE_KEY = 'strategy_pick_config'
+
+function saveConfig() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      selectedIds: selectedIds.value,
+      selectedAgentIds: selectedAgentIds.value,
+      selectedPhilosophyIds: selectedPhilosophyIds.value,
+      topN: topN.value,
+    }))
+  } catch { /* ignore */ }
+}
+
+function loadConfig(): Record<string, any> | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch { return null }
+}
+
 const progress = ref<StrategyPickProgress>({ is_running: false, progress: 0, status: '' })
+const historyItems = ref<StrategyPickHistoryItem[]>([])
+const compareRunIds = ref<string[]>([])
+const showCompareDialog = ref(false)
+const compareResults = ref<StrategyPickResult[]>([])
+const compareLoading = ref(false)
 let eventSource: EventSource | null = null
 let progressTimer: ReturnType<typeof setInterval> | null = null
 let sseTimeout: ReturnType<typeof setTimeout> | null = null
@@ -351,6 +527,28 @@ const orderedDimensions = computed(() => {
     }
   })
 })
+const orderedDimensionsWithDetails = computed(() => {
+  const pick = detailPick.value
+  if (!pick?.score_details) return []
+  return DIM_ORDER.filter(k => k in pick.score_details && pick.score_details[k].details).map(k => {
+    const d = pick.score_details[k]
+    return {
+      key: k,
+      label: DIM_LABELS[k] || k,
+      details: typeof d.details === 'object' && d.details ? d.details : {},
+      expanded: false,
+    }
+  })
+})
+
+const agentAnalyses = computed(() => {
+  return detailPick.value?.agent_analyses || (detailPick.value?.llm ? [{
+    agent_id: '', agent_name: '',
+    summary: detailPick.value.llm.summary || '',
+    recommendation: detailPick.value.llm.recommendation || '',
+    risk_factors: detailPick.value.llm.risk_factors || [],
+  }] : [])
+})
 
 const signalGroups = computed(() => {
   const signals = result.value?.trade_signals || []
@@ -361,6 +559,52 @@ const signalGroups = computed(() => {
   const order = ['买入', '加仓', '关注', '持有', '观望', '减仓', '卖出']
   return order.filter(a => map[a]).map(a => ({ action: a, count: map[a] }))
 })
+
+const theme = computed(() => ct())
+const palette = ['#5a7af0', '#f56c6c', '#67c23a', '#e6a23c', '#909399', '#36cfc9', '#b37feb', '#ff85c0', '#597ef7', '#95de64']
+
+const industryPieOption = computed(() => {
+  const picks = result.value?.picks || []
+  const map: Record<string, number> = {}
+  for (const p of picks) {
+    const ind = p.industry || '未知'
+    map[ind] = (map[ind] || 0) + 1
+  }
+  const sorted = Object.entries(map).sort((a, b) => b[1] - a[1])
+  return {
+    tooltip: { trigger: 'item', formatter: '{b}: {c}只 ({d}%)' },
+    legend: { bottom: 0, textStyle: { color: theme.value.legendText }, itemWidth: 10, itemHeight: 10 },
+    series: [{
+      type: 'pie', radius: ['30%', '65%'], center: ['50%', '45%'],
+      avoidLabelOverlap: true,
+      label: { show: false },
+      emphasis: { label: { show: true, fontSize: 13, fontWeight: 'bold' } },
+      data: sorted.map(([name, count], i) => ({ name, value: count, itemStyle: { color: palette[i % palette.length] } })),
+    }],
+  }
+})
+
+const dimRadarOption = computed(() => {
+  const pm = result.value?.portfolio_metrics
+  if (!pm?.dimension_avg) return {}
+  const dims = Object.keys(pm.dimension_avg)
+  const maxVal = Math.max(...Object.values(pm.dimension_avg), 80)
+  return {
+    tooltip: {},
+    radar: {
+      indicator: dims.map(k => ({ name: DIM_LABELS[k] || k, max: Math.ceil(maxVal / 10) * 10 + 10 })),
+      center: ['50%', '50%'], radius: '65%',
+      axisName: { color: theme.value.textColorStrong },
+      splitArea: { areaStyle: { color: ['rgba(90,122,240,0.02)', 'rgba(90,122,240,0.06)'] } },
+    },
+    series: [{
+      type: 'radar',
+      data: [{ value: dims.map(k => pm.dimension_avg[k]), name: '平均分', areaStyle: { color: 'rgba(90,122,240,0.2)' }, lineStyle: { color: '#5a7af0', width: 2 }, itemStyle: { color: '#5a7af0' } }],
+    }],
+  }
+})
+
+watch([selectedIds, selectedAgentIds, selectedPhilosophyIds, topN], saveConfig, { deep: true })
 
 function toggleAll() {
   if (selectedIds.value.length === strategies.value.length) {
@@ -482,6 +726,34 @@ async function loadResult() {
   }
 }
 
+async function loadHistory() {
+  try {
+    const res = await strategyPickApi.getHistory()
+    historyItems.value = res.data?.data || []
+  } catch { /* ignore */ }
+}
+
+async function loadHistoryResult(runId: string) {
+  loading.value = true
+  try {
+    const res = await strategyPickApi.getResult(runId)
+    const data = res.data?.data
+    result.value = data || null
+    if (data?.pick_config) {
+      const cfg = data.pick_config
+      const validStrategyIds = cfg.strategy_ids?.filter(id => strategies.value.some(s => s._id === id)) || []
+      if (validStrategyIds.length) selectedIds.value = validStrategyIds
+      if (cfg.agent_ids?.length) selectedAgentIds.value = cfg.agent_ids
+      if (cfg.philosophy_ids?.length) selectedPhilosophyIds.value = cfg.philosophy_ids
+      if (cfg.top_n) topN.value = cfg.top_n
+    }
+  } catch {
+    ElMessage.error('加载历史结果失败')
+  } finally {
+    loading.value = false
+  }
+}
+
 function startProgressPolling() {
   stopProgressPolling()
   progressTimer = setInterval(async () => {
@@ -496,7 +768,7 @@ function startProgressPolling() {
           if (data.progress >= 100) {
             running.value = false
             showDoneTip.value = true
-            await loadResult()
+            await Promise.all([loadResult(), loadHistory()])
             setTimeout(() => { showDoneTip.value = false }, 4000)
           } else {
             running.value = false
@@ -530,7 +802,7 @@ function startProgressSSE() {
         if (data.progress >= 100) {
           running.value = false
           showDoneTip.value = true
-          loadResult()
+          Promise.all([loadResult(), loadHistory()])
           setTimeout(() => { showDoneTip.value = false }, 4000)
         } else {
           running.value = false
@@ -589,10 +861,80 @@ async function runPick() {
   }
 }
 
+async function cancelPick() {
+  try {
+    const res = await strategyPickApi.cancel()
+    if (res.data?.success) {
+      stopProgressSSE()
+      stopProgressPolling()
+      running.value = false
+      progress.value = { is_running: false, progress: 0, status: '已取消' }
+    }
+  } catch {
+    ElMessage.error('取消失败')
+  }
+}
+
+function toggleCompare(runId: string) {
+  const idx = compareRunIds.value.indexOf(runId)
+  if (idx >= 0) {
+    compareRunIds.value.splice(idx, 1)
+  } else {
+    if (compareRunIds.value.length >= 3) {
+      ElMessage.warning('最多对比 3 个结果')
+      return
+    }
+    compareRunIds.value.push(runId)
+  }
+  if (compareRunIds.value.length >= 2) {
+    loadCompareResults()
+  }
+}
+
+async function loadCompareResults() {
+  compareLoading.value = true
+  try {
+    const results: StrategyPickResult[] = []
+    for (const rid of compareRunIds.value) {
+      const res = await strategyPickApi.getResult(rid)
+      if (res.data?.data) results.push(res.data.data)
+    }
+    compareResults.value = results
+  } catch {
+    ElMessage.error('加载对比数据失败')
+  } finally {
+    compareLoading.value = false
+  }
+}
+
+function comparePieOption(picks: StrategyPickItem[]) {
+  const map: Record<string, number> = {}
+  for (const p of picks) {
+    const ind = p.industry || '未知'
+    map[ind] = (map[ind] || 0) + 1
+  }
+  const sorted = Object.entries(map).sort((a, b) => b[1] - a[1])
+  return {
+    tooltip: { trigger: 'item', formatter: '{b}: {c}只' },
+    series: [{
+      type: 'pie', radius: ['30%', '60%'], center: ['50%', '50%'],
+      label: { show: false },
+      data: sorted.map(([name, count], i) => ({ name, value: count, itemStyle: { color: palette[i % palette.length] } })),
+    }],
+  }
+}
+
 onMounted(async () => {
-  await Promise.all([loadStrategies(), loadAgents(), loadResult()])
-  // Restore last pick config so result matches selections
-  if (result.value?.pick_config) {
+  await Promise.all([loadStrategies(), loadAgents(), loadResult(), loadHistory()])
+  // Restore config from localStorage first, fall back to pick_config from result
+  const stored = loadConfig()
+  if (stored) {
+    const validStrategyIds = stored.selectedIds?.filter(id => strategies.value.some(s => s._id === id)) || []
+    if (validStrategyIds.length) selectedIds.value = validStrategyIds
+    if (stored.selectedAgentIds?.length) selectedAgentIds.value = stored.selectedAgentIds
+    if (stored.selectedPhilosophyIds?.length) selectedPhilosophyIds.value = stored.selectedPhilosophyIds
+    if (stored.topN) topN.value = stored.topN
+  } else if (result.value?.pick_config) {
     const cfg = result.value.pick_config
     const validStrategyIds = cfg.strategy_ids?.filter(id => strategies.value.some(s => s._id === id)) || []
     if (validStrategyIds.length) selectedIds.value = validStrategyIds
@@ -621,6 +963,10 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
 .sp-title { font-size: 15px; font-weight: 700; color: var(--text-alt-primary); }
 .sp-subtitle { font-size: 12px; color: var(--text-alt-muted); }
 .sp-controls { display: flex; gap: 8px; align-items: center; }
+.sp-history-item { display: flex; flex-direction: row; align-items: center; gap: 8px; width: 100%; }
+.sp-history-item > :first-child { flex: 1; min-width: 0; }
+.sp-history-time { font-weight: 600; font-size: 13px; }
+.sp-history-meta { font-size: 11px; color: var(--text-alt-muted); }
 .sp-meta { display: flex; gap: 18px; font-size: 12px; color: var(--text-alt-muted); }
 
 /* 折叠选择区 */
@@ -682,7 +1028,7 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
 .sp-ss-卖出 { color: #f87171; background: rgba(248,113,113,0.12); }
 .sp-signals-table-wrap { overflow-x: auto; }
 .sp-signals-table {
-  width: 100%; border-collapse: collapse; font-size: 12px;
+  width: 100%; border-collapse: collapse; font-size: 14px;
 }
 .sp-signals-table th {
   text-align: left; color: var(--text-alt-muted); padding: 6px 8px; border-bottom: 1px solid var(--border-alt);
@@ -691,7 +1037,7 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
 .sp-signals-table td { padding: 6px 8px; border-bottom: 1px solid var(--border-alt); color: var(--text-alt-body); }
 .sp-signal-row:hover td { background: var(--bg-hover-subtle); }
 .sp-sig-badge {
-  display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 3px; font-weight: 600;
+  display: inline-block; font-size: 13px; padding: 2px 10px; border-radius: 3px; font-weight: 600;
 }
 .sp-sig-买入 { color: #4ade80; background: rgba(74,222,128,0.15); }
 .sp-sig-加仓 { color: #60a0f0; background: rgba(96,160,240,0.15); }
@@ -700,11 +1046,11 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
 .sp-sig-观望 { color: var(--text-alt-muted); background: rgba(144,144,152,0.12); }
 .sp-sig-减仓 { color: #fb923c; background: rgba(251,146,60,0.15); }
 .sp-sig-卖出 { color: #f87171; background: rgba(248,113,113,0.15); }
-.sp-priority { font-size: 11px; }
+.sp-priority { font-size: 13px; }
 .sp-pri-高 { color: #f87171; }
 .sp-pri-中 { color: #fbbf24; }
 .sp-pri-低 { color: var(--text-alt-muted); }
-.sp-signal-reason { font-size: 11px; color: var(--text-alt-muted); max-width: 260px; }
+.sp-signal-reason { font-size: 13px; color: var(--text-alt-muted); max-width: 260px; }
 
 .sp-selector-header {
   display: flex;
@@ -846,6 +1192,8 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
 .sp-dim-weight { font-size: 11px; color: var(--text-alt-muted); }
 .sp-dim-contrib { font-size: 11px; color: var(--text-alt-muted); }
 .sp-detail-advice { margin-top: 10px; border-top: 1px solid var(--border-alt); padding-top: 10px; }
+.sp-agent-advice { margin-bottom: 14px; }
+.sp-agent-advice-header { font-size: 13px; font-weight: 600; color: var(--accent); margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px dashed var(--border-alt); }
 .sp-advice-label { font-size: 12px; color: var(--text-alt-muted); margin-bottom: 4px; }
 .sp-advice-text { font-size: 13px; color: var(--text-alt-body); line-height: 1.6; }
 .sp-risk-section { margin-top: 8px; }
@@ -890,6 +1238,38 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
   color: var(--text-alt-body);
   line-height: 1.7;
 }
+
+/* 组合分析 */
+.sp-portfolio-section {
+  margin-top: 14px;
+  background: var(--bg-deep-soft);
+  border: 1px solid var(--border-alt);
+  border-left: 3px solid #67c23a;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.sp-portfolio-body { padding: 0 14px 14px; }
+.sp-metrics-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.sp-metric-card {
+  flex: 1 0 100px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-alt);
+  border-radius: 6px;
+  padding: 10px 12px;
+  text-align: center;
+  min-width: 80px;
+}
+.sp-metric-value { display: block; font-size: 18px; font-weight: 700; color: var(--accent); line-height: 1.3; }
+.sp-metric-label { display: block; font-size: 11px; color: var(--text-alt-muted); margin-top: 2px; }
+.sp-charts-row { display: flex; gap: 12px; }
+.sp-chart-box {
+  flex: 1;
+  background: var(--bg-card);
+  border: 1px solid var(--border-alt);
+  border-radius: 6px;
+  padding: 10px;
+}
+.sp-chart-title { font-size: 12px; font-weight: 600; color: var(--text-alt-body); margin-bottom: 6px; }
 
 /* Markdown */
 .md-content :deep(h1), .md-content :deep(h2), .md-content :deep(h3) {
@@ -1013,6 +1393,54 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
 .sp-signal-risks { display: flex; flex-wrap: wrap; gap: 4px; }
 .sp-signal-warning {
   font-size: 10px; color: #faad14; background: rgba(250,173,20,0.08);
-  padding: 1px 6px; border-radius: 3px;
+   padding: 1px 6px; border-radius: 3px;
 }
+
+/* 维度表格 */
+.sp-dim-table { width: 100%; border: 1px solid var(--border-alt); border-radius: 6px; overflow: hidden; }
+.sp-dim-tr { display: flex; align-items: center; padding: 6px 10px; gap: 6px; }
+.sp-dim-th { background: var(--bg-deep-soft); font-size: 11px; font-weight: 600; color: var(--text-alt-muted); }
+.sp-dim-tr:not(:last-child) { border-bottom: 1px solid var(--border-alt); }
+.sp-dim-td { flex-shrink: 0; }
+.sp-dim-td-label { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--text-alt-body); }
+.sp-dim-td-score { width: 40px; text-align: right; font-size: 13px; }
+.sp-dim-td-weight { width: 44px; text-align: right; font-size: 11px; color: var(--text-alt-muted); }
+.sp-dim-td-contrib { width: 44px; text-align: right; font-size: 11px; color: var(--text-alt-muted); }
+.sp-dim-td-bar { flex: 1; min-width: 80px; }
+.sp-dim-td-bar .el-progress { margin: 0; }
+.sp-score-badge { font-variant-numeric: tabular-nums; }
+.sp-dim-detail-row { margin-top: 6px; }
+.sp-dim-detail-toggle { font-size: 12px; color: var(--text-alt-muted); cursor: pointer; padding: 4px 10px; user-select: none; }
+.sp-dim-detail-toggle:hover { color: var(--accent); }
+.sp-dim-detail-body { padding: 6px 10px 10px 24px; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.sp-dim-detail-item { font-size: 12px; display: flex; gap: 6px; }
+.sp-dim-detail-key { color: var(--text-alt-muted); }
+.sp-dim-detail-val { color: var(--text-alt-body); font-weight: 500; font-variant-numeric: tabular-nums; }
+
+/* 持仓组合建议 */
+.sp-portfolio-suggestion {
+  margin-top: 14px;
+  background: var(--bg-deep-soft);
+  border: 1px solid var(--border-alt);
+  border-left: 3px solid #409eff;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.sp-ps-header { padding: 10px 14px 0; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.sp-ps-title { font-size: 14px; font-weight: 600; color: var(--text-alt-body); }
+.sp-ps-meta { font-size: 12px; color: var(--text-alt-muted); }
+.sp-ps-table-wrap { padding: 8px 14px 14px; overflow-x: auto; }
+.sp-ps-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.sp-ps-table th { text-align: left; color: var(--text-alt-muted); padding: 5px 8px; border-bottom: 1px solid var(--border-alt); font-weight: 500; white-space: nowrap; }
+.sp-ps-table td { padding: 5px 8px; border-bottom: 1px solid var(--border-alt); color: var(--text-alt-body); }
+.sp-ps-row:hover td { background: var(--bg-hover-subtle); }
+.sp-ps-weight { font-weight: 600; color: #409eff; }
+.sp-ps-cum { font-size: 11px; color: var(--text-alt-muted); }
+
+/* 对比 */
+.sp-compare-check { margin-left: auto; }
+.sp-compare-dialog .el-dialog__body { padding: 16px 20px; }
+.sp-compare-body { display: flex; gap: 16px; }
+.sp-compare-col { flex: 1; min-width: 0; }
+.sp-compare-header { font-size: 13px; font-weight: 600; color: var(--text-alt-body); margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border-alt); }
 </style>

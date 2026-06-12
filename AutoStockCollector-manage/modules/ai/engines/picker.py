@@ -429,27 +429,47 @@ class PickerEngine:
         _update_progress(15, f"数据加载完成，开始初筛 {total_u} 只...")
         logger.info(f"Stage-1: screening {total_u} stocks (cache preloaded)")
 
-        # ── Stage-1 初筛 ──
-        screened: List[tuple] = []
-        screen_failures = 0
-        filtered: Dict[str, int] = {"st": 0, "insufficient_kline": 0, "low_liquidity": 0}
-        report_interval = max(1, total_u // 20)
-        for i, code in enumerate(universe):
+        # ── Stage-1 初筛（并行） ──
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        _STAGE1_WORKERS = 8
+
+        def _screen_one(code: str) -> Optional[tuple]:
             try:
                 fi = self.dal.get_factor_inputs(code, kline_limit=60)
                 reason = self._hard_filter(fi, hard_filters)
                 if reason:
-                    filtered[reason] += 1
-                else:
-                    screened.append((code, self._screen_score(fi, weight_overrides, indicator_config)))
-            except Exception as e:
-                screen_failures += 1
-                if screen_failures <= 5:
-                    logger.warning(f"Stage-1 screen failed for {code}: {e!r}")
-                continue
-            if (i + 1) % report_interval == 0:
-                pct = 15 + int((i + 1) / total_u * 30)
-                _update_progress(pct, f"初筛 {i + 1}/{total_u} 只...")
+                    return ("filtered", reason)
+                return ("ok", code, self._screen_score(fi, weight_overrides, indicator_config))
+            except Exception:
+                return ("fail",)
+
+        screened: List[tuple] = []
+        screen_failures = 0
+        filtered: Dict[str, int] = {"st": 0, "insufficient_kline": 0, "low_liquidity": 0}
+        done_count = 0
+        screen_exec = ThreadPoolExecutor(max_workers=_STAGE1_WORKERS)
+        try:
+            fut_map = {screen_exec.submit(_screen_one, code): code for code in universe}
+            report_interval = max(1, total_u // 20)
+            for fut in as_completed(fut_map):
+                code = fut_map[fut]
+                try:
+                    result = fut.result()
+                    tag = result[0]
+                    if tag == "filtered":
+                        filtered[result[1]] = filtered.get(result[1], 0) + 1
+                    elif tag == "ok":
+                        screened.append((result[1], result[2]))
+                except Exception:
+                    screen_failures += 1
+                    if screen_failures <= 5:
+                        logger.warning(f"Stage-1 screen failed for {code}")
+                done_count += 1
+                if done_count % report_interval == 0:
+                    pct = 15 + int(done_count / total_u * 30)
+                    _update_progress(pct, f"初筛 {done_count}/{total_u} 只...")
+        finally:
+            screen_exec.shutdown(wait=False)
 
         if screen_failures > total_u * 0.5:
             logger.error(

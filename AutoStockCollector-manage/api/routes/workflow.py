@@ -1,9 +1,8 @@
 """
 选股工作流API路由
 """
-from flask import Blueprint, request, jsonify, Response, stream_with_context
+from flask import Blueprint, request, jsonify
 from datetime import datetime
-from utils.helpers import beijing_now
 import uuid
 import threading
 from modules.workflow import (
@@ -11,7 +10,6 @@ from modules.workflow import (
     WorkflowExecution, WorkflowExecutionStorage, ExecutionStatus,
     WorkflowTemplate, WorkflowTemplateStorage
 )
-from modules.workflow.sse import WorkflowSSE
 from utils.logger import get_logger
 
 
@@ -71,10 +69,9 @@ def create_workflow():
             nodes=[WorkflowNode.from_dict(n) if isinstance(n, dict) else n for n in data.get('nodes', [])],
             edges=[WorkflowEdge.from_dict(e) if isinstance(e, dict) else e for e in data.get('edges', [])],
             enabled=data.get('enabled', True),
-            created_at=beijing_now().isoformat(),
-            updated_at=beijing_now().isoformat(),
-            tags=data.get('tags', []),
-            workflow_type=data.get('workflow_type', '')
+            created_at=datetime.now().isoformat(),
+            updated_at=datetime.now().isoformat(),
+            tags=data.get('tags', [])
         )
 
         if workflow_storage.save_workflow(workflow):
@@ -113,7 +110,7 @@ def update_workflow(workflow_id):
         if 'tags' in data:
             workflow.tags = data['tags']
 
-        workflow.updated_at = beijing_now().isoformat()
+        workflow.updated_at = datetime.now().isoformat()
 
         if workflow_storage.save_workflow(workflow):
             return jsonify({
@@ -154,8 +151,8 @@ def run_workflow(workflow_id):
 
         # Pre-flight checks
         nodes_list = [n.to_dict() if hasattr(n, 'to_dict') else n for n in workflow.nodes]
-        is_special = getattr(workflow, 'workflow_type', '') in ('quant_multi_factor', 'peg_momentum')
-        if not nodes_list and not is_special:
+        is_quant = getattr(workflow, 'workflow_type', '') == 'quant_multi_factor'
+        if not nodes_list and not is_quant:
             return jsonify({'success': False, 'error': '工作流步骤为空，请先编辑工作流添加节点'}), 400
 
         has_ai_node = any(n.get('type') == 'ai_agent' for n in nodes_list)
@@ -175,7 +172,7 @@ def run_workflow(workflow_id):
             stale = False
             try:
                 started_dt = datetime.fromisoformat(existing.started_at)
-                if (beijing_now() - started_dt).total_seconds() > 600:
+                if (datetime.now() - started_dt).total_seconds() > 600:
                     stale = True
             except Exception:
                 stale = True  # unparseable timestamp → treat as stale
@@ -200,15 +197,13 @@ def run_workflow(workflow_id):
             current_node='',
             current_step='准备执行...',
             steps=[],
-            started_at=beijing_now().isoformat()
+            started_at=datetime.now().isoformat()
         )
         execution_storage.create_execution(execution)
 
         params = request.get_json() or {}
         nodes = nodes_list  # already computed in pre-flight check
         edges = [e.to_dict() if hasattr(e, 'to_dict') else e for e in workflow.edges]
-
-        WorkflowSSE.cleanup(execution_id)
 
         def make_progress_callback(exec_id: str):
             def progress_callback(
@@ -224,12 +219,11 @@ def run_workflow(workflow_id):
                     'step': step,
                     'progress': progress,
                     'detail': detail or {},
-                    'timestamp': beijing_now().isoformat()
+                    'timestamp': datetime.now().isoformat()
                 }
                 execution_storage.update_progress(
                     exec_id, progress, node_id, step, step_data
                 )
-                WorkflowSSE.publish(exec_id, 'progress', step_data)
             return progress_callback
 
         def make_background_runner(exec_id, start_idx=0, codes_override=None):
@@ -242,83 +236,42 @@ def run_workflow(workflow_id):
                     if result.get('success'):
                         execution_storage.complete_execution(exec_id, result)
                         workflow_storage.update_last_run(workflow_id)
-                        WorkflowSSE.publish(exec_id, 'complete', {'status': 'completed', 'result': result})
                     elif result.get('paused'):
                         execution_storage.pause_execution(
                             exec_id,
                             result.get('paused_node_idx', 0),
                             result.get('codes', [])
                         )
-                        WorkflowSSE.publish(exec_id, 'paused', {'status': 'paused'})
                     elif result.get('cancelled'):
                         execution_storage.cancel_execution(exec_id)
-                        WorkflowSSE.publish(exec_id, 'cancelled', {'status': 'cancelled'})
                     else:
-                        err = result.get('error', 'Unknown error')
-                        execution_storage.fail_execution(exec_id, err)
-                        WorkflowSSE.publish(exec_id, 'error', {'status': 'failed', 'error': err})
+                        execution_storage.fail_execution(exec_id, result.get('error', 'Unknown error'))
                 except Exception as e:
                     import traceback
                     logger.error(f"Background execution failed: {e}\n{traceback.format_exc()}")
                     execution_storage.fail_execution(exec_id, str(e))
-                    WorkflowSSE.publish(exec_id, 'error', {'status': 'failed', 'error': str(e)})
-                finally:
-                    WorkflowSSE.cleanup(exec_id)
             return execute_in_background
 
-        # Dispatch to specialized executor based on workflow_type
-        wf_type = getattr(workflow, 'workflow_type', '')
-        mining_weight = params.get('mining_weight', 0.20)
-        if wf_type == 'quant_multi_factor':
+        # Dispatch to quantitative multi-factor executor if workflow_type matches
+        if getattr(workflow, 'workflow_type', '') == 'quant_multi_factor':
             def make_quant_runner(exec_id):
                 def run():
                     try:
                         from modules.workflow.quant_executor import QuantMultiFactorExecutor
-                        executor = QuantMultiFactorExecutor(workflow_id, exec_id, make_progress_callback(exec_id), mining_weight)
+                        executor = QuantMultiFactorExecutor(workflow_id, exec_id, make_progress_callback(exec_id))
                         result = executor.execute()
                         if result.get('success'):
                             execution_storage.complete_execution(exec_id, result)
                             workflow_storage.update_last_run(workflow_id)
-                            WorkflowSSE.publish(exec_id, 'complete', {'status': 'completed', 'result': result})
                         else:
-                            err = result.get('error', 'Unknown error')
-                            execution_storage.fail_execution(exec_id, err)
-                            WorkflowSSE.publish(exec_id, 'error', {'status': 'failed', 'error': err})
+                            execution_storage.fail_execution(exec_id, result.get('error', 'Unknown error'))
                     except Exception as e:
                         import traceback
                         logger.error(f"Quant execution failed: {e}\n{traceback.format_exc()}")
                         execution_storage.fail_execution(exec_id, str(e))
-                        WorkflowSSE.publish(exec_id, 'error', {'status': 'failed', 'error': str(e)})
-                    finally:
-                        WorkflowSSE.cleanup(exec_id)
                 return run
 
             thread = threading.Thread(target=make_quant_runner(execution_id), daemon=True)
-        elif wf_type == 'peg_momentum':
-            def make_peg_runner(exec_id):
-                def run():
-                    try:
-                        from modules.workflow.peg_momentum_executor import PegMomentumExecutor
-                        executor = PegMomentumExecutor(workflow_id, exec_id, make_progress_callback(exec_id), mining_weight)
-                        result = executor.execute()
-                        if result.get('success'):
-                            execution_storage.complete_execution(exec_id, result)
-                            workflow_storage.update_last_run(workflow_id)
-                            WorkflowSSE.publish(exec_id, 'complete', {'status': 'completed', 'result': result})
-                        else:
-                            err = result.get('error', 'Unknown error')
-                            execution_storage.fail_execution(exec_id, err)
-                            WorkflowSSE.publish(exec_id, 'error', {'status': 'failed', 'error': err})
-                    except Exception as e:
-                        import traceback
-                        logger.error(f"PegMomentum execution failed: {e}\n{traceback.format_exc()}")
-                        execution_storage.fail_execution(exec_id, str(e))
-                        WorkflowSSE.publish(exec_id, 'error', {'status': 'failed', 'error': str(e)})
-                    finally:
-                        WorkflowSSE.cleanup(exec_id)
-                return run
-
-            thread = threading.Thread(target=make_peg_runner(execution_id), daemon=True)
         else:
             thread = threading.Thread(target=make_background_runner(execution_id), daemon=True)
         thread.start()
@@ -326,7 +279,7 @@ def run_workflow(workflow_id):
         return jsonify({
             'success': True,
             'execution_id': execution_id,
-            'message': '工作流已启动，可通过 SSE 订阅实时进度'
+            'message': '工作流已启动，请通过 /execution/{id}/progress 查询进度'
         }), 202
 
     except Exception as e:
@@ -361,39 +314,6 @@ def get_execution_progress(workflow_id, execution_id):
     except Exception as e:
         logger.error(f"Get execution progress failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@workflow_bp.route('/<workflow_id>/execution/<execution_id>/stream', methods=['GET'])
-def stream_execution_progress(workflow_id, execution_id):
-    """SSE 实时推送执行进度（替代轮询）。"""
-    execution = execution_storage.get_execution(execution_id)
-    if not execution or execution.workflow_id != workflow_id:
-        return jsonify({'success': False, 'error': 'Execution not found'}), 404
-
-    q = WorkflowSSE.subscribe(execution_id)
-
-    def generate():
-        try:
-            while True:
-                try:
-                    payload = q.get(timeout=30)
-                    yield payload
-                    if '"status": "completed"' in payload or '"status": "failed"' in payload or '"status": "cancelled"' in payload:
-                        break
-                except Exception:
-                    yield f"event: heartbeat\ndata: {{{{}}}}\n\n"
-        finally:
-            WorkflowSSE.unsubscribe(execution_id, q)
-
-    return Response(
-        stream_with_context(generate()),
-        mimetype='text/event-stream',
-        headers={
-            'Cache-Control': 'no-cache',
-            'X-Accel-Buffering': 'no',
-            'Connection': 'keep-alive',
-        }
-    )
 
 
 @workflow_bp.route('/<workflow_id>/execution/<execution_id>/cancel', methods=['POST'])
@@ -468,7 +388,7 @@ def resume_execution_route(workflow_id, execution_id):
                 step_data = {
                     'node_id': node_id, 'node_label': node_label, 'step': step,
                     'progress': progress, 'detail': detail or {},
-                    'timestamp': beijing_now().isoformat()
+                    'timestamp': datetime.now().isoformat()
                 }
                 execution_storage.update_progress(exec_id, progress, node_id, step, step_data)
             return progress_callback
@@ -636,8 +556,8 @@ def create_template():
             is_public=data.get('is_public', True),
             owner_id=data.get('owner_id'),
             category=data.get('category', 'custom'),
-            created_at=beijing_now().isoformat(),
-            updated_at=beijing_now().isoformat()
+            created_at=datetime.now().isoformat(),
+            updated_at=datetime.now().isoformat()
         )
 
         if template_storage.save_template(template):
@@ -677,7 +597,7 @@ def update_template(template_id):
         if 'category' in data:
             template.category = data['category']
 
-        template.updated_at = beijing_now().isoformat()
+        template.updated_at = datetime.now().isoformat()
 
         if template_storage.save_template(template):
             return jsonify({
@@ -1055,983 +975,3 @@ def get_node_types():
         'success': True,
         'data': node_types
     })
-
-
-# ─────────── 因子缓存 ───────────
-
-@workflow_bp.route('/factors/status', methods=['GET'])
-def get_factor_cache_status():
-    """查看因子缓存状态"""
-    try:
-        from modules.workflow.factor_miner import FactorCacheService
-        cache = FactorCacheService()
-        stats = cache.get_cache_stats()
-        return jsonify({'success': True, 'data': {
-            'total_cached': stats['total_cached'],
-            'latest_update': stats['latest_update'].isoformat() if stats['latest_update'] else None,
-            'stale_hours': round(stats['stale_hours'], 1) if stats['stale_hours'] is not None else None,
-            'factor_count': stats['factor_count'],
-        }})
-    except Exception as e:
-        logger.error(f"Get factor cache status failed: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@workflow_bp.route('/factors/update', methods=['POST'])
-def update_factor_cache():
-    """触发因子缓存全量更新（异步执行）"""
-    try:
-        from modules.workflow.factor_miner import FactorCacheUpdater
-
-        def _run():
-            try:
-                updater = FactorCacheUpdater(kline_days=30)
-                result = updater.update_all()
-                logger.info(f"Factor cache update result: {result}")
-            except Exception as e:
-                logger.error(f"Factor cache update failed: {e}")
-
-        thread = threading.Thread(target=_run, daemon=True)
-        thread.start()
-
-        return jsonify({
-            'success': True,
-            'data': {'message': '因子缓存更新已异步启动，请稍后查看状态'}
-        })
-    except Exception as e:
-        logger.error(f"Start factor cache update failed: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-# In-memory Score progress tracker
-_score_progress: dict = {}
-_score_results: dict = {}
-_score_cancel: set = set()
-_score_lock = threading.Lock()
-
-
-@workflow_bp.route('/factors/score/start', methods=['POST'])
-def start_factor_score():
-    """异步启动因子评分"""
-    try:
-        data = request.get_json() or {}
-        days_back = int(data.get('days_back', 5))
-        limit = int(data.get('limit', 100))
-        min_score = float(data.get('min_score', 0))
-        custom_weights = data.get('weights')
-
-        task_id = str(uuid.uuid4())
-        with _score_lock:
-            _score_progress[task_id] = {
-                'status': 'pending', 'progress': 0, 'step': '等待启动...',
-            }
-
-        def _run(tid):
-            try:
-                if tid in _score_cancel: raise CancelException()
-                with _score_lock:
-                    _score_progress[tid] = {'status': 'running', 'progress': 0, 'step': '连接数据库...'}
-
-                from config.database import DatabaseConfig
-                db = DatabaseConfig.get_database()
-                from datetime import datetime, timedelta
-                from collections import defaultdict
-                from modules.workflow.factor_miner import FactorEngine, FactorRegistry, DataStore
-
-                _score_update(tid, 5, '正在扫描全市场股票列表...')
-                end = beijing_now().replace(hour=0, minute=0, second=0, microsecond=0)
-                start = end - timedelta(days=90)
-                trade_date = end - timedelta(days=days_back)
-
-                kline_data = defaultdict(list)
-                for r in db['kline'].find(
-                    {'$expr': {'$and': [
-                        {'$gte': ['$date', start]},
-                        {'$lt': ['$date', trade_date]}
-                    ]}},
-                    {'code':1,'date':1,'close':1,'amount':1,'high':1,'low':1,'open':1,'_id':0}
-                ).sort('date',1):
-                    c = r.get('code')
-                    if c: kline_data[c].append(r)
-                kline_map = dict(kline_data)
-                codes = list(kline_map.keys())
-                if not codes:
-                    with _score_lock:
-                        _score_results[tid] = {'total': 0, 'trade_date': '', 'rows': []}
-                        _score_progress[tid] = {'status': 'completed', 'progress': 100, 'step': '完成'}
-                    return
-
-                _score_update(tid, 20, f'正在并行拉取K线数据 ({len(codes)}只股票)...')
-                stock_info_map = {}
-                for r in db['stock_info'].find({'code': {'$in': codes}}, {'code':1,'名称':1,'所属行业':1,'_id':0}):
-                    stock_info_map[r.get('code')] = r
-                industries = {}
-                for c in codes:
-                    si = stock_info_map.get(c, {})
-                    industries[c] = si.get('所属行业', '') or '未知'
-
-                _score_update(tid, 35, '计算原始因子值...')
-                engine = FactorEngine(industries=industries)
-                store = DataStore(kline_map=kline_map, codes=codes)
-                raw = engine.compute_raw(codes, store)
-
-                _score_update(tid, 55, '因子归一化...')
-                norm = engine.normalize(raw, codes)
-
-                _score_update(tid, 65, '合成综合分...')
-                scores = _compute_weighted_scores(norm, codes, custom_weights)
-
-                _score_update(tid, 75, '组装结果数据...')
-                factor_names = FactorRegistry.list_factors()
-                rows = []
-                for c in codes:
-                    s = float(scores.get(c, 0))
-                    if s < min_score: continue
-                    factor_vals = {}
-                    for name in factor_names:
-                        v = norm.get(c, {}).get(name)
-                        if v is not None: factor_vals[name] = round(float(v), 2)
-                    si = stock_info_map.get(c, {})
-                    rows.append({
-                        'code': c,
-                        'name': si.get('名称', ''),
-                        'score': round(s, 2),
-                        'industry': industries.get(c, ''),
-                        'factors': factor_vals,
-                    })
-
-                rows.sort(key=lambda x: x['score'], reverse=True)
-                rows = rows[:limit]
-
-                _score_update(tid, 95, '完成...')
-                with _score_lock:
-                    _score_results[tid] = {
-                        'total': len(codes),
-                        'trade_date': trade_date.strftime('%Y-%m-%d'),
-                        'rows': rows,
-                    }
-                    _score_progress[tid] = {'status': 'completed', 'progress': 100, 'step': '评分完成'}
-            except CancelException:
-                with _score_lock:
-                    _score_progress[tid] = {'status': 'cancelled', 'progress': 0, 'step': '已取消'}
-            except Exception as e:
-                import traceback
-                logger.error(f"Score task failed: {e}\n{traceback.format_exc()}")
-                with _score_lock:
-                    _score_progress[tid] = {'status': 'failed', 'progress': 0, 'step': str(e)}
-
-        thread = threading.Thread(target=_run, args=(task_id,), daemon=True)
-        thread.start()
-        return jsonify({'success': True, 'data': {'task_id': task_id}})
-    except Exception as e:
-        logger.error(f"Start score failed: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@workflow_bp.route('/factors/score/progress/<task_id>', methods=['GET'])
-def get_score_progress(task_id):
-    with _score_lock:
-        prog = _score_progress.get(task_id)
-        result = _score_results.get(task_id)
-    if not prog:
-        return jsonify({'success': False, 'error': 'task not found'}), 404
-    return jsonify({'success': True, 'data': {**prog, 'result': result}})
-
-
-@workflow_bp.route('/factors/score/cancel/<task_id>', methods=['POST'])
-def cancel_score_task(task_id):
-    with _score_lock:
-        _score_cancel.add(task_id)
-    return jsonify({'success': True, 'data': {'message': '已发送取消信号'}})
-
-
-def _score_update(tid, progress, step):
-    with _score_lock:
-        if tid in _score_progress:
-            _score_progress[tid].update({'progress': progress, 'step': step})
-
-
-# ─────────── 因子平台 ───────────
-
-@workflow_bp.route('/factors/list', methods=['GET'])
-def list_factors():
-    """列出所有注册因子及其权重"""
-    try:
-        from modules.workflow.factor_miner import FactorRegistry
-        metas = [{
-            'name': m.name,
-            'group': m.group,
-            'inverse': m.inverse,
-            'weight': FactorRegistry.get_weight(m.name),
-            'default_weight': m.default_weight,
-            'description': m.description,
-        } for m in FactorRegistry.list_meta()]
-        return jsonify({'success': True, 'data': metas})
-    except Exception as e:
-        logger.error(f"List factors failed: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@workflow_bp.route('/factors/weights', methods=['PUT'])
-def update_factor_weights():
-    """更新因子权重"""
-    try:
-        from modules.workflow.factor_miner import FactorRegistry
-        data = request.get_json() or {}
-        weights = data.get('weights', {})
-        if not weights:
-            return jsonify({'success': False, 'error': 'weights required'}), 400
-        for name, w in weights.items():
-            FactorRegistry.set_weight(name, float(w))
-        return jsonify({'success': True, 'data': {'weights': FactorRegistry.get_weights()}})
-    except Exception as e:
-        logger.error(f"Update weights failed: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@workflow_bp.route('/factors/weights/reset', methods=['POST'])
-def reset_factor_weights():
-    """重置所有因子权重为默认值"""
-    try:
-        from modules.workflow.factor_miner import FactorRegistry
-        FactorRegistry.reset_weights()
-        return jsonify({'success': True, 'data': {'weights': FactorRegistry.get_weights()}})
-    except Exception as e:
-        logger.error(f"Reset weights failed: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-# In-memory IC test progress tracker
-_ic_test_progress: dict = {}
-_ic_test_results: dict = {}
-_ic_test_cancel: set = set()
-_ic_test_lock = threading.Lock()
-
-
-@workflow_bp.route('/factors/ic-test/start', methods=['POST'])
-def start_factor_ic_test():
-    """异步启动 IC 测试"""
-    try:
-        data = request.get_json() or {}
-        days_ago = int(data.get('days_ago', 40))
-        periods = data.get('periods', [5, 10, 20])
-
-        task_id = str(uuid.uuid4())
-        _ic_test_progress[task_id] = {
-            'status': 'pending', 'progress': 0, 'step': '等待启动...',
-            'days_ago': days_ago, 'periods': periods,
-        }
-
-        def _run(tid):
-            try:
-                _check_cancel(tid)
-                _update_progress(tid, 'running', 0, '加载K线数据...')
-                from config.database import DatabaseConfig
-                db = DatabaseConfig.get_database()
-                from datetime import datetime, timedelta
-                from collections import defaultdict
-                import numpy as np
-                from modules.workflow.factor_miner import FactorEngine, FactorRegistry, DataStore
-
-                test_date = (beijing_now() - timedelta(days=days_ago)).replace(
-                    hour=0, minute=0, second=0, microsecond=0)
-                cutoff = test_date - timedelta(days=60)
-
-                _check_cancel(tid)
-                _update_progress(tid, 'running', 10, '读取K线数据中...')
-                kline_data = defaultdict(list)
-                for r in db['kline'].find(
-                    {'$expr': {'$and': [
-                        {'$gte': ['$date', cutoff]},
-                        {'$lt': ['$date', test_date]}
-                    ]}},
-                    {'code':1,'date':1,'close':1,'amount':1,'high':1,'low':1,'open':1,'_id':0}
-                ).sort('date',1):
-                    c = r.get('code')
-                    if c: kline_data[c].append(r)
-                kline_map = dict(kline_data)
-                codes = list(kline_map.keys())
-
-                _check_cancel(tid)
-                _update_progress(tid, 'running', 25, f'读取行业信息 ({len(codes)}只股票)...')
-                stock_info_map = {}
-                for r in db['stock_info'].find({'code': {'$in': codes}}, {'code':1,'所属行业':1,'_id':0}):
-                    stock_info_map[r.get('code')] = r
-                industries = {c: (stock_info_map.get(c, {}) or {}).get('所属行业', '') or '未知' for c in codes}
-
-                _check_cancel(tid)
-                _update_progress(tid, 'running', 35, '计算原始因子值...')
-                engine = FactorEngine(industries=industries)
-                store = DataStore(kline_map=kline_map, codes=codes)
-                raw = engine.compute_raw(codes, store)
-
-                _check_cancel(tid)
-                _update_progress(tid, 'running', 50, '因子归一化...')
-                norm = engine.normalize(raw, codes)
-
-                _check_cancel(tid)
-                _update_progress(tid, 'running', 60, '合成综合分...')
-                scores = engine.synthesize(norm, codes)
-
-                _check_cancel(tid)
-                _update_progress(tid, 'running', 70, '计算未来收益...')
-                fwd = {}
-                maxp = max(periods)
-                minp = min(periods)
-                fwd_kline = defaultdict(list)
-                for r in db['kline'].find(
-                    {'$expr': {'$gte': ['$date', test_date]}},
-                    {'code':1,'close':1,'date':1,'_id':0}
-                ).sort('date',1):
-                    c = r.get('code')
-                    if c and c in codes: fwd_kline[c].append(r)
-                for c, kls in fwd_kline.items():
-                    if len(kls) >= minp + 1:
-                        b = kls[0]['close']
-                        if b > 0:
-                            fwd[c] = {p: ((kls[p]['close'] - b) / b * 100)
-                                      for p in periods if p < len(kls)}
-
-                def sp(x, y):
-                    n = len(x)
-                    d = np.argsort(x) - np.argsort(y)
-                    return 1.0 - (6 * sum(d**2)) / (n * (n * n - 1))
-
-                _check_cancel(tid)
-                _update_progress(tid, 'running', 80, '计算综合分 IC...')
-                results = {'test_date': test_date.strftime('%Y-%m-%d'), 'n_stocks': len(codes),
-                            'n_with_forward': len(fwd), 'composite': {}, 'factors': {}}
-
-                for period in periods:
-                    rs, rr = [], []
-                    for c in codes:
-                        if c not in fwd or period not in fwd[c]: continue
-                        rs.append(float(scores.get(c, 50)))
-                        rr.append(float(fwd[c][period]))
-                    if len(rs) < 10:
-                        continue
-                    ic = float(sp(np.array(rs), np.array(rr)))
-                    arr = sorted(zip(rs, rr), key=lambda x: x[0], reverse=True)
-                    n = len(arr)
-                    # Full quintile breakdown (Alphalens-style)
-                    nq = max(n // 5, 1)
-                    quintiles = {}
-                    for qi in range(5):
-                        seg = arr[qi * nq: (qi + 1) * nq] if qi < 4 else arr[qi * nq:]
-                        quintiles[f'q{qi+1}'] = round(float(np.mean([r for _, r in seg])), 2)
-                    top = float(np.mean([r for _, r in arr[:nq]]))
-                    bot = float(np.mean([r for _, r in arr[-nq:]]))
-                    # IC t-stat
-                    ic_std = float(np.std(rs)) if len(rs) > 1 else 0
-                    tstat = round(ic / (ic_std / (len(rs) ** 0.5 + 1e-10)), 4) if ic_std > 0 else 0
-                    results['composite'][str(period)] = {
-                        'ic': round(ic, 4), 'top20_return': round(top, 2),
-                        'bot20_return': round(bot, 2), 'spread': round(top - bot, 2),
-                        'n': len(rs), 'tstat': tstat,
-                        'ic_std': round(ic_std, 4), 'icir': round(ic / (ic_std + 1e-10), 4),
-                        'quintiles': quintiles,
-                    }
-
-                _check_cancel(tid)
-                _update_progress(tid, 'running', 90, '计算单因子 IC...')
-                for name in FactorRegistry.list_factors():
-                    factor_ics = {}
-                    for period in periods:
-                        fv, fr = [], []
-                        for c in codes:
-                            if c not in fwd or period not in fwd[c]: continue
-                            v = norm.get(c, {}).get(name)
-                            if v is not None:
-                                fv.append(float(v))
-                                fr.append(float(fwd[c][period]))
-                        if len(fv) >= 10:
-                            fic = float(sp(np.array(fv), np.array(fr)))
-                            factor_ics[str(period)] = round(fic, 4)
-                    if factor_ics:
-                        results['factors'][name] = factor_ics
-
-                with _ic_test_lock:
-                    _ic_test_results[tid] = results
-                    _ic_test_progress[tid] = {'status': 'completed', 'progress': 100, 'step': 'IC测试完成'}
-            except CancelException:
-                with _ic_test_lock:
-                    _ic_test_progress[tid] = {'status': 'cancelled', 'progress': 0, 'step': '已取消'}
-            except Exception as e:
-                import traceback
-                logger.error(f"IC test task failed: {e}\n{traceback.format_exc()}")
-                with _ic_test_lock:
-                    _ic_test_progress[tid] = {'status': 'failed', 'progress': 0, 'step': str(e)}
-
-        thread = threading.Thread(target=_run, args=(task_id,), daemon=True)
-        thread.start()
-
-        return jsonify({'success': True, 'data': {'task_id': task_id}})
-    except Exception as e:
-        logger.error(f"Start IC test failed: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-class CancelException(Exception):
-    pass
-
-
-def _check_cancel(tid):
-    with _ic_test_lock:
-        if tid in _ic_test_cancel:
-            raise CancelException()
-
-
-def _update_progress(tid, status, progress, step):
-    with _ic_test_lock:
-        if tid in _ic_test_progress:
-            _ic_test_progress[tid].update({'status': status, 'progress': progress, 'step': step})
-
-
-@workflow_bp.route('/factors/ic-test/cancel/<task_id>', methods=['POST'])
-def cancel_ic_test(task_id):
-    with _ic_test_lock:
-        _ic_test_cancel.add(task_id)
-    return jsonify({'success': True, 'data': {'message': '已发送取消信号'}})
-
-
-@workflow_bp.route('/factors/ic-test/progress/<task_id>', methods=['GET'])
-def get_ic_test_progress(task_id):
-    with _ic_test_lock:
-        prog = _ic_test_progress.get(task_id)
-        result = _ic_test_results.get(task_id)
-    if not prog:
-        return jsonify({'success': False, 'error': 'task not found'}), 404
-    return jsonify({'success': True, 'data': {
-        **prog,
-        'result': result,
-    }})
-
-
-def _compute_weighted_scores(norm, codes, custom_weights=None):
-    """用指定权重或注册表权重合成综合分"""
-    from modules.workflow.factor_miner import FactorRegistry
-    scores = {}
-    for code in codes:
-        factors = norm.get(code, {})
-        if not factors:
-            scores[code] = 0.0
-            continue
-        fnames = list(factors.keys())
-        if custom_weights:
-            raw = {k: float(custom_weights.get(k, 0)) for k in fnames}
-            total_w = sum(raw.values()) or 1
-            weights = {k: w / total_w for k, w in raw.items()}
-        else:
-            weights = FactorRegistry.normalize_weight(fnames)
-        scores[code] = sum(factors[k] * weights.get(k, 0) for k in fnames)
-    return scores
-
-
-@workflow_bp.route('/factors/score', methods=['POST'])
-def compute_factor_scores():
-    """计算所有股票的因子综合评分（支持自定义权重预览）"""
-    data = request.get_json() or {}
-    days_back = int(data.get('days_back', 5))
-    limit = int(data.get('limit', 100))
-    min_score = float(data.get('min_score', 0))
-    custom_weights = data.get('weights')
-
-    from config.database import DatabaseConfig
-    db = DatabaseConfig.get_database()
-    from datetime import datetime, timedelta
-    from collections import defaultdict
-    from modules.workflow.factor_miner import FactorEngine, FactorRegistry, DataStore
-
-    end = beijing_now().replace(hour=0, minute=0, second=0, microsecond=0)
-    start = end - timedelta(days=90)
-    trade_date = end - timedelta(days=days_back)
-
-    kline_data = defaultdict(list)
-    for r in db['kline'].find(
-        {'$expr': {'$and': [
-            {'$gte': ['$date', start]},
-            {'$lt': ['$date', trade_date]}
-        ]}},
-        {'code':1,'date':1,'close':1,'amount':1,'high':1,'low':1,'open':1,'_id':0}
-    ).sort('date',1):
-        c = r.get('code')
-        if c: kline_data[c].append(r)
-    kline_map = dict(kline_data)
-    codes = list(kline_map.keys())
-    if not codes:
-        return jsonify({'success': True, 'data': {'total': 0, 'trade_date': '', 'rows': []}})
-
-    stock_info_map = {}
-    for r in db['stock_info'].find({'code': {'$in': codes}}, {'code':1,'名称':1,'所属行业':1,'_id':0}):
-        stock_info_map[r.get('code')] = r
-
-    industries = {}
-    for c in codes:
-        si = stock_info_map.get(c, {})
-        industries[c] = si.get('所属行业', '') or '未知'
-
-    engine = FactorEngine(industries=industries)
-    store = DataStore(kline_map=kline_map, codes=codes)
-    raw = engine.compute_raw(codes, store)
-    norm = engine.normalize(raw, codes)
-    scores = _compute_weighted_scores(norm, codes, custom_weights)
-
-    factor_names = FactorRegistry.list_factors()
-    rows = []
-    for c in codes:
-        s = float(scores.get(c, 0))
-        if s < min_score: continue
-        factor_vals = {}
-        for name in factor_names:
-            v = norm.get(c, {}).get(name)
-            if v is not None: factor_vals[name] = round(float(v), 2)
-        si = stock_info_map.get(c, {})
-        rows.append({
-            'code': c,
-            'name': si.get('名称', ''),
-            'score': round(s, 2),
-            'industry': industries.get(c, ''),
-            'factors': factor_vals,
-        })
-
-    rows.sort(key=lambda x: x['score'], reverse=True)
-    rows = rows[:limit]
-
-    return jsonify({'success': True, 'data': {
-        'total': len(codes),
-        'trade_date': trade_date.strftime('%Y-%m-%d'),
-        'rows': rows,
-    }})
-
-
-# In-memory Correlation progress tracker
-_corr_progress: dict = {}
-_corr_results: dict = {}
-_corr_cancel: set = set()
-_corr_lock = threading.Lock()
-
-
-@workflow_bp.route('/factors/correlation/start', methods=['POST'])
-def start_factor_correlation():
-    """异步启动因子相关性计算"""
-    try:
-        data = request.get_json() or {}
-        days_back = int(data.get('days_back', 5))
-        factor_filter = data.get('factors')  # optional list of factor names
-
-        task_id = str(uuid.uuid4())
-        with _corr_lock:
-            _corr_progress[task_id] = {'status': 'pending', 'progress': 0, 'step': '等待启动...'}
-
-        def _run(tid):
-            try:
-                if tid in _corr_cancel:
-                    raise CancelException()
-                _corr_update(tid, 0, '连接数据库...')
-
-                from config.database import DatabaseConfig
-                db = DatabaseConfig.get_database()
-                from datetime import datetime, timedelta
-                from collections import defaultdict
-                import numpy as np
-                from modules.workflow.factor_miner import FactorEngine, FactorRegistry, DataStore
-
-                end = beijing_now().replace(hour=0, minute=0, second=0, microsecond=0)
-                start = end - timedelta(days=90)
-                trade_date = end - timedelta(days=days_back)
-
-                if tid in _corr_cancel:
-                    raise CancelException()
-                _corr_update(tid, 10, '正在扫描全市场股票列表...')
-                kline_data = defaultdict(list)
-                for r in db['kline'].find(
-                    {'$expr': {'$and': [
-                        {'$gte': ['$date', start]},
-                        {'$lt': ['$date', trade_date]}
-                    ]}},
-                    {'code':1,'date':1,'close':1,'amount':1,'high':1,'low':1,'open':1,'_id':0}
-                ).sort('date',1):
-                    c = r.get('code')
-                    if c: kline_data[c].append(r)
-                kline_map = dict(kline_data)
-                codes = list(kline_map.keys())
-                if not codes:
-                    with _corr_lock:
-                        _corr_results[tid] = {'factors': [], 'matrix': [], 'n_stocks': 0, 'trade_date': ''}
-                        _corr_progress[tid] = {'status': 'completed', 'progress': 100, 'step': '完成'}
-                    return
-
-                if tid in _corr_cancel:
-                    raise CancelException()
-                _corr_update(tid, 30, f'计算原始因子值 ({len(codes)}只股票)...')
-                engine = FactorEngine(industries={})
-                store = DataStore(kline_map=kline_map, codes=codes)
-                raw = engine.compute_raw(codes, store)
-
-                if tid in _corr_cancel:
-                    raise CancelException()
-                _corr_update(tid, 50, '因子归一化...')
-                norm = engine.normalize(raw, codes)
-
-                if tid in _corr_cancel:
-                    raise CancelException()
-                _corr_update(tid, 60, '组装因子数组...')
-                all_factor_names = FactorRegistry.list_factors()
-                # Apply factor filter if provided
-                factor_names = [n for n in all_factor_names if not factor_filter or n in factor_filter]
-                if not factor_names:
-                    factor_names = all_factor_names
-                arrays = {name: [] for name in factor_names}
-                for c in codes:
-                    for name in factor_names:
-                        v = norm.get(c, {}).get(name)
-                        arrays[name].append(float(v) if v is not None else None)
-
-                if tid in _corr_cancel:
-                    raise CancelException()
-                _corr_update(tid, 70, '计算 Spearman 相关性矩阵...')
-
-                def spearman(a, b):
-                    pairs = [(x, y) for x, y in zip(a, b) if x is not None and y is not None]
-                    n = len(pairs)
-                    if n < 10:
-                        return None
-                    xs, ys = zip(*pairs)
-                    rx = np.argsort(np.argsort(xs))
-                    ry = np.argsort(np.argsort(ys))
-                    d = rx - ry
-                    return round(1.0 - (6 * sum(d**2)) / (n * (n * n - 1)), 4)
-
-                n = len(factor_names)
-                matrix = [[None] * n for _ in range(n)]
-                total_pairs = n * (n + 1) // 2
-                pair_count = 0
-                for i in range(n):
-                    for j in range(i, n):
-                        if tid in _corr_cancel:
-                            raise CancelException()
-                        if i == j:
-                            matrix[i][j] = 1.0
-                        else:
-                            corr = spearman(arrays[factor_names[i]], arrays[factor_names[j]])
-                            matrix[i][j] = corr
-                            matrix[j][i] = corr
-                        pair_count += 1
-                        if pair_count % max(1, total_pairs // 10) == 0:
-                            pct = 70 + int(pair_count / total_pairs * 25)
-                            _corr_update(tid, pct, f'计算相关性矩阵 ({pair_count}/{total_pairs})...')
-
-                _corr_update(tid, 95, '完成...')
-                with _corr_lock:
-                    _corr_results[tid] = {
-                        'factors': factor_names,
-                        'matrix': matrix,
-                        'n_stocks': len(codes),
-                        'trade_date': trade_date.strftime('%Y-%m-%d'),
-                    }
-                    _corr_progress[tid] = {'status': 'completed', 'progress': 100, 'step': '相关性计算完成'}
-            except CancelException:
-                with _corr_lock:
-                    _corr_progress[tid] = {'status': 'cancelled', 'progress': 0, 'step': '已取消'}
-            except Exception as e:
-                import traceback
-                logger.error(f"Correlation task failed: {e}\n{traceback.format_exc()}")
-                with _corr_lock:
-                    _corr_progress[tid] = {'status': 'failed', 'progress': 0, 'step': str(e)}
-
-        thread = threading.Thread(target=_run, args=(task_id,), daemon=True)
-        thread.start()
-        return jsonify({'success': True, 'data': {'task_id': task_id}})
-    except Exception as e:
-        logger.error(f"Start correlation failed: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@workflow_bp.route('/factors/correlation/progress/<task_id>', methods=['GET'])
-def get_correlation_progress(task_id):
-    with _corr_lock:
-        prog = _corr_progress.get(task_id)
-        result = _corr_results.get(task_id)
-    if not prog:
-        return jsonify({'success': False, 'error': 'task not found'}), 404
-    return jsonify({'success': True, 'data': {**prog, 'result': result}})
-
-
-@workflow_bp.route('/factors/correlation/cancel/<task_id>', methods=['POST'])
-def cancel_correlation_task(task_id):
-    with _corr_lock:
-        _corr_cancel.add(task_id)
-    return jsonify({'success': True, 'data': {'message': '已发送取消信号'}})
-
-
-def _corr_update(tid, progress, step):
-    with _corr_lock:
-        if tid in _corr_progress:
-            _corr_progress[tid].update({'status': 'running', 'progress': progress, 'step': step})
-
-
-# Keep the original sync endpoint for backward compatibility
-@workflow_bp.route('/factors/correlation', methods=['POST'])
-def compute_factor_correlation():
-    """计算因子间 Spearman 相关性矩阵（同步版本）"""
-    data = request.get_json() or {}
-    days_back = int(data.get('days_back', 5))
-
-    from config.database import DatabaseConfig
-    db = DatabaseConfig.get_database()
-    from datetime import datetime, timedelta
-    from collections import defaultdict
-    import numpy as np
-    from modules.workflow.factor_miner import FactorEngine, FactorRegistry, DataStore
-
-    end = beijing_now().replace(hour=0, minute=0, second=0, microsecond=0)
-    start = end - timedelta(days=90)
-    trade_date = end - timedelta(days=days_back)
-
-    kline_data = defaultdict(list)
-    for r in db['kline'].find(
-        {'$expr': {'$and': [
-            {'$gte': ['$date', start]},
-            {'$lt': ['$date', trade_date]}
-        ]}},
-        {'code':1,'date':1,'close':1,'amount':1,'high':1,'low':1,'open':1,'_id':0}
-    ).sort('date',1):
-        c = r.get('code')
-        if c: kline_data[c].append(r)
-    kline_map = dict(kline_data)
-    codes = list(kline_map.keys())
-    if not codes:
-        return jsonify({'success': True, 'data': {'factors': [], 'matrix': [], 'n_stocks': 0}})
-
-    engine = FactorEngine(industries={})
-    store = DataStore(kline_map=kline_map, codes=codes)
-    raw = engine.compute_raw(codes, store)
-    norm = engine.normalize(raw, codes)
-
-    factor_names = FactorRegistry.list_factors()
-    arrays = {name: [] for name in factor_names}
-    for c in codes:
-        for name in factor_names:
-            v = norm.get(c, {}).get(name)
-            arrays[name].append(float(v) if v is not None else None)
-
-    def spearman(a, b):
-        pairs = [(x, y) for x, y in zip(a, b) if x is not None and y is not None]
-        n = len(pairs)
-        if n < 10:
-            return None
-        xs, ys = zip(*pairs)
-        rx = np.argsort(np.argsort(xs))
-        ry = np.argsort(np.argsort(ys))
-        d = rx - ry
-        return round(1.0 - (6 * sum(d**2)) / (n * (n * n - 1)), 4)
-
-    n = len(factor_names)
-    matrix = [[None] * n for _ in range(n)]
-    for i in range(n):
-        for j in range(i, n):
-            if i == j:
-                matrix[i][j] = 1.0
-            else:
-                corr = spearman(arrays[factor_names[i]], arrays[factor_names[j]])
-                matrix[i][j] = corr
-                matrix[j][i] = corr
-
-    return jsonify({'success': True, 'data': {
-        'factors': factor_names,
-        'matrix': matrix,
-        'n_stocks': len(codes),
-        'trade_date': trade_date.strftime('%Y-%m-%d'),
-    }})
-
-
-@workflow_bp.route('/factors/effectiveness', methods=['POST'])
-def compute_factor_effectiveness():
-    """轻量计算各因子近期 5d IC / ICIR（供前端监控展示）"""
-    try:
-        data = request.get_json() or {}
-        days_back = int(data.get('days_back', 5))
-
-        from config.database import DatabaseConfig
-        db = DatabaseConfig.get_database()
-        from datetime import datetime, timedelta
-        from collections import defaultdict
-        import numpy as np
-        from modules.workflow.factor_miner import FactorEngine, FactorRegistry, DataStore
-
-        end = beijing_now().replace(hour=0, minute=0, second=0, microsecond=0)
-        start = end - timedelta(days=90)
-        test_date = end - timedelta(days=days_back)
-
-        kline_data = defaultdict(list)
-        for r in db['kline'].find(
-            {'$expr': {'$and': [
-                {'$gte': ['$date', start]},
-                {'$lt': ['$date', test_date]}
-            ]}},
-            {'code':1,'date':1,'close':1,'amount':1,'high':1,'low':1,'open':1,'_id':0}
-        ).sort('date',1):
-            c = r.get('code')
-            if c: kline_data[c].append(r)
-        kline_map = dict(kline_data)
-        codes = list(kline_map.keys())
-        if not codes:
-            return jsonify({'success': True, 'data': {}})
-
-        engine = FactorEngine(industries={})
-        store = DataStore(kline_map=kline_map, codes=codes)
-        raw = engine.compute_raw(codes, store)
-        norm = engine.normalize(raw, codes)
-
-        # Forward returns
-        period = 5
-        fwd = {}
-        fwd_kline = defaultdict(list)
-        for r in db['kline'].find(
-            {'$expr': {'$gte': ['$date', test_date]}},
-            {'code':1,'close':1,'date':1,'_id':0}
-        ).sort('date',1):
-            c = r.get('code')
-            if c and c in codes: fwd_kline[c].append(r)
-        for c, kls in fwd_kline.items():
-            if len(kls) >= period + 1:
-                b = kls[0]['close']
-                if b > 0:
-                    fwd[c] = (kls[period]['close'] - b) / b * 100
-
-        def spearman_rank(a, b):
-            pairs = [(x, y) for x, y in zip(a, b) if x is not None and y is not None]
-            n = len(pairs)
-            if n < 10: return None
-            xs, ys = zip(*pairs)
-            rx = np.argsort(np.argsort(xs))
-            ry = np.argsort(np.argsort(ys))
-            d = rx - ry
-            return 1.0 - (6 * sum(d**2)) / (n * (n * n - 1))
-
-        results = {}
-        for name in FactorRegistry.list_factors():
-            fv, fr = [], []
-            for c in codes:
-                if c not in fwd: continue
-                v = norm.get(c, {}).get(name)
-                if v is not None:
-                    fv.append(float(v))
-                    fr.append(float(fwd[c]))
-            if len(fv) >= 10:
-                ic = spearman_rank(np.array(fv), np.array(fr))
-                if ic is not None:
-                    ic_arr = np.array(fr)
-                    ic_std = float(np.std(ic_arr)) if len(ic_arr) > 1 else 0
-                    results[name] = {
-                        'ic': round(ic, 4),
-                        'icir': round(ic / (ic_std + 1e-10), 4) if ic_std > 0 else None,
-                        'n': len(fv),
-                    }
-        return jsonify({'success': True, 'data': results})
-    except Exception as e:
-        logger.error(f"Effectiveness failed: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@workflow_bp.route('/factors/weights/presets', methods=['POST'])
-def get_weight_presets():
-    """返回 IC加权 / ICIR加权 的预设权重方案"""
-    try:
-        data = request.get_json() or {}
-        days_back = int(data.get('days_back', 5))
-
-        from config.database import DatabaseConfig
-        db = DatabaseConfig.get_database()
-        from datetime import datetime, timedelta
-        from collections import defaultdict
-        import numpy as np
-        from modules.workflow.factor_miner import FactorEngine, FactorRegistry, DataStore
-
-        end = beijing_now().replace(hour=0, minute=0, second=0, microsecond=0)
-        start = end - timedelta(days=90)
-        test_date = end - timedelta(days=days_back)
-
-        kline_data = defaultdict(list)
-        for r in db['kline'].find(
-            {'$expr': {'$and': [
-                {'$gte': ['$date', start]},
-                {'$lt': ['$date', test_date]}
-            ]}},
-            {'code':1,'date':1,'close':1,'amount':1,'high':1,'low':1,'open':1,'_id':0}
-        ).sort('date',1):
-            c = r.get('code')
-            if c: kline_data[c].append(r)
-        kline_map = dict(kline_data)
-        codes = list(kline_map.keys())
-        if not codes:
-            return jsonify({'success': True, 'data': {'ic_weighted': {}, 'icir_weighted': {}}})
-
-        engine = FactorEngine(industries={})
-        store = DataStore(kline_map=kline_map, codes=codes)
-        raw = engine.compute_raw(codes, store)
-        norm = engine.normalize(raw, codes)
-
-        period = 5
-        fwd = {}
-        fwd_kline = defaultdict(list)
-        for r in db['kline'].find(
-            {'$expr': {'$gte': ['$date', test_date]}},
-            {'code':1,'close':1,'date':1,'_id':0}
-        ).sort('date',1):
-            c = r.get('code')
-            if c and c in codes: fwd_kline[c].append(r)
-        for c, kls in fwd_kline.items():
-            if len(kls) >= period + 1:
-                b = kls[0]['close']
-                if b > 0:
-                    fwd[c] = (kls[period]['close'] - b) / b * 100
-
-        def spearman_rank(a, b):
-            pairs = [(x, y) for x, y in zip(a, b) if x is not None and y is not None]
-            n = len(pairs)
-            if n < 10: return None
-            xs, ys = zip(*pairs)
-            rx = np.argsort(np.argsort(xs))
-            ry = np.argsort(np.argsort(ys))
-            d = rx - ry
-            return 1.0 - (6 * sum(d**2)) / (n * (n * n - 1))
-
-        factor_scores = {}
-        for name in FactorRegistry.list_factors():
-            fv, fr = [], []
-            for c in codes:
-                if c not in fwd: continue
-                v = norm.get(c, {}).get(name)
-                if v is not None:
-                    fv.append(float(v))
-                    fr.append(float(fwd[c]))
-            if len(fv) >= 10:
-                ic = spearman_rank(np.array(fv), np.array(fr))
-                if ic is not None:
-                    ic_arr = np.array(fr)
-                    ic_std = float(np.std(ic_arr)) if len(ic_arr) > 1 else 0
-                    factor_scores[name] = {'ic': abs(ic), 'icir': abs(ic / (ic_std + 1e-10)) if ic_std > 0 else 0}
-
-        factor_names = FactorRegistry.list_factors()
-        ic_w = {}
-        icir_w = {}
-        for name in factor_names:
-            fs = factor_scores.get(name, {})
-            ic_w[name] = round(fs.get('ic', 0), 4)
-            icir_w[name] = round(fs.get('icir', 0), 4)
-
-        total_ic = sum(ic_w.values()) or 1
-        total_icir = sum(icir_w.values()) or 1
-        ic_normalized = {k: round(v / total_ic, 4) for k, v in ic_w.items()}
-        icir_normalized = {k: round(v / total_icir, 4) for k, v in icir_w.items()}
-
-        return jsonify({'success': True, 'data': {
-            'ic_weighted': ic_normalized,
-            'icir_weighted': icir_normalized,
-            'raw_ic': ic_w,
-            'raw_icir': icir_w,
-        }})
-    except Exception as e:
-        logger.error(f"Weight presets failed: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500

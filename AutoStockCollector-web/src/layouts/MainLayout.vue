@@ -141,10 +141,9 @@ const menuGroups: MenuGroup[] = [
     label: 'AI智能',
     icon: MagicStick,
     children: [
-      { key: '/strategy-pick', label: '策略选股', icon: Operation },
-      { key: '/ai-picker', label: '量化选股', icon: TrendCharts },
-      { key: '/stock-analysis', label: '个股深度分析', icon: Search },
-      { key: '/strategy-manager', label: '策略管理', icon: List },
+      { key: '/strategy-pick',   label: '策略选股',       icon: Operation },
+      { key: '/ai-picker',       label: '量化选股',       icon: TrendCharts },
+      { key: '/stock-analysis',  label: '个股深度分析',    icon: Search },
     ],
   },
   {
@@ -181,8 +180,9 @@ const menuGroups: MenuGroup[] = [
     label: '系统配置',
     icon: Setting,
     children: [
-      { key: '/ai-keys', label: 'AI Key管理', icon: Key },
-      { key: '/ai-agents', label: 'AI Agent管理', icon: MagicStick },
+      { key: '/ai-keys',          label: 'AI Key管理',     icon: Key },
+      { key: '/ai-agents',        label: 'AI Agent管理',   icon: MagicStick },
+      { key: '/strategy-manager', label: '策略管理',       icon: List },
     ],
   },
 ]

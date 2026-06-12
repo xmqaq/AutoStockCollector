@@ -28,9 +28,20 @@ export const strategyPickApi = {
     return client.get<{ success: boolean; data: StrategyPickProgress }>('/api/v1/strategy-pick/progress')
   },
 
-  /** 获取结果 */
-  getResult() {
-    return client.get<{ success: boolean; data: StrategyPickResult }>('/api/v1/strategy-pick/result')
+  /** 获取结果（可指定 run_id 获取历史） */
+  getResult(runId?: string) {
+    const params = runId ? { run_id: runId } : {}
+    return client.get<{ success: boolean; data: StrategyPickResult }>('/api/v1/strategy-pick/result', { params })
+  },
+
+  /** 取消运行 */
+  cancel() {
+    return client.post<{ success: boolean; message?: string }>('/api/v1/strategy-pick/cancel')
+  },
+
+  /** 获取历史结果列表 */
+  getHistory() {
+    return client.get<{ success: boolean; data: StrategyPickHistoryItem[] }>('/api/v1/strategy-pick/history')
   },
 }
 
@@ -89,6 +100,7 @@ export interface StrategyPickItem {
   scores: Record<string, number>
   score_details: Record<string, any>
   llm: { summary: string; recommendation: string; risk_factors: string[] } | null
+  agent_analyses?: { agent_id: string; agent_name: string; summary: string; recommendation: string; risk_factors: string[] }[]
   source: string
   from_strategy: string
   from_strategies: string[]
@@ -97,6 +109,24 @@ export interface StrategyPickItem {
   debate_signals?: DebateSignal[]
   debate_consensus?: DebateConsensus | null
   debate_dim_scores?: Record<string, number>
+}
+
+export interface PortfolioSuggestionPosition {
+  code: string
+  name: string
+  industry: string
+  composite: number
+  action: string
+  weight: number
+  cumulative: number
+}
+
+export interface PortfolioSuggestion {
+  positions: PortfolioSuggestionPosition[]
+  total_count: number
+  industry_count: number
+  max_industry_pct: number
+  industry_distribution: Record<string, { count: number; pct: number }>
 }
 
 export interface TradeSignal {
@@ -109,7 +139,36 @@ export interface TradeSignal {
   reason: string
 }
 
+export interface StrategyPickHistoryItem {
+  run_id: string
+  strategy_count: number
+  selected_count: number
+  status?: string
+  timestamp?: string
+  created_at?: string
+  pick_config?: {
+    strategy_ids: string[]
+    agent_ids: string[]
+    philosophy_ids: string[]
+    top_n: number
+  }
+  portfolio_metrics?: PortfolioMetrics
+}
+
+export interface PortfolioMetrics {
+  avg_composite: number
+  composite_std: number
+  composite_max: number
+  composite_min: number
+  industry_count: number
+  industry_hhi: number
+  top_industry: string
+  top_industry_pct: number
+  dimension_avg: Record<string, number>
+}
+
 export interface StrategyPickResult {
+  run_id?: string
   picks: StrategyPickItem[]
   debate_results: DebateEntry[]
   debate_summary: string
@@ -119,6 +178,8 @@ export interface StrategyPickResult {
   selected_count: number
   strategy_stats: Record<string, number>
   trade_signals?: TradeSignal[]
+  portfolio_suggestion?: PortfolioSuggestion
+  portfolio_metrics?: PortfolioMetrics
   timestamp: string
   pick_config?: {
     strategy_ids: string[]
