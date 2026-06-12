@@ -19,8 +19,15 @@ class ReflectionEvaluator:
     def __init__(self, collection=None, kline_loader=None):
         self.collection = collection if collection is not None else get_collection("trading_memory")
         self.kline_loader = kline_loader or _default_kline_loader
+        self._index_cache: Dict[str, Optional[float]] = {}
 
     def _index_return(self, decision_day: str) -> Optional[float]:
+        """上证指数 决策日→现在 的收益率(%),无数据返回 None。同实例内按决策日缓存。"""
+        if decision_day not in self._index_cache:
+            self._index_cache[decision_day] = self._index_return_uncached(decision_day)
+        return self._index_cache[decision_day]
+
+    def _index_return_uncached(self, decision_day: str) -> Optional[float]:
         """上证指数 决策日→现在 的收益率(%),无数据返回 None。"""
         klines = None
         for icode in self._INDEX_CODES:

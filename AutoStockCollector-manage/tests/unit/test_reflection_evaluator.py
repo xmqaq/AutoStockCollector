@@ -95,3 +95,21 @@ def test_neutral_correct_when_small_excess():
     ev = _evaluator_with(stock, idx)
     r = ev.evaluate(_record(days_ago=5, direction="neutral"))
     assert r["accuracy"] == "correct"
+
+
+def test_index_return_cached_per_instance():
+    """同实例同决策日只查一次指数K线。"""
+    now = beijing_now()
+    d = lambda i: (now - timedelta(days=i)).strftime("%Y-%m-%d")
+    idx = _mk_klines_desc([(d(0), 105.0), (d(7), 100.0)])
+    calls = []
+    def loader(code, limit):
+        if code.lower().startswith("sh000001"):
+            calls.append(code)
+            return idx
+        return _mk_klines_desc([(d(0), 10.1), (d(7), 10.0)])
+    ev = ReflectionEvaluator(collection=FakeCollection(), kline_loader=loader)
+    day = d(7)
+    ev._index_return(day)
+    ev._index_return(day)
+    assert len(calls) == 1
