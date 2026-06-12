@@ -108,6 +108,28 @@ class DeepAnalysisService:
 
         }
 
+    def ai_report_stream(self, code: str, user_id: str = "default"):
+        """流式生成报告。yield 文本块;结束后做风控清洗与决策落库。"""
+        data = self.get_full_data(code, user_id=user_id)
+        prompt = self._build_ai_prompt(data, user_id=user_id)
+        system = (
+            "你是一位专业的A股投资分析师，擅长从量化数据中提炼投资洞察。"
+            "分析时必须基于提供的真实数据，不允许编造数据或假设数据。"
+            "语言简洁专业，每个判断必须有数据依据。"
+        )
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ]
+        full = ""
+        for chunk in self.router.chat_stream(prompt, task_type="deep_analysis",
+                                             messages=messages):
+            full += chunk
+            yield chunk
+        if full:
+            content, _ = sanitize_text(full)
+            self._record_outcome(code, content, user_id)
+
     # ==================== 反思与记忆融合 ====================
 
     RATING_SCORES = {

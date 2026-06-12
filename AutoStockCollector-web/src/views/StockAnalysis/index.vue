@@ -128,13 +128,13 @@
         <template #header><span>AI 深度分析报告</span></template>
         <div v-if="!aiReport && !aiLoading" class="da-ai-trigger">
           <el-button type="primary" size="large" @click="runAIReport">
-            开始AI深度分析（约15秒）
+            开始AI深度分析
           </el-button>
           <p class="da-ai-hint">基于以上真实数据，由AI生成多维度分析报告</p>
         </div>
         <div v-if="aiLoading" class="da-ai-loading">
           <el-icon class="is-loading" :size="24"><Loading /></el-icon>
-          <span>AI正在分析中，请稍候...</span>
+          <span>报告生成中，边生成边显示…</span>
         </div>
         <div v-if="aiReport" class="da-ai-report">
           <div v-if="aiReport.success" class="da-ai-content md-content" v-html="renderMd(aiReport.content || '')" />
@@ -626,16 +626,48 @@ async function runAnalysis() {
 
 async function runAIReport() {
   if (!data.value) return
+  const code = data.value.basic_info.code
   aiLoading.value = true
+  aiReport.value = { success: true, content: '', provider: '', from_cache: false }
+  let streamed = false
   try {
-    const res = await deepAnalysisApi.getAIReport(data.value.basic_info.code)
-    if (res.data?.success) {
-      aiReport.value = res.data.data
-    } else {
-      aiReport.value = { success: false, error: res.data?.data?.error || res.data?.error || 'AI服务暂不可用' }
+    const resp = await fetch(`/api/v1/stock/deep_analysis/${code}/ai/stream`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+    })
+    if (!resp.ok || !resp.body) throw new Error('stream unavailable')
+    const reader = resp.body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      const parts = buf.split('\n\n')
+      buf = parts.pop() || ''
+      for (const part of parts) {
+        if (!part.startsWith('data: ')) continue
+        const evt = JSON.parse(part.slice(6))
+        if (evt.event === 'content') {
+          streamed = true
+          aiReport.value!.content = (aiReport.value!.content || '') + evt.data
+        } else if (evt.event === 'error') {
+          throw new Error(evt.data)
+        }
+      }
     }
+    if (!streamed) throw new Error('empty stream')
   } catch {
-    aiReport.value = { success: false, error: 'AI请求失败，请检查网络或API配置' }
+    // 流式失败降级回原非流式接口：整体重新生成并覆盖内容
+    try {
+      const res = await deepAnalysisApi.getAIReport(code)
+      if (res.data?.success) {
+        aiReport.value = res.data.data
+      } else {
+        aiReport.value = { success: false, error: res.data?.data?.error || res.data?.error || 'AI服务暂不可用' }
+      }
+    } catch {
+      aiReport.value = { success: false, error: 'AI请求失败，请检查网络或API配置' }
+    }
   } finally {
     aiLoading.value = false
   }

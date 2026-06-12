@@ -851,6 +851,37 @@ def stock_deep_analysis_ai(code):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@api_bp.route("/stock/deep_analysis/<code>/ai/stream", methods=["POST"])
+def stock_deep_analysis_ai_stream(code):
+    """AI深度分析报告流式版。chat_stream 仅支持 OpenAI 兼容 provider,
+    全部失败时前端降级回非流式 POST。"""
+    import json as _json
+    from flask import Response
+    normalized = _normalize_code(code)
+    if not normalized:
+        return jsonify({"success": False, "error": "invalid code"}), 400
+
+    def generate():
+        try:
+            svc = DeepAnalysisService()
+            got = False
+            for chunk in svc.ai_report_stream(normalized):
+                got = True
+                yield f"data: {_json.dumps({'event': 'content', 'data': chunk})}\n\n"
+            if not got:
+                yield f"data: {_json.dumps({'event': 'error', 'data': 'no stream provider'})}\n\n"
+            else:
+                yield f"data: {_json.dumps({'event': 'done'})}\n\n"
+        except Exception as e:
+            logger.error(f"AI report stream failed for {code}: {e}")
+            yield f"data: {_json.dumps({'event': 'error', 'data': str(e)})}\n\n"
+
+    return Response(generate(), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache",
+                             "Connection": "keep-alive",
+                             "X-Accel-Buffering": "no"})
+
+
 def _latest_pick_result():
     """读 ai_pick_results 集合最近一条选股结果。"""
     from config.database import DatabaseConfig
