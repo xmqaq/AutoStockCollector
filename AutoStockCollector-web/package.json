@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
+    "@fontsource/ibm-plex-mono": "^5.2.7",
     "axios": "^1.16.1",
     "dayjs": "^1.11.21",
     "dompurify": "^3.4.9",
