@@ -107,7 +107,7 @@ class FactorInputs:
 class StockDAL:
     """股票数据访问层。storage 依赖注入，便于测试。"""
 
-    _TTM_NEG_CACHE: Dict[str, Any] = {}  # bare_code -> 失败时间，2小时内不重试
+    _TTM_NEG_CACHE: Dict[str, Any] = {}  # 类级 dict;CPython 下单键赋值原子,选股多线程并发写同一 key 最坏重复拉取一轮,可接受,勿加锁
     _TTM_NEG_TTL_HOURS = 2
 
     def __init__(
@@ -260,12 +260,16 @@ class StockDAL:
 
         fetch = _fetch_one or cls._fetch_one_ttm_indicator
         plan = [("pe", "市盈率(TTM)"), ("pb", "市净率"), ("total_mv_yi", "总市值")]
-        from concurrent.futures import ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=3) as ex:
-            futs = {ex.submit(fetch, bare_code, f, ind): f for f, ind in plan}
-            for fut, field in futs.items():
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        # 注意:不用 with(其 shutdown(wait=True) 会等挂死的 akshare 线程);
+        # as_completed 整体限时 15s,超时的线程由 wait=False 放弃(线程泄漏可接受,akshare 请求最终会结束)
+        ex = ThreadPoolExecutor(max_workers=3)
+        futs = {ex.submit(fetch, bare_code, f, ind): f for f, ind in plan}
+        try:
+            for fut in as_completed(futs, timeout=15):
+                field = futs[fut]
                 try:
-                    val = fut.result(timeout=15)
+                    val = fut.result()
                 except Exception:
                     val = None
                 if val is None:
@@ -274,8 +278,13 @@ class StockDAL:
                     result["total_mv"] = val * 1e8
                 else:
                     result[field] = val
+        except Exception:
+            pass  # as_completed 整体超时:已收到的结果保留,未完成的放弃
+        finally:
+            ex.shutdown(wait=False)
 
         if all(v is None for v in result.values()):
+            # 仅全部失败才负缓存;部分成功(如只有pe)下次仍整组重拉,属已知取舍
             cls._TTM_NEG_CACHE[bare_code] = beijing_now()
         return result
 
