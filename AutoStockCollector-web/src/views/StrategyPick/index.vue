@@ -137,13 +137,13 @@
           <thead><tr><th>代码</th><th>名称</th><th>行业</th><th>评分</th><th>动作</th><th>建议仓位</th><th>累计</th></tr></thead>
           <tbody>
             <tr v-for="pos in result.portfolio_suggestion.positions" :key="pos.code" class="sp-ps-row">
-              <td>{{ pos.code }}</td>
+              <td class="num">{{ pos.code }}</td>
               <td>{{ pos.name }}</td>
               <td>{{ pos.industry }}</td>
-              <td><span class="sp-score-badge" :style="{color: scoreColor(pos.composite)}">{{ pos.composite.toFixed(1) }}</span></td>
+              <td><span class="sp-score-badge num" :style="{color: scoreColor(pos.composite)}">{{ pos.composite.toFixed(1) }}</span></td>
               <td><span class="sp-sig-badge" :class="'sp-sig-' + pos.action">{{ pos.action }}</span></td>
-              <td><span class="sp-ps-weight">{{ pos.weight }}%</span></td>
-              <td><span class="sp-ps-cum">{{ pos.cumulative }}%</span></td>
+              <td><span class="sp-ps-weight num">{{ pos.weight }}%</span></td>
+              <td><span class="sp-ps-cum num">{{ pos.cumulative }}%</span></td>
             </tr>
           </tbody>
         </table>
@@ -183,7 +183,7 @@
       <el-table-column type="index" label="#" width="42" align="center" />
       <el-table-column prop="code" label="代码" width="100">
         <template #default="{ row }">
-          <span class="sp-code" @click.stop="goAnalysis(row.code)">{{ row.code }}</span>
+          <span class="sp-code num" @click.stop="goAnalysis(row.code)">{{ row.code }}</span>
         </template>
       </el-table-column>
       <el-table-column prop="name" label="名称" width="90" />
@@ -195,25 +195,25 @@
       </el-table-column>
       <el-table-column label="基本" width="55" align="center" sortable :sort-by="(r: StrategyPickItem) => r.scores?.fundamental ?? 0">
         <template #default="{ row }">
-          <span v-if="row.scores?.fundamental != null" class="sp-score-cell" :style="{ color: dimColor(row.scores.fundamental) }">{{ Math.round(row.scores.fundamental) }}</span>
+          <span v-if="row.scores?.fundamental != null" class="sp-score-cell num" :style="{ color: dimColor(row.scores.fundamental) }">{{ Math.round(row.scores.fundamental) }}</span>
           <span v-else class="sp-na">-</span>
         </template>
       </el-table-column>
       <el-table-column label="技术" width="55" align="center" sortable :sort-by="(r: StrategyPickItem) => r.scores?.technical ?? 0">
         <template #default="{ row }">
-          <span v-if="row.scores?.technical != null" class="sp-score-cell" :style="{ color: dimColor(row.scores.technical) }">{{ Math.round(row.scores.technical) }}</span>
+          <span v-if="row.scores?.technical != null" class="sp-score-cell num" :style="{ color: dimColor(row.scores.technical) }">{{ Math.round(row.scores.technical) }}</span>
           <span v-else class="sp-na">-</span>
         </template>
       </el-table-column>
       <el-table-column label="资金" width="55" align="center" sortable :sort-by="(r: StrategyPickItem) => r.scores?.fund_flow ?? 0">
         <template #default="{ row }">
-          <span v-if="row.scores?.fund_flow != null" class="sp-score-cell" :style="{ color: dimColor(row.scores.fund_flow) }">{{ Math.round(row.scores.fund_flow) }}</span>
+          <span v-if="row.scores?.fund_flow != null" class="sp-score-cell num" :style="{ color: dimColor(row.scores.fund_flow) }">{{ Math.round(row.scores.fund_flow) }}</span>
           <span v-else class="sp-na">-</span>
         </template>
       </el-table-column>
       <el-table-column label="估值" width="55" align="center" sortable :sort-by="(r: StrategyPickItem) => r.scores?.valuation ?? 0">
         <template #default="{ row }">
-          <span v-if="row.scores?.valuation != null" class="sp-score-cell" :style="{ color: dimColor(row.scores.valuation) }">{{ Math.round(row.scores.valuation) }}</span>
+          <span v-if="row.scores?.valuation != null" class="sp-score-cell num" :style="{ color: dimColor(row.scores.valuation) }">{{ Math.round(row.scores.valuation) }}</span>
           <span v-else class="sp-na">-</span>
         </template>
       </el-table-column>

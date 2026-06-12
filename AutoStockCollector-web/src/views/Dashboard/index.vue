@@ -31,7 +31,7 @@
           <div class="metric-content">
             <div class="metric-label">采集完成度</div>
             <div class="metric-value">
-              <span class="text-primary">{{ collectStore.completedCount }}</span>
+              <span class="text-primary num">{{ collectStore.completedCount }}</span>
               <span class="metric-sub"> / 8 类</span>
             </div>
           </div>
@@ -44,7 +44,7 @@
         <el-card class="metric-card" shadow="never">
           <div class="metric-content">
             <div class="metric-label">累计成功条数</div>
-            <div class="metric-value text-primary">{{ fmtAmount(collectStore.totalSuccessCount) }}</div>
+            <div class="metric-value text-primary num">{{ fmtAmount(collectStore.totalSuccessCount) }}</div>
           </div>
           <el-icon class="metric-icon" color="#c9943a" size="36">
             <TrendCharts />
@@ -55,7 +55,7 @@
         <el-card class="metric-card" shadow="never">
           <div class="metric-content">
             <div class="metric-label">最新新闻条数</div>
-            <div class="metric-value text-primary">{{ newsCount }}</div>
+            <div class="metric-value text-primary num">{{ newsCount }}</div>
           </div>
           <el-icon class="metric-icon" color="#909399" size="36">
             <ChatDotRound />
@@ -115,7 +115,7 @@
               <span class="hc-icon">{{ row.icon }}</span>
               <span class="hc-name">{{ row.label }}</span>
             </div>
-            <div class="hc-count">{{ row.record_count != null ? row.record_count.toLocaleString() : '--' }}<span class="hc-unit">{{ row.unit }}</span></div>
+            <div class="hc-count num">{{ row.record_count != null ? row.record_count.toLocaleString() : '--' }}<span class="hc-unit">{{ row.unit }}</span></div>
             <div :class="['hc-date', row.health === 'stale' ? 'hc-date--stale' : '']">{{ row.latest_date ?? '--' }}</div>
             <div class="hc-status">
               <el-tag v-if="row.health === 'ok'" type="success" size="small">最新</el-tag>

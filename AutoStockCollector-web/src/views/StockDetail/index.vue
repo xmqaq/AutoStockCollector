@@ -37,7 +37,7 @@
         <div v-if="stockInfo" class="info-grid">
           <div class="info-item">
             <span class="info-label">代码</span>
-            <span class="info-value">{{ stockInfo.code }}</span>
+            <span class="info-value num">{{ stockInfo.code }}</span>
           </div>
           <div class="info-item">
             <span class="info-label">行业</span>
@@ -49,19 +49,19 @@
           </div>
           <div class="info-item">
             <span class="info-label">市盈率PE(TTM)</span>
-            <span class="info-value">{{ fmtNumber(stockInfo.pe) }}</span>
+            <span class="info-value num">{{ fmtNumber(stockInfo.pe) }}</span>
           </div>
           <div class="info-item">
             <span class="info-label">市盈率PE(静)</span>
-            <span class="info-value">{{ fmtNumber(stockInfo.pe_static) || '--' }}</span>
+            <span class="info-value num">{{ fmtNumber(stockInfo.pe_static) || '--' }}</span>
           </div>
           <div class="info-item">
             <span class="info-label">市净率PB</span>
-            <span class="info-value">{{ fmtNumber(stockInfo.pb) }}</span>
+            <span class="info-value num">{{ fmtNumber(stockInfo.pb) }}</span>
           </div>
           <div class="info-item">
             <span class="info-label">总市值</span>
-            <span class="info-value">{{ fmtAmount(stockInfo.total_mv || 0) }}</span>
+            <span class="info-value num">{{ fmtAmount(stockInfo.total_mv || 0) }}</span>
           </div>
           <div class="info-item">
             <span class="info-label">上市日期</span>
@@ -109,22 +109,22 @@
         <el-empty v-if="financialList.length === 0 && !financialLoading" description="暂无财务数据" :image-size="60" />
         <el-table v-else :data="financialList" stripe size="small">
           <el-table-column prop="report_date" label="报告期" width="120" />
-          <el-table-column label="净利润" width="120">
+          <el-table-column label="净利润" width="120" class-name="num">
             <template #default="{ row }">{{ fmtAmount(row.net_profit) }}</template>
           </el-table-column>
-          <el-table-column label="营业收入" width="120">
+          <el-table-column label="营业收入" width="120" class-name="num">
             <template #default="{ row }">{{ fmtAmount(row.revenue) }}</template>
           </el-table-column>
-          <el-table-column label="ROE" width="100">
+          <el-table-column label="ROE" width="100" class-name="num">
             <template #default="{ row }">{{ fmtNumber(row.roe) }}%</template>
           </el-table-column>
-          <el-table-column label="ROA" width="100">
+          <el-table-column label="ROA" width="100" class-name="num">
             <template #default="{ row }">{{ fmtNumber(row.roa) }}%</template>
           </el-table-column>
-          <el-table-column label="EPS" width="100">
+          <el-table-column label="EPS" width="100" class-name="num">
             <template #default="{ row }">{{ fmtNumber(row.eps) }}</template>
           </el-table-column>
-          <el-table-column label="BPS" width="100">
+          <el-table-column label="BPS" width="100" class-name="num">
             <template #default="{ row }">{{ fmtNumber(row.bps) }}</template>
           </el-table-column>
         </el-table>

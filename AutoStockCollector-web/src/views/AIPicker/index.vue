@@ -41,7 +41,7 @@
               :row-class-name="tableRowClass" @row-click="toggleExpand">
       <el-table-column type="index" label="#" width="42" align="center" />
       <el-table-column prop="code" label="代码" width="100">
-        <template #default="{ row }"><span class="ap-code" @click.stop="goAnalysis(row.code)">{{ row.code }}</span></template>
+        <template #default="{ row }"><span class="ap-code num" @click.stop="goAnalysis(row.code)">{{ row.code }}</span></template>
       </el-table-column>
       <el-table-column prop="name" label="名称" width="90" />
       <el-table-column label="综合" width="140" sortable :sort-by="(r: AIPick) => r.composite">
@@ -51,25 +51,25 @@
       </el-table-column>
       <el-table-column label="基本" width="55" align="center" sortable :sort-by="(r: AIPick) => r.scores?.fundamental ?? 0">
         <template #default="{ row }">
-          <span v-if="row.scores?.fundamental != null" class="ap-score-cell" :style="{ color: dimColor(row.scores.fundamental) }">{{ Math.round(row.scores.fundamental) }}</span>
+          <span v-if="row.scores?.fundamental != null" class="ap-score-cell num" :style="{ color: dimColor(row.scores.fundamental) }">{{ Math.round(row.scores.fundamental) }}</span>
           <span v-else class="ap-na">-</span>
         </template>
       </el-table-column>
       <el-table-column label="技术" width="55" align="center" sortable :sort-by="(r: AIPick) => r.scores?.technical ?? 0">
         <template #default="{ row }">
-          <span v-if="row.scores?.technical != null" class="ap-score-cell" :style="{ color: dimColor(row.scores.technical) }">{{ Math.round(row.scores.technical) }}</span>
+          <span v-if="row.scores?.technical != null" class="ap-score-cell num" :style="{ color: dimColor(row.scores.technical) }">{{ Math.round(row.scores.technical) }}</span>
           <span v-else class="ap-na">-</span>
         </template>
       </el-table-column>
       <el-table-column label="资金" width="55" align="center" sortable :sort-by="(r: AIPick) => r.scores?.fund_flow ?? 0">
         <template #default="{ row }">
-          <span v-if="row.scores?.fund_flow != null" class="ap-score-cell" :style="{ color: dimColor(row.scores.fund_flow) }">{{ Math.round(row.scores.fund_flow) }}</span>
+          <span v-if="row.scores?.fund_flow != null" class="ap-score-cell num" :style="{ color: dimColor(row.scores.fund_flow) }">{{ Math.round(row.scores.fund_flow) }}</span>
           <span v-else class="ap-na">-</span>
         </template>
       </el-table-column>
       <el-table-column label="估值" width="55" align="center" sortable :sort-by="(r: AIPick) => r.scores?.valuation ?? 0">
         <template #default="{ row }">
-          <span v-if="row.scores?.valuation != null" class="ap-score-cell" :style="{ color: dimColor(row.scores.valuation) }">{{ Math.round(row.scores.valuation) }}</span>
+          <span v-if="row.scores?.valuation != null" class="ap-score-cell num" :style="{ color: dimColor(row.scores.valuation) }">{{ Math.round(row.scores.valuation) }}</span>
           <span v-else class="ap-na">-</span>
         </template>
       </el-table-column>
@@ -87,7 +87,7 @@
       <el-table-column label="建议仓位" width="90" align="center">
         <template #default="{ row }">
           <el-tooltip v-if="getPosition(row) !== '--'" content="分散配置，总仓位建议不超过60%" placement="top">
-            <span class="ap-position">{{ getPosition(row) }}</span>
+            <span class="ap-position num">{{ getPosition(row) }}</span>
           </el-tooltip>
           <span v-else class="ap-na">--</span>
         </template>

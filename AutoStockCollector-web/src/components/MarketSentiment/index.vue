@@ -10,22 +10,22 @@
     <div class="sentiment-grid">
       <div class="sentiment-item">
         <div class="item-label">市场热度</div>
-        <div class="item-value heat-value">{{ heatIndex }}</div>
+        <div class="item-value heat-value num">{{ heatIndex }}</div>
         <div class="heat-bar">
           <div class="heat-fill" :style="{ width: heatIndex + '%', backgroundColor: heatColor }"></div>
         </div>
       </div>
       <div class="sentiment-item">
         <div class="item-label">上涨家数</div>
-        <div class="item-value rise">{{ riseCount }}</div>
+        <div class="item-value rise num">{{ riseCount }}</div>
       </div>
       <div class="sentiment-item">
         <div class="item-label">下跌家数</div>
-        <div class="item-value fall">{{ fallCount }}</div>
+        <div class="item-value fall num">{{ fallCount }}</div>
       </div>
       <div class="sentiment-item">
         <div class="item-label">涨跌家数比</div>
-        <div class="item-value" :class="ratioClass">{{ ratioStr }}</div>
+        <div class="item-value num" :class="ratioClass">{{ ratioStr }}</div>
       </div>
     </div>
     <div class="index-row" v-if="indices.length > 0">
@@ -35,8 +35,8 @@
         class="index-item"
       >
         <div class="index-name">{{ idx.name }}</div>
-        <div class="index-price" :class="idx.change >= 0 ? 'rise' : 'fall'">{{ idx.price ? idx.price.toFixed(2) : '--' }}</div>
-        <div class="index-change" :class="idx.change >= 0 ? 'rise' : 'fall'">
+        <div class="index-price num" :class="idx.change >= 0 ? 'rise' : 'fall'">{{ idx.price ? idx.price.toFixed(2) : '--' }}</div>
+        <div class="index-change num" :class="idx.change >= 0 ? 'rise' : 'fall'">
           {{ idx.price ? (idx.change >= 0 ? '+' : '') + (idx.change ?? 0).toFixed(2) + '%' : '--' }}
         </div>
       </div>

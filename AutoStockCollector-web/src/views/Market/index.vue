@@ -9,10 +9,10 @@
             :class="['index-card', getColorClass(idx.change)]"
           >
             <div class="index-name">{{ idx.name }}</div>
-            <div class="index-price">{{ fmtPrice(idx.price) }}</div>
+            <div class="index-price num">{{ fmtPrice(idx.price) }}</div>
             <div :class="['index-change', getTextClass(idx.change)]">
-              <span>{{ fmtChange(idx.change) }}</span>
-              <span class="change-amount">{{ fmtAmount(idx.amount) }}</span>
+              <span class="num">{{ fmtChange(idx.change) }}</span>
+              <span class="change-amount num">{{ fmtAmount(idx.amount) }}</span>
             </div>
           </div>
         </div>
@@ -51,42 +51,42 @@
 
         <el-table :data="quotes" stripe size="small" class="quotes-table">
           <el-table-column prop="name" label="名称" width="100" />
-          <el-table-column prop="code" label="代码" width="110" />
-          <el-table-column label="现价" width="100" align="right">
+          <el-table-column prop="code" label="代码" width="110" class-name="num" />
+          <el-table-column label="现价" width="100" align="right" class-name="num">
             <template #default="{ row }">
               <span :class="getTextClass(row.change)">{{ fmtPrice(row.price) }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="涨跌幅" width="100" align="center">
+          <el-table-column label="涨跌幅" width="100" align="center" class-name="num">
             <template #default="{ row }">
               <span :class="getTextClass(row.change)">{{ fmtChange(row.change) }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="今开" width="80" align="right">
+          <el-table-column label="今开" width="80" align="right" class-name="num">
             <template #default="{ row }">{{ fmtPrice(row.open) }}</template>
           </el-table-column>
-          <el-table-column label="最高" width="80" align="right">
+          <el-table-column label="最高" width="80" align="right" class-name="num">
             <template #default="{ row }">{{ fmtPrice(row.high) }}</template>
           </el-table-column>
-          <el-table-column label="最低" width="80" align="right">
+          <el-table-column label="最低" width="80" align="right" class-name="num">
             <template #default="{ row }">{{ fmtPrice(row.low) }}</template>
           </el-table-column>
-          <el-table-column label="昨收" width="80" align="right">
+          <el-table-column label="昨收" width="80" align="right" class-name="num">
             <template #default="{ row }">{{ fmtPrice(row.prev_close) }}</template>
           </el-table-column>
-          <el-table-column label="换手率" width="90" align="right">
+          <el-table-column label="换手率" width="90" align="right" class-name="num">
             <template #default="{ row }">{{ fmtTurnover(row.turnover) }}</template>
           </el-table-column>
-          <el-table-column label="成交额" width="100" align="right">
+          <el-table-column label="成交额" width="100" align="right" class-name="num">
             <template #default="{ row }">{{ fmtAmount(row.amount) }}</template>
           </el-table-column>
-          <el-table-column label="PE" width="80" align="right">
+          <el-table-column label="PE" width="80" align="right" class-name="num">
             <template #default="{ row }">{{ fmtVal(row.pe_dynamic) }}</template>
           </el-table-column>
-          <el-table-column label="PB" width="80" align="right">
+          <el-table-column label="PB" width="80" align="right" class-name="num">
             <template #default="{ row }">{{ fmtVal(row.pb) }}</template>
           </el-table-column>
-          <el-table-column label="ROE" width="80" align="right">
+          <el-table-column label="ROE" width="80" align="right" class-name="num">
             <template #default="{ row }">{{ fmtPct(row.roe) }}</template>
           </el-table-column>
           <el-table-column label="分时" width="80" align="center">
