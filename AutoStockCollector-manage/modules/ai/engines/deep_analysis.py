@@ -284,9 +284,10 @@ class DeepAnalysisService:
         high_52w = _safe_round(max(highs)) if highs else None
         low_52w = _safe_round(min(lows)) if lows else None
 
-        vol_today = bundle.volumes[0] if bundle.volumes else 0
-        vol_avg5 = (sum(bundle.volumes[1:6]) / min(len(bundle.volumes) - 1, 5)
-                    if len(bundle.volumes) > 1 else 0)
+        vols = bundle.volumes[1:] if getattr(bundle, "volume_proxy", False) else bundle.volumes
+        vol_today = vols[0] if vols else 0
+        vol_avg5 = (sum(vols[1:6]) / min(len(vols) - 1, 5)
+                    if len(vols) > 1 else 0)
         volume_ratio = _safe_round(vol_today / vol_avg5, 2) if vol_avg5 > 0 else None
 
         return {

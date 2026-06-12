@@ -81,6 +81,7 @@ class StockDataBundle:
     news: List[Dict[str, Any]] = field(default_factory=list)
     dragon_tiger: List[Dict[str, Any]] = field(default_factory=list)
     margin: List[Dict[str, Any]] = field(default_factory=list)
+    volume_proxy: bool = False   # True 表示 closes[0]/volumes[0] 是盘中实时价代理，量比须跳过首位
 
 
 @dataclass
@@ -530,9 +531,11 @@ class StockDAL:
             or (closes[0] if closes else None)
         )
         # 若实时价比 kline 最新收盘更新，注入 closes 首位使技术分析反映当天行情
+        volume_proxy = False
         if realtime_price and closes and abs(realtime_price - closes[0]) > 0.001:
             closes = [realtime_price] + closes
-            volumes = [volumes[0] if volumes else 0] + volumes  # 复用最近量
+            volumes = [volumes[0] if volumes else 0.0] + volumes  # 占位保持对齐
+            volume_proxy = True   # 首位量是代理值，量比类指标须跳过
 
         # ── PE/PB/ROE：优先读 DB 缓存 → 百度 API → 财报推算 ──
         cached_val = self._get_cached_valuation(code)
@@ -601,6 +604,7 @@ class StockDAL:
             news=news,
             dragon_tiger=dragon,
             margin=margin,
+            volume_proxy=volume_proxy,
         )
 
     def list_universe(self) -> List[str]:

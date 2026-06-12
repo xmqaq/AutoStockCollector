@@ -114,6 +114,24 @@ class TestStockDAL(unittest.TestCase):
         self.assertIsNotNone(bundle.pe)
         self.assertAlmostEqual(bundle.pe, round(20.0 / (15.0 * 4), 2))
 
+    @patch.object(StockDAL, "_fetch_ttm_valuation", return_value={"pe": None, "pb": None, "total_mv": None})
+    @patch.object(StockDAL, "_fetch_realtime_price", return_value=25.0)
+    def test_volume_proxy_flag_set_when_realtime_injected(self, _mock_price, _mock_ttm):
+        """实时价与最新收盘不同时注入 closes，bundle.volume_proxy 须为 True 且 closes/volumes 等长。"""
+        # kline 最新收盘 20.0，_fetch_realtime_price 返回 25.0，差值 > 0.001 → 触发注入
+        dal = _make_dal()
+        b = dal.get_stock_bundle("SH600519")
+        assert b.volume_proxy is True
+        assert len(b.closes) == len(b.volumes)
+
+    @patch.object(StockDAL, "_fetch_ttm_valuation", return_value={"pe": None, "pb": None, "total_mv": None})
+    @patch.object(StockDAL, "_fetch_realtime_price", return_value=None)
+    def test_volume_proxy_false_without_injection(self, _mock_price, _mock_ttm):
+        """无实时价差异时不打标记。"""
+        dal = _make_dal()
+        b = dal.get_stock_bundle("SH600519")
+        assert b.volume_proxy is False
+
 
 class TestReportQuarter(unittest.TestCase):
     """_report_quarter 辅助函数各种格式识别"""
