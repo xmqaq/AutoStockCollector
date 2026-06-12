@@ -174,15 +174,19 @@ class LLMRouter:
         messages: Optional[List[Dict[str, Any]]] = None,
         tier: Optional[str] = None,
     ) -> LLMResult:
-        """调用 LLM。传入 messages 时以多轮对话格式发送，跳过缓存（对话有上下文，不宜缓存）。"""
+        """调用 LLM。传入 messages 时以多轮对话格式发送；缓存 key 纳入 messages 内容，
+        数据决定的 messages（如深度分析）可命中缓存；真正的多轮对话由调用方传 use_cache=False 控制。"""
         if tier:
             tier_cfg = self._get_tier_config(tier)
             temperature = tier_cfg.get("temperature", temperature)
             max_tokens = tier_cfg.get("max_tokens", max_tokens)
 
         full_prompt = self._build_prompt(prompt, schema)
-        use_cache = use_cache and not messages
-        key = self._cache_key(full_prompt)
+        # 缓存 key 纳入 messages:深度分析等"数据决定的 messages"可命中缓存;
+        # 真正的多轮对话由调用方传 use_cache=False 控制
+        cache_src = full_prompt if not messages else (
+            full_prompt + "\x00" + json.dumps(messages, ensure_ascii=False, sort_keys=True))
+        key = self._cache_key(cache_src)
 
         if use_cache and key in self._cache:
             entry = self._cache[key]

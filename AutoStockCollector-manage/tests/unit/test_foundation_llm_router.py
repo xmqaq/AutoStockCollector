@@ -119,6 +119,27 @@ class TestTemperatureMaxTokensPassthrough(unittest.TestCase):
         self.assertTrue(r.success)
 
 
+class TestMessagesCache(unittest.TestCase):
+    def test_chat_with_messages_caches_by_prompt_plus_messages(self):
+        calls = []
+
+        def caller(provider, prompt, messages=None, **kw):
+            calls.append(1)
+            return "report"
+
+        router = LLMRouter(providers=["p1"], caller=caller)
+        msgs = [{"role": "system", "content": "s"}, {"role": "user", "content": "u"}]
+        r1 = router.chat("u", use_cache=True, messages=msgs)
+        r2 = router.chat("u", use_cache=True, messages=msgs)
+        self.assertTrue(r1.success and r2.success)
+        self.assertTrue(r2.from_cache)
+        self.assertEqual(len(calls), 1)
+        r3 = router.chat("u", use_cache=True,
+                         messages=[{"role": "user", "content": "different"}])
+        self.assertFalse(r3.from_cache)
+        self.assertEqual(len(calls), 2)
+
+
 class TestDefaultCallerParamForwarding(unittest.TestCase):
     def test_default_caller_forwards_params_to_provider_caller(self):
         """生产路径:chat→_default_caller→ProviderCaller 参数必须透传。"""
