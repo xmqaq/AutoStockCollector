@@ -98,6 +98,29 @@ class LLMRouter:
     def _cache_key(self, prompt: str) -> str:
         return hashlib.md5(prompt.encode("utf-8")).hexdigest()
 
+    @staticmethod
+    def _cache_src(full_prompt: str, messages: Optional[List[Dict[str, Any]]] = None) -> str:
+        if not messages:
+            return full_prompt
+        return full_prompt + "\x00" + json.dumps(messages, ensure_ascii=False, sort_keys=True)
+
+    def cache_get(self, prompt: str,
+                  messages: Optional[List[Dict[str, Any]]] = None) -> Optional[str]:
+        """读共享缓存的原始文本(供流式路径秒回),未命中/过期返回 None。"""
+        key = self._cache_key(self._cache_src(prompt, messages))
+        entry = self._cache.get(key)
+        if entry and beijing_now() - entry["ts"] < self._cache_ttl:
+            return entry["raw"]
+        return None
+
+    def cache_put(self, prompt: str, raw: str,
+                  messages: Optional[List[Dict[str, Any]]] = None,
+                  provider: str = "stream") -> None:
+        """流式完成后回填缓存,与 chat() 同一套 key,两条路径互通。"""
+        key = self._cache_key(self._cache_src(prompt, messages))
+        self._cache[key] = {"provider": provider, "data": {"content": raw},
+                            "raw": raw, "ts": beijing_now()}
+
     def _get_tier_config(self, tier: str = "quick") -> Dict[str, Any]:
         from config.settings import Settings
         tiers = getattr(Settings, "LLM_TIERS", {})
@@ -190,9 +213,7 @@ class LLMRouter:
         full_prompt = self._build_prompt(prompt, schema)
         # 缓存 key 纳入 messages:深度分析等"数据决定的 messages"可命中缓存;
         # 真正的多轮对话由调用方传 use_cache=False 控制
-        cache_src = full_prompt if not messages else (
-            full_prompt + "\x00" + json.dumps(messages, ensure_ascii=False, sort_keys=True))
-        key = self._cache_key(cache_src)
+        key = self._cache_key(self._cache_src(full_prompt, messages))
 
         if use_cache and key in self._cache:
             entry = self._cache[key]

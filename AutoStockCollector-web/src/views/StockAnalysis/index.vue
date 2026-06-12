@@ -152,16 +152,18 @@
         </div>
         <div v-if="aiLoading" class="da-ai-loading">
           <el-icon class="is-loading" :size="24"><Loading /></el-icon>
-          <span>报告生成中，边生成边显示…</span>
+          <span>{{ streamStallHint || '报告生成中，边生成边显示…' }}</span>
         </div>
         <div v-if="aiReport" class="da-ai-report">
           <div v-if="aiReport.success" class="da-ai-content md-content" v-html="renderMd(aiReport.content || '')" />
           <el-alert v-else type="warning" :closable="false" show-icon>
             {{ aiReport.error || 'AI服务暂不可用' }}
           </el-alert>
-          <div v-if="aiReport.provider" class="da-ai-meta">
-            <span>Provider: {{ aiReport.provider }}</span>
-            <span v-if="aiReport.from_cache">（缓存）</span>
+          <div class="da-ai-meta">
+            <span v-if="aiReport.provider">Provider: {{ aiReport.provider }}</span>
+            <span v-if="lastReportTime">生成于 {{ lastReportTime }}</span>
+            <span v-else-if="aiReport.from_cache">（缓存）</span>
+            <el-button v-if="!aiLoading" link type="primary" size="small" @click="runAIReport">重新生成</el-button>
           </div>
         </div>
       </el-card>
@@ -337,6 +339,8 @@ const expandedNews = ref<number | null>(null)
 
 const aiLoading = ref(false)
 const aiReport = ref<AIReportResult | null>(null)
+const lastReportTime = ref('')      // 恢复的历史报告生成时间
+const streamStallHint = ref('')     // 流式出字停顿安抚提示
 const adviceLoading = ref(false)
 const advice = ref<AIAdviceResult | null>(null)
 const cost = ref<number | undefined>()
@@ -624,6 +628,12 @@ async function runAnalysis() {
     const res = await deepAnalysisApi.getData(inputCode.value.trim())
     if (res.data?.success) {
       data.value = res.data.data
+      // 刷新/重进页面时恢复最近一份已生成的报告
+      const last = data.value?.last_ai_report
+      if (last?.content) {
+        aiReport.value = { success: true, content: last.content, provider: last.provider || '', from_cache: true }
+        lastReportTime.value = last.created_at || ''
+      }
       nextTick(() => klineChartRef.value?.resize())
     } else {
       ElMessage.error(res.data?.error || '分析失败')
@@ -640,7 +650,17 @@ async function runAIReport() {
   const code = data.value.basic_info.code
   aiLoading.value = true
   aiReport.value = { success: true, content: '', provider: '', from_cache: false }
+  lastReportTime.value = ''
+  streamStallHint.value = ''
   let streamed = false
+  let lastChunkAt = Date.now()
+  // 出字间隔监测:模型思考停顿>8秒显示安抚提示,避免被误认为卡死
+  const stallTimer = window.setInterval(() => {
+    const idle = Date.now() - lastChunkAt
+    streamStallHint.value = idle > 8000
+      ? `AI 仍在生成中(已等待 ${Math.round(idle / 1000)} 秒),模型思考较慢,请勿刷新页面…`
+      : ''
+  }, 2000)
   try {
     const resp = await fetch(`/api/v1/stock/deep_analysis/${code}/ai/stream`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -660,6 +680,7 @@ async function runAIReport() {
         const evt = JSON.parse(part.slice(6))
         if (evt.event === 'content') {
           streamed = true
+          lastChunkAt = Date.now()
           aiReport.value!.content = (aiReport.value!.content || '') + evt.data
         } else if (evt.event === 'error') {
           throw new Error(evt.data)
@@ -668,18 +689,25 @@ async function runAIReport() {
     }
     if (!streamed) throw new Error('empty stream')
   } catch {
-    // 流式失败降级回原非流式接口：整体重新生成并覆盖内容
-    try {
-      const res = await deepAnalysisApi.getAIReport(code)
-      if (res.data?.success) {
-        aiReport.value = res.data.data
-      } else {
-        aiReport.value = { success: false, error: res.data?.data?.error || res.data?.error || 'AI服务暂不可用' }
+    // 已生成较多内容时保留现场并提示重试,避免静默整体重新生成(再等一遍且翻倍调用成本)
+    if (streamed && (aiReport.value?.content?.length || 0) > 200) {
+      aiReport.value!.content += '\n\n> ⚠️ 生成中断（AI服务响应超时），以上为已生成部分，可点击「重新生成」补全'
+    } else {
+      // 几乎没产出:降级回非流式接口整体生成
+      try {
+        const res = await deepAnalysisApi.getAIReport(code)
+        if (res.data?.success) {
+          aiReport.value = res.data.data
+        } else {
+          aiReport.value = { success: false, error: res.data?.data?.error || res.data?.error || 'AI服务暂不可用' }
+        }
+      } catch {
+        aiReport.value = { success: false, error: 'AI请求失败，请检查网络或API配置' }
       }
-    } catch {
-      aiReport.value = { success: false, error: 'AI请求失败，请检查网络或API配置' }
     }
   } finally {
+    window.clearInterval(stallTimer)
+    streamStallHint.value = ''
     aiLoading.value = false
   }
 }

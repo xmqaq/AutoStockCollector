@@ -361,6 +361,7 @@ export interface DeepAnalysisData {
   analysis_time: string
   data_freshness?: DataFreshness
   dragon_margin?: DragonMargin
+  last_ai_report?: { content: string; provider?: string; created_at?: string } | null
 }
 
 export interface AIReportResult {

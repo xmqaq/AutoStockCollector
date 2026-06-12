@@ -118,3 +118,48 @@ def test_ai_report_records_decision_on_cache_hit(monkeypatch):
     r = svc.ai_report("sh600000", data=_full_data())
     assert r["from_cache"] is True
     assert seen == {"d": True}
+
+
+def test_ai_report_stream_returns_cached_instantly(monkeypatch):
+    """流式路径先查共享缓存:命中则整段秒回,不再调用 chat_stream。"""
+    class FakeRouter:
+        def __init__(self):
+            self.stream_called = False
+        def cache_get(self, prompt, messages=None):
+            return "缓存的完整报告\n【评级】适度关注"
+        def chat_stream(self, *a, **k):
+            self.stream_called = True
+            yield "不应到达"
+    router = FakeRouter()
+    svc = DeepAnalysisService(dal=object(), router=router)
+    monkeypatch.setattr(svc, "get_full_data", lambda code, user_id="default": _full_data())
+    monkeypatch.setattr(svc, "_record_outcome",
+                        lambda *a, **k: None)
+    chunks = list(svc.ai_report_stream("sh600000"))
+    assert "".join(chunks).startswith("缓存的完整报告")
+    assert router.stream_called is False
+
+
+def test_ai_report_stream_caches_and_persists_on_completion(monkeypatch):
+    """流式完整生成后:回填 LLM 缓存 + 持久化最近报告。"""
+    class FakeRouter:
+        def __init__(self):
+            self.put = None
+        def cache_get(self, prompt, messages=None):
+            return None
+        def cache_put(self, prompt, raw, messages=None, provider="stream"):
+            self.put = raw
+        def chat_stream(self, *a, **k):
+            yield "生成的"
+            yield "报告\n【评级】中性观望"
+    router = FakeRouter()
+    svc = DeepAnalysisService(dal=object(), router=router)
+    saved = {}
+    monkeypatch.setattr(svc, "get_full_data", lambda code, user_id="default": _full_data())
+    monkeypatch.setattr(svc, "_record_outcome", lambda *a, **k: None)
+    monkeypatch.setattr("modules.ai.engines.deep_analysis._save_last_report",
+                        lambda code, content, provider="": saved.update(code=code, content=content))
+    chunks = list(svc.ai_report_stream("sh600000"))
+    assert "".join(chunks) == "生成的报告\n【评级】中性观望"
+    assert router.put and "中性观望" in router.put
+    assert saved["code"] == "sh600000"

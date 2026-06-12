@@ -225,6 +225,24 @@ class TestSharedCache(unittest.TestCase):
         self.assertEqual(len(calls), 2)
 
 
+class TestCacheGetPut(unittest.TestCase):
+    def test_cache_put_then_get_roundtrip(self):
+        router = LLMRouter(providers=["p1"], caller=lambda p, q, **kw: "x", cache={})
+        msgs = [{"role": "system", "content": "s"}, {"role": "user", "content": "u"}]
+        self.assertIsNone(router.cache_get("u", messages=msgs))
+        router.cache_put("u", "完整报告", messages=msgs)
+        self.assertEqual(router.cache_get("u", messages=msgs), "完整报告")
+        # messages 不同 → 不命中
+        self.assertIsNone(router.cache_get("u", messages=[{"role": "user", "content": "v"}]))
+
+    def test_cache_get_interops_with_chat_cache(self):
+        """chat() 写入的缓存,cache_get 能读到(同一套 key)。"""
+        router = LLMRouter(providers=["p1"], caller=lambda p, q, **kw: "回答", cache={})
+        msgs = [{"role": "user", "content": "u"}]
+        router.chat("u", use_cache=True, messages=msgs)
+        self.assertEqual(router.cache_get("u", messages=msgs), "回答")
+
+
 class TestStreamMidFailure(unittest.TestCase):
     def test_raises_after_partial_yield_no_failover_duplication(self):
         """provider 产出部分内容后失败:不许换家重播(会重复开头),应上抛让上游降级。"""

@@ -18,6 +18,31 @@ def _safe_round(v, n=2):
         return None
 
 
+def _save_last_report(code: str, content: str, provider: str = "") -> None:
+    """持久化最近一份AI报告(每股一条 upsert),页面刷新后可恢复展示。"""
+    try:
+        from utils.helpers import beijing_now
+        from config.database import DatabaseConfig
+        db = DatabaseConfig.get_database()
+        db["ai_deep_reports"].update_one(
+            {"code": code},
+            {"$set": {"code": code, "content": content, "provider": provider,
+                      "created_at": beijing_now().strftime("%Y-%m-%d %H:%M")}},
+            upsert=True,
+        )
+    except Exception as e:
+        logger.warning(f"Save last report failed for {code}: {e}")
+
+
+def _load_last_report(code: str) -> Optional[Dict[str, Any]]:
+    try:
+        from config.database import DatabaseConfig
+        db = DatabaseConfig.get_database()
+        return db["ai_deep_reports"].find_one({"code": code}, {"_id": 0})
+    except Exception:
+        return None
+
+
 class DeepAnalysisService:
     def __init__(self, dal=None, router=None):
         if dal is None:
@@ -62,6 +87,7 @@ class DeepAnalysisService:
             "data_freshness": self._build_freshness(kline_data, financial, fund_flow),
             "reflection": reflection,
             "analysis_history": analysis_history,
+            "last_ai_report": _load_last_report(code),
             "analysis_time": _dt.now(beijing).strftime("%Y-%m-%d %H:%M"),
 
         }
@@ -93,12 +119,13 @@ class DeepAnalysisService:
         )
         if result.success and result.raw:
             content, _ = sanitize_text(result.raw)
-            if len(self._missing_dims(data.get("scores") or {})) >= 2:
-                content = "> ⚠️ 本报告生成时部分维度数据缺失,结论仅供参考\n\n" + content
+            content = self._with_completeness_header(content, data)
             # 缓存命中也同步决策记录(同日 upsert 幂等),保证展示报告与落库评级一致;
             # 但分析历史记忆只在新生成时写,避免重复刷记录
             self._record_outcome(code, content, user_id,
                                  decision_only=result.from_cache)
+            if not result.from_cache:
+                _save_last_report(code, content, provider=result.provider)
             return {
                 "success": True,
                 "content": content,
@@ -112,8 +139,17 @@ class DeepAnalysisService:
 
         }
 
+    def _with_completeness_header(self, content: str, data: Dict[str, Any]) -> str:
+        """缺≥2维时给报告加声明标头(已有标头则不重复)。"""
+        if (len(self._missing_dims(data.get("scores") or {})) >= 2
+                and not content.startswith("> ⚠️")):
+            return "> ⚠️ 本报告生成时部分维度数据缺失,结论仅供参考\n\n" + content
+        return content
+
     def ai_report_stream(self, code: str, user_id: str = "default"):
-        """流式生成报告。yield 文本块;结束后做风控清洗与决策落库。"""
+        """流式生成报告。yield 文本块;结束后做风控清洗、决策落库、回填缓存与持久化。
+
+        先查共享缓存:同样数据已生成过则整段秒回,刷新/重复点击不再重新生成。"""
         data = self.get_full_data(code, user_id=user_id)
         prompt = self._build_ai_prompt(data, user_id=user_id)
         system = (
@@ -125,6 +161,18 @@ class DeepAnalysisService:
             {"role": "system", "content": system},
             {"role": "user", "content": prompt},
         ]
+
+        try:
+            cached = self.router.cache_get(prompt, messages=messages)
+        except Exception:
+            cached = None
+        if cached:
+            content, _ = sanitize_text(cached)
+            content = self._with_completeness_header(content, data)
+            yield content
+            self._record_outcome(code, content, user_id, decision_only=True)
+            return
+
         full = ""
         for chunk in self.router.chat_stream(prompt, task_type="deep_analysis",
                                              messages=messages):
@@ -132,8 +180,12 @@ class DeepAnalysisService:
             yield chunk
         if full:
             content, _ = sanitize_text(full)
-            if len(self._missing_dims(data.get("scores") or {})) >= 2:
-                content = "> ⚠️ 本报告生成时部分维度数据缺失,结论仅供参考\n\n" + content
+            content = self._with_completeness_header(content, data)
+            try:
+                self.router.cache_put(prompt, content, messages=messages)
+            except Exception:
+                pass
+            _save_last_report(code, content, provider="stream")
             self._record_outcome(code, content, user_id)
 
     # ==================== 反思与记忆融合 ====================
