@@ -50,3 +50,19 @@ def test_prompt_marks_stale_kline():
     svc = DeepAnalysisService(dal=object(), router=object())
     p = svc._build_ai_prompt(d)
     assert "数据滞后" in p
+
+
+def test_extract_rating_prefers_anchor_line():
+    svc = DeepAnalysisService(dal=object(), router=object())
+    text = "## 综合评级\n理由……\n【评级】谨慎回避\n\n附注:若后续放量可转为适度关注观察。"
+    assert svc._extract_rating(text) == "谨慎回避"
+
+
+def test_extract_rating_falls_back_to_rfind():
+    svc = DeepAnalysisService(dal=object(), router=object())
+    assert svc._extract_rating("综合来看建议适度关注该股") == "适度关注"
+
+
+def test_extract_rating_default_neutral():
+    svc = DeepAnalysisService(dal=object(), router=object())
+    assert svc._extract_rating("没有评级词的文本") == "中性观望"

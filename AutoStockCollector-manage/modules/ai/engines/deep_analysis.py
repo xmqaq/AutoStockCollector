@@ -167,7 +167,13 @@ class DeepAnalysisService:
             return None
 
     def _extract_rating(self, content: str) -> str:
-        """从报告文本中提取综合评级，优先匹配靠后出现的评级词。"""
+        """优先解析末尾【评级】锚定行;失败降级全文最后出现的评级词。"""
+        import re
+        m = None
+        for m in re.finditer(r"【评级】\s*(强烈关注|适度关注|中性观望|谨慎回避)", content):
+            pass
+        if m:
+            return m.group(1)
         best, best_pos = "中性观望", -1
         for rating in self.RATING_SCORES:
             pos = content.rfind(rating)
