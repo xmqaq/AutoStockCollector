@@ -2,6 +2,28 @@
 from datetime import timedelta
 from utils.helpers import beijing_now
 from modules.ai.reflection.evaluator import ReflectionEvaluator
+from modules.ai.reflection.decision_logger import DecisionLogger
+
+
+class FakeLoggerCollection:
+    def __init__(self):
+        self.docs = {}
+    def update_one(self, q, u, upsert=False):
+        key = (q.get("stock_code"), q.get("date_key"))
+        self.docs[key] = u["$set"]
+        class R: upserted_id = "new"
+        return R()
+
+
+def test_same_day_decision_upserts_not_inserts():
+    col = FakeLoggerCollection()
+    lg = DecisionLogger(collection=col)
+    lg.log_decision("run1", "sh600000", {"decision": "适度关注", "bull_score": 65, "bear_score": 35})
+    lg.log_decision("run2", "sh600000", {"decision": "中性观望", "bull_score": 50, "bear_score": 50})
+    assert len(col.docs) == 1                          # 同日同股只剩一条
+    only = list(col.docs.values())[0]
+    assert only["decision"] == "中性观望"               # 保留最后一次
+    assert only["predicted_direction"] == "neutral"
 
 
 class FakeCollection:

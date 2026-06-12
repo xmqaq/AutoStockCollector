@@ -1,4 +1,3 @@
-from datetime import datetime
 from utils.helpers import beijing_now
 from typing import Any, Dict, Optional
 from config.database import get_collection
@@ -8,19 +7,20 @@ logger = get_logger(__name__)
 
 
 class DecisionLogger:
-    def __init__(self):
-        self.collection = get_collection("trading_memory")
+    def __init__(self, collection=None):
+        self.collection = collection if collection is not None else get_collection("trading_memory")
 
     def log_decision(self, run_id: str, stock_code: str, decision: Dict[str, Any]) -> str:
+        date_key = beijing_now().strftime("%Y-%m-%d")
         record = {
             "type": "trading_decision",
             "run_id": run_id,
             "stock_code": stock_code,
+            "date_key": date_key,
             "decision": decision.get("decision", ""),
             "bull_score": decision.get("bull_score"),
             "bear_score": decision.get("bear_score"),
             "confidence": decision.get("confidence"),
-            "predicted_direction": "bullish",
             "timestamp": beijing_now().isoformat(),
             "evaluated": False,
         }
@@ -31,9 +31,14 @@ class DecisionLogger:
         else:
             record["predicted_direction"] = "neutral"
 
-        result = self.collection.insert_one(record)
+        # 同股同日只保留最后一条,反复生成报告不刷重复决策
+        result = self.collection.update_one(
+            {"type": "trading_decision", "stock_code": stock_code, "date_key": date_key},
+            {"$set": record},
+            upsert=True,
+        )
         logger.info(f"Decision logged for {stock_code} (run: {run_id})")
-        return str(result.inserted_id)
+        return str(getattr(result, "upserted_id", "") or "updated")
 
     def get_pending_evaluations(self) -> list:
         return list(self.collection.find(
