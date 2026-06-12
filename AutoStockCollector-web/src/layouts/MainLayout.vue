@@ -3,13 +3,16 @@
     <!-- Sidebar -->
     <el-aside width="220px" class="sidebar">
       <div class="logo">
-        <span class="logo-icon">📈</span>
+        <svg class="logo-mark" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+          <rect x="3" y="10" width="4" height="9" rx="1" fill="currentColor" opacity="0.45" />
+          <rect x="10" y="5" width="4" height="14" rx="1" fill="currentColor" opacity="0.7" />
+          <rect x="17" y="8" width="4" height="11" rx="1" fill="currentColor" />
+        </svg>
         <span class="logo-text">AutoStockCollector</span>
       </div>
       <el-menu
         :default-active="activeMenu"
         :default-openeds="openedMenus"
-        active-text-color="#3f7fae"
         @select="handleMenuSelect"
       >
         <template v-for="group in menuGroups" :key="group.key">
@@ -254,13 +257,15 @@ onUnmounted(() => {
   gap: 8px;
 }
 
-.logo-icon {
-  font-size: 20px;
+.logo-mark {
+  color: var(--el-color-primary);
+  flex-shrink: 0;
 }
 
 .logo-text {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.02em;
   color: var(--text-primary);
   white-space: nowrap;
 }
