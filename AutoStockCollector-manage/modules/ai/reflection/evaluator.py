@@ -14,9 +14,45 @@ def _default_kline_loader(code: str, limit: int) -> list:
 
 
 class ReflectionEvaluator:
+    _INDEX_CODES = ("sh000001", "SH000001")
+
     def __init__(self, collection=None, kline_loader=None):
         self.collection = collection if collection is not None else get_collection("trading_memory")
         self.kline_loader = kline_loader or _default_kline_loader
+
+    def _index_return(self, decision_day: str) -> Optional[float]:
+        """上证指数 决策日→现在 的收益率(%),无数据返回 None。"""
+        klines = None
+        for icode in self._INDEX_CODES:
+            klines = self.kline_loader(icode, 300)
+            if klines:
+                break
+        if not klines:
+            return None
+        try:
+            cur = float(klines[0].get("close", 0))
+            dec = None
+            for k in klines:
+                if str(k.get("date", ""))[:10] <= decision_day:
+                    close_val = k.get("close")
+                    if close_val is None:
+                        continue
+                    dec = float(close_val)
+                    break
+            if not dec or not cur:
+                return None
+            return (cur - dec) / dec * 100
+        except (ValueError, TypeError):
+            return None
+
+    @staticmethod
+    def _judge(predicted: str, x: float, thr: float, thr_neutral: float) -> str:
+        """x: 超额或绝对收益。三态判定。"""
+        if predicted == "bullish":
+            return "correct" if x >= thr else "wrong" if x <= -thr else "partial"
+        if predicted == "bearish":
+            return "correct" if x <= -thr else "wrong" if x >= thr else "partial"
+        return "correct" if abs(x) <= thr_neutral else "partial"
 
     def evaluate(self, record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         stock_code = record.get("stock_code", "")
@@ -41,21 +77,27 @@ class ReflectionEvaluator:
             decision_price = None
             for k in klines:  # 降序:从最新往回,首个 date<=决策日 即最接近决策日的一根
                 if str(k.get("date", ""))[:10] <= decision_day:
-                    decision_price = float(k.get("close", 0))
+                    close_val = k.get("close")
+                    if close_val is None:
+                        continue
+                    decision_price = float(close_val)
                     break
-            if not decision_price:
+            if decision_price is None:
                 return None
 
             realized_return = (current_price - decision_price) / decision_price * 100 if decision_price else 0
             predicted = record.get("predicted_direction", "neutral")
 
-            accuracy = "correct"
-            if predicted == "bullish" and realized_return < -2:
-                accuracy = "wrong"
-            elif predicted == "bearish" and realized_return > 2:
-                accuracy = "wrong"
-            elif predicted == "neutral" and abs(realized_return) > 3:
-                accuracy = "partial"
+            bench = self._index_return(decision_day)
+            if bench is not None:
+                excess = realized_return - bench
+                accuracy = self._judge(predicted, excess, 2.0, 3.0)
+                benchmark_mode = "index"
+            else:
+                excess = None
+                thr = 2.0 if days_elapsed <= 3 else 4.0 if days_elapsed <= 10 else 6.0
+                accuracy = self._judge(predicted, realized_return, thr, 3.0)
+                benchmark_mode = "threshold"
 
             reflection = {
                 "stock_code": stock_code,
@@ -66,8 +108,13 @@ class ReflectionEvaluator:
                 "days_elapsed": days_elapsed,
                 "predicted_direction": predicted,
                 "accuracy": accuracy,
+                "benchmark": benchmark_mode,
+                "benchmark_return": round(bench, 2) if bench is not None else None,
+                "excess_return": round(excess, 2) if excess is not None else None,
                 "summary": (
-                    f"{days_elapsed}天前预测{predicted}，实际收益{realized_return:+.2f}%，判断{'正确' if accuracy == 'correct' else '部分正确' if accuracy == 'partial' else '错误'}"
+                    f"{days_elapsed}天前预测{predicted},实际{realized_return:+.2f}%"
+                    + (f"(同期上证{bench:+.2f}%,超额{excess:+.2f}%)" if bench is not None else "")
+                    + f",判断{'正确' if accuracy == 'correct' else '部分正确' if accuracy == 'partial' else '错误'}"
                 ),
             }
 

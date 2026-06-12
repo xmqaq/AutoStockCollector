@@ -21,6 +21,7 @@ def _mk_klines_desc(prices_by_date):
 
 def _evaluator_with(klines_desc, index_klines_desc=None):
     def kline_loader(code, limit):
+        # 指数K线注入:Task 2 基准化判定用
         if code.lower().startswith("sh000001"):
             return (index_klines_desc or [])[:limit]
         return klines_desc[:limit]
@@ -54,3 +55,43 @@ def test_decision_on_non_trading_day_uses_prior_close():
     ev = _evaluator_with(_mk_klines_desc(prices))
     r = ev.evaluate(_record(days_ago=3))   # 决策日 d(3) 无K线 → 用 d(5)=10.0
     assert r["decision_price"] == 10.0
+
+
+def _index_klines(now, ret_pct, days):
+    """构造指数K线:days 天前 100 → 现在 100*(1+ret)。"""
+    d = lambda i: (now - timedelta(days=i)).strftime("%Y-%m-%d")
+    return _mk_klines_desc([(d(0), 100.0 * (1 + ret_pct / 100)), (d(days), 100.0)])
+
+
+def test_bullish_judged_by_excess_over_index():
+    """有指数数据:看多,个股+1%但指数+5% → 超额-4% → 错。"""
+    now = beijing_now()
+    d = lambda i: (now - timedelta(days=i)).strftime("%Y-%m-%d")
+    stock = _mk_klines_desc([(d(0), 10.1), (d(7), 10.0)])      # +1%
+    idx = _index_klines(now, ret_pct=5.0, days=7)               # +5%
+    ev = _evaluator_with(stock, idx)
+    r = ev.evaluate(_record(days_ago=7, direction="bullish"))
+    assert r["accuracy"] == "wrong"
+    assert r["benchmark"] == "index"
+    assert abs(r["excess_return"] - (-3.9)) < 0.2
+
+
+def test_threshold_fallback_scales_with_days():
+    """无指数数据:11天前看多,+5% < 6% 阈值 → partial 而非 correct。"""
+    now = beijing_now()
+    d = lambda i: (now - timedelta(days=i)).strftime("%Y-%m-%d")
+    stock = _mk_klines_desc([(d(0), 10.5), (d(11), 10.0)])      # +5%
+    ev = _evaluator_with(stock, index_klines_desc=[])
+    r = ev.evaluate(_record(days_ago=11, direction="bullish"))
+    assert r["benchmark"] == "threshold"
+    assert r["accuracy"] == "partial"
+
+
+def test_neutral_correct_when_small_excess():
+    now = beijing_now()
+    d = lambda i: (now - timedelta(days=i)).strftime("%Y-%m-%d")
+    stock = _mk_klines_desc([(d(0), 10.1), (d(5), 10.0)])
+    idx = _index_klines(now, ret_pct=0.0, days=5)
+    ev = _evaluator_with(stock, idx)
+    r = ev.evaluate(_record(days_ago=5, direction="neutral"))
+    assert r["accuracy"] == "correct"
