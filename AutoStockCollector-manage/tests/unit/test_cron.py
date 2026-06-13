@@ -101,7 +101,7 @@ class TestGetCronTime(unittest.TestCase):
         with patch.dict("os.environ", {}, clear=False):
             import os
             os.environ.pop("AI_PICK_CRON_TIME", None)
-            self.assertEqual(get_cron_time(), "15:30")
+            self.assertEqual(get_cron_time(), "16:15")
 
     def test_env_override(self):
         import os

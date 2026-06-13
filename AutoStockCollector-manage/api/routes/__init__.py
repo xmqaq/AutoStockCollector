@@ -1861,9 +1861,11 @@ def _compute_health(ttype: str, stats: dict, now: datetime) -> dict:
                 return {"health": "ok", "days_behind": 0, "latest_date": date_to_str}
 
             gap = _count_trading_days_behind(date_to_str, expected)
-            # 板块/融资融券：数据发布有延迟，1个交易日内都算 ok
-            if ttype in ("sector", "margin") and gap <= 1:
-                # 融资融券/板块数据发布有延迟，差1个交易日算 ok（交易所可能当晚才发布）
+            # 板块/融资融券/龙虎榜：数据发布有延迟，1个交易日内都算 ok
+            #  - 融资融券：交易所 T+1 才披露
+            #  - 龙虎榜：交易所约 17:30-18:30 才披露，盘后早段必然差 1 天
+            #  - 板块：快照源偶有延迟
+            if ttype in ("sector", "margin", "dragon_tiger") and gap <= 1:
                 return {"health": "ok", "days_behind": 0, "latest_date": date_to_str}
             return {"health": "stale", "days_behind": gap, "latest_date": date_to_str}
         except Exception:

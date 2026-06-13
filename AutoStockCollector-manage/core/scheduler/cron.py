@@ -324,9 +324,36 @@ def _cancel_stale_task(sched, task_id: str, elapsed: float) -> None:
         logger.debug(f"[cron] 取消僵尸任务 {task_id} 失败: {e}")
 
 
+def _claim_trigger_slot(task_type: str) -> bool:
+    """跨进程原子抢占触发槽：同一 task_type 在同一分钟桶内只允许一个进程触发。
+
+    用 MongoDB `_id` 唯一键 insert 实现——重复 insert 触发 DuplicateKeyError，
+    即说明本时段已被另一进程/线程抢占（覆盖热重载双进程、多 worker 等场景）。
+    `_is_task_running` 依赖"创建→列表里显示 running"非原子，有竞态窗口；
+    本方法在创建任务之前先抢锁，把竞态彻底关闭。
+    DB 不可用时返回 True（退化为单机 best-effort，不阻塞触发）。
+    """
+    try:
+        from pymongo.errors import DuplicateKeyError
+        from config.database import DatabaseConfig
+        col = DatabaseConfig.get_database()["cron_trigger_lock"]
+        slot = _now().strftime("%Y%m%d%H%M")
+        try:
+            col.insert_one({"_id": f"{task_type}:{slot}", "at": _now()})
+            return True
+        except DuplicateKeyError:
+            return False
+    except Exception:
+        return True
+
+
 def _trigger_task(task_type: str, params: dict, label: str = "") -> None:
     _label = label or task_type
     try:
+        if not _claim_trigger_slot(task_type):
+            logger.info(f"[cron] {_label} 本分钟已由其他进程/线程触发，跳过")
+            _record_result(_label, ok=True, msg="skipped: slot already claimed")
+            return
         if _is_task_running(task_type):
             logger.info(f"[cron] {_label} 已有任务运行中，跳过")
             _record_result(_label, ok=True, msg="skipped: already running")
@@ -424,7 +451,11 @@ def job_margin():
     if not _is_weekday():
         return
     today = _today()
-    _trigger_task("margin", {"start_date": today, "end_date": today}, "融资融券")
+    # 沪深交易所融资融券明细为 T+1 披露：当晚 21:30 取"今天"必为空，
+    # 且次日只请求次日 → 前一交易日数据（此时才可得）永远漏采。
+    # 改为回看最近 5 个自然日窗口，executor 按已存在日期去重，重复请求安全。
+    start = (_now() - datetime.timedelta(days=5)).strftime("%Y-%m-%d")
+    _trigger_task("margin", {"start_date": start, "end_date": today}, "融资融券")
 
 
 def job_sector():
@@ -453,8 +484,10 @@ def job_financial_quarterly():
     now = _now()
     if now.month not in (1, 4, 8, 10):
         return
-    if now.day > 7:
-        return
+    # 旧逻辑只跑披露月前 7 天，但定期报告是整月陆续披露（一季报/年报截止 4-30、
+    # 半年报 8-31、三季报 10-31），前 7 天几乎抓不到当季报告。
+    # 改为覆盖整个披露月：executor 按"已拥有应披露最新报告期"去重，
+    # 每日重跑只会拉新披露的增量，成本极低。
     end_date = now.strftime("%Y-%m-%d")
     start_date = f"{now.year - 1}-01-01"
     _trigger_task("financial", {
@@ -491,7 +524,9 @@ def job_valuation_cache():
 import os as _os
 
 def get_cron_time() -> str:
-    return _os.environ.get("AI_PICK_CRON_TIME", "15:30")
+    # 16:15:晚于 K线增量(16:05)/资金流向(16:15)/估值缓存触发，确保选股用的是当日盘后数据。
+    # （旧默认 15:30 早于一切盘后采集，选股实际用的是 T-1 数据。）
+    return _os.environ.get("AI_PICK_CRON_TIME", "16:15")
 
 
 def run_ai_pick_job(scheduler=None) -> None:
@@ -542,7 +577,9 @@ def job_workflow_daily():
         logger.info("[cron] 选股工作流: DAILY_WORKFLOW_ID 未设置，跳过")
         return
     try:
-        from modules.workflow.models import WorkflowStorage, WorkflowExecutionStorage, ExecutionStatus
+        from modules.workflow.models import (
+            WorkflowStorage, WorkflowExecutionStorage, WorkflowExecution, ExecutionStatus,
+        )
         from modules.workflow.executor import WorkflowExecutor
         import uuid
         from datetime import datetime
@@ -721,7 +758,7 @@ def start_daily_jobs() -> None:
         _make_job("K线增量 16:05",       job_kline_incremental,   "daily", 16, 5,  task_type="kline"),
         _make_job("K线缺口回补 17:30",    job_kline_gap_backfill,  "daily", 17, 30, task_type="kline"),
         _make_job("K线缺口回补 21:45",    job_kline_gap_backfill,  "daily", 21, 45, task_type="kline"),
-        _make_job("龙虎榜 16:10",         job_dragon_tiger,        "daily", 16, 10, task_type="dragon_tiger"),
+        _make_job("龙虎榜 19:00",         job_dragon_tiger,        "daily", 19, 0,  task_type="dragon_tiger"),
         _make_job("资金流向 16:15",       job_fund_flow,           "daily", 16, 15, task_type="fund_flow"),
         _make_job("融资融券 21:30",       job_margin,              "daily", 21, 30, task_type="margin"),
         _make_job("板块数据 16:25",       job_sector,              "daily", 16, 25, task_type="sector"),
@@ -729,11 +766,24 @@ def start_daily_jobs() -> None:
         _make_job("股票信息 周一09:00",   job_stock_info_weekly,   "daily",  9,  0,  task_type="stock_info"),
         _make_job("财务数据 季度09:30",   job_financial_quarterly, "daily",  9, 30, task_type="financial"),
         _make_job(f"AI选股 {ai_time}",   _ai_pick_wrapper,        "daily", ai_hour, ai_minute, task_type="ai_pick"),
-        _make_job(f"选股工作流 {wf_time}", job_workflow_daily,     "daily", wf_hour, wf_minute, task_type="workflow"),
         _make_job("净值快照 16:30",       job_portfolio_snapshot,  "daily", 16, 30, task_type="portfolio_snapshot"),
         _make_job("估值缓存 5min",       job_valuation_cache,     "interval", interval_minutes=5, task_type="valuation_cache"),
         _make_job("任务清理 03:30",      job_task_cleanup,        "daily",  3, 30, task_type="task_cleanup"),
     ]
+
+    # 选股工作流：仅当 DAILY_WORKFLOW_ID 已配置时才注册，否则它每次触发都只是
+    # "未设置，跳过"，是个占位空壳，徒增前端定时任务列表一行。
+    if _os.environ.get("DAILY_WORKFLOW_ID", "").strip():
+        jobs.append(
+            _make_job(f"选股工作流 {wf_time}", job_workflow_daily, "daily", wf_hour, wf_minute, task_type="workflow")
+        )
+
+    # cron_trigger_lock 跨进程触发锁：建 TTL 索引，锁文档 1 天后自动过期，避免无限增长。
+    try:
+        from config.database import DatabaseConfig
+        DatabaseConfig.get_database()["cron_trigger_lock"].create_index("at", expireAfterSeconds=86400)
+    except Exception as e:
+        logger.debug(f"[cron] trigger_lock TTL index skipped: {e}")
 
     with _jobs_lock:
         _registered_jobs.clear()

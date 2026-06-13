@@ -68,10 +68,11 @@ class TestIsTaskRunningStaleDetection(unittest.TestCase):
 class TestTriggerTaskPersistsCronStatus(unittest.TestCase):
     """问题一：_trigger_task 在触发和失败时都应写 cron_job_status。"""
 
+    @patch("core.scheduler.cron._claim_trigger_slot", return_value=True)
     @patch("core.scheduler.cron._persist_cron_status")
     @patch("core.scheduler.cron._is_task_running", return_value=False)
     @patch("core.scheduler.cron._record_result")
-    def test_trigger_success_persists_status(self, mock_record, mock_running, mock_persist):
+    def test_trigger_success_persists_status(self, mock_record, mock_running, mock_persist, mock_claim):
         fake_scheduler = MagicMock()
         fake_scheduler.create_task.return_value = "news_12345"
         with patch.dict("sys.modules", {"core.scheduler.scheduler": MagicMock(scheduler=fake_scheduler)}):
@@ -82,10 +83,11 @@ class TestTriggerTaskPersistsCronStatus(unittest.TestCase):
         self.assertEqual(args[0], "news")
         self.assertIsNone(args[2])
 
+    @patch("core.scheduler.cron._claim_trigger_slot", return_value=True)
     @patch("core.scheduler.cron._persist_cron_status")
     @patch("core.scheduler.cron._is_task_running", return_value=False)
     @patch("core.scheduler.cron._record_result")
-    def test_trigger_failure_persists_status(self, mock_record, mock_running, mock_persist):
+    def test_trigger_failure_persists_status(self, mock_record, mock_running, mock_persist, mock_claim):
         fake_scheduler = MagicMock()
         fake_scheduler.create_task.side_effect = RuntimeError("db down")
         with patch.dict("sys.modules", {"core.scheduler.scheduler": MagicMock(scheduler=fake_scheduler)}):
