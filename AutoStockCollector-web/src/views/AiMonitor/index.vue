@@ -98,6 +98,7 @@
                 {{ s.composite.label }}
               </el-tag>
               <span class="confidence">{{ (s.confidence * 100).toFixed(0) }}% 置信</span>
+              <span class="profit-badge">{{ profitScore(s).toFixed(0) }}</span>
             </div>
 
             <!-- Dual signal bars -->
@@ -455,6 +456,15 @@ const detailTab = ref('fund_flow')
 
 let refreshTimer: ReturnType<typeof setInterval> | null = null
 
+function profitScore(s: MonitorSignal): number {
+  const pp = s.price_prediction
+  if (!pp) return s.composite.score
+  const expRet = pp.expected_return || 0
+  const rr = pp.risk_reward_ratio || 0
+  const comp = s.composite.score || 50
+  return comp * 0.40 + Math.min(expRet * 2, 100) * 0.35 + Math.min(rr * 10, 100) * 0.25
+}
+
 const filteredSignals = computed(() => {
   let list = signals.value
   if (searchText.value) {
@@ -472,7 +482,7 @@ const filteredSignals = computed(() => {
   if (typeFilter.value) {
     list = list.filter(s => s.type === typeFilter.value)
   }
-  return list.sort((a, b) => b.composite.score - a.composite.score)
+  return list.sort((a, b) => profitScore(b) - profitScore(a))
 })
 
 const positionCount = computed(() => signals.value.filter(s => s.type === '持仓').length)
@@ -688,6 +698,15 @@ onUnmounted(() => {
 }
 
 .confidence { font-size: 12px; color: var(--text-muted, #999); }
+.profit-badge {
+  font-size: 10px;
+  font-weight: 700;
+  font-family: 'IBM Plex Mono', monospace;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--el-color-success-light-7, #e1f3d8);
+  color: #67c23a;
+}
 
 .signal-bars {
   display: flex;
