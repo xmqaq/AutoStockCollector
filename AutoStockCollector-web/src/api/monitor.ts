@@ -27,7 +27,6 @@ export interface PricePrediction {
   support: number
   resistance: number
   volatility: number
-  trading_advice?: TradingAdvice
 }
 
 export interface MonitorSignal {
@@ -47,6 +46,7 @@ export interface MonitorSignal {
     divergence: string
   }
   price_prediction?: PricePrediction
+  trading_advice?: TradingAdvice
   analysis: {
     fund_flow: any
     research: any

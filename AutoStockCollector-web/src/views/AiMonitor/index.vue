@@ -134,8 +134,8 @@
 
             <!-- Price Prediction -->
             <div v-if="s.price_prediction?.target_price" class="pp-row">
-              <el-tag :type="adviceTagType(s.price_prediction.trading_advice?.action_signal)" size="small" effect="dark" class="pp-action-tag">
-                {{ s.price_prediction.trading_advice?.action || '--' }}
+              <el-tag :type="adviceTagType(s.trading_advice?.action_signal)" size="small" effect="dark" class="pp-action-tag">
+                {{ s.trading_advice?.action || '--' }}
               </el-tag>
               <span class="pp-row-target">目标 <strong class="up">{{ fmtPrice(s.price_prediction.target_price) }}</strong></span>
               <span class="pp-row-stop">止损 <strong class="down">{{ fmtPrice(s.price_prediction.stop_loss) }}</strong></span>
@@ -179,37 +179,50 @@
         </div>
 
         <!-- AI Trading Advice -->
-        <el-card v-if="detailData.price_prediction?.trading_advice" shadow="never" :class="['dl-advice', 'advice-' + (detailData.price_prediction.trading_advice.action_signal || 'hold')]">
+        <el-card v-if="detailData.trading_advice" shadow="never" :class="['dl-advice', 'advice-' + (detailData.trading_advice.action_signal || 'hold')]">
           <div class="advice-header">
             <span class="advice-label">AI 操作建议</span>
-            <el-tag :type="adviceTagType(detailData.price_prediction.trading_advice.action_signal)" size="large" effect="dark">
-              {{ detailData.price_prediction.trading_advice.action }}
+            <el-tag :type="adviceTagType(detailData.trading_advice.action_signal)" size="large" effect="dark">
+              {{ detailData.trading_advice.action }}
             </el-tag>
           </div>
           <div class="advice-body">
             <div class="advice-reason">
-              <span class="adv-icon">📌</span> {{ detailData.price_prediction.trading_advice.entry_reason }}
+              <span class="adv-icon">📌</span> {{ detailData.trading_advice.reason }}
             </div>
-            <div class="advice-exit">
-              <span class="adv-icon">🎯</span> {{ detailData.price_prediction.trading_advice.exit_reason }}
+            <div v-if="detailData.trading_advice.buy_reasons?.length" class="advice-reason">
+              <span class="adv-icon">✅</span> {{ detailData.trading_advice.buy_reasons[0] }}
+            </div>
+            <div v-if="detailData.trading_advice.sell_reasons?.length" class="advice-exit">
+              <span class="adv-icon">⚠️</span> {{ detailData.trading_advice.sell_reasons[0] }}
             </div>
           </div>
           <div class="advice-metrics">
             <div class="adv-metric">
               <span class="adv-m-label">盈亏比</span>
-              <span class="adv-m-val">{{ detailData.price_prediction.trading_advice.risk_reward_ratio }}</span>
+              <span class="adv-m-val">{{ detailData.trading_advice.risk_reward_ratio }}</span>
             </div>
             <div class="adv-metric">
               <span class="adv-m-label">当前相对</span>
-              <span class="adv-m-val">{{ detailData.price_prediction.trading_advice.current_position }}</span>
+              <span class="adv-m-val">{{ detailData.trading_advice.current_position }}</span>
             </div>
             <div class="adv-metric">
               <span class="adv-m-label">距目标</span>
-              <span class="adv-m-val">{{ detailData.price_prediction.trading_advice.distance_to_target }}</span>
+              <span class="adv-m-val">{{ detailData.trading_advice.distance_to_target }}</span>
             </div>
             <div class="adv-metric">
               <span class="adv-m-label">仓位建议</span>
-              <span class="adv-m-val">{{ (detailData.price_prediction.position_size * 100).toFixed(0) }}%</span>
+              <span class="adv-m-val">{{ (detailData.price_prediction?.position_size * 100 || 0).toFixed(0) }}%</span>
+            </div>
+          </div>
+          <!-- 多维度评分条 -->
+          <div v-if="detailData.trading_advice.details" class="advice-dims">
+            <div v-for="(v, k) in detailData.trading_advice.details" :key="k" class="dim-row">
+              <span class="dim-label">{{ dimLabel(k) }}</span>
+              <div class="dim-bar-bg">
+                <div class="dim-bar-fill" :style="{ width: v + '%', background: scoreColor(v) }"></div>
+              </div>
+              <span class="dim-score" :style="{ color: scoreColor(v) }">{{ v }}</span>
             </div>
           </div>
         </el-card>
@@ -496,6 +509,11 @@ function signalTagType(sig: string): string {
   if (sig === 'strong_buy' || sig === 'buy') return 'danger'
   if (sig === 'sell' || sig === 'strong_sell') return 'success'
   return 'info'
+}
+
+function dimLabel(k: string): string {
+  const m: Record<string, string> = { fund_flow_score: '主力资金', research_score: '研报', technical_score: '技术面', composite_score: '综合评分' }
+  return m[k] || k
 }
 
 function adviceTagType(signal: string): string {
@@ -796,6 +814,27 @@ onUnmounted(() => {
 }
 .adv-m-label { font-size: 10px; color: #999; }
 .adv-m-val { font-size: 13px; font-weight: 600; }
+.advice-dims {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dim-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dim-label { font-size: 11px; color: #999; width: 56px; flex-shrink: 0; }
+.dim-bar-bg {
+  flex: 1;
+  height: 6px;
+  background: var(--el-fill-color, #f0f0f0);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.dim-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+.dim-score { font-size: 11px; font-weight: 600; width: 24px; text-align: right; }
 
 /* Price Prediction Summary (在详情弹窗composite旁) */
 .pp-summary {

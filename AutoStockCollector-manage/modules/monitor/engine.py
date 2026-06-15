@@ -177,8 +177,179 @@ class MonitorEngine:
             "updated_at": datetime.now().isoformat(),
         }
 
+        result["trading_advice"] = self._trading_advice(
+            fund_flow, research, technical, composite, price_prediction,
+        )
         self._update_price_change(result, code)
         return result
+
+    def _trading_advice(
+        self,
+        fund_flow: Dict, research: Dict,
+        technical: Dict, composite: Dict,
+        pp: Dict,
+    ) -> Dict[str, Any]:
+        """多维度买卖点建议 — 融合主力资金、研报、技术面、综合评分"""
+        current = pp.get("current_price", 0)
+        target = pp.get("target_price", 0)
+        stop = pp.get("stop_loss", 0)
+        buy_low = pp.get("buy_zone_low", 0)
+        buy_high = pp.get("buy_zone_high", 0)
+        exp_ret = pp.get("expected_return", 0)
+        max_loss = pp.get("max_loss", 0)
+        rr = round(exp_ret / max_loss, 2) if max_loss > 0 else 0
+
+        # 各维度得分
+        ff_s = fund_flow.get("short_term", {}).get("score", 50)
+        ff_l = fund_flow.get("long_term", {}).get("score", 50)
+        rs_s = research.get("short_term", {}).get("score", 50)
+        rs_l = research.get("long_term", {}).get("score", 50)
+        rs_c = research.get("composite_score", 50)
+        tc_s = technical.get("short_term", {}).get("score", 50)
+        cp_s = composite.get("composite_score", 50)
+        cp_sig = composite.get("composite_signal", "hold")
+        sc_s = composite.get("short_term", {}).get("score", 50)
+        sc_l = composite.get("long_term", {}).get("score", 50)
+        divergence = composite.get("divergence", "")
+
+        # 位置判断
+        if buy_low <= current <= buy_high:
+            pos_text = "在买入区内"
+        elif current < buy_low:
+            pos_text = "低于买入区"
+        else:
+            pos_text = "高于买入区"
+
+        if current >= target:
+            dist_text = f"已到目标价({target:.2f})，建议止盈"
+        elif current >= target * 0.95:
+            dist_text = f"接近目标价，距目标还有{target-current:+.2f}"
+        else:
+            d = round((target / current - 1) * 100, 1) if current > 0 else 0
+            dist_text = f"距目标还有+{d}%"
+
+        # ── 决策矩阵 ──
+        action = "持有"
+        sig = "hold"
+        buy_reasons = []
+        sell_reasons = []
+        watch_reasons = []
+
+        # 卖出：价格到了目标
+        if target > 0 and current >= target:
+            action = "卖出"; sig = "sell"
+            sell_reasons.append(f"价格{current:.2f}达到目标价{target:.2F}")
+            sell_reasons.append("建议止盈锁定利润")
+
+        # 卖出：跌破止损
+        elif stop > 0 and current <= stop * 1.03:
+            action = "卖出"; sig = "sell"
+            sell_reasons.append(f"价格{current:.2f}接近止损线{stop:.2f}")
+            sell_reasons.append(f"最大亏损约{max_loss:.1f}%，建议止损")
+
+        # 卖出：主力资金持续流出 + 信号看空
+        elif ff_s < 35 and ff_l < 35 and cp_sig in ("sell", "strong_sell"):
+            action = "卖出"; sig = "sell"
+            sell_reasons.append(f"主力资金短期{ff_s:.0f}/长期{ff_l:.0f}持续流出")
+            sell_reasons.append("综合信号偏空，建议减仓")
+
+        # 卖出：技术面极弱 + 资金流出
+        elif tc_s < 30 and ff_s < 35:
+            action = "卖出"; sig = "sell"
+            sell_reasons.append(f"技术面评分{tc_s:.0f}，主力资金{ff_s:.0f}")
+            sell_reasons.append("技术和资金面双弱，建议离场")
+
+        # ── 买入条件 ──
+        # 买入：在买入区 + 综合信号买入 + 资金正向
+        elif buy_low <= current <= buy_high and sc_s >= 60 and ff_s >= 55:
+            action = "买入"; sig = "buy"
+            buy_reasons.append(f"价格在买入区({buy_low:.2f}~{buy_high:.2f})")
+            buy_reasons.append(f"主力资金评分{ff_s:.0f}，资金正向流入")
+            buy_reasons.append(f"盈亏比{rr}，预期{exp_ret:+.1f}%")
+            if rs_s >= 55:
+                buy_reasons.append(f"研报短期评分{rs_s:.0f}，基本面支撑")
+
+        # 买入：在买入区 + 盈亏比好 + 至少一个维度看多
+        elif buy_low <= current <= buy_high and rr >= 2 and (ff_s >= 60 or rs_s >= 55 or tc_s >= 60):
+            action = "买入"; sig = "buy"
+            buy_reasons.append(f"价格在买入区，盈亏比{rr}较好")
+            if ff_s >= 60: buy_reasons.append(f"主力资金积极(评分{ff_s:.0f})")
+            if rs_s >= 55: buy_reasons.append(f"研报短期看好(评分{rs_s:.0f})")
+            if tc_s >= 60: buy_reasons.append(f"技术面偏多(评分{tc_s:.0f})")
+
+        # ── 观望条件 ──
+        # 价格在买入区但多维度看空
+        elif buy_low <= current <= buy_high and ff_s < 40 and sc_s < 55:
+            action = "观望"; sig = "watch"
+            watch_reasons.append(f"价格在买入区但主力资金评分{ff_s:.0f}偏低")
+            watch_reasons.append("综合评分不足，等待资金确认")
+
+        # 价格低于买入区但信号看多
+        elif current < buy_low and sc_s >= 60 and ff_s >= 50:
+            action = "观望"; sig = "watch"
+            watch_reasons.append(f"价格{current:.2f}低于买入区(当前{buy_low:.2f}~{buy_high:.2f})")
+            watch_reasons.append(f"信号偏多(综合{sc_s:.0f}/资金{ff_s:.0f})，可等待回调至买入区")
+
+        # 综合评分很高但价格远离买入区
+        elif sc_s >= 65 and current > buy_high * 1.1:
+            action = "观望"; sig = "watch"
+            watch_reasons.append(f"综合评分{sc_s:.0f}看多但价格已超过买入区上限{buy_high:.2f}")
+            watch_reasons.append("等待回调至买入区附近再介入")
+
+        # 短期长期分歧
+        elif divergence and abs(sc_s - sc_l) > 20:
+            action = "观望"; sig = "watch"
+            watch_reasons.append(f"短期{sc_s:.0f}/长期{sc_l:.0f}分歧较大")
+            watch_reasons.append("建议等待方向明确")
+
+        # ── 剩下：持有 ──
+        else:
+            if ff_s >= 55 or tc_s >= 55 or cp_sig in ("buy", "strong_buy"):
+                hold_reason = "各维度信号正常"
+                if cp_sig in ("buy", "strong_buy"):
+                    hold_reason += f"，综合看多({cp_sig})"
+                buy_reasons.append(hold_reason)
+                buy_reasons.append(f"持有至目标价{target:.2f}(+{exp_ret:.1f}%)")
+                buy_reasons.append(f"止损设在{stop:.2f}(-{max_loss:.1f}%)")
+            else:
+                buy_reasons.append("暂无强烈买卖信号")
+                buy_reasons.append(f"可继续持有观察，止损{stop:.2f}")
+            if rr >= 1.5:
+                buy_reasons.append(f"盈亏比{rr}尚可")
+
+        all_reasons = buy_reasons + sell_reasons + watch_reasons
+        # 构建显示文本
+        if sig == "sell":
+            display_reason = "; ".join(sell_reasons[:3])
+        elif sig == "buy":
+            display_reason = "; ".join(buy_reasons[:3])
+        elif sig == "watch":
+            display_reason = "; ".join(watch_reasons[:2])
+        else:
+            display_reason = "; ".join(buy_reasons[:2]) if buy_reasons else "暂无明确信号"
+
+        return {
+            "action": action,
+            "action_signal": sig,
+            "reason": display_reason,
+            "details": {
+                "fund_flow_score": ff_s,
+                "research_score": rs_s,
+                "technical_score": tc_s,
+                "composite_score": cp_s,
+            },
+            "buy_reasons": buy_reasons[:3],
+            "sell_reasons": sell_reasons[:3],
+            "watch_reasons": watch_reasons[:2],
+            "entry_price_range": {"low": round(buy_low, 2), "high": round(buy_high, 2)},
+            "take_profit": round(target, 2) if target else 0,
+            "stop_loss": round(stop, 2) if stop else 0,
+            "expected_return": exp_ret,
+            "max_loss": max_loss,
+            "risk_reward_ratio": rr,
+            "current_position": pos_text,
+            "distance_to_target": dist_text,
+        }
 
     def _update_price_change(self, result: Dict, code: str):
         try:
