@@ -3,8 +3,11 @@ import client from './client'
 export interface TradingAdvice {
   action: string
   action_signal: string
-  entry_reason: string
-  exit_reason: string
+  reason: string
+  details: Record<string, number>
+  buy_reasons?: string[]
+  sell_reasons?: string[]
+  watch_reasons?: string[]
   entry_price_range: { low: number; high: number }
   take_profit: number
   stop_loss: number
@@ -62,6 +65,7 @@ export interface MonitorSignal {
     research: any
     technical: any
     fundamental: any
+    valuation: any
   }
   updated_at: string
 }

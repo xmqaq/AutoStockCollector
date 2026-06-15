@@ -226,7 +226,7 @@
             </div>
             <div class="adv-metric">
               <span class="adv-m-label">仓位建议</span>
-              <span class="adv-m-val">{{ (detailData.price_prediction?.position_size * 100 || 0).toFixed(0) }}%</span>
+              <span class="adv-m-val">{{ ((detailData.price_prediction?.position_size ?? 0) * 100).toFixed(0) }}%</span>
             </div>
           </div>
           <!-- 多维度评分条 -->
@@ -550,7 +550,7 @@ function dimLabel(k: string): string {
   return m[k] || k
 }
 
-function adviceTagType(signal: string): string {
+function adviceTagType(signal?: string): string {
   if (signal === 'buy') return 'danger'
   if (signal === 'sell') return 'success'
   if (signal === 'watch') return 'info'
