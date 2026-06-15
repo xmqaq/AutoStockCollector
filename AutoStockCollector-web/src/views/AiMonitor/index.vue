@@ -458,11 +458,12 @@ let refreshTimer: ReturnType<typeof setInterval> | null = null
 
 function profitScore(s: MonitorSignal): number {
   const pp = s.price_prediction
-  if (!pp) return s.composite.score
+  const adv = s.trading_advice
+  if (!pp) return s.composite.score || 50
   const expRet = pp.expected_return || 0
-  const rr = pp.risk_reward_ratio || 0
+  const rr = adv?.risk_reward_ratio || 0
   const comp = s.composite.score || 50
-  return comp * 0.40 + Math.min(expRet * 2, 100) * 0.35 + Math.min(rr * 10, 100) * 0.25
+  return comp * 0.40 + Math.min(Math.max(expRet, 0) * 2, 100) * 0.35 + Math.min(rr * 10, 100) * 0.25
 }
 
 const filteredSignals = computed(() => {
