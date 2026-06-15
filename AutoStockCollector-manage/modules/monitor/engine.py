@@ -94,11 +94,30 @@ class MonitorEngine:
         return result
 
     def _collect_stocks(self) -> List[Dict[str, Any]]:
-        """收集需要分析的股票: 持仓(paper_account) + 自选(watchlist)"""
+        """收集需要分析的股票: 持仓(positions + paper_account) + 自选(watchlist)"""
         seen = set()
         stocks = []
 
-        # 持仓: paper_account 集合
+        # 持仓: positions 集合（实际持仓记录）
+        try:
+            positions = list(self._db["positions"].find())
+            for p in positions:
+                code = p.get("code", "")
+                if code and code not in seen:
+                    seen.add(code)
+                    stocks.append({
+                        "code": code,
+                        "name": p.get("name", ""),
+                        "type": "持仓",
+                        "shares": p.get("shares", 0),
+                        "avg_cost": p.get("avg_cost", 0),
+                        "market_value": p.get("market_value", 0),
+                        "pnl": p.get("pnl", 0),
+                    })
+        except Exception as e:
+            logger.error(f"Get positions failed: {e}")
+
+        # 持仓: paper_account 集合（备用）
         try:
             accounts = list(self._db["paper_account"].find())
             for acct in accounts:
@@ -113,7 +132,7 @@ class MonitorEngine:
                             "type": "持仓",
                         })
         except Exception as e:
-            logger.error(f"Get positions failed: {e}")
+            logger.error(f"Get paper_account failed: {e}")
 
         # 自选: watchlist 集合 (不分用户)
         try:
