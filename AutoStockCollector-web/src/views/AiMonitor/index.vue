@@ -24,16 +24,16 @@
         clearable
         size="small"
         class="search-input"
-        @input="onFilter"
+        @input="() => {}"
       />
-      <el-select v-model="signalFilter" placeholder="信号筛选" size="small" clearable class="filter-select" @change="onFilter">
+      <el-select v-model="signalFilter" placeholder="信号筛选" size="small" clearable class="filter-select" @change="() => {}">
         <el-option label="全部" value="" />
         <el-option label="短期买入" value="short_buy" />
         <el-option label="短期卖出" value="short_sell" />
         <el-option label="长期买入" value="long_buy" />
         <el-option label="长期卖出" value="long_sell" />
       </el-select>
-      <el-select v-model="typeFilter" placeholder="来源" size="small" clearable class="filter-select" @change="onFilter">
+      <el-select v-model="typeFilter" placeholder="来源" size="small" clearable class="filter-select" @change="() => {}">
         <el-option label="全部" value="" />
         <el-option label="持仓" value="持仓" />
         <el-option label="自选" value="自选" />
@@ -231,22 +231,56 @@
           </el-col>
         </el-row>
 
-        <!-- Composite -->
-        <el-card shadow="never" class="dl-composite">
-          <div class="dl-comp-row">
-            <span class="comp-label">综合评分</span>
-            <span class="comp-score" :style="{ color: scoreColor(detailData.composite.score) }">
-              {{ detailData.composite.score }}
-            </span>
-            <el-tag :type="signalTagType(detailData.composite.signal)" effect="dark">
-              {{ detailData.composite.label }}
-            </el-tag>
-            <span class="comp-conf">置信度: {{ (detailData.confidence * 100).toFixed(0) }}%</span>
-            <span v-if="detailData.composite.divergence" class="comp-div">
-              {{ detailData.composite.divergence }}
-            </span>
-          </div>
-        </el-card>
+        <!-- Composite + Price Prediction -->
+        <el-row :gutter="16" class="dl-summary">
+          <el-col :span="14">
+            <el-card shadow="never" class="dl-composite">
+              <div class="dl-comp-row">
+                <span class="comp-label">综合评分</span>
+                <span class="comp-score" :style="{ color: scoreColor(detailData.composite.score) }">
+                  {{ detailData.composite.score }}
+                </span>
+                <el-tag :type="signalTagType(detailData.composite.signal)" effect="dark">
+                  {{ detailData.composite.label }}
+                </el-tag>
+                <span class="comp-conf">置信度: {{ (detailData.confidence * 100).toFixed(0) }}%</span>
+                <span v-if="detailData.composite.divergence" class="comp-div">
+                  {{ detailData.composite.divergence }}
+                </span>
+              </div>
+            </el-card>
+          </el-col>
+          <el-col :span="10">
+            <el-card shadow="never" class="dl-composite" v-if="detailData.price_prediction">
+              <div class="pp-summary">
+                <div class="pp-sum-item">
+                  <span class="pp-sum-label">目标</span>
+                  <span class="pp-sum-val up">{{ fmtPrice(detailData.price_prediction.target_price) }}</span>
+                </div>
+                <div class="pp-sum-item">
+                  <span class="pp-sum-label">止损</span>
+                  <span class="pp-sum-val down">{{ fmtPrice(detailData.price_prediction.stop_loss) }}</span>
+                </div>
+                <div class="pp-sum-item">
+                  <span class="pp-sum-label">预期</span>
+                  <span :class="['pp-sum-val', detailData.price_prediction.expected_return >= 0 ? 'up' : 'down']">
+                    {{ detailData.price_prediction.expected_return >= 0 ? '+' : '' }}{{ detailData.price_prediction.expected_return.toFixed(1) }}%
+                  </span>
+                </div>
+                <div class="pp-sum-item">
+                  <span class="pp-sum-label">仓位</span>
+                  <span class="pp-sum-val">{{ (detailData.price_prediction.position_size * 100).toFixed(0) }}%</span>
+                </div>
+                <div class="pp-sum-item">
+                  <span class="pp-sum-label">风险</span>
+                  <span :class="['pp-sum-val pp-risk-tag', riskLevelClass(detailData.price_prediction.risk_level)]">
+                    {{ detailData.price_prediction.risk_level }}
+                  </span>
+                </div>
+              </div>
+            </el-card>
+          </el-col>
+        </el-row>
 
         <!-- Analysis Breakdown -->
         <el-tabs class="dl-tabs" v-model="detailTab">
@@ -305,45 +339,34 @@
               </div>
             </div>
           </el-tab-pane>
-          <el-tab-pane label="价格预测" name="price_prediction">
-            <div class="tab-content" v-if="detailData.price_prediction">
-              <div class="pp-grid">
-                <div class="pp-item">
-                  <span class="pp-label">目标价</span>
-                  <span class="pp-val up">{{ fmtPrice(detailData.price_prediction.target_price) }}</span>
-                </div>
-                <div class="pp-item">
-                  <span class="pp-label">止损价</span>
-                  <span class="pp-val down">{{ fmtPrice(detailData.price_prediction.stop_loss) }}</span>
-                </div>
-                <div class="pp-item">
-                  <span class="pp-label">预期收益</span>
-                  <span :class="['pp-val', detailData.price_prediction.expected_return >= 0 ? 'up' : 'down']">
-                    {{ detailData.price_prediction.expected_return >= 0 ? '+' : '' }}{{ detailData.price_prediction.expected_return.toFixed(1) }}%
-                  </span>
-                </div>
-                <div class="pp-item">
-                  <span class="pp-label">最大亏损</span>
-                  <span class="pp-val down">{{ detailData.price_prediction.max_loss.toFixed(1) }}%</span>
-                </div>
-                <div class="pp-item">
-                  <span class="pp-label">建议仓位</span>
-                  <span class="pp-val">{{ (detailData.price_prediction.position_size * 100).toFixed(0) }}%</span>
-                </div>
-                <div class="pp-item">
-                  <span class="pp-label">风险等级</span>
-                  <span :class="['pp-val', riskLevelClass(detailData.price_prediction.risk_level)]">{{ detailData.price_prediction.risk_level }}</span>
-                </div>
+        </el-tabs>
+        <!-- Price Prediction Detail (可折叠) -->
+        <el-collapse v-if="detailData.price_prediction" class="pp-collapse">
+          <el-collapse-item title="价格预测详情 (点击展开)" name="pp-detail">
+            <div class="pp-detail-grid">
+              <div class="pp-detail-item">
+                <span class="pp-dl-label">买入区间</span>
+                <span class="pp-dl-val">{{ fmtPrice(detailData.price_prediction.buy_zone_low) }} ~ {{ fmtPrice(detailData.price_prediction.buy_zone_high) }}</span>
               </div>
-              <div class="pp-detail">
-                <p>买入区间: <strong>{{ fmtPrice(detailData.price_prediction.buy_zone_low) }}</strong> ~ <strong>{{ fmtPrice(detailData.price_prediction.buy_zone_high) }}</strong></p>
-                <p>支撑位: <strong>{{ fmtPrice(detailData.price_prediction.support) }}</strong> &nbsp; 阻力位: <strong>{{ fmtPrice(detailData.price_prediction.resistance) }}</strong></p>
-                <p>年化波动率: <strong>{{ detailData.price_prediction.volatility.toFixed(1) }}%</strong></p>
+              <div class="pp-detail-item">
+                <span class="pp-dl-label">支撑位</span>
+                <span class="pp-dl-val">{{ fmtPrice(detailData.price_prediction.support) }}</span>
+              </div>
+              <div class="pp-detail-item">
+                <span class="pp-dl-label">阻力位</span>
+                <span class="pp-dl-val">{{ fmtPrice(detailData.price_prediction.resistance) }}</span>
+              </div>
+              <div class="pp-detail-item">
+                <span class="pp-dl-label">年化波动率</span>
+                <span class="pp-dl-val">{{ detailData.price_prediction.volatility.toFixed(1) }}%</span>
+              </div>
+              <div class="pp-detail-item">
+                <span class="pp-dl-label">最大亏损</span>
+                <span class="pp-dl-val down">{{ detailData.price_prediction.max_loss.toFixed(1) }}%</span>
               </div>
             </div>
-            <div v-else class="tab-content"><p>暂无价格预测数据</p></div>
-          </el-tab-pane>
-        </el-tabs>
+          </el-collapse-item>
+        </el-collapse>
       </template>
     </el-dialog>
   </div>
@@ -385,7 +408,7 @@ const filteredSignals = computed(() => {
   if (typeFilter.value) {
     list = list.filter(s => s.type === typeFilter.value)
   }
-  return list
+  return list.sort((a, b) => b.composite.score - a.composite.score)
 })
 
 const positionCount = computed(() => signals.value.filter(s => s.type === '持仓').length)
@@ -394,8 +417,6 @@ const shortBuyCount = computed(() => signals.value.filter(s => s.short_term.scor
 const longBuyCount = computed(() => signals.value.filter(s => s.long_term.score >= 60).length)
 const shortSellCount = computed(() => signals.value.filter(s => s.short_term.score < 40).length)
 const longSellCount = computed(() => signals.value.filter(s => s.long_term.score < 40).length)
-
-function onFilter() {}
 
 function fetchSignals() {
   loading.value = true
@@ -643,14 +664,15 @@ onUnmounted(() => {
 .pp-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   margin-top: 6px;
-  padding: 4px 8px;
+  padding: 4px 6px;
   background: var(--el-color-info-light-9, #f4f4f5);
   border-radius: 4px;
   font-size: 11px;
+  flex-wrap: wrap;
 }
-.pp-row-target, .pp-row-stop, .pp-row-return { white-space: nowrap; }
+.pp-row-target, .pp-row-stop, .pp-row-return { white-space: nowrap; font-size: 10px; }
 .pp-row-risk {
   margin-left: auto;
   padding: 1px 6px;
@@ -683,6 +705,43 @@ onUnmounted(() => {
   line-height: 2;
 }
 .pp-detail strong { font-weight: 600; }
+
+/* Price Prediction Summary (在详情弹窗composite旁) */
+.pp-summary {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.pp-sum-item { display: flex; flex-direction: column; align-items: center; min-width: 50px; }
+.pp-sum-label { font-size: 10px; color: #999; }
+.pp-sum-val { font-size: 14px; font-weight: 700; font-family: 'IBM Plex Mono', monospace; }
+.pp-sum-val.up { color: #f56c6c; }
+.pp-sum-val.down { color: #67c23a; }
+.pp-risk-tag { font-size: 11px; padding: 1px 4px; border-radius: 3px; }
+.pp-risk-tag.risk-low { background: #e1f3d8; color: #67c23a; }
+.pp-risk-tag.risk-mid { background: #faecd8; color: #e6a23c; }
+.pp-risk-tag.risk-high { background: #fde2e2; color: #f56c6c; }
+
+.dl-summary { margin-bottom: 16px; }
+
+/* Price Prediction Collapse */
+.pp-collapse { margin-bottom: 16px; }
+.pp-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.pp-detail-item {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 8px;
+  background: var(--el-fill-color, #f5f5f5);
+  border-radius: 4px;
+}
+.pp-dl-label { font-size: 11px; color: #999; }
+.pp-dl-val { font-size: 14px; font-weight: 600; font-family: 'IBM Plex Mono', monospace; }
+.pp-dl-val.down { color: #67c23a; }
 
 /* Detail Dialog */
 .detail-header {
