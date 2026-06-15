@@ -99,3 +99,28 @@ def scan_once():
     except Exception as e:
         logger.error(f"Scan failed: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+@monitor_bp.route("/backtest/<code>", methods=["GET"])
+def get_backtest(code: str):
+    """获取单只股票信号回测结果"""
+    try:
+        from modules.monitor.backtest import SignalBacktest
+        days = int(request.args.get("days", 60))
+        result = SignalBacktest().evaluate(code, days)
+        return jsonify({"success": True, "data": result})
+    except Exception as e:
+        logger.error(f"Backtest {code} failed: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@monitor_bp.route("/backtest", methods=["GET"])
+def get_backtest_all():
+    """获取所有信号回测结果"""
+    try:
+        from modules.monitor.backtest import SignalBacktest
+        results = SignalBacktest().evaluate_all()
+        return jsonify({"success": True, "count": len(results), "data": results})
+    except Exception as e:
+        logger.error(f"Backtest all failed: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500

@@ -148,11 +148,11 @@ class TechnicalAnalyzer:
     def _signal_from_score(self, score: float) -> str:
         if score >= 75:
             return "strong_buy"
-        elif score >= 60:
+        elif score >= 62:
             return "buy"
-        elif score >= 40:
+        elif score >= 38:
             return "hold"
-        elif score >= 20:
+        elif score >= 25:
             return "sell"
         else:
             return "strong_sell"

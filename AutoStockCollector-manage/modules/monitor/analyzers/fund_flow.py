@@ -85,44 +85,45 @@ class FundFlowAnalyzer:
             reasons.append(f"趋势{trend}")
 
         return {
-            "score": round(score, 1),
+            "score": round(float(score), 1),
             "signal": signal,
-            "total_net": round(total_net, 2),
-            "avg_daily_net": round(avg_net, 2),
-            "consecutive_days": consecutive_days,
-            "trend": trend,
+            "total_net": round(float(total_net), 2),
+            "avg_daily_net": round(float(avg_net), 2),
+            "consecutive_days": int(consecutive_days),
+            "trend": str(trend),
             "reasons": reasons[:3],
         }
 
     def _analyze_long_term(self, flows: List[Dict]) -> Dict[str, Any]:
-        window = flows[:self.LONG_WINDOW]
-        if len(window) < 10:
-            return self._empty_sub("长期数据不足")
+        n = min(len(flows), self.LONG_WINDOW)
+        window = flows[:n]
+        if n < 5:
+            return self._empty_sub("长期数据不足(需≥5天)")
+        if n < 15:
+            return self._analyze_medium_term(window)
 
         net_inflows = [float(f.get("main_net_inflow", 0)) for f in window]
         total_net = np.sum(net_inflows)
         avg_net = np.mean(net_inflows)
         std_net = np.std(net_inflows) if len(net_inflows) > 1 else 0
 
-        # 分阶段对比: 近期 vs 远期
-        mid = len(window) // 2
+        mid = n // 2
         recent_half = np.mean(net_inflows[:mid]) if mid > 0 else 0
-        older_half = np.mean(net_inflows[mid:]) if len(net_inflows) > mid else 0
+        older_half = np.mean(net_inflows[mid:]) if mid > 0 and len(net_inflows) > mid else 0
 
-        accumulation = recent_half > older_half  # 近期流入更强 = 正在积累
-        div_ratio = (recent_half - older_half) / (abs(older_half) + 1)
+        accumulation = bool(recent_half > older_half)
 
         score = self._score_from_net(total_net, avg_net, 0, is_short=False)
-        score += 10 if accumulation else -10  # 趋势加分
-        score = max(0, min(100, score))
+        score += 8 if accumulation else -8
+        score = max(10, min(90, score))
 
         signal = self._signal_from_score(score)
 
         reasons = []
         if total_net > 0:
-            reasons.append(f"近{self.LONG_WINDOW}日主力累计净流入{_fmt(total_net)}")
+            reasons.append(f"近{n}日主力累计净流入{_fmt(total_net)}")
         else:
-            reasons.append(f"近{self.LONG_WINDOW}日主力累计净流出{_fmt(abs(total_net))}")
+            reasons.append(f"近{n}日主力累计净流出{_fmt(abs(total_net))}")
         if accumulation:
             reasons.append("近期资金加速流入，呈积累态势")
         else:
@@ -131,11 +132,47 @@ class FundFlowAnalyzer:
             reasons.append("资金波动较大")
 
         return {
-            "score": round(score, 1),
+            "score": round(float(score), 1),
             "signal": signal,
-            "total_net": round(total_net, 2),
-            "avg_daily_net": round(avg_net, 2),
-            "accumulation": accumulation,
+            "total_net": round(float(total_net), 2),
+            "avg_daily_net": round(float(avg_net), 2),
+            "accumulation": bool(accumulation),
+            "reasons": reasons[:3],
+        }
+
+    def _analyze_medium_term(self, flows: List[Dict]) -> Dict[str, Any]:
+        """中期资金流分析（数据量5-14天时降级使用）"""
+        n = len(flows)
+        net_inflows = [float(f.get("main_net_inflow", 0)) for f in flows]
+        total_net = np.sum(net_inflows)
+        avg_net = np.mean(net_inflows)
+
+        # 趋势方向
+        first_half = np.mean(net_inflows[:n//2]) if n >= 4 else 0
+        second_half = np.mean(net_inflows[n//2:]) if n >= 4 else 0
+        accumulation = bool(second_half > first_half)
+
+        score = self._score_from_net(total_net, avg_net, 0, is_short=False)
+        score += 8 if accumulation else -8
+        score = max(10, min(90, score))
+        signal = self._signal_from_score(score)
+
+        reasons = []
+        if total_net > 0:
+            reasons.append(f"近{n}日主力净流入{_fmt(total_net)}")
+        else:
+            reasons.append(f"近{n}日主力净流出{_fmt(abs(total_net))}")
+        if accumulation:
+            reasons.append("近日资金呈流入趋势")
+        else:
+            reasons.append("近日资金呈流出趋势")
+
+        return {
+            "score": round(float(score), 1),
+            "signal": signal,
+            "total_net": round(float(total_net), 2),
+            "avg_daily_net": round(float(avg_net), 2),
+            "accumulation": bool(accumulation),
             "reasons": reasons[:3],
         }
 
@@ -152,20 +189,22 @@ class FundFlowAnalyzer:
         return count
 
     def _score_from_net(self, total: float, avg: float, consec: int, is_short: bool) -> float:
-        """根据净流入量打分 0-100"""
-        scale = 1e7 if is_short else 5e7
-        base = 50 + (total / scale) * 20
-        base += consec * 3  # 连续性加分
-        return max(0, min(100, base))
+        """根据净流入量打分 0-100，使用动态 scale 适应不同市值股票"""
+        abs_total = abs(total)
+        scale = max(abs_total, 1e7) if is_short else max(abs_total, 5e7)
+        base = 50 + (total / scale) * 25
+        base += consec * 4
+        base = max(10, min(90, base))
+        return base
 
     def _signal_from_score(self, score: float) -> str:
         if score >= 75:
             return "strong_buy"
-        elif score >= 60:
+        elif score >= 62:
             return "buy"
-        elif score >= 40:
+        elif score >= 38:
             return "hold"
-        elif score >= 20:
+        elif score >= 25:
             return "sell"
         else:
             return "strong_sell"

@@ -1,5 +1,19 @@
 import client from './client'
 
+export interface PricePrediction {
+  target_price: number
+  stop_loss: number
+  expected_return: number
+  max_loss: number
+  position_size: number
+  risk_level: string
+  buy_zone_low: number
+  buy_zone_high: number
+  support: number
+  resistance: number
+  volatility: number
+}
+
 export interface MonitorSignal {
   code: string
   name: string
@@ -16,6 +30,7 @@ export interface MonitorSignal {
     label: string
     divergence: string
   }
+  price_prediction?: PricePrediction
   analysis: {
     fund_flow: any
     research: any

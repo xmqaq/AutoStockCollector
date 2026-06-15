@@ -49,6 +49,8 @@ class MonitorStorage:
         doc = dict(snapshot)
         doc["code"] = code
         doc["created_at"] = datetime.now().isoformat()
+        if "signal_date" not in doc:
+            doc["signal_date"] = datetime.now().strftime("%Y-%m-%d")
         self.db[self.HISTORY_COL].insert_one(doc)
 
     def get_history(self, code: str, days: int = 30) -> List[Dict[str, Any]]:

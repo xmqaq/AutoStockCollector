@@ -132,6 +132,14 @@
               </div>
             </div>
 
+            <!-- Price Prediction -->
+            <div v-if="s.price_prediction?.target_price" class="pp-row">
+              <span class="pp-row-target">目标 <strong class="up">{{ fmtPrice(s.price_prediction.target_price) }}</strong></span>
+              <span class="pp-row-stop">止损 <strong class="down">{{ fmtPrice(s.price_prediction.stop_loss) }}</strong></span>
+              <span class="pp-row-return">预期 <strong :class="s.price_prediction.expected_return >= 0 ? 'up' : 'down'">{{ s.price_prediction.expected_return >= 0 ? '+' : '' }}{{ s.price_prediction.expected_return.toFixed(1) }}%</strong></span>
+              <span :class="['pp-row-risk', riskLevelClass(s.price_prediction.risk_level)]">{{ s.price_prediction.risk_level }}</span>
+            </div>
+
             <!-- Divergence -->
             <div v-if="s.composite.divergence" class="divergence-tip">
               {{ s.composite.divergence }}
@@ -297,6 +305,44 @@
               </div>
             </div>
           </el-tab-pane>
+          <el-tab-pane label="价格预测" name="price_prediction">
+            <div class="tab-content" v-if="detailData.price_prediction">
+              <div class="pp-grid">
+                <div class="pp-item">
+                  <span class="pp-label">目标价</span>
+                  <span class="pp-val up">{{ fmtPrice(detailData.price_prediction.target_price) }}</span>
+                </div>
+                <div class="pp-item">
+                  <span class="pp-label">止损价</span>
+                  <span class="pp-val down">{{ fmtPrice(detailData.price_prediction.stop_loss) }}</span>
+                </div>
+                <div class="pp-item">
+                  <span class="pp-label">预期收益</span>
+                  <span :class="['pp-val', detailData.price_prediction.expected_return >= 0 ? 'up' : 'down']">
+                    {{ detailData.price_prediction.expected_return >= 0 ? '+' : '' }}{{ detailData.price_prediction.expected_return.toFixed(1) }}%
+                  </span>
+                </div>
+                <div class="pp-item">
+                  <span class="pp-label">最大亏损</span>
+                  <span class="pp-val down">{{ detailData.price_prediction.max_loss.toFixed(1) }}%</span>
+                </div>
+                <div class="pp-item">
+                  <span class="pp-label">建议仓位</span>
+                  <span class="pp-val">{{ (detailData.price_prediction.position_size * 100).toFixed(0) }}%</span>
+                </div>
+                <div class="pp-item">
+                  <span class="pp-label">风险等级</span>
+                  <span :class="['pp-val', riskLevelClass(detailData.price_prediction.risk_level)]">{{ detailData.price_prediction.risk_level }}</span>
+                </div>
+              </div>
+              <div class="pp-detail">
+                <p>买入区间: <strong>{{ fmtPrice(detailData.price_prediction.buy_zone_low) }}</strong> ~ <strong>{{ fmtPrice(detailData.price_prediction.buy_zone_high) }}</strong></p>
+                <p>支撑位: <strong>{{ fmtPrice(detailData.price_prediction.support) }}</strong> &nbsp; 阻力位: <strong>{{ fmtPrice(detailData.price_prediction.resistance) }}</strong></p>
+                <p>年化波动率: <strong>{{ detailData.price_prediction.volatility.toFixed(1) }}%</strong></p>
+              </div>
+            </div>
+            <div v-else class="tab-content"><p>暂无价格预测数据</p></div>
+          </el-tab-pane>
         </el-tabs>
       </template>
     </el-dialog>
@@ -390,6 +436,12 @@ function signalTagType(sig: string): string {
   if (sig === 'strong_buy' || sig === 'buy') return 'danger'
   if (sig === 'sell' || sig === 'strong_sell') return 'success'
   return 'info'
+}
+
+function riskLevelClass(level: string): string {
+  if (level === '低') return 'risk-low'
+  if (level === '高') return 'risk-high'
+  return 'risk-mid'
 }
 
 function scoreColor(score: number): string {
@@ -586,6 +638,51 @@ onUnmounted(() => {
   font-size: 11px;
   color: #e6a23c;
 }
+
+/* Price Prediction Row */
+.pp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 4px 8px;
+  background: var(--el-color-info-light-9, #f4f4f5);
+  border-radius: 4px;
+  font-size: 11px;
+}
+.pp-row-target, .pp-row-stop, .pp-row-return { white-space: nowrap; }
+.pp-row-risk {
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+}
+.pp-row-risk.risk-low { background: #e1f3d8; color: #67c23a; }
+.pp-row-risk.risk-mid { background: #faecd8; color: #e6a23c; }
+.pp-row-risk.risk-high { background: #fde2e2; color: #f56c6c; }
+
+/* Price Prediction Detail */
+.pp-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.pp-item { display: flex; flex-direction: column; }
+.pp-label { font-size: 11px; color: #999; margin-bottom: 2px; }
+.pp-val { font-size: 18px; font-weight: 700; }
+.pp-val.risk-low { color: #67c23a; }
+.pp-val.risk-mid { color: #e6a23c; }
+.pp-val.risk-high { color: #f56c6c; }
+.pp-detail {
+  padding: 12px;
+  background: var(--el-color-info-light-9, #f4f4f5);
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 2;
+}
+.pp-detail strong { font-weight: 600; }
 
 /* Detail Dialog */
 .detail-header {

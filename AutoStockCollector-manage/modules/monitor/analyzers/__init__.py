@@ -3,6 +3,7 @@ from .research_report import ResearchReportAnalyzer
 from .technical import TechnicalAnalyzer
 from .fundamental import FundamentalAnalyzer
 from .composite import CompositeAnalyzer
+from .price_prediction import PricePredictionAnalyzer
 
 __all__ = [
     "FundFlowAnalyzer",
@@ -10,4 +11,5 @@ __all__ = [
     "TechnicalAnalyzer",
     "FundamentalAnalyzer",
     "CompositeAnalyzer",
+    "PricePredictionAnalyzer",
 ]

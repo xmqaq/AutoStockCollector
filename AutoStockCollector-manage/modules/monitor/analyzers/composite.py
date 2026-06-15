@@ -80,7 +80,8 @@ class CompositeAnalyzer:
             r_reasons = research.get("short_term", {}).get("reasons", [])[:1]
             reasons.extend(r_reasons)
 
-        total_score = sum(s * w for _, s, w in scores)
+        raw_score = sum(s * w for _, s, w in scores)
+        total_score = self._stretch(raw_score)
         signal = self._score_to_signal(total_score)
 
         return {
@@ -119,7 +120,8 @@ class CompositeAnalyzer:
             r_reasons = research.get("long_term", {}).get("reasons", [])[:1]
             reasons.extend(r_reasons)
 
-        total_score = sum(s * w for _, s, w in scores)
+        raw_score = sum(s * w for _, s, w in scores)
+        total_score = self._stretch(raw_score)
         signal = self._score_to_signal(total_score)
 
         return {
@@ -131,20 +133,26 @@ class CompositeAnalyzer:
             "weights": dict(self.LONG_WEIGHTS),
         }
 
+    def _stretch(self, score: float) -> float:
+        """拉伸分数，扩大区分度。将 40-60 区间拉伸到 20-80。"""
+        if 40 <= score <= 60:
+            return (score - 40) * 2 + 20
+        return score
+
     def _final_advice(self, short: Dict, long_: Dict) -> Dict:
         """生成最终综合建议"""
         s_score = short["score"]
         l_score = long_["score"]
-        combined_score = s_score * 0.5 + l_score * 0.5
+        combined_score = self._stretch(s_score * 0.5 + l_score * 0.5)
         combined_signal = self._score_to_signal(combined_score)
 
         # 短/长期分歧提示
         divergence = ""
-        if s_score >= 60 and l_score <= 40:
+        if s_score >= 65 and l_score <= 35:
             divergence = "短期看好、长期偏弱，注意控制仓位"
-        elif s_score <= 40 and l_score >= 60:
+        elif s_score <= 35 and l_score >= 65:
             divergence = "短期承压、长期看好，可逢低布局"
-        elif abs(s_score - l_score) <= 5:
+        elif abs(s_score - l_score) <= 8:
             divergence = "短长期一致"
 
         return {

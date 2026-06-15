@@ -10,8 +10,10 @@ from core.storage.mongo_storage import StockInfoStorage, WatchlistStorage
 from utils.logger import get_logger
 
 from .storage import MonitorStorage
+from .backtest import SignalBacktest
 from .analyzers import (
     FundFlowAnalyzer,
+    PricePredictionAnalyzer,
     ResearchReportAnalyzer,
     TechnicalAnalyzer,
     FundamentalAnalyzer,
@@ -32,6 +34,8 @@ class MonitorEngine:
         self._technical = TechnicalAnalyzer()
         self._fundamental = FundamentalAnalyzer()
         self._composite = CompositeAnalyzer()
+        self._price_prediction = PricePredictionAnalyzer()
+        self._backtest = SignalBacktest()
         self._watchlist = WatchlistStorage()
         self._db = DatabaseConfig.get_database()
 
@@ -59,6 +63,12 @@ class MonitorEngine:
                 except Exception as e:
                     errors += 1
                     logger.error(f"Analyze {s.get('code')} failed: {e}")
+
+        # 后台回测
+        try:
+            self._backtest.store_accuracy_all()
+        except Exception as e:
+            logger.error(f"Backtest failed: {e}")
 
         logger.info(f"Refreshed {len(results)} stocks ({errors} errors)")
         return {
@@ -131,6 +141,7 @@ class MonitorEngine:
             research = self._research.analyze(code, name)
             technical = self._technical.analyze(code)
             fundamental = self._fundamental.analyze(code)
+            price_prediction = self._price_prediction.analyze(code)
             composite = self._composite.composite(fund_flow, research, technical, fundamental)
         except Exception as e:
             logger.error(f"Analyze {code} failed: {e}")
@@ -156,6 +167,7 @@ class MonitorEngine:
                 "divergence": composite["divergence"],
             },
             "confidence": self._calc_confidence(composite),
+            "price_prediction": price_prediction,
             "analysis": {
                 "fund_flow": fund_flow,
                 "research": research,
