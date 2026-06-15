@@ -647,6 +647,17 @@ def job_workflow_daily():
         logger.error(f"[cron] 选股工作流触发失败: {e}")
 
 
+def job_ai_monitor():
+    """AI 实时监控刷新：持仓+自选股的资金流向、研报、长短线信号。"""
+    try:
+        from modules.monitor import MonitorEngine
+        engine = MonitorEngine()
+        result = engine.refresh_all()
+        logger.info(f"[cron] AI监控刷新完成: {result}")
+    except Exception as e:
+        logger.error(f"[cron] AI监控刷新失败: {e}")
+
+
 # ─── 纯 Python 调度核心 ───────────────────────────────────────────────────────
 
 def _next_daily_run(hour: int, minute: int) -> datetime.datetime:
@@ -769,6 +780,7 @@ def start_daily_jobs() -> None:
         _make_job("净值快照 16:30",       job_portfolio_snapshot,  "daily", 16, 30, task_type="portfolio_snapshot"),
         _make_job("估值缓存 5min",       job_valuation_cache,     "interval", interval_minutes=5, task_type="valuation_cache"),
         _make_job("任务清理 03:30",      job_task_cleanup,        "daily",  3, 30, task_type="task_cleanup"),
+        _make_job("AI监控刷新 15分钟",  job_ai_monitor,           "interval", interval_minutes=15, task_type="ai_monitor"),
     ]
 
     # 选股工作流：仅当 DAILY_WORKFLOW_ID 已配置时才注册，否则它每次触发都只是
