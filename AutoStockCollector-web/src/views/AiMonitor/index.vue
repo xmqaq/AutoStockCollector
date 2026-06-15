@@ -391,6 +391,18 @@
               </div>
             </div>
           </el-tab-pane>
+          <el-tab-pane label="估值面" name="valuation">
+            <div class="tab-content" v-if="detailData.analysis.valuation">
+              <p>评分: {{ detailData.analysis.valuation.score }} / 信号: {{ detailData.analysis.valuation.signal }}</p>
+              <ul><li v-for="r in detailData.analysis.valuation.reasons" :key="r">{{ r }}</li></ul>
+              <div v-if="detailData.analysis.valuation.details" class="detail-grid">
+                <div v-for="(v, k) in detailData.analysis.valuation.details" :key="k" class="detail-item">
+                  <span class="di-label">{{ k }}</span>
+                  <span class="di-value">{{ v ?? '--' }}</span>
+                </div>
+              </div>
+            </div>
+          </el-tab-pane>
         </el-tabs>
         <!-- Price Prediction Detail (可折叠) -->
         <el-collapse v-if="detailData.price_prediction" class="pp-collapse">
@@ -512,7 +524,7 @@ function signalTagType(sig: string): string {
 }
 
 function dimLabel(k: string): string {
-  const m: Record<string, string> = { fund_flow_score: '主力资金', research_score: '研报', technical_score: '技术面', composite_score: '综合评分' }
+  const m: Record<string, string> = { fund_flow_score: '主力资金', research_score: '研报', technical_score: '技术面', valuation_score: '估值', composite_score: '综合评分' }
   return m[k] || k
 }
 

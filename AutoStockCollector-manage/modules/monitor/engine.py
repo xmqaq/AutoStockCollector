@@ -17,6 +17,7 @@ from .analyzers import (
     ResearchReportAnalyzer,
     TechnicalAnalyzer,
     FundamentalAnalyzer,
+    ValuationAnalyzer,
     CompositeAnalyzer,
 )
 
@@ -33,6 +34,7 @@ class MonitorEngine:
         self._research = ResearchReportAnalyzer()
         self._technical = TechnicalAnalyzer()
         self._fundamental = FundamentalAnalyzer()
+        self._valuation = ValuationAnalyzer()
         self._composite = CompositeAnalyzer()
         self._price_prediction = PricePredictionAnalyzer()
         self._backtest = SignalBacktest()
@@ -141,8 +143,9 @@ class MonitorEngine:
             research = self._research.analyze(code, name)
             technical = self._technical.analyze(code)
             fundamental = self._fundamental.analyze(code)
+            valuation = self._valuation.analyze(code)
             price_prediction = self._price_prediction.analyze(code)
-            composite = self._composite.composite(fund_flow, research, technical, fundamental)
+            composite = self._composite.composite(fund_flow, research, technical, fundamental, valuation)
         except Exception as e:
             logger.error(f"Analyze {code} failed: {e}")
             return None
@@ -173,12 +176,13 @@ class MonitorEngine:
                 "research": research,
                 "technical": technical,
                 "fundamental": fundamental,
+                "valuation": valuation,
             },
             "updated_at": datetime.now().isoformat(),
         }
 
         result["trading_advice"] = self._trading_advice(
-            fund_flow, research, technical, composite, price_prediction,
+            fund_flow, research, technical, composite, price_prediction, valuation,
         )
         self._update_price_change(result, code)
         return result
@@ -187,9 +191,9 @@ class MonitorEngine:
         self,
         fund_flow: Dict, research: Dict,
         technical: Dict, composite: Dict,
-        pp: Dict,
+        pp: Dict, valuation: Dict,
     ) -> Dict[str, Any]:
-        """多维度买卖点建议 — 融合主力资金、研报、技术面、综合评分"""
+        """多维度买卖点建议 — 融合主力资金、研报、技术面、估值、综合评分"""
         current = pp.get("current_price", 0)
         target = pp.get("target_price", 0)
         stop = pp.get("stop_loss", 0)
@@ -206,6 +210,8 @@ class MonitorEngine:
         rs_l = research.get("long_term", {}).get("score", 50)
         rs_c = research.get("composite_score", 50)
         tc_s = technical.get("short_term", {}).get("score", 50)
+        tc_l = technical.get("long_term", {}).get("score", 50)
+        vl_s = valuation.get("score", 50)
         cp_s = composite.get("composite_score", 50)
         cp_sig = composite.get("composite_signal", "hold")
         sc_s = composite.get("short_term", {}).get("score", 50)
@@ -336,6 +342,7 @@ class MonitorEngine:
                 "fund_flow_score": ff_s,
                 "research_score": rs_s,
                 "technical_score": tc_s,
+                "valuation_score": vl_s,
                 "composite_score": cp_s,
             },
             "buy_reasons": buy_reasons[:3],
