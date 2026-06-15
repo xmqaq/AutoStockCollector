@@ -384,6 +384,42 @@ class MonitorEngine:
         else:
             display_reason = "; ".join(buy_reasons[:2]) if buy_reasons else "暂无明确信号"
 
+        # ── 结构化建议 ──
+        if sig == "buy" and stock_type == "自选":
+            if buy_low <= current <= buy_high:
+                advice_summary = f"建议在 {buy_low:.2f}~{buy_high:.2f} 买入"
+            else:
+                advice_summary = f"当前{current:.2f}略高于买入区({buy_low:.2f}~{buy_high:.2f})"
+            advice_summary += f"，目标价 {target:.2f}(+{exp_ret:.1f}%)，止损 {stop:.2f}(-{max_loss:.1f}%)"
+        elif sig == "sell":
+            if current >= target and target > 0:
+                advice_summary = f"建议在 {current:.2f} 止盈，已达目标价 {target:.2f}"
+            elif stop > 0 and current <= stop * 1.03:
+                advice_summary = f"建议在 {current:.2f} 止损，接近止损线 {stop:.2f}(-{max_loss:.1f}%)"
+            else:
+                advice_summary = f"建议卖出，目标价 {target:.2f}，止损 {stop:.2f}"
+        elif sig == "watch":
+            if current < buy_low:
+                advice_summary = f"等待回调至 {buy_low:.2f}~{buy_high:.2f} 区间再介入"
+            elif current > buy_high * 1.2:
+                advice_summary = f"涨幅已大(现价{current:.2f}超过买入区20%)，等回调至 {buy_low:.2f}~{buy_high:.2f} 再介入"
+            elif divergence and abs(sc_s - sc_l) > 20:
+                advice_summary = f"短长期分歧({sc_s}/{sc_l})较大，等待方向明确"
+            else:
+                advice_summary = f"暂不建议操作，等待信号确认"
+            advice_summary += f"，理想买入区 {buy_low:.2f}~{buy_high:.2f}，目标 {target:.2f}(+{exp_ret:.1f}%)"
+        else:
+            # 持有
+            if buy_low <= current <= buy_high:
+                advice_summary = f"建议持有至目标价 {target:.2f}(+{exp_ret:.1f}%)"
+            elif current > buy_high:
+                advice_summary = f"已持有，持有至目标价 {target:.2f}(+{exp_ret:.1f}%)"
+                if stock_type == "持仓":
+                    advice_summary += "，不建议加仓"
+            else:
+                advice_summary = f"建议持有等待反弹，目标价 {target:.2f}(+{exp_ret:.1f}%)"
+            advice_summary += f"，止损 {stop:.2f}(-{max_loss:.1f}%)"
+
         return {
             "action": action,
             "action_signal": sig,
@@ -406,6 +442,16 @@ class MonitorEngine:
             "risk_reward_ratio": rr,
             "current_position": pos_text,
             "distance_to_target": dist_text,
+            "advice": {
+                "summary": advice_summary,
+                "buy_price_low": round(buy_low, 2),
+                "buy_price_high": round(buy_high, 2),
+                "target_price": round(target, 2) if target else 0,
+                "stop_loss_price": round(stop, 2) if stop else 0,
+                "hold_period": f"持有至目标价 {round(target, 2) if target else 0}" if target else "",
+                "expected_return": exp_ret,
+                "max_loss": max_loss,
+            },
         }
 
     def _update_price_change(self, result: Dict, code: str):

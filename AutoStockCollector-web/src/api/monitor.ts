@@ -13,6 +13,16 @@ export interface TradingAdvice {
   risk_reward_ratio: number
   current_position: string
   distance_to_target: string
+  advice: {
+    summary: string
+    buy_price_low: number
+    buy_price_high: number
+    target_price: number
+    stop_loss_price: number
+    hold_period: string
+    expected_return: number
+    max_loss: number
+  }
 }
 
 export interface PricePrediction {

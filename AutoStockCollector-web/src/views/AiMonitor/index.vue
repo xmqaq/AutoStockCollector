@@ -188,14 +188,27 @@
             </el-tag>
           </div>
           <div class="advice-body">
-            <div class="advice-reason">
-              <span class="adv-icon">📌</span> {{ detailData.trading_advice.reason }}
-            </div>
-            <div v-if="detailData.trading_advice.buy_reasons?.length" class="advice-reason">
-              <span class="adv-icon">✅</span> {{ detailData.trading_advice.buy_reasons[0] }}
-            </div>
-            <div v-if="detailData.trading_advice.sell_reasons?.length" class="advice-exit">
-              <span class="adv-icon">⚠️</span> {{ detailData.trading_advice.sell_reasons[0] }}
+            <!-- 建议摘要 (核心一行) -->
+            <div class="advice-summary">{{ detailData.trading_advice.advice?.summary || detailData.trading_advice.reason }}</div>
+
+            <!-- 价格建议行 -->
+            <div class="advice-price-row">
+              <div class="adv-price-item" v-if="detailData.trading_advice.action_signal === 'buy'">
+                <span class="ap-label">建议买入</span>
+                <span class="ap-value up">{{ fmtPrice(detailData.trading_advice.advice?.buy_price_low) }} ~ {{ fmtPrice(detailData.trading_advice.advice?.buy_price_high) }}</span>
+              </div>
+              <div class="adv-price-item">
+                <span class="ap-label">目标卖出</span>
+                <span class="ap-value up">{{ fmtPrice(detailData.trading_advice.advice?.target_price) }} <small>(+{{ detailData.trading_advice.advice?.expected_return.toFixed(1) }}%)</small></span>
+              </div>
+              <div class="adv-price-item">
+                <span class="ap-label">止损价</span>
+                <span class="ap-value down">{{ fmtPrice(detailData.trading_advice.advice?.stop_loss_price) }} <small>(-{{ detailData.trading_advice.advice?.max_loss.toFixed(1) }}%)</small></span>
+              </div>
+              <div class="adv-price-item" v-if="detailData.trading_advice.advice?.hold_period">
+                <span class="ap-label">持有策略</span>
+                <span class="ap-value">{{ detailData.trading_advice.advice?.hold_period }}</span>
+              </div>
             </div>
           </div>
           <div class="advice-metrics">
@@ -307,28 +320,26 @@
             <el-card shadow="never" class="dl-composite" v-if="detailData.price_prediction">
               <div class="pp-summary">
                 <div class="pp-sum-item">
-                  <span class="pp-sum-label">目标</span>
-                  <span class="pp-sum-val up">{{ fmtPrice(detailData.price_prediction.target_price) }}</span>
+                  <span class="pp-sum-label">买入区间</span>
+                  <span class="pp-sum-val up">{{ fmtPrice(detailData.price_prediction.buy_zone_low) }} ~ {{ fmtPrice(detailData.price_prediction.buy_zone_high) }}</span>
                 </div>
                 <div class="pp-sum-item">
-                  <span class="pp-sum-label">止损</span>
-                  <span class="pp-sum-val down">{{ fmtPrice(detailData.price_prediction.stop_loss) }}</span>
+                  <span class="pp-sum-label">支撑/阻力</span>
+                  <span class="pp-sum-val">{{ fmtPrice(detailData.price_prediction.support) }} / {{ fmtPrice(detailData.price_prediction.resistance) }}</span>
                 </div>
                 <div class="pp-sum-item">
-                  <span class="pp-sum-label">预期</span>
-                  <span :class="['pp-sum-val', detailData.price_prediction.expected_return >= 0 ? 'up' : 'down']">
-                    {{ detailData.price_prediction.expected_return >= 0 ? '+' : '' }}{{ detailData.price_prediction.expected_return.toFixed(1) }}%
-                  </span>
-                </div>
-                <div class="pp-sum-item">
-                  <span class="pp-sum-label">仓位</span>
-                  <span class="pp-sum-val">{{ (detailData.price_prediction.position_size * 100).toFixed(0) }}%</span>
+                  <span class="pp-sum-label">波动率</span>
+                  <span class="pp-sum-val">{{ detailData.price_prediction.volatility?.toFixed(1) }}%</span>
                 </div>
                 <div class="pp-sum-item">
                   <span class="pp-sum-label">风险</span>
                   <span :class="['pp-sum-val pp-risk-tag', riskLevelClass(detailData.price_prediction.risk_level)]">
                     {{ detailData.price_prediction.risk_level }}
                   </span>
+                </div>
+                <div class="pp-sum-item">
+                  <span class="pp-sum-label">仓位建议</span>
+                  <span class="pp-sum-val">{{ (detailData.price_prediction.position_size * 100).toFixed(0) }}%</span>
                 </div>
               </div>
             </el-card>
@@ -831,6 +842,45 @@ onUnmounted(() => {
   padding: 6px 8px;
   background: var(--el-fill-color, #f5f5f5);
   border-radius: 4px;
+}
+.advice-summary {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+  padding: 8px 12px;
+  background: #f5f7fa;
+  border-radius: 6px;
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+.advice-price-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 4px;
+}
+.adv-price-item {
+  flex: 1;
+  min-width: 120px;
+  background: #fafafa;
+  border-radius: 4px;
+  padding: 6px 10px;
+  text-align: center;
+}
+.adv-price-item .ap-label {
+  display: block;
+  font-size: 11px;
+  color: #909399;
+  margin-bottom: 2px;
+}
+.adv-price-item .ap-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: #303133;
+}
+.adv-price-item .ap-value small {
+  font-size: 11px;
+  font-weight: 400;
 }
 .adv-icon { margin-right: 4px; }
 .advice-metrics {
