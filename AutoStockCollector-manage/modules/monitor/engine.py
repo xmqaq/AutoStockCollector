@@ -201,7 +201,7 @@ class MonitorEngine:
         }
 
         result["trading_advice"] = self._trading_advice(
-            fund_flow, research, technical, composite, price_prediction, valuation,
+            fund_flow, research, technical, composite, price_prediction, valuation, stock_type,
         )
         self._update_price_change(result, code)
         return result
@@ -211,6 +211,7 @@ class MonitorEngine:
         fund_flow: Dict, research: Dict,
         technical: Dict, composite: Dict,
         pp: Dict, valuation: Dict,
+        stock_type: str = "自选",
     ) -> Dict[str, Any]:
         """多维度买卖点建议 — 融合主力资金、研报、技术面、估值、综合评分"""
         current = pp.get("current_price", 0)
@@ -302,6 +303,21 @@ class MonitorEngine:
             if rs_s >= 55: buy_reasons.append(f"研报短期看好(评分{rs_s:.0f})")
             if tc_s >= 60: buy_reasons.append(f"技术面偏多(评分{tc_s:.0f})")
 
+        # 买入：略高于买入区但多维度共振强烈
+        elif current <= buy_high * 1.2 and sc_s >= 65 and ff_s >= 60 and tc_s >= 55 and rr >= 2:
+            action = "买入"; sig = "buy"
+            pct_above = round((current / buy_high - 1) * 100, 1)
+            buy_reasons.append(f"价格{current:.2f}仅高于买入区{pct_above}%({buy_low:.2f}~{buy_high:.2f})")
+            buy_reasons.append(f"资金{ff_s:.0f}+技术{tc_s:.0f}+估值{vl_s:.0f}多维度看多")
+            buy_reasons.append(f"盈亏比{rr}，预期收益{exp_ret:+.1f}%，建议适量建仓")
+
+        # 买入：高于买入区(10-20%)，资金和技术强势
+        elif current <= buy_high * 1.2 and ff_s >= 65 and tc_s >= 60 and rr >= 2:
+            action = "买入"; sig = "buy"
+            pct_above = round((current / buy_high - 1) * 100, 1)
+            buy_reasons.append(f"价格高于买入区{pct_above}%但资金({ff_s:.0f})和技术({tc_s:.0f})强势")
+            buy_reasons.append(f"盈亏比{rr}较好，预期{exp_ret:+.1f}%，可控制仓位介入")
+
         # ── 观望条件 ──
         # 价格在买入区但多维度看空
         elif buy_low <= current <= buy_high and ff_s < 40 and sc_s < 55:
@@ -316,10 +332,14 @@ class MonitorEngine:
             watch_reasons.append(f"信号偏多(综合{sc_s:.0f}/资金{ff_s:.0f})，可等待回调至买入区")
 
         # 综合评分很高但价格远离买入区
+        elif sc_s >= 65 and current > buy_high * 1.2:
+            action = "观望"; sig = "watch"
+            watch_reasons.append(f"综合评分{sc_s:.0f}看多但价格超过买入区20%({buy_high:.2f})")
+            watch_reasons.append("涨幅已大，等回调再介入")
         elif sc_s >= 65 and current > buy_high * 1.1:
             action = "观望"; sig = "watch"
-            watch_reasons.append(f"综合评分{sc_s:.0f}看多但价格已超过买入区上限{buy_high:.2f}")
-            watch_reasons.append("等待回调至买入区附近再介入")
+            watch_reasons.append(f"综合评分{sc_s:.0f}看多但价格略高于买入区上限")
+            watch_reasons.append("可小仓位试探，注意回调风险")
 
         # 短期长期分歧
         elif divergence and abs(sc_s - sc_l) > 20:
@@ -341,6 +361,17 @@ class MonitorEngine:
                 buy_reasons.append(f"可继续持有观察，止损{stop:.2f}")
             if rr >= 1.5:
                 buy_reasons.append(f"盈亏比{rr}尚可")
+
+        # 持仓股票：观望 → 持有（不加仓），买入 → 持有（可加仓）
+        if stock_type == "持仓":
+            if sig == "watch":
+                action = "持有"
+                sig = "hold"
+                watch_reasons.append("已持仓，控制仓位不加仓")
+            elif sig == "buy":
+                action = "持有"
+                sig = "hold"
+                buy_reasons.append("已持仓，可继续持有")
 
         all_reasons = buy_reasons + sell_reasons + watch_reasons
         # 构建显示文本
