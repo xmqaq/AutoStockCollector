@@ -1,5 +1,20 @@
 import client from './client'
 
+export interface TradingAdvice {
+  action: string
+  action_signal: string
+  entry_reason: string
+  exit_reason: string
+  entry_price_range: { low: number; high: number }
+  take_profit: number
+  stop_loss: number
+  expected_return: number
+  max_loss: number
+  risk_reward_ratio: number
+  current_position: string
+  distance_to_target: string
+}
+
 export interface PricePrediction {
   target_price: number
   stop_loss: number
@@ -12,6 +27,7 @@ export interface PricePrediction {
   support: number
   resistance: number
   volatility: number
+  trading_advice?: TradingAdvice
 }
 
 export interface MonitorSignal {

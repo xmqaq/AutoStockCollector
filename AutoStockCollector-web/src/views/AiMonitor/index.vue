@@ -134,6 +134,9 @@
 
             <!-- Price Prediction -->
             <div v-if="s.price_prediction?.target_price" class="pp-row">
+              <el-tag :type="adviceTagType(s.price_prediction.trading_advice?.action_signal)" size="small" effect="dark" class="pp-action-tag">
+                {{ s.price_prediction.trading_advice?.action || '--' }}
+              </el-tag>
               <span class="pp-row-target">目标 <strong class="up">{{ fmtPrice(s.price_prediction.target_price) }}</strong></span>
               <span class="pp-row-stop">止损 <strong class="down">{{ fmtPrice(s.price_prediction.stop_loss) }}</strong></span>
               <span class="pp-row-return">预期 <strong :class="s.price_prediction.expected_return >= 0 ? 'up' : 'down'">{{ s.price_prediction.expected_return >= 0 ? '+' : '' }}{{ s.price_prediction.expected_return.toFixed(1) }}%</strong></span>
@@ -174,6 +177,42 @@
             {{ fmtChange(detailData.change_rate) }}
           </span>
         </div>
+
+        <!-- AI Trading Advice -->
+        <el-card v-if="detailData.price_prediction?.trading_advice" shadow="never" :class="['dl-advice', 'advice-' + (detailData.price_prediction.trading_advice.action_signal || 'hold')]">
+          <div class="advice-header">
+            <span class="advice-label">AI 操作建议</span>
+            <el-tag :type="adviceTagType(detailData.price_prediction.trading_advice.action_signal)" size="large" effect="dark">
+              {{ detailData.price_prediction.trading_advice.action }}
+            </el-tag>
+          </div>
+          <div class="advice-body">
+            <div class="advice-reason">
+              <span class="adv-icon">📌</span> {{ detailData.price_prediction.trading_advice.entry_reason }}
+            </div>
+            <div class="advice-exit">
+              <span class="adv-icon">🎯</span> {{ detailData.price_prediction.trading_advice.exit_reason }}
+            </div>
+          </div>
+          <div class="advice-metrics">
+            <div class="adv-metric">
+              <span class="adv-m-label">盈亏比</span>
+              <span class="adv-m-val">{{ detailData.price_prediction.trading_advice.risk_reward_ratio }}</span>
+            </div>
+            <div class="adv-metric">
+              <span class="adv-m-label">当前相对</span>
+              <span class="adv-m-val">{{ detailData.price_prediction.trading_advice.current_position }}</span>
+            </div>
+            <div class="adv-metric">
+              <span class="adv-m-label">距目标</span>
+              <span class="adv-m-val">{{ detailData.price_prediction.trading_advice.distance_to_target }}</span>
+            </div>
+            <div class="adv-metric">
+              <span class="adv-m-label">仓位建议</span>
+              <span class="adv-m-val">{{ (detailData.price_prediction.position_size * 100).toFixed(0) }}%</span>
+            </div>
+          </div>
+        </el-card>
 
         <!-- Signal Comparison -->
         <el-row :gutter="16" class="dl-signals">
@@ -459,6 +498,13 @@ function signalTagType(sig: string): string {
   return 'info'
 }
 
+function adviceTagType(signal: string): string {
+  if (signal === 'buy') return 'danger'
+  if (signal === 'sell') return 'success'
+  if (signal === 'watch') return 'info'
+  return 'warning'
+}
+
 function riskLevelClass(level: string): string {
   if (level === '低') return 'risk-low'
   if (level === '高') return 'risk-high'
@@ -673,6 +719,7 @@ onUnmounted(() => {
   flex-wrap: wrap;
 }
 .pp-row-target, .pp-row-stop, .pp-row-return { white-space: nowrap; font-size: 10px; }
+.pp-action-tag { font-size: 10px; padding: 0 4px; height: 18px; line-height: 18px; }
 .pp-row-risk {
   margin-left: auto;
   padding: 1px 6px;
@@ -705,6 +752,50 @@ onUnmounted(() => {
   line-height: 2;
 }
 .pp-detail strong { font-weight: 600; }
+
+/* AI Trading Advice */
+.dl-advice {
+  margin-bottom: 16px;
+  border-left: 4px solid #909399;
+}
+.dl-advice.advice-buy { border-left-color: #f56c6c; }
+.dl-advice.advice-sell { border-left-color: #67c23a; }
+.dl-advice.advice-watch { border-left-color: #909399; }
+.dl-advice.advice-hold { border-left-color: #e6a23c; }
+.advice-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.advice-label { font-size: 14px; font-weight: 700; }
+.advice-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.advice-reason, .advice-exit {
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 6px 8px;
+  background: var(--el-fill-color, #f5f5f5);
+  border-radius: 4px;
+}
+.adv-icon { margin-right: 4px; }
+.advice-metrics {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.adv-metric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 60px;
+}
+.adv-m-label { font-size: 10px; color: #999; }
+.adv-m-val { font-size: 13px; font-weight: 600; }
 
 /* Price Prediction Summary (在详情弹窗composite旁) */
 .pp-summary {
