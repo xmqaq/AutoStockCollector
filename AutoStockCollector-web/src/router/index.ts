@@ -120,6 +120,12 @@ const router = createRouter({
           meta: { title: '策略管理' },
         },
         {
+          path: 'ai-monitor',
+          name: 'AiMonitor',
+          component: () => import('@/views/AiMonitor/index.vue'),
+          meta: { title: 'AI实时监控' },
+        },
+        {
           path: 'todo',
           name: 'Todo',
           component: () => import('@/views/Todo/index.vue'),
