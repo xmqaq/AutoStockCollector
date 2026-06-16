@@ -1,6 +1,7 @@
 """模拟盘交易 API — /api/paper/*"""
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
 from utils.logger import get_logger
+from api.auth_utils import login_required
 
 logger = get_logger(__name__)
 paper_bp = Blueprint("paper", __name__, url_prefix="/api/paper")
@@ -41,7 +42,7 @@ def init_account():
     data = request.get_json() or {}
     user_id = data.get("user_id", "default")
     try:
-        capital = float(data.get("initial_capital", 0))
+        capital = float(data.get("initial_capital", 100000))
     except (TypeError, ValueError):
         return jsonify({"error": "initial_capital 必须为数字"}), 400
     if capital <= 0:
@@ -192,3 +193,53 @@ def get_nav():
     else:
         nav = _stats.get_nav(user_id, _account)
     return jsonify({"success": True, "data": nav})
+
+
+@paper_bp.route("/ranking", methods=["GET"])
+def get_ranking():
+    """用户盈利排行榜：按总收益率降序，含收益率/收益额/胜率/交易次数"""
+    from config.database import DatabaseConfig
+    db = DatabaseConfig.get_database()
+    users = list(db.users.find({}, {"username": 1, "nickname": 1, "user_id": 1, "_id": 0}))
+
+    _lazy_init()
+    result = []
+    for user in users:
+        uid = user["user_id"]
+        snap = db["portfolio_snapshots"].find_one(
+            {"user_id": uid}, sort=[("date", -1)]
+        )
+        if snap and snap.get("profit_pct") is not None:
+            profit_pct = snap["profit_pct"]
+            profit_amount = snap.get("profit_amount", 0)
+            account_info = _account.get(uid)
+            initial_capital = account_info["initial_capital"] if account_info else snap.get("initial_capital", 0)
+        else:
+            account_info = _account.get(uid)
+            if not account_info:
+                continue
+            initial_capital = account_info["initial_capital"]
+            positions, _ = _engine.get_positions(uid)
+            cash = account_info["cash_balance"]
+            market_value = sum(p["market_value"] for p in positions)
+            net_value = cash + market_value
+            profit_amount = net_value - initial_capital
+            profit_pct = (profit_amount / initial_capital * 100) if initial_capital > 0 else 0
+
+        stats = _stats.get_stats(uid)
+        result.append({
+            "user_id": uid,
+            "username": user.get("nickname", user.get("username", uid)),
+            "raw_username": user.get("username", uid),
+            "profit_pct": round(profit_pct, 2),
+            "profit_amount": round(profit_amount, 2),
+            "initial_capital": round(initial_capital, 2),
+            "win_rate": stats.get("win_rate", 0),
+            "total_trades": stats.get("total_trades", 0),
+        })
+
+    result.sort(key=lambda x: x["profit_pct"], reverse=True)
+    for i, r in enumerate(result, 1):
+        r["rank"] = i
+
+    return jsonify({"success": True, "count": len(result), "data": result})

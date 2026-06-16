@@ -4,8 +4,15 @@ const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
+      path: '/login',
+      name: 'Login',
+      component: () => import('@/views/Login/index.vue'),
+      meta: { title: '登录', noAuth: true },
+    },
+    {
       path: '/',
       component: () => import('@/layouts/MainLayout.vue'),
+      meta: { requiresAuth: true },
       children: [
         {
           path: '',
@@ -102,6 +109,12 @@ const router = createRouter({
           meta: { title: '仓位管理' },
         },
         {
+          path: 'ranking',
+          name: 'Ranking',
+          component: () => import('@/views/Ranking/index.vue'),
+          meta: { title: '盈利排行榜' },
+        },
+        {
           path: 'workflow',
           name: 'Workflow',
           component: () => import('@/views/Workflow/index.vue'),
@@ -120,6 +133,18 @@ const router = createRouter({
           meta: { title: '策略管理' },
         },
         {
+          path: 'profile',
+          name: 'Profile',
+          component: () => import('@/views/Profile/index.vue'),
+          meta: { title: '个人中心' },
+        },
+        {
+          path: 'user-management',
+          name: 'UserManagement',
+          component: () => import('@/views/UserManagement/index.vue'),
+          meta: { title: '用户管理', adminOnly: true },
+        },
+        {
           path: 'ai-monitor',
           name: 'AiMonitor',
           component: () => import('@/views/AiMonitor/index.vue'),
@@ -134,6 +159,22 @@ const router = createRouter({
       ],
     },
   ],
+})
+
+router.beforeEach((to, _from, next) => {
+  const token = localStorage.getItem('auth_token')
+  const user = (() => {
+    try { return JSON.parse(localStorage.getItem('auth_user') || 'null') } catch { return null }
+  })()
+  if (to.meta.noAuth) {
+    next()
+  } else if (!token && to.meta.requiresAuth !== false) {
+    next({ path: '/login', query: { redirect: to.fullPath } })
+  } else if (to.meta.adminOnly && user?.role !== 'admin') {
+    next('/dashboard')
+  } else {
+    next()
+  }
 })
 
 export default router

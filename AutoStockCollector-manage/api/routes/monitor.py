@@ -2,10 +2,11 @@
 AI 实时监控 API 路由 — 主力资金流量 + 研报分析，长短线投资建议
 """
 import threading
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, g
 
 from modules.monitor.storage import MonitorStorage
 from utils.logger import get_logger
+from api.auth_utils import login_required
 
 logger = get_logger(__name__)
 
@@ -14,6 +15,35 @@ monitor_bp = Blueprint("monitor", __name__, url_prefix="/api/v1/monitor")
 _engine = None
 _engine_lock = threading.Lock()
 _refresh_lock = threading.Lock()
+
+
+def _get_user_stock_codes(user_id: str) -> set:
+    """获取用户关心的股票代码（持仓 + 自选）"""
+    from config.database import DatabaseConfig
+    db = DatabaseConfig.get_database()
+    codes = set()
+    try:
+        for p in db["positions"].find({"user_id": user_id}):
+            c = p.get("code", "")
+            if c: codes.add(c)
+    except Exception:
+        pass
+    try:
+        for p in db["trade_records"].aggregate([
+            {"$match": {"user_id": user_id, "action": "buy"}},
+            {"$group": {"_id": None, "codes": {"$addToSet": "$code"}}},
+        ]):
+            for c in p.get("codes", []):
+                codes.add(c)
+    except Exception:
+        pass
+    try:
+        for w in db["watchlist"].find({"user_id": user_id, "enabled": True}):
+            c = w.get("code", "")
+            if c: codes.add(c)
+    except Exception:
+        pass
+    return codes
 
 
 def _get_engine():
@@ -27,10 +57,16 @@ def _get_engine():
 
 
 @monitor_bp.route("/signals", methods=["GET"])
+@login_required
 def get_signals():
     try:
         storage = MonitorStorage()
-        signals = storage.get_all_signals()
+        all_signals = storage.get_all_signals()
+        user_codes = _get_user_stock_codes(g.current_user["user_id"])
+        if user_codes:
+            signals = [s for s in all_signals if s.get("code") in user_codes]
+        else:
+            signals = all_signals
         return jsonify({"success": True, "count": len(signals), "data": signals})
     except Exception as e:
         logger.error(f"Get signals failed: {e}")

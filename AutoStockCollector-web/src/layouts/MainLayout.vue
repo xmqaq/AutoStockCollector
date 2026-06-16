@@ -56,6 +56,25 @@
             <span :class="['status-dot', collectStore.backendOnline ? 'online' : 'offline']"></span>
             <span class="status-text">{{ collectStore.backendOnline ? '后端在线' : '后端离线' }}</span>
           </div>
+          <el-dropdown v-if="authStore.isLoggedIn" trigger="click" @command="handleUserCommand">
+            <div class="user-avatar">
+              <el-icon :size="18"><User /></el-icon>
+              <span class="user-name">{{ authStore.user?.username }}</span>
+            </div>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="profile">
+                  <el-icon :size="14"><User /></el-icon>个人中心
+                </el-dropdown-item>
+                <el-dropdown-item v-if="authStore.isAdmin" command="user-management">
+                  <el-icon :size="14"><Setting /></el-icon>用户管理
+                </el-dropdown-item>
+                <el-dropdown-item divided command="logout">
+                  <el-icon :size="14"><SwitchButton /></el-icon>退出登录
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </div>
       </el-header>
 
@@ -75,6 +94,7 @@ import { computed, onMounted, onUnmounted, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useCollectStore } from '@/stores/collectStore'
 import { useThemeStore } from '@/stores/themeStore'
+import { useAuthStore } from '@/stores/authStore'
 import AIChatFloat from '@/components/AIChatFloat/index.vue'
 import {
   Sunny,
@@ -96,12 +116,15 @@ import {
   EditPen,
   Setting,
   List,
+  User,
+  SwitchButton,
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
 const collectStore = useCollectStore()
 const themeStore = useThemeStore()
+const authStore = useAuthStore()
 
 interface MenuChild {
   key: string
@@ -117,7 +140,7 @@ interface MenuGroup {
   children?: MenuChild[]
 }
 
-const menuGroups: MenuGroup[] = [
+const menuGroups = computed((): MenuGroup[] => [
   {
     key: 'system',
     label: '系统总览',
@@ -155,9 +178,15 @@ const menuGroups: MenuGroup[] = [
     label: '量化交易',
     icon: Operation,
     children: [
-      { key: '/position', label: '仓位管理', icon: Wallet },
-      { key: '/workflow', label: '工作流管理', icon: Operation },
+      { key: '/position', label: '仓位管理',   icon: Wallet },
+      { key: '/workflow', label: '工作流管理',  icon: Operation },
     ],
+  },
+  {
+    key: 'ranking',
+    label: '盈利排行榜',
+    path: '/ranking',
+    icon: TrendCharts,
   },
   {
     key: 'watchlist',
@@ -179,12 +208,13 @@ const menuGroups: MenuGroup[] = [
       { key: '/ai-keys',          label: 'AI Key管理',     icon: Key },
       { key: '/ai-agents',        label: 'AI Agent管理',   icon: MagicStick },
       { key: '/strategy-manager', label: '策略管理',       icon: List },
+      ...(authStore.isAdmin ? [{ key: '/user-management', label: '用户管理', icon: User }] : []),
     ],
   },
-]
+])
 
 function findLeaf(path: string): string | undefined {
-  for (const group of menuGroups) {
+  for (const group of menuGroups.value) {
     if (group.children) {
       const child = group.children.find(c => path.startsWith(c.key))
       if (child) return child.key
@@ -198,7 +228,7 @@ const activeMenu = computed(() => findLeaf(route.path) || route.path)
 
 const openedMenus = computed(() => {
   const path = route.path
-  const group = menuGroups.find(
+  const group = menuGroups.value.find(
     g => g.children && g.children.some(c => path.startsWith(c.key)),
   )
   return group ? [group.key] : []
@@ -210,7 +240,7 @@ function handleMenuSelect(path: string) {
 
 const currentTitle = computed(() => {
   const path = route.path
-  for (const group of menuGroups) {
+  for (const group of menuGroups.value) {
     if (group.children) {
       const child = group.children.find(c => path.startsWith(c.key))
       if (child) return child.label
@@ -223,8 +253,22 @@ const currentTitle = computed(() => {
 
 let healthTimer: ReturnType<typeof setInterval>
 
+function handleUserCommand(cmd: string) {
+  if (cmd === 'logout') {
+    authStore.logout()
+    router.push('/login')
+  } else if (cmd === 'profile') {
+    router.push('/profile')
+  } else if (cmd === 'user-management') {
+    router.push('/user-management')
+  }
+}
+
 onMounted(() => {
   collectStore.checkHealth()
+  if (authStore.isLoggedIn) {
+    authStore.refreshProfile()
+  }
   healthTimer = setInterval(() => {
     collectStore.checkHealth()
   }, 10000)
@@ -381,5 +425,27 @@ onUnmounted(() => {
   overflow-y: auto;
   padding: 1.5%;
   min-height: 0;
+}
+
+.user-avatar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+  border-radius: 20px;
+  background: var(--bg-soft);
+  color: var(--text-secondary);
+  transition: background 0.2s, color 0.2s;
+}
+
+.user-avatar:hover {
+  background: var(--bg-hover-subtle);
+  color: var(--el-color-primary);
+}
+
+.user-name {
+  font-size: 13px;
+  font-weight: 500;
 }
 </style>
