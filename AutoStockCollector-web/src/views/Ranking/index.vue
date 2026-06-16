@@ -2,7 +2,13 @@
   <div class="ranking-page">
     <div class="page-header">
       <h2>盈利排行榜</h2>
-      <span class="page-desc">所有用户按总收益率排序，每日更新</span>
+      <span class="page-desc">所有用户按实时总收益率排序{{ tradingNow ? '（交易时段每 20 秒自动刷新）' : '（当前非交易时段，价格为最近收盘价）' }}</span>
+      <div class="header-actions">
+        <span v-if="lastUpdated" class="last-updated">更新于 {{ lastUpdated }}</span>
+        <el-button size="small" :loading="loading" @click="fetchRanking" round>
+          <el-icon><Refresh /></el-icon> 刷新
+        </el-button>
+      </div>
     </div>
 
     <el-card shadow="never" class="ranking-card">
@@ -60,7 +66,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { Refresh } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/authStore'
 import { paperApi } from '@/api/paper'
 import type { RankingEntry } from '@/api/paper'
@@ -69,6 +76,18 @@ const authStore = useAuthStore()
 const currentUserId = computed(() => authStore.user?.user_id)
 const ranking = ref<RankingEntry[]>([])
 const loading = ref(false)
+const lastUpdated = ref('')
+const tradingNow = ref(false)
+let _pollTimer: ReturnType<typeof setInterval> | undefined
+
+// A股交易时段：周一~周五 9:30-11:30 / 13:00-15:00（按本地时间近似，用于决定是否自动轮询）
+function isTradingNow(): boolean {
+  const d = new Date()
+  const day = d.getDay()
+  if (day === 0 || day === 6) return false
+  const mins = d.getHours() * 60 + d.getMinutes()
+  return (mins >= 570 && mins <= 690) || (mins >= 780 && mins <= 900)
+}
 
 function rankClass(index: number) {
   if (index === 0) return 'gold'
@@ -85,7 +104,9 @@ function formatAmount(v: number) {
 async function fetchRanking() {
   loading.value = true
   try {
-    ranking.value = await paperApi.getRanking()
+    ranking.value = await paperApi.getRanking(true)
+    const d = new Date()
+    lastUpdated.value = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
   } catch {
     // handled by interceptor
   } finally {
@@ -93,7 +114,19 @@ async function fetchRanking() {
   }
 }
 
-onMounted(fetchRanking)
+onMounted(() => {
+  tradingNow.value = isTradingNow()
+  fetchRanking()
+  // 仅交易时段自动轮询，避免非交易时段无意义的请求（价格不变）
+  _pollTimer = setInterval(() => {
+    tradingNow.value = isTradingNow()
+    if (tradingNow.value) fetchRanking()
+  }, 20000)
+})
+
+onUnmounted(() => {
+  if (_pollTimer) clearInterval(_pollTimer)
+})
 </script>
 
 <style scoped>
@@ -106,6 +139,19 @@ onMounted(fetchRanking)
   align-items: baseline;
   gap: 12px;
   margin-bottom: 20px;
+}
+
+.header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.last-updated {
+  font-size: 12px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
 }
 
 .page-header h2 {

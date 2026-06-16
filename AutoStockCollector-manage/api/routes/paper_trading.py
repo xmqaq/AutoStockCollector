@@ -1,4 +1,6 @@
 """模拟盘交易 API — /api/paper/*"""
+import time
+import threading
 from flask import Blueprint, request, jsonify, g
 from utils.logger import get_logger
 from api.auth_utils import login_required
@@ -10,6 +12,11 @@ _account = None
 _engine = None
 _stats = None
 _snapshot = None
+
+# 实时排行榜缓存：盘中前端会高频轮询，缓存避免每次都对所有用户批量拉行情。
+_ranking_live_cache = {"payload": None, "at": 0.0}
+_ranking_live_lock = threading.Lock()
+_RANKING_LIVE_TTL = 15.0
 
 
 def _lazy_init():
@@ -195,10 +202,41 @@ def get_nav():
     return jsonify({"success": True, "data": nav})
 
 
+def _live_profit(uid):
+    """按实时净值（现金 + 实时持仓市值）计算某用户的收益。
+    返回 (profit_pct, profit_amount, initial_capital)；账户未初始化返回 None。
+    """
+    account_info = _account.get(uid)
+    if not account_info:
+        return None
+    initial_capital = account_info["initial_capital"]
+    positions, _ = _engine.get_positions(uid)
+    cash = account_info["cash_balance"]
+    market_value = sum(p["market_value"] for p in positions)
+    profit_amount = cash + market_value - initial_capital
+    profit_pct = (profit_amount / initial_capital * 100) if initial_capital > 0 else 0
+    return profit_pct, profit_amount, initial_capital
+
+
 @paper_bp.route("/ranking", methods=["GET"])
 def get_ranking():
-    """用户盈利排行榜：按总收益率降序，含收益率/收益额/胜率/交易次数"""
+    """用户盈利排行榜：按总收益率降序，含收益率/收益额/胜率/交易次数。
+
+    默认（无 live 参数）：用每日 16:30 净值快照 `portfolio_snapshots`（无快照才退化为实时）。
+    传 ?live=1：所有用户都按实时净值计算（盘中可反映当日浮盈浮亏），结果缓存
+    _RANKING_LIVE_TTL 秒，避免高频轮询打爆行情接口。
+    """
     from config.database import DatabaseConfig
+    from modules.paper_trading.trade_engine import is_trading_time
+
+    live = request.args.get("live") in ("1", "true", "True", "yes")
+
+    if live:
+        with _ranking_live_lock:
+            cache = _ranking_live_cache
+            if cache["payload"] is not None and (time.time() - cache["at"]) < _RANKING_LIVE_TTL:
+                return jsonify({**cache["payload"], "cached": True})
+
     db = DatabaseConfig.get_database()
     users = list(db.users.find({}, {"username": 1, "nickname": 1, "user_id": 1, "_id": 0}))
 
@@ -206,25 +244,25 @@ def get_ranking():
     result = []
     for user in users:
         uid = user["user_id"]
-        snap = db["portfolio_snapshots"].find_one(
-            {"user_id": uid}, sort=[("date", -1)]
-        )
-        if snap and snap.get("profit_pct") is not None:
-            profit_pct = snap["profit_pct"]
-            profit_amount = snap.get("profit_amount", 0)
-            account_info = _account.get(uid)
-            initial_capital = account_info["initial_capital"] if account_info else snap.get("initial_capital", 0)
-        else:
-            account_info = _account.get(uid)
-            if not account_info:
+        if live:
+            computed = _live_profit(uid)
+            if computed is None:
                 continue
-            initial_capital = account_info["initial_capital"]
-            positions, _ = _engine.get_positions(uid)
-            cash = account_info["cash_balance"]
-            market_value = sum(p["market_value"] for p in positions)
-            net_value = cash + market_value
-            profit_amount = net_value - initial_capital
-            profit_pct = (profit_amount / initial_capital * 100) if initial_capital > 0 else 0
+            profit_pct, profit_amount, initial_capital = computed
+        else:
+            snap = db["portfolio_snapshots"].find_one(
+                {"user_id": uid}, sort=[("date", -1)]
+            )
+            if snap and snap.get("profit_pct") is not None:
+                profit_pct = snap["profit_pct"]
+                profit_amount = snap.get("profit_amount", 0)
+                account_info = _account.get(uid)
+                initial_capital = account_info["initial_capital"] if account_info else snap.get("initial_capital", 0)
+            else:
+                computed = _live_profit(uid)
+                if computed is None:
+                    continue
+                profit_pct, profit_amount, initial_capital = computed
 
         stats = _stats.get_stats(uid)
         result.append({
@@ -242,4 +280,15 @@ def get_ranking():
     for i, r in enumerate(result, 1):
         r["rank"] = i
 
-    return jsonify({"success": True, "count": len(result), "data": result})
+    payload = {
+        "success": True,
+        "count": len(result),
+        "data": result,
+        "live": live,
+        "is_trading": is_trading_time(),
+    }
+    if live:
+        with _ranking_live_lock:
+            _ranking_live_cache["payload"] = payload
+            _ranking_live_cache["at"] = time.time()
+    return jsonify(payload)

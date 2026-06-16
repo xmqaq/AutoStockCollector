@@ -154,9 +154,9 @@ export const paperApi = {
     return res.data?.data ?? []
   },
 
-  async getRanking(): Promise<RankingEntry[]> {
+  async getRanking(live = false): Promise<RankingEntry[]> {
     try {
-      const res = await request.get<{ data: RankingEntry[] }>('/api/paper/ranking')
+      const res = await request.get<{ data: RankingEntry[] }>(`/api/paper/ranking${live ? '?live=1' : ''}`)
       return res.data?.data ?? []
     } catch {
       return []
