@@ -11,7 +11,7 @@ function applyTheme(theme: Theme) {
 
 export const useThemeStore = defineStore('theme', () => {
   const theme = ref<Theme>(
-    (localStorage.getItem(STORAGE_KEY) as Theme) || 'dark',
+    (localStorage.getItem(STORAGE_KEY) as Theme) || 'light',
   )
 
   function setTheme(t: Theme) {

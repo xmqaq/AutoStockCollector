@@ -1,81 +1,83 @@
 /* ============ Theme tokens:浅色为主战场,html.dark=暗色 ============ */
 /* :root:root 提升特异性:element-plus theme-chalk/base.css 会在本文件之后注入,同为 :root 时按顺序会反杀 */
 :root:root {
-  /* 品牌色阶(墨青/深海蓝) */
-  --brand-50: #eff5fa;
-  --brand-100: #dbe9f3;
-  --brand-200: #b7d3e7;
-  --brand-300: #8ab6d4;
-  --brand-400: #5d97bd;
-  --brand-500: #3478a4;
-  --brand-600: #15598c;
-  --brand-700: #114a75;
-  --brand-800: #0e3c5f;
-  --brand-900: #0b2f4b;
+  /* 品牌色阶(现代科技蓝紫) */
+  --brand-50: #f0f3ff;
+  --brand-100: #e0e7ff;
+  --brand-200: #c6d2fe;
+  --brand-300: #a5b4fc;
+  --brand-400: #818cf8;
+  --brand-500: #6366f1;
+  --brand-600: #4f46e5;
+  --brand-700: #4338ca;
+  --brand-800: #3730a3;
+  --brand-900: #312e81;
 
   /* 语义色(沉稳化,替代 EP 默认艳色) */
-  --color-success: #348a5d;
-  --color-warning: #b9862e;
-  --color-danger: #c4453c;
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
   /* 涨跌(A股红涨绿跌) */
-  --up: #c4453c;
-  --dn: #348a5d;
-  --up-tint: #faf0ef;
-  --dn-tint: #edf5f0;
+  --up: #ef4444;
+  --dn: #10b981;
+  --up-tint: #fef2f2;
+  --dn-tint: #ecfdf5;
 
   /* 中性色 */
-  --bg-page: #f4f6f9;
+  --bg-page: #f8fafc;
   --bg-card: #ffffff;
-  --bg-elevated: #f9fafc;
-  --bg-soft: #eef1f5;
-  --bg-hover: rgba(21, 89, 140, 0.06);
-  --bg-hover-subtle: rgba(21, 89, 140, 0.03);
-  --border-color: #e3e7ed;
-  --border-strong: #d4dae2;
-  --border-heavy: #b9c2cd;
-  --text-primary: #1f2d3a;
-  --text-secondary: #51626f;
-  --text-muted: #7d8b97;
-  --text-faint: #a4b0ba;
+  --bg-card-rgb: 255, 255, 255;
+  --bg-elevated: #ffffff;
+  --bg-soft: #f1f5f9;
+  --bg-hover: rgba(99, 102, 241, 0.08);
+  --bg-hover-subtle: rgba(99, 102, 241, 0.04);
+  --border-color: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --border-heavy: #94a3b8;
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --text-faint: #94a3b8;
 
   /* 原"深蓝紫家族"(AIKey/AIPicker/StockAnalysis 仍引用)→ 归并到中性蓝灰 */
-  --bg-deep: #edf1f6;
-  --bg-deep-soft: #f4f6f9;
+  --bg-deep: #f1f5f9;
+  --bg-deep-soft: #f8fafc;
   --bg-card-alt: #ffffff;
-  --border-alt: #e3e7ed;
-  --border-alt-hover: #b9c2cd;
-  --text-alt-muted: #7d8b97;
-  --text-alt-secondary: #51626f;
-  --text-alt-body: #51626f;
-  --text-alt-primary: #1f2d3a;
-  --text-alt-strong: #1f2d3a;
+  --border-alt: #e2e8f0;
+  --border-alt-hover: #cbd5e1;
+  --text-alt-muted: #64748b;
+  --text-alt-secondary: #334155;
+  --text-alt-body: #334155;
+  --text-alt-primary: #0f172a;
+  --text-alt-strong: #0f172a;
 
   --color-link-soft: var(--brand-500);
-  --code-text: #2f7d4f;
-  --tint-success-bg: #edf5f0;
-  --tint-danger-bg: #faf0ef;
+  --code-text: #059669;
+  --tint-success-bg: #ecfdf5;
+  --tint-danger-bg: #fef2f2;
   --bg-overlay: rgba(255, 255, 255, 0.85);
-  --scrollbar-track: #eef1f5;
-  --scrollbar-thumb: #c3ccd6;
-  --scrollbar-thumb-hover: #9aa7b3;
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: #cbd5e1;
+  --scrollbar-thumb-hover: #94a3b8;
 
-  /* 圆角/阴影 */
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --shadow-sm: 0 1px 2px rgba(15, 40, 60, 0.05);
-  --shadow-md: 0 2px 8px rgba(15, 40, 60, 0.08);
-  --shadow-lg: 0 8px 24px rgba(15, 40, 60, 0.12);
+  /* 圆角/阴影 (提升现代感) */
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.02);
+  --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.05), 0 2px 4px -2px rgba(15, 23, 42, 0.02);
+  --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.04);
+  --shadow-card: 0 2px 12px 0 rgba(0, 0, 0, 0.02);
 
   /* 字体 */
-  --font-sans: -apple-system, 'PingFang SC', 'Hiragino Sans GB',
+  --font-sans: 'Inter', -apple-system, 'PingFang SC', 'Hiragino Sans GB',
     'Source Han Sans SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
-  --font-mono: 'IBM Plex Mono', 'SF Mono', Menlo, Consolas, monospace;
+  --font-mono: 'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', Menlo, Consolas, monospace;
 
   /* 字阶五级:页面标题/卡片标题/大数据数字/正文/辅助 */
-  --fs-page-title: 18px;
-  --fs-card-title: 14px;
-  --fs-data-lg: 24px;
+  --fs-page-title: 20px;
+  --fs-card-title: 15px;
+  --fs-data-lg: 26px;
   --fs-body: 14px;
   --fs-caption: 12px;
 
@@ -88,33 +90,33 @@
   --el-color-primary-light-9: var(--brand-50);
   --el-color-primary-dark-2: var(--brand-700);
   --el-color-success: var(--color-success);
-  --el-color-success-light-3: #5da981;
-  --el-color-success-light-5: #8ec4a6;
-  --el-color-success-light-7: #c0dfcd;
-  --el-color-success-light-8: #d8ecdf;
+  --el-color-success-light-3: #34d399;
+  --el-color-success-light-5: #6ee7b7;
+  --el-color-success-light-7: #a7f3d0;
+  --el-color-success-light-8: #d1fae5;
   --el-color-success-light-9: var(--dn-tint);
-  --el-color-success-dark-2: #2a6e4a;
+  --el-color-success-dark-2: #059669;
   --el-color-danger: var(--color-danger);
-  --el-color-danger-light-3: #d06a62;
-  --el-color-danger-light-5: #de958f;
-  --el-color-danger-light-7: #ecc0bc;
-  --el-color-danger-light-8: #f3d6d3;
+  --el-color-danger-light-3: #f87171;
+  --el-color-danger-light-5: #fca5a5;
+  --el-color-danger-light-7: #fecaca;
+  --el-color-danger-light-8: #fee2e2;
   --el-color-danger-light-9: var(--up-tint);
-  --el-color-danger-dark-2: #9d3730;
+  --el-color-danger-dark-2: #dc2626;
   --el-color-error: var(--color-danger);
-  --el-color-error-light-3: #d06a62;
-  --el-color-error-light-5: #de958f;
-  --el-color-error-light-7: #ecc0bc;
-  --el-color-error-light-8: #f3d6d3;
+  --el-color-error-light-3: #f87171;
+  --el-color-error-light-5: #fca5a5;
+  --el-color-error-light-7: #fecaca;
+  --el-color-error-light-8: #fee2e2;
   --el-color-error-light-9: var(--up-tint);
-  --el-color-error-dark-2: #9d3730;
+  --el-color-error-dark-2: #dc2626;
   --el-color-warning: var(--color-warning);
-  --el-color-warning-light-3: #c79e57;
-  --el-color-warning-light-5: #d6b884;
-  --el-color-warning-light-7: #e8d6b8;
-  --el-color-warning-light-8: #f1e4cf;
-  --el-color-warning-light-9: #f9f2e5;
-  --el-color-warning-dark-2: #946b25;
+  --el-color-warning-light-3: #fbbf24;
+  --el-color-warning-light-5: #fcd34d;
+  --el-color-warning-light-7: #fde68a;
+  --el-color-warning-light-8: #fef3c7;
+  --el-color-warning-light-9: #fffbeb;
+  --el-color-warning-dark-2: #d97706;
   --el-text-color-primary: var(--text-primary);
   --el-text-color-regular: var(--text-secondary);
   --el-text-color-secondary: var(--text-muted);
@@ -125,65 +127,69 @@
   --el-bg-color: var(--bg-card);
   --el-bg-color-page: var(--bg-page);
   --el-fill-color-light: var(--bg-soft);
-  --el-border-radius-base: var(--radius-sm);
+  --el-border-radius-base: var(--radius-md);
+  --el-box-shadow: var(--shadow-card);
+  --el-box-shadow-light: var(--shadow-sm);
 }
 
 /* 特异性需高于上方 :root:root(0,2,0),否则暗色下浅色 token 反杀 */
 :root:root.dark {
-  --bg-page: #12161c;
-  --bg-card: #1a2129;
-  --bg-elevated: #161c23;
-  --bg-soft: #222a34;
-  --bg-hover: rgba(133, 178, 212, 0.08);
-  --bg-hover-subtle: rgba(133, 178, 212, 0.04);
-  --border-color: #2a333e;
-  --border-strong: #38434f;
-  --border-heavy: #46525f;
-  --text-primary: #e3e9ef;
-  --text-secondary: #aeb9c4;
-  --text-muted: #7f8c99;
-  --text-faint: #566472;
+  --bg-page: #0b0f19;
+  --bg-card: #0b0f19;
+  --bg-card-rgb: 11, 15, 25;
+  --bg-elevated: #111827;
+  --bg-soft: #232b3a;
+  --bg-hover: rgba(99, 102, 241, 0.15);
+  --bg-hover-subtle: rgba(99, 102, 241, 0.08);
+  --border-color: #2a3441;
+  --border-strong: #3b4758;
+  --border-heavy: #4d5b6e;
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --text-faint: #64748b;
 
-  --bg-deep: #10151b;
-  --bg-deep-soft: #161c23;
-  --bg-card-alt: #1a2129;
-  --border-alt: #2a333e;
-  --border-alt-hover: #46525f;
-  --text-alt-muted: #7f8c99;
-  --text-alt-secondary: #aeb9c4;
-  --text-alt-body: #aeb9c4;
-  --text-alt-primary: #e3e9ef;
+  --bg-deep: #080c14;
+  --bg-deep-soft: #111622;
+  --bg-card-alt: #151b28;
+  --border-alt: #2a3441;
+  --border-alt-hover: #3b4758;
+  --text-alt-muted: #94a3b8;
+  --text-alt-secondary: #cbd5e1;
+  --text-alt-body: #cbd5e1;
+  --text-alt-primary: #f8fafc;
   --text-alt-strong: #ffffff;
 
-  --color-success: #4caf82;
-  --color-warning: #d4a04c;
-  --color-danger: #e06c5f;
-  --up: #e06c5f;
-  --dn: #4caf82;
-  --up-tint: #2b1a17;
-  --dn-tint: #15261d;
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+  --up: #ef4444;
+  --dn: #10b981;
+  --up-tint: rgba(239, 68, 68, 0.15);
+  --dn-tint: rgba(16, 185, 129, 0.15);
 
-  --color-link-soft: #8ab6d4;
-  --code-text: #9ece8f;
-  --tint-success-bg: #15261d;
-  --tint-danger-bg: #2b1a17;
-  --bg-overlay: rgba(18, 22, 28, 0.8);
-  --scrollbar-track: #1a2129;
-  --scrollbar-thumb: #38434f;
-  --scrollbar-thumb-hover: #46525f;
+  --color-link-soft: var(--brand-400);
+  --code-text: #34d399;
+  --tint-success-bg: rgba(16, 185, 129, 0.1);
+  --tint-danger-bg: rgba(239, 68, 68, 0.1);
+  --bg-overlay: rgba(11, 15, 25, 0.85);
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: #3b4758;
+  --scrollbar-thumb-hover: #4d5b6e;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.6), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
+  --shadow-card: 0 4px 12px 0 rgba(0, 0, 0, 0.25);
 
   /* ===== Element Plus 接管(暗色,覆盖 EP dark css-vars) ===== */
-  --el-color-primary: #6aa3cf;
-  --el-color-primary-light-3: #85b6da;
-  --el-color-primary-light-5: #a7cbe6;
-  --el-color-primary-light-7: #27425a;
-  --el-color-primary-light-8: #1d3349;
-  --el-color-primary-light-9: #172838;
-  --el-color-primary-dark-2: #4f8cba;
+  --el-color-primary: var(--brand-500);
+  --el-color-primary-light-3: var(--brand-400);
+  --el-color-primary-light-5: var(--brand-300);
+  --el-color-primary-light-7: rgba(99, 102, 241, 0.2);
+  --el-color-primary-light-8: rgba(99, 102, 241, 0.1);
+  --el-color-primary-light-9: rgba(99, 102, 241, 0.05);
+  --el-color-primary-dark-2: var(--brand-600);
   --el-color-success: var(--color-success);
   --el-color-success-light-9: var(--dn-tint);
   --el-color-danger: var(--color-danger);
@@ -201,6 +207,8 @@
   --el-bg-color: var(--bg-card);
   --el-bg-color-page: var(--bg-page);
   --el-fill-color-light: var(--bg-soft);
+  --el-box-shadow: var(--shadow-card);
+  --el-box-shadow-light: var(--shadow-sm);
 }
 
 *, *::before, *::after {

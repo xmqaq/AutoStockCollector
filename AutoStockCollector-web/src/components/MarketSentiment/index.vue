@@ -1,48 +1,64 @@
 <template>
   <div class="market-sentiment">
     <div class="sentiment-header">
-      <span class="sentiment-title">市场情绪</span>
+      <div class="header-left">
+        <span class="sentiment-title">市场情绪</span>
+        <el-tag :type="sentimentTagType" size="small" effect="light" class="sentiment-tag">
+          {{ sentimentLabel }}
+        </el-tag>
+      </div>
       <div class="sentiment-header-right">
-        <span class="data-date" v-if="dataDate">{{ dataDate }}</span>
-        <el-tag :type="sentimentTagType" size="small">{{ sentimentLabel }}</el-tag>
+        <span class="data-date num" v-if="dataDate">{{ dataDate }}</span>
       </div>
     </div>
-    <div class="sentiment-grid">
-      <div class="sentiment-item">
-        <div class="item-label">市场热度</div>
-        <div class="item-value heat-value num">{{ heatIndex }}</div>
-        <div class="heat-bar">
-          <div class="heat-fill" :style="{ width: heatIndex + '%', backgroundColor: heatColor }"></div>
+
+    <div class="sentiment-main">
+      <div class="heat-dial-container">
+        <div class="heat-value-wrapper">
+          <div class="heat-value num" :style="{ color: heatColor }">{{ heatIndex }}</div>
+          <div class="heat-label">市场热度</div>
+        </div>
+        <div class="heat-bar-wrapper">
+          <div class="heat-bar">
+            <div class="heat-fill" :style="{ width: heatIndex + '%', backgroundColor: heatColor, boxShadow: `0 0 12px ${heatColor}` }"></div>
+          </div>
         </div>
       </div>
-      <div class="sentiment-item">
-        <div class="item-label">上涨家数</div>
-        <div class="item-value rise num">{{ riseCount }}</div>
-      </div>
-      <div class="sentiment-item">
-        <div class="item-label">下跌家数</div>
-        <div class="item-value fall num">{{ fallCount }}</div>
-      </div>
-      <div class="sentiment-item">
-        <div class="item-label">涨跌家数比</div>
-        <div class="item-value num" :class="ratioClass">{{ ratioStr }}</div>
+
+      <div class="sentiment-stats">
+        <div class="stat-card">
+          <div class="stat-label">上涨家数</div>
+          <div class="stat-value rise num">{{ riseCount }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">下跌家数</div>
+          <div class="stat-value fall num">{{ fallCount }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">涨跌家数比</div>
+          <div class="stat-value num" :class="ratioClass">{{ ratioStr }}</div>
+        </div>
       </div>
     </div>
+
     <div class="index-row" v-if="indices.length > 0">
       <div 
         v-for="idx in indices" 
         :key="idx.code" 
         class="index-item"
       >
-        <div class="index-name">{{ idx.name }}</div>
-        <div class="index-price num" :class="idx.change >= 0 ? 'rise' : 'fall'">{{ idx.price ? idx.price.toFixed(2) : '--' }}</div>
-        <div class="index-change num" :class="idx.change >= 0 ? 'rise' : 'fall'">
+        <div class="index-info">
+          <div class="index-name">{{ idx.name }}</div>
+          <div class="index-price num">{{ idx.price ? idx.price.toFixed(2) : '--' }}</div>
+        </div>
+        <div class="index-change num" :class="idx.change >= 0 ? 'rise-bg' : 'fall-bg'">
           {{ idx.price ? (idx.change >= 0 ? '+' : '') + (idx.change ?? 0).toFixed(2) + '%' : '--' }}
         </div>
       </div>
     </div>
+    
     <div v-if="loading" class="loading-mask">
-      <el-icon class="is-loading"><Loading /></el-icon>
+      <div class="loading-spinner"></div>
     </div>
   </div>
 </template>
@@ -51,7 +67,6 @@
 import { ref, computed, onMounted } from 'vue'
 import { marketApi } from '@/api/market'
 import type { MarketIndex } from '@/api/market'
-import { Loading } from '@element-plus/icons-vue'
 
 const loading = ref(false)
 const indices = ref<MarketIndex[]>([])
@@ -67,9 +82,9 @@ const heatIndex = computed(() => {
 
 const heatColor = computed(() => {
   const h = heatIndex.value
-  if (h >= 70) return '#3f9d70'
-  if (h >= 40) return '#c9943a'
-  return '#d05a51'
+  if (h >= 70) return 'var(--up)'
+  if (h >= 40) return 'var(--color-warning)'
+  return 'var(--dn)'
 })
 
 const sentimentLabel = computed(() => {
@@ -138,7 +153,9 @@ onMounted(() => {
 <style scoped>
 .market-sentiment {
   position: relative;
-  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .sentiment-header {
@@ -146,107 +163,218 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
+  flex-shrink: 0;
 }
-.sentiment-header-right {
+
+.header-left {
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-.data-date {
-  font-size: 12px;
-  color: var(--text-secondary);
-  font-weight: 600;
-  background: var(--border-color);
-  padding: 1px 8px;
-  border-radius: 4px;
-  white-space: nowrap;
+  gap: 12px;
 }
 
 .sentiment-title {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--text-primary);
+  position: relative;
+  padding-left: 12px;
 }
 
-.sentiment-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
-  margin-bottom: 12px;
+.sentiment-title::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 16px;
+  background: var(--brand-500);
+  border-radius: 2px;
 }
 
-.sentiment-item {
-  background: var(--border-color);
-  border-radius: 6px;
-  padding: 10px;
+.sentiment-tag {
+  border-radius: 12px;
+  padding: 0 10px;
+  font-weight: 600;
+  border: none;
 }
 
-.item-label {
-  font-size: 11px;
+.data-date {
+  font-size: 12px;
   color: var(--text-muted);
-  margin-bottom: 4px;
+  background: var(--bg-soft);
+  padding: 4px 10px;
+  border-radius: 12px;
 }
 
-.item-value {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 4px;
+/* --- Main Dashboard --- */
+.sentiment-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+  gap: 16px;
+  margin-bottom: 12px;
+  min-height: 0;
 }
 
-.item-value.rise { color: #ef5350; }
-.item-value.fall { color: #26a69a; }
-.item-value.heat-value { font-size: 20px; }
+.heat-dial-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.heat-value-wrapper {
+  text-align: center;
+}
+
+.heat-value {
+  font-size: 48px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  text-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  transition: color 0.3s ease;
+}
+
+.heat-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+}
+
+.heat-bar-wrapper {
+  width: 100%;
+  max-width: 400px;
+  padding: 0 20px;
+}
 
 .heat-bar {
-  height: 4px;
-  background: var(--border-strong);
-  border-radius: 2px;
+  height: 8px;
+  background: var(--bg-soft);
+  border-radius: 4px;
   overflow: hidden;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
 }
 
 .heat-fill {
   height: 100%;
-  border-radius: 2px;
-  transition: width 0.3s ease;
+  border-radius: 4px;
+  transition: width 0.8s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.3s ease;
+  background-image: linear-gradient(90deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 100%);
 }
 
-.index-row {
+.heat-scale {
   display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding: 4px 0;
+  justify-content: space-between;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-faint);
 }
 
-.index-item {
-  flex-shrink: 0;
-  background: var(--border-color);
-  border-radius: 6px;
-  padding: 8px 12px;
-  min-width: 100px;
+/* --- Stats Grid --- */
+.sentiment-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.stat-card {
+  background: var(--bg-soft);
+  border-radius: var(--radius-md);
+  padding: 12px;
   text-align: center;
+  border: 1px solid transparent;
+  transition: all 0.2s;
 }
 
-.index-name {
+.stat-card:hover {
+  background: var(--bg-hover-subtle);
+  border-color: var(--border-color);
+  transform: translateY(-2px);
+}
+
+.stat-label {
   font-size: 11px;
   color: var(--text-muted);
   margin-bottom: 4px;
 }
 
+.stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* --- Indices Strip --- */
+.index-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border-color);
+  flex-shrink: 0;
+}
+
+.index-row::-webkit-scrollbar {
+  display: none;
+}
+
+.index-item {
+  flex: 1;
+  min-width: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  transition: transform 0.2s;
+}
+
+.index-item:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+
+.index-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.index-name {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
 .index-price {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-primary);
 }
 
 .index-change {
-  font-size: 11px;
-  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 0;
+  border-radius: 4px;
+  text-align: center;
 }
 
-.rise { color: #ef5350; }
-.fall { color: #26a69a; }
+/* Colors */
+.rise { color: var(--up); }
+.fall { color: var(--dn); }
 
+.rise-bg { background: var(--up-tint); color: var(--up); }
+.fall-bg { background: var(--dn-tint); color: var(--dn); }
+
+/* Loading */
 .loading-mask {
   position: absolute;
   top: 0;
@@ -254,9 +382,24 @@ onMounted(() => {
   right: 0;
   bottom: 0;
   background: var(--bg-overlay);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: var(--radius-lg);
+  z-index: 10;
+}
+
+.loading-spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--brand-500);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 </style>

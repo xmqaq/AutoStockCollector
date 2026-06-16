@@ -242,20 +242,22 @@ onUnmounted(() => {
 }
 
 .sidebar {
-  background: var(--bg-page);
+  background: var(--bg-card);
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  z-index: 10;
 }
 
 .logo {
-  height: 56px;
+  height: 60px;
   display: flex;
   align-items: center;
-  padding: 0 16px;
+  padding: 0 20px;
   border-bottom: 1px solid var(--border-color);
-  gap: 8px;
+  gap: 12px;
 }
 
 .logo-mark {
@@ -264,7 +266,7 @@ onUnmounted(() => {
 }
 
 .logo-text {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.02em;
   color: var(--text-primary);
@@ -275,9 +277,23 @@ onUnmounted(() => {
   border-right: none;
   flex: 1;
   overflow-y: auto;
-  --el-menu-bg-color: var(--bg-page);
+  --el-menu-bg-color: var(--bg-card);
   --el-menu-text-color: var(--text-secondary);
-  --el-menu-hover-bg-color: var(--bg-hover);
+  --el-menu-hover-bg-color: var(--bg-hover-subtle);
+  padding: 8px 0;
+}
+
+.el-menu-item {
+  margin: 4px 12px;
+  border-radius: var(--radius-sm);
+  height: 44px;
+  line-height: 44px;
+}
+
+.el-menu-item.is-active {
+  background-color: var(--bg-hover);
+  color: var(--el-color-primary);
+  font-weight: 600;
 }
 
 .header {
@@ -287,6 +303,8 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
+  box-shadow: var(--shadow-sm);
+  z-index: 9;
 }
 
 .header-left {
@@ -295,32 +313,36 @@ onUnmounted(() => {
 }
 
 .page-title {
-  font-size: 16px;
+  font-size: var(--fs-page-title);
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .theme-toggle {
   cursor: pointer;
-  font-size: 18px;
+  font-size: 20px;
   color: var(--text-muted);
-  transition: color 0.2s;
+  transition: color 0.2s, transform 0.2s;
 }
 
 .theme-toggle:hover {
-  color: var(--text-primary);
+  color: var(--el-color-primary);
+  transform: scale(1.1);
 }
 
 .header-right {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 20px;
 }
 
 .status-indicator {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--bg-soft);
+  border-radius: 20px;
 }
 
 .status-dot {
@@ -331,17 +353,18 @@ onUnmounted(() => {
 
 .status-dot.online {
   background: var(--el-color-success);
-  box-shadow: 0 0 6px var(--el-color-success);
+  box-shadow: 0 0 8px var(--el-color-success);
 }
 
 .status-dot.offline {
   background: var(--el-color-danger);
-  box-shadow: 0 0 6px var(--el-color-danger);
+  box-shadow: 0 0 8px var(--el-color-danger);
 }
 
 .status-text {
   font-size: 13px;
-  color: var(--text-muted);
+  font-weight: 500;
+  color: var(--text-secondary);
 }
 
 .content-wrapper {
@@ -349,15 +372,14 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: var(--bg-page);
 }
 
 .main-content {
   flex: 1;
   background: var(--bg-page);
   overflow-y: auto;
-  padding: 20px;
+  padding: 1.5%;
   min-height: 0;
 }
-
-
 </style>

@@ -1,331 +1,245 @@
 <template>
   <div class="data-monitor">
-    <!-- Toolbar -->
-    <el-card shadow="never" class="toolbar-card">
-      <div class="toolbar">
-        <el-button @click="showHistoryModal = true">
-          <el-icon><VideoPlay /></el-icon> 补历史
-        </el-button>
-        <el-button type="primary" @click="openUpdateModal">
-          <el-icon><Refresh /></el-icon> 更新到最新
-        </el-button>
-        <el-button @click="handleClearTasks">
-          <el-icon><Delete /></el-icon> 清空已完成任务
-        </el-button>
-        <el-button type="danger" @click="handleClearDb">
-          <el-icon><Delete /></el-icon> 清空数据库
-        </el-button>
-        <el-button @click="refresh" :loading="loading">
-          <el-icon><Refresh /></el-icon> 刷新
-        </el-button>
-        <span class="auto-refresh-tip">每3秒自动刷新</span>
-      </div>
-    </el-card>
-
-    <!-- 数据完整性体检（含时效性概览） -->
-    <el-card shadow="never" class="section-card">
-      <template #header>
-        <div class="card-header">
-          <span>数据完整性（{{ coverage?.ref_date || '--' }}）</span>
-          <div class="header-chips">
-            <el-tag v-if="freshnessStale > 0" type="warning" size="small">{{ freshnessStale }} 类需更新</el-tag>
-            <el-tag v-if="freshnessError > 0" type="danger" size="small">{{ freshnessError }} 类异常</el-tag>
-            <el-tag v-if="freshnessStale === 0 && freshnessError === 0" type="success" size="small">{{ freshnessOk }} 类时效正常</el-tag>
-            <el-tag v-if="coverage?.overall === 'bad'" type="danger" size="small">有数据缺口</el-tag>
-            <el-tag v-else-if="coverage?.overall === 'warn'" type="warning" size="small">覆盖偏低</el-tag>
-            <el-tag v-else-if="coverage" type="success" size="small">覆盖完整</el-tag>
-          </div>
-        </div>
-      </template>
-      <el-empty v-if="!coverage" description="加载中..." :image-size="40" />
-      <el-table v-else :data="coverage.sources" size="small" stripe>
-        <el-table-column prop="label" label="数据源" min-width="160" />
-        <el-table-column label="覆盖" width="130" align="center">
-          <template #default="{ row }">{{ row.covered }} / {{ row.expected }}</template>
-        </el-table-column>
-        <el-table-column label="覆盖率" width="180">
-          <template #default="{ row }">
-            <el-progress :percentage="row.expected ? Math.round(row.covered / row.expected * 100) : 0"
-                         :status="row.status === 'ok' ? 'success' : row.status === 'warn' ? 'warning' : 'exception'"
-                         :stroke-width="8" />
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="90" align="center">
-          <template #default="{ row }">
-            <el-tag v-if="row.status === 'ok'" type="success" size="small">完整</el-tag>
-            <el-tag v-else-if="row.status === 'warn'" type="warning" size="small">偏低</el-tag>
-            <el-tag v-else type="danger" size="small">缺口</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="缺口示例" min-width="220" show-overflow-tooltip>
-          <template #default="{ row }">
-            <span v-if="row.missing_count > 0" :class="row.status === 'ok' ? 'coverage-ok-text' : 'coverage-missing'">
-              缺 {{ row.missing_count }} 只<template v-if="row.status === 'ok'">（停牌等正常情形）</template><template v-if="row.missing_sample.length">：{{ row.missing_sample.join('、') }}…</template>
-            </span>
-            <span v-else class="coverage-ok-text">无</span>
-          </template>
-        </el-table-column>
-      </el-table>
-      <div v-if="coverage" class="coverage-hint">
-        以资金流向（{{ coverage.trading_count }} 只在交易）为基准交叉比对；K线缺口由每日 17:30/21:45 自检任务自动回补
-      </div>
-    </el-card>
-
-    <!-- 定时任务状态 -->
-    <el-card shadow="never" class="section-card">
-      <template #header>
-        <div class="card-header">
-          <span>定时任务状态</span>
-          <el-tag v-if="cronHasAlert" type="danger" size="small">有任务连续失败</el-tag>
-          <el-tag v-else-if="cronJobs.length === 0" type="info" size="small">服务未运行</el-tag>
-          <el-tag v-else type="success" size="small">运行中</el-tag>
-        </div>
-      </template>
-      <el-empty v-if="cronJobs.length === 0" description="定时任务未启动（服务启动后自动加载）" :image-size="40" />
-      <el-table v-else :data="cronJobs" size="small" stripe>
-        <el-table-column prop="label" label="任务名称" min-width="160" />
-        <el-table-column prop="next_run" label="下次执行" width="160">
-          <template #default="{ row }">{{ row.next_run ? fmtDateTime(row.next_run) : '--' }}</template>
-        </el-table-column>
-        <el-table-column prop="last_run" label="最近执行" width="160">
-          <template #default="{ row }">{{ row.last_run ? fmtDateTime(row.last_run) : '尚未执行' }}</template>
-        </el-table-column>
-        <el-table-column label="状态" width="100" align="center">
-          <template #default="{ row }">
-            <el-tag v-if="row.last_run == null" type="info" size="small">待首次</el-tag>
-            <el-tag v-else-if="row.alert" type="danger" size="small">连续失败</el-tag>
-            <el-tag v-else-if="!row.last_ok" type="warning" size="small">上次失败</el-tag>
-            <el-tag v-else type="success" size="small">正常</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="last_msg" label="最近信息" min-width="180" show-overflow-tooltip />
-        <el-table-column label="累计执行" width="100" align="center">
-          <template #default="{ row }">
-            <span v-if="row.run_count > 0" class="run-count">已执行{{ row.run_count }}次</span>
-            <span v-else class="run-count-zero">--</span>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
-
-    <!-- 数据健康状态总览表 -->
-    <el-card shadow="never" class="section-card">
-      <template #header>
-        <div class="card-header">
-          <span>数据覆盖状态</span>
-          <el-button size="small" text :loading="gapsLoading" @click="loadDataGaps">
-            <el-icon><Refresh /></el-icon> 检测缺口
+    <!-- Sticky Toolbar -->
+    <div class="sticky-toolbar">
+      <div class="toolbar-left">
+        <div class="action-group">
+          <el-button type="primary" @click="openUpdateModal" round class="main-action-btn">
+            <el-icon><Refresh /></el-icon> 增量更新
+          </el-button>
+          <el-button @click="showHistoryModal = true" round class="sub-action-btn">
+            <el-icon><VideoPlay /></el-icon> 补全历史
           </el-button>
         </div>
-      </template>
-      <el-table
-        :data="healthRows"
-        size="small"
-        stripe
-        row-key="value"
-      >
-        <el-table-column type="expand">
-          <template #default="{ row }">
-            <div class="gap-detail">
-              <!-- 无日期序列类型：直接显示说明，不做缺口检测 -->
-              <template v-if="NO_DATE_SEQ.has(row.value)">
-                <div class="no-seq-desc">
-                  <template v-if="row.value === 'news'">
-                    <p>按条存储，共 <strong>{{ row.record_count?.toLocaleString() ?? '--' }}</strong> 条</p>
-                    <p class="no-seq-sub">无日期连续性要求，每日增量采集最新新闻</p>
-                  </template>
-                  <template v-else-if="row.value === 'sector'">
-                    <p>快照性质，共 <strong>{{ row.record_count?.toLocaleString() ?? '--' }}</strong> 条</p>
-                    <p class="no-seq-sub">最新更新时间：{{ row.latest_date ?? '--' }}</p>
-                    <p class="no-seq-sub">每日采集当日板块涨跌数据</p>
-                  </template>
-                  <template v-else-if="row.value === 'stock_info'">
-                    <p>全量覆盖，共 <strong>{{ row.record_count?.toLocaleString() ?? '--' }}</strong> 只股票</p>
-                    <p class="no-seq-sub">最后刷新时间：{{ row.latest_date ?? '--' }}</p>
-                    <p class="no-seq-sub">每周自动全量刷新一次</p>
-                  </template>
-                  <template v-else-if="row.value === 'fund_flow'">
-                    <p>每日全市场快照数据，共 <strong>{{ row.record_count?.toLocaleString() ?? '--' }}</strong> 条</p>
-                    <p class="no-seq-sub">受接口限制，不提供历史数据查询</p>
-                    <p class="no-seq-sub">每个交易日收盘后自动更新当日数据</p>
-                  </template>
-                </div>
-              </template>
-              <!-- 有日期序列类型：显示缺口检测结果 -->
-              <template v-else-if="!gapData[row.value]">
-                <span class="gap-hint">点击上方"检测缺口"加载区间详情</span>
-              </template>
-              <template v-else-if="gapData[row.value].error">
-                <span class="gap-error">查询失败：{{ gapData[row.value].error }}</span>
-              </template>
-              <template v-else-if="row.value === 'financial'">
-                <div v-if="gapData[row.value].covered_quarters?.length" class="gap-section">
-                  <span class="gap-ok-label">已有报告期：</span>
-                  <span>{{ gapData[row.value].covered_quarters?.slice(-4).join(' / ') }}</span>
-                  <span class="gap-pct"> 完整度 {{ gapData[row.value].completeness_pct }}%</span>
-                </div>
-                <div v-if="gapData[row.value].missing_quarters?.length" class="gap-section gap-missing">
-                  <span class="gap-err-label">缺失季度：</span>
-                  <span v-for="q in gapData[row.value].missing_quarters?.slice(0, 8)" :key="q">
-                    <el-tag size="small" type="danger" style="margin:2px"
-                      @click="() => { const [s,e] = quarterToRange(q); fillGap(row.value, s, e) }">
-                      {{ q }} [补采]
-                    </el-tag>
-                  </span>
-                </div>
-              </template>
-              <template v-else>
-                <div class="gap-completeness">
-                  完整度 <strong>{{ gapData[row.value].completeness_pct }}%</strong>
-                </div>
-                <div v-for="seg in gapData[row.value].covered_ranges" :key="seg.start" class="gap-section">
-                  <el-tag size="small" type="success">{{ seg.start }} ~ {{ seg.end }}（{{ seg.days }}个交易日）</el-tag>
-                </div>
-                <div v-for="seg in gapData[row.value].gap_ranges" :key="seg.start" class="gap-section">
-                  <el-tag size="small" type="danger">缺口：{{ seg.start }} ~ {{ seg.end }}（{{ seg.days }}天）</el-tag>
-                  <el-button size="small" link type="primary" @click="fillGap(row.value, seg.start, seg.end)">
-                    点击补采此区间
+        <div class="divider-vertical"></div>
+        <div class="refresh-group">
+          <el-button @click="refresh" :loading="loading" plain round size="small" class="refresh-btn">
+            <el-icon><Refresh /></el-icon> 刷新状态
+          </el-button>
+          <span class="auto-refresh-tip">
+            <span class="pulse-dot"></span> 自动刷新中
+          </span>
+        </div>
+      </div>
+      
+      <div class="toolbar-right">
+        <el-dropdown trigger="click" placement="bottom-end">
+          <el-button plain round size="small" class="setting-btn">
+            <el-icon><Setting /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu class="custom-dropdown">
+              <div class="dropdown-header">高级操作</div>
+              <el-dropdown-item @click="confirmClearTasks" class="danger-item warning">
+                <el-icon><Delete /></el-icon> 清理任务记录
+              </el-dropdown-item>
+              <el-dropdown-item @click="confirmClearDb" class="danger-item critical">
+                <el-icon><Delete /></el-icon> 强制清空数据库
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+      </div>
+    </div>
+
+    <!-- 顶部统计看板 -->
+    <el-row :gutter="16" class="dashboard-row">
+      <el-col :span="6">
+        <el-card shadow="hover" class="dashboard-card">
+          <div class="stat-title">总数据量</div>
+          <div class="stat-value">{{ totalRecords.toLocaleString() }}</div>
+          <div class="stat-footer">涵盖 {{ collectStore.progressList.length }} 个数据源</div>
+        </el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card shadow="hover" class="dashboard-card">
+          <div class="stat-title">时效状态</div>
+          <div class="stat-value freshness-stats">
+            <span class="text-success">{{ freshnessOk }}</span>
+            <span class="divider">/</span>
+            <span class="text-warning">{{ freshnessStale }}</span>
+            <span class="divider">/</span>
+            <span class="text-danger">{{ freshnessError }}</span>
+          </div>
+          <div class="stat-footer">健康 / 需更新 / 异常</div>
+        </el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card shadow="hover" class="dashboard-card">
+          <div class="stat-title">活跃任务</div>
+          <div class="stat-value text-primary">{{ runningTasksCount }}</div>
+          <div class="stat-footer">当前运行中任务数</div>
+        </el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card shadow="hover" class="dashboard-card">
+          <div class="stat-title">定时调度</div>
+          <div class="stat-value" :class="cronHasAlert ? 'text-danger' : 'text-success'">
+            {{ cronHasAlert ? '有异常' : (cronJobs.length ? '正常' : '未启动') }}
+          </div>
+          <div class="stat-footer">共配置 {{ cronJobs.length }} 个定时任务</div>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <!-- Tabs 分流 -->
+    <el-tabs v-model="activeTab" class="monitor-tabs">
+      <el-tab-pane label="数据健康监控" name="health">
+        <div class="tab-pane-content health-tab-wrapper">
+          <!-- 数据完整性体检（含时效性概览） -->
+          <el-card shadow="never" class="section-card health-top-card">
+            <template #header>
+              <div class="card-header">
+                <span>数据完整性（{{ coverage?.ref_date || '--' }}）</span>
+                <div class="header-chips">
+                  <el-tag v-if="freshnessStale > 0" type="warning" size="small">{{ freshnessStale }} 类需更新</el-tag>
+                  <el-tag v-if="freshnessError > 0" type="danger" size="small">{{ freshnessError }} 类异常</el-tag>
+                  <el-tag v-if="freshnessStale === 0 && freshnessError === 0" type="success" size="small">{{ freshnessOk }} 类时效正常</el-tag>
+                  <el-tag v-if="coverage?.overall === 'bad'" type="danger" size="small">有数据缺口</el-tag>
+                  <el-tag v-else-if="coverage?.overall === 'warn'" type="warning" size="small">覆盖偏低</el-tag>
+                  <el-tag v-else-if="coverage" type="success" size="small">覆盖完整</el-tag>
+                  <el-button 
+                    link 
+                    type="primary" 
+                    class="collapse-btn" 
+                    @click="isCoverageCollapsed = !isCoverageCollapsed"
+                  >
+                    <el-icon><component :is="isCoverageCollapsed ? 'ArrowDown' : 'ArrowUp'" /></el-icon>
+                    {{ isCoverageCollapsed ? '展开' : '收起' }}
                   </el-button>
                 </div>
-                <div v-if="!gapData[row.value].covered_ranges?.length && !gapData[row.value].gap_ranges?.length">
-                  <span class="gap-hint">暂无区间数据</span>
-                </div>
-              </template>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="label" label="数据类型" width="110" />
-        <el-table-column prop="record_count" label="数据库条数" width="110" align="right">
-          <template #default="{ row }">{{ row.record_count?.toLocaleString() ?? '--' }}</template>
-        </el-table-column>
-        <el-table-column label="完整度" width="90" align="center">
-          <template #default="{ row }">
-            <span v-if="gapData[row.value]?.completeness_pct != null" :class="gapData[row.value].completeness_pct < 90 ? 'stale-days' : ''">
-              {{ gapData[row.value].completeness_pct }}%
-            </span>
-            <span v-else-if="coveragePct(row.value) != null" :class="(coveragePct(row.value) ?? 100) < 90 ? 'stale-days' : ''">
-              {{ coveragePct(row.value) }}%
-            </span>
-            <span v-else class="gap-hint">--</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="latest_date" label="最新数据日期" width="120">
-          <template #default="{ row }">{{ row.latest_date ?? '--' }}</template>
-        </el-table-column>
-        <el-table-column prop="days_behind" label="距今" width="80" align="center">
-          <template #default="{ row }">
-            <span v-if="row.days_behind != null" :class="row.days_behind > 1 ? 'stale-days' : ''">
-              {{ row.days_behind === 0 ? '最新' : `${row.days_behind}天前` }}
-            </span>
-            <span v-else class="stale-days">--</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="健康状态" width="100" align="center">
-          <template #default="{ row }">
-            <el-tag v-if="row.health === 'ok'" type="success" size="small">最新</el-tag>
-            <el-tag v-else-if="row.health === 'stale'" type="warning" size="small">需更新</el-tag>
-            <el-tag v-else type="danger" size="small">异常</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="180" align="center">
-          <template #default="{ row }">
-            <el-button size="small" type="primary" plain @click="quickUpdate(row.value)">立即更新</el-button>
-            <el-button size="small" type="danger" plain @click="handleClearSingle(row)">清空</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
-
-    <!-- Task history -->
-    <el-card shadow="never" class="section-card" style="margin-top:16px">
-      <template #header>
-        <div class="card-header">
-          <span>任务历史</span>
-          <el-select v-model="taskStatusFilter" size="small" style="width:120px" @change="loadTasks">
-            <el-option label="全部" value="" />
-            <el-option label="运行中" value="running" />
-            <el-option label="已完成" value="completed" />
-            <el-option label="失败" value="failed" />
-            <el-option label="取消" value="cancelled" />
-          </el-select>
-        </div>
-      </template>
-      <el-empty v-if="collectStore.tasks.length === 0" description="暂无任务记录" />
-      <el-table v-else :data="pagedTasks" stripe>
-        <el-table-column prop="task_id" label="任务ID" width="200" show-overflow-tooltip />
-        <el-table-column prop="task_type" label="类型" width="120">
-          <template #default="{ row }">
-            <el-tag size="small">{{ typeLabel(row.task_type) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="status" label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag
-              :type="row.status === 'completed' && (row.success || 0) === 0 ? 'info' : statusType(row.status)"
-              size="small"
-            >{{ row.status === 'completed' && (row.success || 0) === 0 ? '无数据' : statusLabel(row.status) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="进度" min-width="200">
-          <template #default="{ row }">
-            <div class="prog-cell">
-              <span class="prog-main">
-                已完成 {{ row.progress || 0 }}/{{ row.total || 0 }} 只
-                <span v-if="row.total > 0" class="prog-pct">
-                  ({{ Math.round((row.progress || 0) / row.total * 100) }}%)
-                </span>
-              </span>
-              <el-progress
-                v-if="row.status === 'running' && row.total > 0"
-                :percentage="Math.min(100, Math.round((row.progress || 0) / row.total * 100))"
-                :stroke-width="4"
-                style="margin: 2px 0; width: 160px"
-              />
-              <span class="prog-sub">
-                成功 {{ row.success || 0 }}<template v-if="row.failed"> · <span class="prog-fail">失败 {{ row.failed }}</span></template>
-                <template v-if="row.eta_seconds != null && row.status === 'running'">
-                  · <span class="prog-eta">剩余约 {{ fmtEta(row.eta_seconds) }}</span>
-                </template>
-              </span>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="create_time" label="创建时间" width="160">
-          <template #default="{ row }">{{ fmtDateTime(row.create_time || row.created_at) }}</template>
-        </el-table-column>
-        <el-table-column label="参数" min-width="200">
-          <template #default="{ row }">
-            <span v-if="row.params?.start_date">{{ row.params.start_date }} ~ {{ row.params.end_date }}</span>
-            <span v-else-if="row.params?.mode">{{ row.params.mode }}</span>
-            <span v-else>快照</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="200">
-          <template #default="{ row }">
-            <el-button
-              v-if="row.status === 'running' || row.status === 'pending'"
-              size="small"
-              type="warning"
-              @click="handleCancel(row.task_id)"
-            >取消</el-button>
-            <template v-else>
-              <el-button size="small" type="primary" @click="handleRerun(row)">重跑</el-button>
-              <el-button size="small" type="danger" plain @click="handleDelete(row.task_id)">删除</el-button>
+              </div>
             </template>
-          </template>
-        </el-table-column>
-      </el-table>
-      <el-pagination
-        v-if="collectStore.tasks.length > taskPageSize"
-        v-model:current-page="currentTaskPage"
-        v-model:page-size="taskPageSize"
-        :page-sizes="[10, 20, 50, 100]"
-        :total="collectStore.tasks.length"
-        layout="total, sizes, prev, pager, next"
-        background
-        class="table-pagination"
-      />
-    </el-card>
+            <el-collapse-transition>
+              <div v-show="!isCoverageCollapsed">
+                <el-empty v-if="!coverage" description="加载中..." :image-size="40" />
+                <div v-else class="coverage-grid">
+                  <div v-for="row in coverage.sources" :key="row.label" class="coverage-item" :class="`status-${row.status}`">
+                    <div class="coverage-item-header">
+                      <span class="coverage-label">{{ row.label }}</span>
+                      <el-tag v-if="row.status === 'ok'" type="success" size="small" effect="dark">完整</el-tag>
+                      <el-tag v-else-if="row.status === 'warn'" type="warning" size="small" effect="dark">偏低</el-tag>
+                      <el-tag v-else type="danger" size="small" effect="dark">缺口</el-tag>
+                    </div>
+                    <div class="coverage-item-body">
+                      <el-progress type="dashboard" 
+                                  :percentage="row.expected ? Math.round(row.covered / row.expected * 100) : 0"
+                                  :status="row.status === 'ok' ? 'success' : row.status === 'warn' ? 'warning' : 'exception'"
+                                  :width="60"
+                                  :stroke-width="5">
+                        <template #default="{ percentage }">
+                          <span class="percentage-value">{{ percentage }}%</span>
+                        </template>
+                      </el-progress>
+                      <div class="coverage-stats">
+                        <div class="stat-line">已覆盖: <strong>{{ row.covered }}</strong></div>
+                        <div class="stat-line">应覆盖: {{ row.expected }}</div>
+                        <div v-if="row.missing_count > 0" class="stat-line" :class="row.status === 'ok' ? 'text-muted' : 'text-danger'">
+                          缺 {{ row.missing_count }} 只
+                          <el-tooltip v-if="row.missing_sample.length" :content="row.missing_sample.join('、')" placement="top">
+                            <el-icon class="info-icon"><InfoFilled /></el-icon>
+                          </el-tooltip>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div v-if="coverage" class="coverage-hint">
+                  以资金流向（{{ coverage.trading_count }} 只在交易）为基准交叉比对；K线缺口由每日 17:30/21:45 自检任务自动回补
+                </div>
+              </div>
+            </el-collapse-transition>
+          </el-card>
+
+          <!-- 数据健康状态总览表 -->
+          <div class="health-card-wrapper">
+            <DataHealthCard
+              :coverage-data="coverage"
+              @fill-gap="fillGap"
+              @refresh="refresh"
+            />
+          </div>
+        </div>
+      </el-tab-pane>
+
+      <el-tab-pane label="任务与调度中心" name="tasks">
+        <div class="tab-pane-content task-center-wrapper">
+          <el-row :gutter="16" class="task-center-row">
+            <!-- 左侧：定时任务状态 -->
+            <el-col :span="7" class="task-center-col">
+              <el-card shadow="never" class="section-card task-center-left-card">
+                <template #header>
+                  <div class="card-header">
+                    <span>定时任务状态</span>
+                    <div class="header-tags">
+                      <el-select v-model="cronStatusFilter" size="small" style="width: 100px; margin-right: 8px;" placeholder="全部">
+                        <el-option label="全部" value="" />
+                        <el-option label="正常" value="normal" />
+                        <el-option label="有异常" value="error" />
+                      </el-select>
+                      <el-tag v-if="cronHasAlert" type="danger" size="small" effect="light" round>有任务连续失败</el-tag>
+                      <el-tag v-else-if="cronJobs.length === 0" type="info" size="small" effect="light" round>服务未运行</el-tag>
+                    </div>
+                  </div>
+                </template>
+                <div class="cron-scroll-content">
+                  <el-empty v-if="filteredCronJobs.length === 0" description="没有符合条件的定时任务" :image-size="40" />
+                  <div v-else class="cron-cards-vertical">
+                    <div v-for="job in filteredCronJobs" :key="job.id" class="cron-job-card" :class="{ 'is-error': job.alert || !job.last_ok }">
+                      <div class="job-header">
+                        <div class="job-title-wrap">
+                          <el-icon class="job-icon"><AlarmClock /></el-icon>
+                          <span class="job-title">{{ job.label }}</span>
+                        </div>
+                        <el-tag v-if="job.last_run == null" type="info" size="small" effect="dark" round>待首次</el-tag>
+                        <el-tag v-else-if="job.alert" type="danger" size="small" effect="dark" round>连续失败</el-tag>
+                        <el-tag v-else-if="!job.last_ok" type="warning" size="small" effect="dark" round>上次失败</el-tag>
+                        <el-tag v-else type="success" size="small" effect="dark" round>正常</el-tag>
+                      </div>
+                      
+                      <div class="job-body">
+                        <div class="time-block">
+                          <div class="time-label">下次执行</div>
+                          <div class="time-value" :class="{ 'text-muted': !job.next_run }">
+                            {{ job.next_run ? fmtDateTime(job.next_run) : '--' }}
+                          </div>
+                        </div>
+                        <div class="time-divider"></div>
+                        <div class="time-block">
+                          <div class="time-label">最近执行</div>
+                          <div class="time-value" :class="{ 'text-muted': !job.last_run }">
+                            {{ job.last_run ? fmtDateTime(job.last_run) : '尚未执行' }}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div class="job-footer">
+                        <div class="job-msg" :class="job.alert || !job.last_ok ? 'text-danger' : 'text-muted'">
+                          <el-icon><InfoFilled /></el-icon>
+                          <span class="msg-text">{{ job.last_msg || '系统运行正常' }}</span>
+                        </div>
+                        <div class="job-count">
+                          累计: <strong>{{ job.run_count || 0 }}</strong> 次
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </el-card>
+            </el-col>
+
+            <!-- 右侧：任务执行历史 -->
+            <el-col :span="17" class="task-center-col">
+              <TaskHistoryCard
+                v-model:task-status-filter="taskStatusFilter"
+                @refresh="refresh"
+                class="task-center-right-card"
+              />
+            </el-col>
+          </el-row>
+        </div>
+      </el-tab-pane>
+    </el-tabs>
 
     <!-- 补历史 dialog -->
     <el-dialog v-model="showHistoryModal" title="补历史数据" width="560px">
@@ -400,19 +314,26 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { useCollectStore } from '@/stores/collectStore'
 import { collectApi, type DataCoverage } from '@/api/collect'
 import { fmtDateTime } from '@/utils/format'
-import { RANGE_TYPES, COLLECT_TYPES, TYPE_LABEL } from '@/utils/collectTypes'
-import { VideoPlay, Delete, Refresh } from '@element-plus/icons-vue'
+import { RANGE_TYPES, COLLECT_TYPES } from '@/utils/collectTypes'
+import { VideoPlay, Delete, Refresh, Setting, InfoFilled, AlarmClock, Calendar, Select } from '@element-plus/icons-vue'
+import DataHealthCard from './components/DataHealthCard.vue'
+import TaskHistoryCard from './components/TaskHistoryCard.vue'
 
 const collectStore = useCollectStore()
 const loading = ref(false)
 
+const activeTab = ref('health')
+const totalRecords = computed(() => collectStore.progressList.reduce((acc, p) => acc + ((p as any).record_count || 0), 0))
+const runningTasksCount = computed(() => collectStore.tasks.filter(t => t.status === 'running').length)
+
 // ── 数据完整性体检（页面打开时加载一次，点击刷新时一并刷新）──
 const coverage = ref<DataCoverage | null>(null)
+const isCoverageCollapsed = ref(false)
 
 async function loadCoverage() {
   try {
@@ -421,89 +342,7 @@ async function loadCoverage() {
   } catch { /* 体检失败不阻塞页面其他功能 */ }
 }
 
-// 按数据类型取 /data/coverage 的覆盖率（完整度列的兜底数据源）
-function coveragePct(value: string): number | null {
-  const src = coverage.value?.sources?.find(s => s.name === value)
-  if (!src || !src.expected) return null
-  return Math.round(src.covered / src.expected * 100)
-}
-
-// 无日期序列的数据类型：不做缺口检测，展开时显示说明文字
-const NO_DATE_SEQ = new Set(['news', 'fund_flow', 'sector', 'stock_info'])
-const currentTaskPage = ref(1)
-const taskPageSize = ref(10)
-const pagedTasks = computed(() =>
-  collectStore.tasks.slice((currentTaskPage.value - 1) * taskPageSize.value, currentTaskPage.value * taskPageSize.value)
-)
-watch(() => collectStore.tasks, () => { currentTaskPage.value = 1 })
 const taskStatusFilter = ref('')
-
-function typeLabel(type: string): string {
-  return TYPE_LABEL[type] || type
-}
-
-function fmtEta(seconds: number): string {
-  if (seconds < 60) return `${seconds}秒`
-  if (seconds < 3600) return `${Math.round(seconds / 60)}分钟`
-  const h = Math.floor(seconds / 3600)
-  const m = Math.round((seconds % 3600) / 60)
-  return m > 0 ? `${h}小时${m}分钟` : `${h}小时`
-}
-
-// ---------------- 数据健康状态总览 ----------------
-const healthRows = computed(() => {
-  // progressList 未加载时返回空，避免渲染 0
-  if (collectStore.progressList.length === 0) return []
-  return COLLECT_TYPES.map(t => {
-    const p = collectStore.progressList.find(p => p.task_type === t.value)
-    if (!p) return null
-    const rc = (p as any).record_count
-    return {
-      value: t.value,
-      label: t.label,
-      record_count: typeof rc === 'number' ? rc : null,
-      latest_date: (p as any).latest_date ?? (p as any).date_to ?? null,
-      days_behind: (p as any).days_behind ?? null,
-      health: (p as any).health ?? (rc > 0 ? 'stale' : 'error'),
-    }
-  }).filter(Boolean)
-})
-
-async function quickUpdate(taskType: string) {
-  try {
-    const res = await collectApi.updateLatest({ task_types: [taskType], force: true })
-    const started = res.data?.started || {}
-    if (Object.keys(started).length > 0) {
-      ElMessage.success(`${TYPE_LABEL[taskType]} 更新任务已启动`)
-    } else {
-      ElMessage.info(`${TYPE_LABEL[taskType]} 数据已是最新，无需更新`)
-    }
-    await Promise.all([loadTasks(), collectStore.fetchProgress()])
-  } catch {
-    ElMessage.error('启动失败')
-  }
-}
-
-async function handleClearSingle(row: { value: string; label: string; record_count: number | null }) {
-  const count = row.record_count ?? 0
-  try {
-    await ElMessageBox.confirm(
-      `确定要清空【${row.label}】吗？\n将删除数据库中全部 ${count.toLocaleString()} 条数据，此操作不可恢复。`,
-      '清空数据确认',
-      {
-        confirmButtonText: '确认清空',
-        cancelButtonText: '取消',
-        type: 'error',
-        confirmButtonClass: 'el-button--danger',
-      }
-    )
-    await collectApi.clearSingle(row.value)
-    ElMessage.success(`${row.label} 已清空，可通过补历史数据重新采集`)
-    await collectStore.fetchProgress()
-  } catch {
-    // user cancelled
-  }
-}
 
 // ---------------- 补历史 ----------------
 const showHistoryModal = ref(false)
@@ -597,11 +436,7 @@ async function handleUpdate() {
 }
 
 // 重跑：completed/failed/cancelled 均按原参数新建并启动
-async function handleRerun(row: any) {
-  const res = await collectApi.createTask(row.task_type, row.params || {})
-  const id = res.data?.task_id
-  if (id) { await collectApi.startTask(id); ElMessage.success('已按原参数重跑'); await Promise.all([loadTasks(), collectStore.fetchProgress()]) }
-}
+// 移除 handleRerun 等，因为已经移到组件内部了
 
 // ---------------- 仪表盘（问题六：覆盖度 + 时效性分开展示）----------------
 const overallPercent = computed(() => collectStore.overallPercent)
@@ -611,61 +446,8 @@ const freshnessOk = computed(() => collectStore.progressList.filter(p => (p as a
 const freshnessStale = computed(() => collectStore.progressList.filter(p => (p as any).health === 'stale').length)
 const freshnessError = computed(() => collectStore.progressList.filter(p => (p as any).health === 'error').length)
 
-
-function statusType(status: string) {
-  const map: Record<string, 'success' | 'danger' | 'warning' | 'info' | 'primary'> = {
-    completed: 'success',
-    failed: 'danger',
-    running: 'primary',
-    pending: 'info',
-    cancelled: 'warning',
-  }
-  return map[status] || 'info'
-}
-
-// 任务状态英文 → 中文
-function statusLabel(status: string): string {
-  const map: Record<string, string> = {
-    completed: '已完成',
-    failed: '失败',
-    running: '运行中',
-    pending: '等待中',
-    cancelled: '已取消',
-    not_started: '未开始',
-  }
-  return map[status] || status || '未知'
-}
-
 // ---------------- 数据缺口检测（问题五）----------------
-const gapData = ref<Record<string, any>>({})
-const gapsLoading = ref(false)
-
-async function loadDataGaps() {
-  gapsLoading.value = true
-  try {
-    const res = await collectApi.getDataGaps()
-    gapData.value = res.data?.data ?? {}
-    ElMessage.success('缺口检测完成')
-  } catch {
-    ElMessage.error('缺口检测失败')
-  } finally {
-    gapsLoading.value = false
-  }
-}
-
-// 将季度末日期转为该季度的完整起止范围
-// 例：2025-09-30 → ['2025-07-01', '2025-09-30']
-function quarterToRange(q: string): [string, string] {
-  const suffix = q.slice(5)  // 'MM-DD'
-  const yr = q.slice(0, 4)
-  const startMap: Record<string, string> = {
-    '03-31': `${yr}-01-01`,
-    '06-30': `${yr}-04-01`,
-    '09-30': `${yr}-07-01`,
-    '12-31': `${yr}-10-01`,
-  }
-  return [startMap[suffix] ?? q, q]
-}
+// 将缺口检测移入 DataHealthCard 组件
 
 // 点击"补采此区间"：打开历史弹窗并预填日期
 function fillGap(taskType: string, startDate: string, endDate: string) {
@@ -681,6 +463,17 @@ function fillGap(taskType: string, startDate: string, endDate: string) {
 // ── 定时任务状态 ──────────────────────────────────────────────
 const cronJobs = ref<any[]>([])
 const cronHasAlert = ref(false)
+const cronStatusFilter = ref('')
+
+const filteredCronJobs = computed(() => {
+  if (!cronStatusFilter.value) return cronJobs.value
+  return cronJobs.value.filter(job => {
+    const isError = job.alert || !job.last_ok
+    if (cronStatusFilter.value === 'normal') return !isError
+    if (cronStatusFilter.value === 'error') return isError
+    return true
+  })
+})
 
 async function loadCronStatus() {
   try {
@@ -723,9 +516,16 @@ async function pollSilently() {
   } catch { /* ignore */ }
 }
 
+function confirmClearDb() {
+  handleClearDb()
+}
+
+function confirmClearTasks() {
+  handleClearTasks()
+}
+
 async function handleClearDb() {
-  const totalRecords = collectStore.progressList.reduce((acc, p) => acc + ((p as any).record_count || 0), 0)
-  const countText = totalRecords > 0 ? `共 ${totalRecords.toLocaleString()} 条数据，` : ''
+  const countText = totalRecords.value > 0 ? `共 ${totalRecords.value.toLocaleString()} 条数据，` : ''
   try {
     await ElMessageBox.confirm(
       `确定要清空全部数据库吗？\n${countText}此操作不可撤销！`,
@@ -744,25 +544,6 @@ async function handleClearDb() {
     }
   } catch {
     // User cancelled
-  }
-}
-
-async function handleCancel(id: string) {
-  await collectApi.cancelTask(id)
-  ElMessage.success('已取消任务')
-  await loadTasks()
-}
-
-async function handleDelete(id: string) {
-  try {
-    await ElMessageBox.confirm('确定删除这条任务记录吗？', '删除任务', {
-      confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning',
-    })
-    await collectApi.deleteTask(id)
-    ElMessage.success('已删除')
-    await loadTasks()
-  } catch {
-    // 用户取消
   }
 }
 
@@ -810,32 +591,334 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  position: relative;
+  padding-top: 12px;
+  height: 100%;
+  box-sizing: border-box;
 }
 
-.coverage-missing { color: var(--el-color-danger); font-size: 12px; }
-.coverage-ok-text { color: var(--el-text-color-secondary); font-size: 12px; }
-.coverage-hint { margin-top: 8px; font-size: 12px; color: var(--el-text-color-secondary); }
-
-.toolbar-card {
-  background: var(--bg-card);
+/* Dashboard Styles */
+.dashboard-row {
+  margin-bottom: 8px;
+}
+.dashboard-card {
+  border-radius: 8px;
   border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  transition: transform 0.2s, box-shadow 0.2s;
 }
-
-.toolbar-card :deep(.el-card__body) {
-  padding: 12px 16px;
+.dashboard-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
-
-.toolbar {
+.dashboard-card :deep(.el-card__body) {
+  padding: 16px 20px;
   display: flex;
+  flex-direction: column;
   gap: 8px;
+}
+.stat-title {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.stat-value {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+.stat-footer {
+  font-size: 12px;
+  color: var(--text-faint);
+  margin-top: 4px;
+}
+.freshness-stats {
+  display: flex;
   align-items: center;
+  gap: 6px;
+}
+.freshness-stats .divider {
+  color: var(--border-color);
+  font-size: 18px;
+  font-weight: 300;
+}
+.text-success { color: var(--el-color-success); }
+.text-warning { color: var(--el-color-warning); }
+.text-danger { color: var(--el-color-danger); }
+.text-primary { color: var(--el-color-primary); }
+
+/* Tabs Styles */
+.monitor-tabs {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg-card);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  padding: 0 16px 16px;
+}
+.monitor-tabs :deep(.el-tabs__header) {
+  margin-bottom: 16px;
+}
+.monitor-tabs :deep(.el-tabs__content) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.monitor-tabs :deep(.el-tab-pane) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.tab-pane-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+.health-tab-wrapper {
+  overflow: hidden !important;
+}
+.health-top-card {
+  flex-shrink: 0;
+  transition: all 0.3s ease;
+}
+.health-top-card :deep(.el-card__body) {
+  padding: 12px 16px;
+  transition: all 0.3s ease;
+}
+.health-card-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.health-card-wrapper :deep(.el-card) {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.health-card-wrapper :deep(.el-card__body) {
+  flex: 1;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.health-card-wrapper :deep(.el-table) {
+  flex: 1;
+  height: 0 !important;
+}
+.task-center-wrapper {
+  overflow: hidden !important;
+}
+
+/* Collapse Button */
+.collapse-btn {
+  margin-left: auto;
+  font-size: 13px;
+  padding: 4px 8px;
+}
+.collapse-btn .el-icon {
+  margin-right: 4px;
+}
+
+/* Coverage Grid */
+.coverage-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.coverage-item {
+  flex: 1 1 calc(20% - 12px); /* 默认每行5个 */
+  min-width: 150px; /* 进一步缩小最小宽度限制，确保5个能挤在一排 */
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--bg-soft);
+  transition: transform 0.2s;
+}
+.coverage-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+.coverage-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.coverage-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.coverage-item-body {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.percentage-value {
+  font-size: 12px;
+  font-weight: bold;
+}
+.coverage-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+}
+.stat-line {
+  color: var(--text-secondary);
+}
+.stat-line strong {
+  color: var(--text-primary);
+}
+.text-muted { color: var(--text-muted); }
+.text-danger { color: var(--el-color-danger); }
+.info-icon {
+  margin-left: 4px;
+  cursor: pointer;
+  color: var(--text-muted);
+  vertical-align: middle;
+}
+
+.sticky-toolbar {
+  position: sticky;
+  top: -24px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  margin: -12px 0 0 0;
+  background: rgba(var(--bg-card-rgb), 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-color-light);
+  border-radius: 2px;
+  box-shadow: 0 4px 16px -8px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.action-group, .refresh-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.divider-vertical {
+  width: 1px;
+  height: 24px;
+  background-color: var(--border-color);
+  opacity: 0.6;
+  margin: 0 4px;
+}
+
+.main-action-btn, .sub-action-btn {
+  padding: 8px 18px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+}
+
+.refresh-btn {
+  border-color: transparent;
+  background-color: var(--bg-soft);
+  color: var(--text-secondary);
+}
+.refresh-btn:hover {
+  background-color: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+}
+
+.setting-btn {
+  border-color: transparent;
+  background-color: transparent;
+  font-size: 16px;
+  padding: 8px;
+  color: var(--text-secondary);
+}
+.setting-btn:hover {
+  background-color: var(--bg-soft);
+  color: var(--text-primary);
 }
 
 .auto-refresh-tip {
   font-size: 12px;
   color: var(--text-muted);
-  margin-left: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
 }
+
+.pulse-dot {
+  width: 6px;
+  height: 6px;
+  background-color: var(--el-color-success);
+  border-radius: 50%;
+  box-shadow: 0 0 0 0 rgba(var(--el-color-success-rgb), 0.7);
+  animation: pulse 2s infinite cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes pulse {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(103, 194, 58, 0.7); }
+  70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(103, 194, 58, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(103, 194, 58, 0); }
+}
+
+/* Dropdown Menu Customization */
+.custom-dropdown {
+  padding: 4px 0;
+  min-width: 160px;
+}
+.dropdown-header {
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border-color-light);
+  margin-bottom: 4px;
+}
+.danger-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+.danger-item.warning {
+  color: var(--el-color-warning);
+}
+.danger-item.warning:hover {
+  background-color: var(--el-color-warning-light-9);
+}
+.danger-item.critical {
+  color: var(--el-color-danger);
+}
+.danger-item.critical:hover {
+  background-color: var(--el-color-danger-light-9);
+}
+
+.coverage-missing { color: var(--el-color-danger); font-size: 12px; }
+.coverage-ok-text { color: var(--el-text-color-secondary); font-size: 12px; }
+.coverage-hint { margin-top: 8px; font-size: 12px; color: var(--el-text-color-secondary); }
 
 .header-chips {
   display: flex;
@@ -990,4 +1073,186 @@ onUnmounted(() => {
   color: var(--text-faint);
   margin-top: 4px;
 }
+.cron-table :deep(th.el-table__cell) {
+  background-color: var(--bg-soft);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.font-medium {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+/* 任务与调度中心新排版 */
+.task-center-row {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  min-height: 0;
+  height: 100%;
+  flex-wrap: nowrap;
+}
+.task-center-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+.task-center-left-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+.task-center-left-card :deep(.el-card__body) {
+  flex: 1;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.cron-scroll-content {
+  flex: 1;
+  padding: 16px;
+  background-color: var(--bg-soft);
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+.cron-cards-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.task-center-right-card {
+  margin-top: 0 !important;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.cron-job-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cron-job-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  border-color: var(--el-color-primary-light-5);
+  transform: translateY(-2px);
+}
+
+.cron-job-card.is-error {
+  border-color: var(--el-color-danger-light-5);
+  background: linear-gradient(to bottom right, var(--bg-card), var(--el-color-danger-light-9));
+}
+
+.job-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.job-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.job-icon {
+  font-size: 18px;
+  color: var(--el-color-primary);
+}
+
+.job-title {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+.job-body {
+  display: flex;
+  align-items: center;
+  background: var(--bg-soft);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.time-block {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.time-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.time-value {
+  font-size: 14px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-regular);
+}
+
+.time-divider {
+  width: 1px;
+  height: 32px;
+  background-color: var(--border-color-light);
+  margin: 0 16px;
+}
+
+.job-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  font-size: 12px;
+  border-top: 1px dashed var(--border-color-light);
+  padding-top: 12px;
+  margin-top: auto;
+}
+
+.job-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  flex: 1;
+  padding-right: 12px;
+}
+
+.job-msg .el-icon {
+  margin-top: 2px;
+}
+
+.msg-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.4;
+}
+
+.job-count {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.job-count strong {
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
 </style>

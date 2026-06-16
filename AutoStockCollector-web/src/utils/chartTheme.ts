@@ -12,25 +12,25 @@ export interface ChartTheme {
 }
 
 const dark: ChartTheme = {
-  textColor: '#909399',
-  textColorStrong: '#e5eaf3',
-  axisLineColor: '#3c3c3c',
-  splitLineColor: '#2c2c2c',
-  tooltipBg: '#1f1f1f',
-  tooltipBorder: '#3c3c3c',
-  tooltipText: '#e5eaf3',
-  legendText: '#c0c4cc',
+  textColor: '#94a3b8',
+  textColorStrong: '#f8fafc',
+  axisLineColor: '#3b4758',
+  splitLineColor: '#2a3441',
+  tooltipBg: '#1e2532',
+  tooltipBorder: '#3b4758',
+  tooltipText: '#f8fafc',
+  legendText: '#cbd5e1',
 }
 
 const light: ChartTheme = {
-  textColor: '#909399',
-  textColorStrong: '#303133',
-  axisLineColor: '#dcdfe6',
-  splitLineColor: '#e4e7ed',
+  textColor: '#64748b',
+  textColorStrong: '#0f172a',
+  axisLineColor: '#cbd5e1',
+  splitLineColor: '#e2e8f0',
   tooltipBg: '#ffffff',
-  tooltipBorder: '#dcdfe6',
-  tooltipText: '#303133',
-  legendText: '#606266',
+  tooltipBorder: '#cbd5e1',
+  tooltipText: '#0f172a',
+  legendText: '#334155',
 }
 
 export function getChartTheme(): ChartTheme {
