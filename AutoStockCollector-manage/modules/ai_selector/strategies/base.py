@@ -45,6 +45,9 @@ class SelectionResult:
     position_ratio: float = 0.0
     strategy: str = ""
     metadata: Dict[str, Any] = field(default_factory=dict)
+    advice: Dict[str, Any] = field(default_factory=dict)
+    divergence_warnings: List[str] = field(default_factory=list)
+    reflection: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -64,11 +67,57 @@ class SelectionResult:
             "risk_factors": self.risk_factors,
             "position_ratio": self.position_ratio,
             "strategy": self.strategy,
-            "metadata": self.metadata
+            "metadata": self.metadata,
+            "advice": self.advice,
+            "divergence_warnings": self.divergence_warnings,
+            "reflection": self.reflection,
         }
 
     def to_json(self) -> str:
         return json.dumps(self.to_dict(), ensure_ascii=False, default=str)
+
+
+def detect_dim_divergence(scores: Dict[str, float]) -> List[str]:
+    """检测多维度间的分数分歧"""
+    warnings = []
+    dims = list(scores.items())
+    for i in range(len(dims)):
+        for j in range(i + 1, len(dims)):
+            n1, v1 = dims[i]
+            n2, v2 = dims[j]
+            if abs(v1 - v2) > 25:
+                if v1 > v2:
+                    warnings.append(f"{n1}({v1:.0f})偏多但{n2}({v2:.0f})偏空")
+                else:
+                    warnings.append(f"{n2}({v2:.0f})偏多但{n1}({v1:.0f})偏空")
+    return warnings[:4]
+
+
+def estimate_time_horizon(total_score: float, technical: float, fund_flow: float) -> str:
+    """根据评分估计建议持有期"""
+    if total_score >= 75 and technical >= 65:
+        return "短线(3-7天)"
+    elif total_score >= 65 and (technical >= 60 or fund_flow >= 60):
+        return "短期(5-15天)"
+    elif total_score >= 55:
+        return "中期(15-30天)"
+    return "中长期(30-60天)"
+
+
+def calc_advice_confidence(scores: Dict[str, float]) -> str:
+    """基于维度一致性计算置信度"""
+    vals = list(scores.values())
+    if not vals:
+        return "低"
+    avg = sum(vals) / len(vals)
+    variance = sum((v - avg) ** 2 for v in vals) / len(vals)
+    std = variance ** 0.5
+    consistency = max(0, 1 - std / 25)
+    if consistency >= 0.7:
+        return "高"
+    elif consistency >= 0.4:
+        return "中"
+    return "低"
 
 
 class BaseStrategy(ABC):
@@ -166,14 +215,32 @@ class BaseStrategy(ABC):
         stop_loss = current_price * 0.95 if current_price > 0 else 0
         target_price = current_price * 1.15 if current_price > 0 else 0
 
+        # ── 结构化建议 ──
+        t = factors.get("technical_score", 50.0)
+        f = factors.get("fundamental_score", 50.0)
+        s = factors.get("sentiment_score", 50.0)
+        ff = factors.get("fund_flow_score", 50.0)
+        dim_scores = {"技术": t, "基本面": f, "情绪": s, "资金": ff}
+        divergences = detect_dim_divergence(dim_scores)
+        time_horizon = estimate_time_horizon(score, t, ff)
+        confidence = calc_advice_confidence(dim_scores)
+
+        advice = {
+            "time_horizon": time_horizon,
+            "confidence_level": confidence,
+            "summary": _build_advice_summary(recommendation, current_price, target_price, stop_loss, time_horizon),
+        }
+        if divergences:
+            advice["divergence_warnings"] = divergences
+
         return SelectionResult(
             code=code,
             name=factors.get("name", ""),
             score=score,
-            technical_score=factors.get("technical_score", 50.0),
-            fundamental_score=factors.get("fundamental_score", 50.0),
-            sentiment_score=factors.get("sentiment_score", 50.0),
-            fund_flow_score=factors.get("fund_flow_score", 50.0),
+            technical_score=t,
+            fundamental_score=f,
+            sentiment_score=s,
+            fund_flow_score=ff,
             recommendation=recommendation,
             risk_level=risk_level,
             stop_loss=stop_loss,
@@ -181,8 +248,20 @@ class BaseStrategy(ABC):
             support_levels=[stop_loss],
             resistance_levels=[target_price],
             risk_factors=[],
-            strategy=self.name
+            strategy=self.name,
+            advice=advice,
+            divergence_warnings=divergences,
         )
+
+
+def _build_advice_summary(recommendation: str, price: float, target: float, stop: float, horizon: str) -> str:
+    if recommendation in ("强烈推荐", "买入"):
+        return f"建议在 {price:.2f} 附近买入，目标 {target:.2f}(+{((target/price-1)*100):.1f}%)，止损 {stop:.2f}(-5.0%)，{horizon}"
+    elif recommendation == "谨慎买入":
+        return f"可小仓在 {price:.2f} 附近介入，目标 {target:.2f}，止损 {stop:.2f}，{horizon}"
+    elif recommendation == "回避":
+        return f"建议回避，价格 {price:.2f} 低于预期，等待信号明确"
+    return f"建议持有观望，止损 {stop:.2f}(-5.0%)，{horizon}"
 
 
 class PipelineStrategy(BaseStrategy):
