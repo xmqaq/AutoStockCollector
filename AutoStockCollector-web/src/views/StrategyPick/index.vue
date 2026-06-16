@@ -134,7 +134,7 @@
       </div>
       <div class="sp-ps-table-wrap">
         <table class="sp-ps-table">
-          <thead><tr><th>代码</th><th>名称</th><th>行业</th><th>评分</th><th>动作</th><th>建议仓位</th><th>累计</th></tr></thead>
+          <thead><tr><th>代码</th><th>名称</th><th>行业</th><th>评分</th><th>动作</th><th>建议仓位</th><th>累计</th><th style="width:80px">操作</th></tr></thead>
           <tbody>
             <tr v-for="pos in result.portfolio_suggestion.positions" :key="pos.code" class="sp-ps-row">
               <td class="num">{{ pos.code }}</td>
@@ -144,6 +144,7 @@
               <td><span class="sp-sig-badge" :class="'sp-sig-' + pos.action">{{ pos.action }}</span></td>
               <td><span class="sp-ps-weight num">{{ pos.weight }}%</span></td>
               <td><span class="sp-ps-cum num">{{ pos.cumulative }}%</span></td>
+              <td><el-button size="small" type="success" plain :loading="buying[pos.code]" @click.stop="buyPosition(pos)">一键买入</el-button></td>
             </tr>
           </tbody>
         </table>
@@ -428,10 +429,11 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { renderMd } from '@/utils/markdown'
 import dayjs from 'dayjs'
-import { strategyPickApi, type StrategyPickItem, type StrategyPickResult, type StrategyPickProgress, type StrategyPickHistoryItem, type PortfolioMetrics, type StrategyPickAgent, type DebateConsensus } from '@/api/strategyPick'
+import { strategyPickApi, type StrategyPickItem, type StrategyPickResult, type StrategyPickProgress, type StrategyPickHistoryItem, type PortfolioMetrics, type StrategyPickAgent, type DebateConsensus, type PortfolioSuggestionPosition } from '@/api/strategyPick'
+import { paperApi } from '@/api/paper'
 import type { StrategyRule } from '@/types'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
@@ -679,6 +681,59 @@ function goAnalysis(code: string) {
 function showDetail(row: StrategyPickItem) {
   detailPick.value = row
   detailDialogVisible.value = true
+}
+
+const buying = ref<Record<string, boolean>>({})
+
+async function buyPosition(pos: PortfolioSuggestionPosition) {
+  if (buying.value[pos.code]) return
+  buying.value[pos.code] = true
+  try {
+    const priceInfo = await paperApi.getPrice(pos.code)
+    if (!priceInfo) { ElMessage.error('获取实时价格失败'); return }
+    const { price, is_trading_time } = priceInfo
+    if (!is_trading_time) {
+      const confirmed = await ElMessageBox.confirm(
+        '当前非交易时间，获取的价格为最新收盘价。确认要下单？',
+        '非交易时间', { confirmButtonText: '确认下单', cancelButtonText: '取消', type: 'warning' }
+      ).catch(() => false)
+      if (!confirmed) return
+    }
+    const account = await paperApi.getAccount()
+    if (!account) { ElMessage.error('获取账户信息失败'); return }
+    const cash = account.cash_balance
+    const targetAmount = cash * pos.weight / 100
+    const shares = Math.floor(targetAmount / price / 100) * 100
+    if (shares < 100) { ElMessage.warning(`可用资金不足，最少需买入 100 股（约 ¥${(price * 100).toFixed(2)}）`); return }
+
+    const amount = shares * price
+    const confirmed = await ElMessageBox.confirm(
+      `<div style="line-height:2">
+        <div><b>${pos.name}</b>（${pos.code}）</div>
+        <div>实时价格：<b>¥${price.toFixed(2)}</b></div>
+        <div>建议仓位：${pos.weight}%</div>
+        <div>可用资金：¥${cash.toFixed(2)}</div>
+        <hr style="border:none;border-top:1px solid var(--border-color);margin:8px 0">
+        <div>买入数量：<b>${shares} 股</b></div>
+        <div>预计金额：<b>¥${amount.toFixed(2)}</b></div>
+        <div>剩余资金：¥${(cash - amount).toFixed(2)}</div>
+      </div>`,
+      '确认买入',
+      { confirmButtonText: '确认买入', cancelButtonText: '取消', dangerouslyUseHTMLString: true, type: 'info' }
+    ).catch(() => false)
+    if (!confirmed) return
+
+    const trade = await paperApi.executeTrade({
+      code: pos.code, action: 'buy', shares, price,
+      ai_signal: { action: 'buy', reason: '策略选股组合建议', composite: pos.composite },
+    })
+    ElMessage.success(`已买入 ${pos.name} ${shares} 股，成交价 ¥${trade.price.toFixed(2)}`)
+  } catch (e: any) {
+    if (e?.message) ElMessage.error(e.message)
+    else ElMessage.error('买入失败')
+  } finally {
+    buying.value[pos.code] = false
+  }
 }
 
 async function loadStrategies() {
