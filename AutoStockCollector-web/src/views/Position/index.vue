@@ -3,6 +3,19 @@
     <!-- 顶部账户概览 -->
     <el-card shadow="never" class="account-bar" v-loading="accountLoading">
       <div class="account-overview" v-if="account">
+        <div class="account-hero">
+          <span class="hero-label">账户净值</span>
+          <div class="hero-main">
+            <span class="hero-value" :class="pnlColorClass(totalPnlAmount)">{{ formatAmount(netValue) }}</span>
+            <span class="hero-badge" :class="totalReturn >= 0 ? 'badge-rise' : 'badge-fall'">
+              {{ formatPercent(totalReturn) }}
+            </span>
+          </div>
+          <span class="hero-sub" :class="pnlColorClass(totalPnlAmount)">
+            总盈亏 {{ totalPnlAmount >= 0 ? '+' : '' }}{{ formatAmount(totalPnlAmount) }}
+          </span>
+        </div>
+        <div class="account-divider" />
         <div class="account-stat">
           <div class="stat-label">初始资金</div>
           <div class="stat-value">{{ formatAmount(account.initial_capital) }}</div>
@@ -14,24 +27,6 @@
         <div class="account-stat">
           <div class="stat-label">持仓市值</div>
           <div class="stat-value text-primary">{{ formatAmount(totalMarketValue) }}</div>
-        </div>
-        <div class="account-stat">
-          <div class="stat-label">账户净值</div>
-          <div class="stat-value" :class="pnlColorClass(netValue - account.initial_capital)">
-            {{ formatAmount(netValue) }}
-          </div>
-        </div>
-        <div class="account-stat">
-          <div class="stat-label">总盈亏</div>
-          <div class="stat-value" :class="pnlColorClass(totalPnlAmount)">
-            {{ totalPnlAmount >= 0 ? '+' : '' }}{{ formatAmount(totalPnlAmount) }}
-          </div>
-        </div>
-        <div class="account-stat">
-          <div class="stat-label">总收益率</div>
-          <div class="stat-value" :class="pnlColorClass(totalReturn)">
-            {{ formatPercent(totalReturn) }}
-          </div>
         </div>
         <div class="price-indicator">
           <span v-if="isTradingTime" class="indicator-dot indicator-live" />
@@ -128,25 +123,34 @@
               <span class="header-hint">当前持仓</span>
             </el-tooltip>
           </template>
-          <el-descriptions :column="2" border size="small">
-            <el-descriptions-item label="持仓数">{{ floatingStats.count }}</el-descriptions-item>
-            <el-descriptions-item label="盈/亏">
-              <span class="text-rise">{{ floatingStats.winning }}</span> /
-              <span class="text-fall">{{ floatingStats.losing }}</span>
-            </el-descriptions-item>
-            <el-descriptions-item label="最大浮盈">
-              <span class="text-rise" v-if="floatingStats.maxWin">
+          <div class="kv-grid">
+            <div class="kv">
+              <span class="kv-k">持仓数</span>
+              <span class="kv-v">{{ floatingStats.count }}</span>
+            </div>
+            <div class="kv">
+              <span class="kv-k">盈 / 亏</span>
+              <span class="kv-v">
+                <span class="text-rise">{{ floatingStats.winning }}</span>
+                <span class="kv-sep">/</span>
+                <span class="text-fall">{{ floatingStats.losing }}</span>
+              </span>
+            </div>
+            <div class="kv">
+              <span class="kv-k">最大浮盈</span>
+              <span class="kv-v text-rise" v-if="floatingStats.maxWin">
                 {{ floatingStats.maxWin.code }} +{{ floatingStats.maxWin.pnl_percent.toFixed(2) }}%
               </span>
-              <span v-else>—</span>
-            </el-descriptions-item>
-            <el-descriptions-item label="最大浮亏">
-              <span class="text-fall" v-if="floatingStats.maxLoss">
+              <span class="kv-v kv-empty" v-else>—</span>
+            </div>
+            <div class="kv">
+              <span class="kv-k">最大浮亏</span>
+              <span class="kv-v text-fall" v-if="floatingStats.maxLoss">
                 {{ floatingStats.maxLoss.code }} {{ floatingStats.maxLoss.pnl_percent.toFixed(2) }}%
               </span>
-              <span v-else>—</span>
-            </el-descriptions-item>
-          </el-descriptions>
+              <span class="kv-v kv-empty" v-else>—</span>
+            </div>
+          </div>
         </el-card>
       </el-col>
     </el-row>
@@ -160,21 +164,30 @@
               <span class="header-hint">已平仓</span>
             </el-tooltip>
           </template>
-          <el-descriptions :column="2" border size="small">
-            <el-descriptions-item label="总交易次数">{{ stats.total_trades }}</el-descriptions-item>
-            <el-descriptions-item label="胜率">
-              <span :class="stats.win_rate >= 50 ? 'text-rise' : 'text-fall'">
+          <div class="kv-grid">
+            <div class="kv">
+              <span class="kv-k">总交易次数</span>
+              <span class="kv-v">{{ stats.total_trades }}</span>
+            </div>
+            <div class="kv">
+              <span class="kv-k">胜率</span>
+              <span class="kv-v" :class="stats.win_rate >= 50 ? 'text-rise' : 'text-fall'">
                 {{ stats.win_rate.toFixed(1) }}%
               </span>
-            </el-descriptions-item>
-            <el-descriptions-item label="平均盈利">
-              <span class="text-rise">+{{ stats.avg_profit_pct.toFixed(2) }}%</span>
-            </el-descriptions-item>
-            <el-descriptions-item label="平均亏损">
-              <span class="text-fall">{{ stats.avg_loss_pct.toFixed(2) }}%</span>
-            </el-descriptions-item>
-            <el-descriptions-item label="盈亏比" :span="2">{{ stats.profit_factor.toFixed(2) }}</el-descriptions-item>
-          </el-descriptions>
+            </div>
+            <div class="kv">
+              <span class="kv-k">平均盈利</span>
+              <span class="kv-v text-rise">+{{ stats.avg_profit_pct.toFixed(2) }}%</span>
+            </div>
+            <div class="kv">
+              <span class="kv-k">平均亏损</span>
+              <span class="kv-v text-fall">{{ stats.avg_loss_pct.toFixed(2) }}%</span>
+            </div>
+            <div class="kv kv-full">
+              <span class="kv-k">盈亏比</span>
+              <span class="kv-v">{{ stats.profit_factor.toFixed(2) }}</span>
+            </div>
+          </div>
         </el-card>
       </el-col>
 
@@ -942,6 +955,29 @@ onUnmounted(() => {
 .account-stat { display: flex; flex-direction: column; gap: 4px; }
 .stat-label { font-size: 12px; color: var(--text-muted); }
 .stat-value { font-size: 16px; font-weight: 600; color: var(--text-primary); }
+
+/* 主指标：账户净值 + 收益率徽标 */
+.account-hero { display: flex; flex-direction: column; gap: 4px; }
+.hero-label { font-size: 12px; color: var(--text-muted); }
+.hero-main { display: flex; align-items: baseline; gap: 10px; }
+.hero-value { font-size: 26px; font-weight: 700; line-height: 1.1; }
+.hero-badge { font-size: 13px; font-weight: 600; padding: 2px 8px; border-radius: 6px; line-height: 1.4; }
+.badge-rise { color: #ef5350; background: rgba(239, 83, 80, 0.12); }
+.badge-fall { color: #26a69a; background: rgba(38, 166, 154, 0.12); }
+.hero-sub { font-size: 12px; font-weight: 500; }
+.account-divider { width: 1px; align-self: stretch; min-height: 40px; background: var(--border-color); }
+
+/* 统计卡片：去边框键值行 */
+.kv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; }
+.kv {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  font-size: 13px; padding: 9px 0; border-bottom: 1px solid var(--border-color);
+}
+.kv-full { grid-column: 1 / -1; }
+.kv-k { color: var(--text-muted); white-space: nowrap; }
+.kv-v { color: var(--text-primary); font-weight: 600; text-align: right; }
+.kv-sep { color: var(--text-faint); margin: 0 2px; }
+.kv-empty { color: var(--text-faint); font-weight: 400; }
 .no-account { display: flex; align-items: center; gap: 12px; color: var(--text-muted); }
 
 .price-indicator { display: flex; align-items: center; gap: 6px; margin-left: auto; margin-right: 8px; }
