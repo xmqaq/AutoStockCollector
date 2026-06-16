@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from core.scheduler.cron import (
     run_ai_pick_job, get_cron_time, job_kline_gap_backfill, job_task_cleanup,
+    job_portfolio_snapshot,
 )
 
 
@@ -107,6 +108,33 @@ class TestGetCronTime(unittest.TestCase):
         import os
         with patch.dict("os.environ", {"AI_PICK_CRON_TIME": "16:05"}):
             self.assertEqual(get_cron_time(), "16:05")
+
+
+class TestPortfolioSnapshot(unittest.TestCase):
+    """净值快照：遍历所有有账户的 user_id 各记一次，单用户失败不影响其他。"""
+
+    def _run(self, uids, fail_uid=None):
+        acc = MagicMock()
+        acc._col.distinct.return_value = uids
+        snap = MagicMock()
+        if fail_uid:
+            snap.record.side_effect = lambda uid, *a: (_ for _ in ()).throw(RuntimeError("boom")) if uid == fail_uid else None
+        with patch("modules.paper_trading.account.PaperAccount", return_value=acc), \
+             patch("modules.paper_trading.trade_engine.TradeEngine", return_value=MagicMock()), \
+             patch("modules.paper_trading.snapshot.PortfolioSnapshot", return_value=snap), \
+             patch("core.scheduler.cron._is_weekday", return_value=True), \
+             patch("core.scheduler.cron._record_result"), \
+             patch("core.scheduler.cron._persist_cron_status"):
+            job_portfolio_snapshot()
+        return snap
+
+    def test_records_every_user(self):
+        snap = self._run(["default", "u1", "u2"])
+        self.assertEqual(snap.record.call_count, 3)
+
+    def test_one_user_failure_does_not_abort_others(self):
+        snap = self._run(["default", "u1", "u2"], fail_uid="u1")
+        self.assertEqual(snap.record.call_count, 3)  # 仍尝试了全部用户
 
 
 if __name__ == "__main__":

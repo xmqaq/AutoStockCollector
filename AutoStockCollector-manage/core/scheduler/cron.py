@@ -556,10 +556,19 @@ def job_portfolio_snapshot():
         account = PaperAccount()
         engine = TradeEngine()
         snapshot = PortfolioSnapshot()
-        snapshot.record("default", account, engine)
-        logger.info("[cron] 净值快照记录成功")
-        _record_result("净值快照 16:30", True, "快照记录完成")
-        _persist_cron_status("portfolio_snapshot", _now().isoformat(), True, "快照记录完成", inc_count=True)
+        # 多用户：给每个有模拟盘账户的 user_id 各记一次快照，单用户失败不影响其他
+        uids = account._col.distinct("user_id") or ["default"]
+        ok = 0
+        for uid in uids:
+            try:
+                snapshot.record(uid, account, engine)
+                ok += 1
+            except Exception as e:
+                logger.warning(f"[cron] 净值快照失败 user={uid}: {e}")
+        msg = f"快照记录完成 {ok}/{len(uids)} 用户"
+        logger.info(f"[cron] {msg}")
+        _record_result("净值快照 16:30", True, msg)
+        _persist_cron_status("portfolio_snapshot", _now().isoformat(), True, msg, inc_count=True)
     except Exception as e:
         logger.warning(f"[cron] 净值快照失败: {e}")
         _record_result("净值快照 16:30", False, str(e))
