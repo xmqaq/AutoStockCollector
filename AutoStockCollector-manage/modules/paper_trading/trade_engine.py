@@ -23,8 +23,8 @@ class TradeEngine:
         db = DatabaseConfig.get_database()
         self._trades = db["trade_records"]
 
-    def _get_realtime_price(self, code: str) -> Optional[float]:
-        """腾讯行情接口取实时价，与深度分析模块一致。"""
+    def _fetch_tencent_parts(self, code: str) -> Optional[list]:
+        """腾讯行情接口，返回字段数组。parts[3]=现价，parts[4]=昨收。"""
         import re
         try:
             import requests as _req
@@ -35,12 +35,29 @@ class TradeEngine:
             )
             m = re.search(rf'v_{code.lower()}="([^"]+)"', r.text)
             if m:
-                parts = m.group(1).split("~")
-                if len(parts) > 3:
-                    v = parts[3]
-                    return float(v) if v else None
+                return m.group(1).split("~")
         except Exception:
             pass
+        return None
+
+    def _get_realtime_price(self, code: str) -> Optional[float]:
+        """腾讯行情接口取实时价，与深度分析模块一致。"""
+        parts = self._fetch_tencent_parts(code)
+        if parts and len(parts) > 3 and parts[3]:
+            try:
+                return float(parts[3]) or None
+            except ValueError:
+                pass
+        return None
+
+    def _get_realtime_prev_close(self, code: str) -> Optional[float]:
+        """腾讯行情接口取昨收（parts[4]），与现价同源，和券商/东财展示一致。"""
+        parts = self._fetch_tencent_parts(code)
+        if parts and len(parts) > 4 and parts[4]:
+            try:
+                return float(parts[4]) or None
+            except ValueError:
+                pass
         return None
 
     def _get_db_price(self, code: str) -> Optional[float]:
@@ -75,16 +92,26 @@ class TradeEngine:
         return None, 'unknown'
 
     def _get_yesterday_close(self, code: str) -> Optional[float]:
+        # 优先用腾讯行情昨收（与现价同源，和券商/东财一致，无需依赖日K入库时机）
+        rt = self._get_realtime_prev_close(code)
+        if rt and rt > 0:
+            return rt
+        # 回退到 K 线库。注意：盘中当日日K尚未生成，最新一条即为昨收；
+        # 收盘后当日日K已入库，最新一条是今日，需取上一条。
+        # 旧逻辑无条件取倒数第二条，盘中会把"前天"当成昨收，今日%变两天累计涨幅。
         try:
             from core.storage.mongo_storage import KlineStorage
             storage = KlineStorage()
+            today = beijing_now().strftime("%Y-%m-%d")
             klines = storage.find_many(
                 {"code": code}, sort=[("date", -1)], limit=2
             )
-            if len(klines) >= 2:
+            if not klines:
+                return None
+            latest = klines[0]
+            if str(latest.get("date", "")) >= today and len(klines) >= 2:
                 return float(klines[1].get("close", 0)) or None
-            elif len(klines) == 1:
-                return float(klines[0].get("close", 0)) or None
+            return float(latest.get("close", 0)) or None
         except Exception:
             pass
         return None
