@@ -25,6 +25,17 @@ export interface TradingAdvice {
     hold_period: string
     expected_return: number
     max_loss: number
+    time_horizon: string
+    confidence_level: string
+    entry_price: number
+  }
+  divergence_warnings?: string[]
+  reflection?: {
+    previous_action: string
+    previous_price: number
+    current_price: number
+    change_pct: number
+    summary: string
   }
 }
 

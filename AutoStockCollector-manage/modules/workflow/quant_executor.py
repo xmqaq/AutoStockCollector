@@ -15,6 +15,7 @@ from utils.helpers import beijing_now
 from collections import defaultdict
 from config.database import DatabaseConfig
 from utils.logger import get_logger
+from modules.ai_selector.strategies.base import detect_dim_divergence, estimate_time_horizon, calc_advice_confidence
 
 logger = get_logger(__name__)
 
@@ -675,6 +676,7 @@ class QuantMultiFactorExecutor:
     ) -> List[Dict[str, Any]]:
         scored: List[Dict[str, Any]] = []
         mining_scores = mining_scores or {}
+        history_reflections = self._load_history_reflections(codes)
 
         for code in codes:
             f = fundamental.get(code, 50.0)
@@ -715,6 +717,18 @@ class QuantMultiFactorExecutor:
 
             debt_ratio = self._f(records[0].get('资产负债率')) if records else None
 
+            # ── 结构化建议 ──
+            dim_scores = {"基本面": f, "技术": t, "资金": ff, "估值": v, "衍生": m}
+            divergences = detect_dim_divergence(dim_scores)
+            confidence = calc_advice_confidence(dim_scores)
+            time_horizon = estimate_time_horizon(total, t, ff)
+
+            c = history_reflections.get(code)
+            reflection_text = None
+            if c:
+                change = round((c['prev_change_pct']), 2)
+                reflection_text = f"上次总分{c['prev_score']:.0f}→本次{total:.0f}，上次选入后涨跌{change:+.2f}%"
+
             scored.append({
                 'code': code,
                 'name': info.get('name', ''),
@@ -732,6 +746,13 @@ class QuantMultiFactorExecutor:
                 'revenue_growth': rev_growth,
                 'debt_ratio': round(debt_ratio, 1) if debt_ratio is not None else None,
                 'reason': self._build_reason(f, t, ff, v, m),
+                'advice': {
+                    'time_horizon': time_horizon,
+                    'confidence_level': confidence,
+                    'summary': self._build_advice_summary(total, t, ff, v, m, time_horizon),
+                },
+                'divergence_warnings': divergences[:3],
+                'reflection': reflection_text,
             })
 
         scored.sort(key=lambda x: x['total_score'], reverse=True)
@@ -739,6 +760,41 @@ class QuantMultiFactorExecutor:
         for i, item in enumerate(top30):
             item['rank'] = i + 1
         return top30
+
+    def _build_advice_summary(self, total: float, t: float, ff: float, v: float, m: float, horizon: str) -> str:
+        if total >= 70:
+            return f"综合评分{total:.0f}，技术{t:.0f}/资金{ff:.0f}/估值{v:.0f}/衍生{m:.0f}，{horizon}"
+        elif total >= 60:
+            return f"评分{total:.0f}可关注，技术{t:.0f}/资金{ff:.0f}，{horizon}"
+        return f"评分{total:.0f}偏中性，可纳入观察，{horizon}"
+
+    def _load_history_reflections(self, codes: List[str]) -> Dict[str, Dict]:
+        """加载前次选股结果，对比本次价格变化生成反思"""
+        try:
+            db = DatabaseConfig.get_database()
+            prev = list(
+                db["workflow_execution"]
+                .find(
+                    {"workflow_id": self.workflow_id, "result_type": "quant_multi_factor"},
+                    {"results": 1, "execution_time": 1, "_id": 0},
+                )
+                .sort("execution_time", -1)
+                .limit(2)
+            )
+            if len(prev) < 2:
+                return {}
+
+            prev_results = {r["code"]: r for r in (prev[1].get("results") or []) if "code" in r}
+            reflections = {}
+            for code in codes:
+                old = prev_results.get(code)
+                if old and old.get("total_score"):
+                    old_score = old["total_score"]
+                    reflections[code] = {"prev_score": old_score, "prev_change_pct": 0}
+            return reflections
+        except Exception as e:
+            logger.debug(f"History reflection load failed: {e}")
+            return {}
 
     def _build_reason(self, f: float, t: float, ff: float, v: float, m: float = 50.0) -> str:
         mapping = [

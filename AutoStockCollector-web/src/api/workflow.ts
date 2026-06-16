@@ -34,12 +34,39 @@ export interface Workflow {
   tags: string[]
 }
 
+export interface QuantResultItem {
+  code: string
+  name: string
+  total_score: number
+  fundamental_score: number
+  technical_score: number
+  fund_flow_score: number
+  valuation_score: number
+  mining_score: number
+  industry: string
+  market_cap_yi: number
+  pe: number | null
+  pb: number | null
+  roe: number | null
+  revenue_growth: number | null
+  debt_ratio: number | null
+  reason: string
+  rank: number
+  advice?: {
+    time_horizon: string
+    confidence_level: string
+    summary: string
+  }
+  divergence_warnings?: string[]
+  reflection?: string
+}
+
 export interface WorkflowResult {
   success: boolean
   workflow_id: string
   result_count: number
   duration: number
-  results: any[]
+  results: QuantResultItem[]
   execution_time: string
   error?: string
   result_type?: string

@@ -210,6 +210,25 @@
                 <span class="ap-value">{{ detailData.trading_advice.advice?.hold_period }}</span>
               </div>
             </div>
+
+            <!-- 持有期 + 置信度 -->
+            <div class="advice-tags-row">
+              <el-tag v-if="detailData.trading_advice.advice?.time_horizon" size="small" type="info" effect="plain">
+                建议持有期: {{ detailData.trading_advice.advice.time_horizon }}
+              </el-tag>
+              <el-tag v-if="detailData.trading_advice.advice?.confidence_level" size="small" :type="confLevelType(detailData.trading_advice.advice.confidence_level)" effect="dark">
+                置信度 {{ detailData.trading_advice.advice.confidence_level }}
+              </el-tag>
+              <el-tag v-if="detailData.trading_advice.reflection?.summary" size="small" type="warning" effect="plain" class="reflection-tag">
+                {{ detailData.trading_advice.reflection.summary }}
+              </el-tag>
+            </div>
+
+            <!-- 维度分歧警告 -->
+            <div v-if="detailData.trading_advice.divergence_warnings?.length" class="advice-divergence">
+              <span class="div-icon">⚡</span>
+              <span v-for="(w, i) in detailData.trading_advice.divergence_warnings" :key="i" class="div-item">{{ w }}</span>
+            </div>
           </div>
           <div class="advice-metrics">
             <div class="adv-metric">
@@ -557,6 +576,12 @@ function adviceTagType(signal?: string): string {
   return 'warning'
 }
 
+function confLevelType(level: string): string {
+  if (level === '高') return 'danger'
+  if (level === '中') return 'warning'
+  return 'info'
+}
+
 function riskLevelClass(level: string): string {
   if (level === '低') return 'risk-low'
   if (level === '高') return 'risk-high'
@@ -852,6 +877,36 @@ onUnmounted(() => {
   border-radius: 6px;
   margin-bottom: 10px;
   line-height: 1.5;
+}
+.advice-tags-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 4px 0;
+}
+.reflection-tag {
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.advice-divergence {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 6px 12px;
+  margin-top: 6px;
+  background: #fff7e6;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #d48806;
+}
+.advice-divergence .div-icon {
+  font-size: 14px;
+}
+.advice-divergence .div-item {
+  line-height: 1.4;
 }
 .advice-price-row {
   display: flex;
