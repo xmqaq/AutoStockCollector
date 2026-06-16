@@ -2,10 +2,10 @@
   <div class="ranking-page">
     <div class="page-header">
       <h2>盈利排行榜</h2>
-      <span class="page-desc">所有用户按实时总收益率排序{{ tradingNow ? '（交易时段每 20 秒自动刷新）' : '（当前非交易时段，价格为最近收盘价）' }}</span>
+      <span class="page-desc">所有用户按实时总收益率排序{{ isTradingNow() ? '（交易时段每 15 秒自动刷新）' : '（当前非交易时段，价格为最近收盘价）' }}</span>
       <div class="header-actions">
         <span v-if="lastUpdated" class="last-updated">更新于 {{ lastUpdated }}</span>
-        <el-button size="small" :loading="loading" @click="fetchRanking" round>
+        <el-button size="small" :loading="loading || refreshing" @click="fetchRanking(false)" round>
           <el-icon><Refresh /></el-icon> 刷新
         </el-button>
       </div>
@@ -29,31 +29,53 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="总收益率" width="140" align="right">
+        <el-table-column label="总资产" width="140" align="right">
+          <template #default="{ row }">
+            ¥{{ formatAmount(row.total_asset) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="本金" width="110" align="right">
+          <template #default="{ row }">
+            ¥{{ formatAmount(row.initial_capital) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="现金" width="110" align="right">
+          <template #default="{ row }">
+            ¥{{ formatAmount(row.cash_balance) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="持仓市值" width="110" align="right">
+          <template #default="{ row }">
+            ¥{{ formatAmount(row.market_value) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="总收益率" width="120" align="right">
           <template #default="{ row }">
             <span :class="['profit-text', row.profit_pct >= 0 ? 'up' : 'dn']">
               {{ row.profit_pct >= 0 ? '+' : '' }}{{ row.profit_pct }}%
             </span>
           </template>
         </el-table-column>
-        <el-table-column label="收益额" width="150" align="right">
+        <el-table-column label="总收益额" width="130" align="right">
           <template #default="{ row }">
             <span :class="['profit-text', row.profit_amount >= 0 ? 'up' : 'dn']">
               {{ row.profit_amount >= 0 ? '+' : '' }}¥{{ formatAmount(row.profit_amount) }}
             </span>
           </template>
         </el-table-column>
-        <el-table-column label="本金" width="140" align="right">
+        <el-table-column label="今日盈亏" width="120" align="right">
           <template #default="{ row }">
-            ¥{{ formatAmount(row.initial_capital) }}
+            <span :class="['profit-text', row.today_pnl >= 0 ? 'up' : 'dn']">
+              {{ row.today_pnl >= 0 ? '+' : '' }}¥{{ formatAmount(row.today_pnl) }}
+            </span>
           </template>
         </el-table-column>
-        <el-table-column label="胜率" width="100" align="center">
+        <el-table-column label="胜率" width="80" align="center">
           <template #default="{ row }">
             {{ row.win_rate }}%
           </template>
         </el-table-column>
-        <el-table-column label="交易次数" width="100" align="center">
+        <el-table-column label="交易次数" width="80" align="center">
           <template #default="{ row }">
             {{ row.total_trades }}
           </template>
@@ -76,8 +98,8 @@ const authStore = useAuthStore()
 const currentUserId = computed(() => authStore.user?.user_id)
 const ranking = ref<RankingEntry[]>([])
 const loading = ref(false)
+const refreshing = ref(false)
 const lastUpdated = ref('')
-const tradingNow = ref(false)
 let _pollTimer: ReturnType<typeof setInterval> | undefined
 
 // A股交易时段：周一~周五 9:30-11:30 / 13:00-15:00（按本地时间近似，用于决定是否自动轮询）
@@ -101,8 +123,12 @@ function formatAmount(v: number) {
   return v.toFixed(2)
 }
 
-async function fetchRanking() {
-  loading.value = true
+async function fetchRanking(silent = false) {
+  if (silent) {
+    refreshing.value = true
+  } else {
+    loading.value = true
+  }
   try {
     ranking.value = await paperApi.getRanking(true)
     const d = new Date()
@@ -111,17 +137,16 @@ async function fetchRanking() {
     // handled by interceptor
   } finally {
     loading.value = false
+    refreshing.value = false
   }
 }
 
 onMounted(() => {
-  tradingNow.value = isTradingNow()
   fetchRanking()
-  // 仅交易时段自动轮询，避免非交易时段无意义的请求（价格不变）
+  // 交易时段每 15 秒轮询（后端 live 模式有缓存），非交易时段停止
   _pollTimer = setInterval(() => {
-    tradingNow.value = isTradingNow()
-    if (tradingNow.value) fetchRanking()
-  }, 20000)
+    if (isTradingNow()) fetchRanking(true)
+  }, 15000)
 })
 
 onUnmounted(() => {

@@ -34,12 +34,12 @@ class PaperStats:
                     remaining -= matched
                 buy_queue[code] = [h for h in buy_queue.get(code, []) if h["shares"] > 0]
 
-        total = len(completed_pairs)
-        # 平本（pnl=0）既不算盈也不算亏，但仍计入总交易次数
+        total_pairs = len(completed_pairs)
+        # 平本（pnl=0）既不算盈也不算亏，但仍计入完成交易次数
         wins = [p for p in completed_pairs if p["pnl_amount"] > 0]
         losses = [p for p in completed_pairs if p["pnl_amount"] < 0]
 
-        win_rate = len(wins) / total * 100 if total > 0 else 0
+        win_rate = len(wins) / total_pairs * 100 if total_pairs > 0 else 0
         avg_profit = sum(p["pnl_pct"] for p in wins) / len(wins) if wins else 0
         avg_loss = sum(p["pnl_pct"] for p in losses) / len(losses) if losses else 0
         # 盈亏比 = 总盈利额 / 总亏损额（计入仓位大小），优于"平均盈利%/平均亏损%"
@@ -48,7 +48,7 @@ class PaperStats:
         profit_factor = round(gross_profit / gross_loss, 2) if gross_loss > 0 else 0
 
         return {
-            "total_trades": total,
+            "total_trades": len(trades),
             "win_trades": len(wins),
             "loss_trades": len(losses),
             "win_rate": round(win_rate, 2),

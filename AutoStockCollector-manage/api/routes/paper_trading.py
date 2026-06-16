@@ -30,13 +30,33 @@ def _lazy_init():
         _engine = TradeEngine()
         _stats = PaperStats()
         _snapshot = PortfolioSnapshot()
-        _snapshot.ensure_today("default", _account, _engine)
+
+
+def _uid():
+    """从 Authorization header 解析用户ID，未认证时返回 None"""
+    from api.auth_utils import decode_token
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        payload = decode_token(auth[7:])
+        if payload and payload.get("user_id"):
+            return payload["user_id"]
+    return None
+
+
+def _resolve_user_id():
+    """统一用户ID解析: admin 用户映射到 'default' 兼容旧数据；其他用户用自己的ID；未认证回退到 'default'"""
+    _lazy_init()
+    uid = _uid()
+    if uid == "admin" and _account.get("default"):
+        return "default"
+    if uid:
+        return uid
+    return "default"
 
 
 @paper_bp.route("/account", methods=["GET"])
 def get_account():
-    _lazy_init()
-    user_id = request.args.get("user_id", "default")
+    user_id = _resolve_user_id()
     doc = _account.get(user_id)
     if not doc:
         return jsonify({"success": False, "error": "账户未初始化，请先设置初始资金"}), 404
@@ -44,10 +64,11 @@ def get_account():
 
 
 @paper_bp.route("/account/init", methods=["POST"])
+@login_required
 def init_account():
     _lazy_init()
+    user_id = g.current_user["user_id"]
     data = request.get_json() or {}
-    user_id = data.get("user_id", "default")
     try:
         capital = float(data.get("initial_capital", 100000))
     except (TypeError, ValueError):
@@ -59,11 +80,12 @@ def init_account():
 
 
 @paper_bp.route("/account/deposit", methods=["POST"])
+@login_required
 def deposit_account():
     """非破坏性入金/出金：amount>0 入金，<0 出金。现金与初始资金同步增减。"""
     _lazy_init()
+    user_id = _resolve_user_id()
     data = request.get_json() or {}
-    user_id = data.get("user_id", "default")
     try:
         amount = float(data.get("amount", 0))
     except (TypeError, ValueError):
@@ -78,10 +100,11 @@ def deposit_account():
 
 
 @paper_bp.route("/trade", methods=["POST"])
+@login_required
 def execute_trade():
     _lazy_init()
     data = request.get_json() or {}
-    user_id = data.get("user_id", "default")
+    user_id = _resolve_user_id()
     code = data.get("code", "").strip()
     action = data.get("action", "").strip()
     ai_signal = data.get("ai_signal", {})
@@ -122,8 +145,7 @@ def execute_trade():
 
 @paper_bp.route("/positions", methods=["GET"])
 def get_positions():
-    _lazy_init()
-    user_id = request.args.get("user_id", "default")
+    user_id = _resolve_user_id()
     positions, trading = _engine.get_positions(user_id)
     return jsonify({
         "success": True,
@@ -158,9 +180,8 @@ def get_price():
 
 @paper_bp.route("/trades", methods=["GET"])
 def get_trades():
-    _lazy_init()
     from config.database import DatabaseConfig
-    user_id = request.args.get("user_id", "default")
+    user_id = _resolve_user_id()
     try:
         limit = int(request.args.get("limit", 50))
     except (TypeError, ValueError):
@@ -176,16 +197,14 @@ def get_trades():
 
 @paper_bp.route("/stats", methods=["GET"])
 def get_stats():
-    _lazy_init()
-    user_id = request.args.get("user_id", "default")
+    user_id = _resolve_user_id()
     stats = _stats.get_stats(user_id)
     return jsonify({"success": True, "data": stats})
 
 
 @paper_bp.route("/nav", methods=["GET"])
 def get_nav():
-    _lazy_init()
-    user_id = request.args.get("user_id", "default")
+    user_id = _resolve_user_id()
     snapshots = _snapshot.get_history(user_id)
     if snapshots:
         nav = [{
@@ -218,6 +237,13 @@ def _live_profit(uid):
     return profit_pct, profit_amount, initial_capital
 
 
+def _resolve_ranking_uid(uid: str) -> tuple:
+    """解析排行榜用 user_id 和查询 uid，处理 admin→default 映射。"""
+    if uid == "admin" and _account.get("default"):
+        return "admin", "default"
+    return uid, uid
+
+
 @paper_bp.route("/ranking", methods=["GET"])
 def get_ranking():
     """用户盈利排行榜：按总收益率降序，含收益率/收益额/胜率/交易次数。
@@ -241,38 +267,55 @@ def get_ranking():
     users = list(db.users.find({}, {"username": 1, "nickname": 1, "user_id": 1, "_id": 0}))
 
     _lazy_init()
+
     result = []
     for user in users:
         uid = user["user_id"]
+        display_uid, query_uid = _resolve_ranking_uid(uid)
+
         if live:
-            computed = _live_profit(uid)
+            computed = _live_profit(query_uid)
             if computed is None:
                 continue
             profit_pct, profit_amount, initial_capital = computed
+            cash = _account.get(query_uid, {}).get("cash_balance", 0) if _account.get(query_uid) else 0
+            positions, _ = _engine.get_positions(query_uid)
+            market_value = sum(p["market_value"] for p in positions)
+            today_pnl = sum(p.get("today_pnl_percent", 0.0) * p["market_value"] / 100 for p in positions)
         else:
             snap = db["portfolio_snapshots"].find_one(
-                {"user_id": uid}, sort=[("date", -1)]
+                {"user_id": query_uid}, sort=[("date", -1)]
             )
             if snap and snap.get("profit_pct") is not None:
                 profit_pct = snap["profit_pct"]
                 profit_amount = snap.get("profit_amount", 0)
-                account_info = _account.get(uid)
-                initial_capital = account_info["initial_capital"] if account_info else snap.get("initial_capital", 0)
+                initial_capital = snap.get("initial_capital", 0)
+                cash = snap.get("cash", 0)
+                market_value = snap.get("market_value", 0)
+                today_pnl = snap.get("today_pnl", 0)
             else:
-                computed = _live_profit(uid)
+                computed = _live_profit(query_uid)
                 if computed is None:
                     continue
                 profit_pct, profit_amount, initial_capital = computed
+                cash = _account.get(query_uid, {}).get("cash_balance", 0) if _account.get(query_uid) else 0
+                positions, _ = _engine.get_positions(query_uid)
+                market_value = sum(p["market_value"] for p in positions)
+                today_pnl = sum(p.get("today_pnl_percent", 0.0) * p["market_value"] / 100 for p in positions)
 
-        stats = _stats.get_stats(uid)
+        stats = _stats.get_stats(query_uid) if _account.get(query_uid) else {"win_rate": 0.0, "total_trades": 0}
         result.append({
             "user_id": uid,
             "username": user.get("nickname", user.get("username", uid)),
             "raw_username": user.get("username", uid),
+            "initial_capital": round(initial_capital, 2),
+            "cash_balance": round(cash, 2),
+            "market_value": round(market_value, 2),
+            "total_asset": round(cash + market_value, 2),
             "profit_pct": round(profit_pct, 2),
             "profit_amount": round(profit_amount, 2),
-            "initial_capital": round(initial_capital, 2),
-            "win_rate": stats.get("win_rate", 0),
+            "today_pnl": round(today_pnl, 2),
+            "win_rate": round(stats.get("win_rate", 0.0), 2),
             "total_trades": stats.get("total_trades", 0),
         })
 

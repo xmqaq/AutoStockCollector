@@ -68,9 +68,13 @@ export interface RankingEntry {
   user_id: string
   username: string
   raw_username?: string
+  initial_capital: number
+  cash_balance: number
+  market_value: number
+  total_asset: number
   profit_pct: number
   profit_amount: number
-  initial_capital: number
+  today_pnl: number
   win_rate: number
   total_trades: number
 }

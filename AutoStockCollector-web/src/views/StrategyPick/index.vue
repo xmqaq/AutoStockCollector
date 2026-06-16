@@ -110,6 +110,12 @@
       </template>
     </div>
 
+    <!-- 定时运行提示 -->
+    <div class="sp-cron-bar">
+      <el-icon style="margin-right:4px"><Clock /></el-icon>
+      定时运行：交易日 08:55 · 12:00 · 14:30
+    </div>
+
     <!-- 统计信息 -->
     <div v-if="result" class="sp-meta">
       <span>策略数：{{ result.strategy_count }}</span>
@@ -131,6 +137,7 @@
       <div class="sp-ps-header">
         <span class="sp-ps-title">持仓组合建议</span>
         <span class="sp-ps-meta">{{ result.portfolio_suggestion.total_count }}只 · {{ result.portfolio_suggestion.industry_count }}个行业 · 最大行业{{ result.portfolio_suggestion.max_industry_pct }}%</span>
+        <el-button size="small" type="success" :loading="buyingAll" @click="buyAllPositions">全部一键买入</el-button>
       </div>
       <div class="sp-ps-table-wrap">
         <table class="sp-ps-table">
@@ -684,6 +691,22 @@ function showDetail(row: StrategyPickItem) {
 }
 
 const buying = ref<Record<string, boolean>>({})
+const buyingAll = ref(false)
+
+async function calcShares(price: number, targetAmount: number): Promise<number> {
+  const shares = Math.floor(targetAmount / price / 100) * 100
+  return Math.max(shares, 0)
+}
+
+async function getPortfolioContext() {
+  const [account, posResult] = await Promise.all([paperApi.getAccount(), paperApi.getPositions()])
+  if (!account) throw new Error('获取账户信息失败')
+  const cash = account.cash_balance
+  const existingPositions = posResult.positions || []
+  const existingValue = existingPositions.reduce((s, p) => s + p.market_value, 0)
+  const totalPortfolio = cash + existingValue
+  return { cash, totalPortfolio, existingPositions }
+}
 
 async function buyPosition(pos: PortfolioSuggestionPosition) {
   if (buying.value[pos.code]) return
@@ -699,11 +722,15 @@ async function buyPosition(pos: PortfolioSuggestionPosition) {
       ).catch(() => false)
       if (!confirmed) return
     }
-    const account = await paperApi.getAccount()
-    if (!account) { ElMessage.error('获取账户信息失败'); return }
-    const cash = account.cash_balance
-    const targetAmount = cash * pos.weight / 100
-    const shares = Math.floor(targetAmount / price / 100) * 100
+
+    const { cash, totalPortfolio, existingPositions } = await getPortfolioContext()
+    const existingPos = existingPositions.find(p => p.code === pos.code)
+    const existingValue = existingPos ? existingPos.market_value : 0
+
+    // target = totalPortfolio * weight% - existing position value
+    const targetAmount = Math.max(0, totalPortfolio * pos.weight / 100 - existingValue)
+    const buyAmount = Math.min(targetAmount, cash)
+    const shares = await calcShares(price, buyAmount)
     if (shares < 100) { ElMessage.warning(`可用资金不足，最少需买入 100 股（约 ¥${(price * 100).toFixed(2)}）`); return }
 
     const amount = shares * price
@@ -713,6 +740,7 @@ async function buyPosition(pos: PortfolioSuggestionPosition) {
         <div>实时价格：<b>¥${price.toFixed(2)}</b></div>
         <div>建议仓位：${pos.weight}%</div>
         <div>可用资金：¥${cash.toFixed(2)}</div>
+        <div>目标市值：¥${(totalPortfolio * pos.weight / 100).toFixed(2)}</div>
         <hr style="border:none;border-top:1px solid var(--border-color);margin:8px 0">
         <div>买入数量：<b>${shares} 股</b></div>
         <div>预计金额：<b>¥${amount.toFixed(2)}</b></div>
@@ -733,6 +761,114 @@ async function buyPosition(pos: PortfolioSuggestionPosition) {
     else ElMessage.error('买入失败')
   } finally {
     buying.value[pos.code] = false
+  }
+}
+
+async function buyAllPositions() {
+  if (buyingAll.value) return
+  buyingAll.value = true
+  try {
+    const positions = result.value?.portfolio_suggestion?.positions
+    if (!positions?.length) { ElMessage.warning('暂无组合建议'); return }
+    const { cash } = await getPortfolioContext()
+    if (cash <= 0) { ElMessage.warning('可用资金为 0'); return }
+
+    const totalWeight = positions.reduce((s, p) => s + p.weight, 0)
+    if (totalWeight <= 0) { ElMessage.warning('无效的权重分配'); return }
+
+    // fetch prices for all positions in parallel
+    const priceResults = await Promise.all(
+      positions.map(p => paperApi.getPrice(p.code).then(r => ({ code: p.code, info: r })))
+    )
+    const priceMap: Record<string, { price: number; is_trading_time: boolean }> = {}
+    let anyNonTrading = false
+    for (const r of priceResults) {
+      if (!r.info) { ElMessage.error(`获取 ${r.code} 价格失败`); return }
+      priceMap[r.code] = r.info
+      if (!r.info.is_trading_time) anyNonTrading = true
+    }
+    if (anyNonTrading) {
+      const ok = await ElMessageBox.confirm(
+        '当前非交易时间，获取的价格为最新收盘价。确认要下单？',
+        '非交易时间', { confirmButtonText: '确认下单', cancelButtonText: '取消', type: 'warning' }
+      ).catch(() => false)
+      if (!ok) return
+    }
+
+    // build order list: distribute cash by weight proportion
+    const orders: { pos: PortfolioSuggestionPosition; shares: number; price: number; amount: number }[] = []
+    let remainingCash = cash
+    let remainingWeight = totalWeight
+
+    for (let i = 0; i < positions.length; i++) {
+      const pos = positions[i]
+      const isLast = i === positions.length - 1
+      const { price } = priceMap[pos.code]
+
+      let targetAmount: number
+      if (isLast) {
+        targetAmount = remainingCash
+      } else if (remainingWeight > 0) {
+        targetAmount = remainingCash * pos.weight / remainingWeight
+      } else {
+        targetAmount = 0
+      }
+
+      const shares = Math.floor(targetAmount / price / 100) * 100
+      if (shares >= 100) {
+        const amount = shares * price
+        orders.push({ pos, shares, price, amount })
+        remainingCash -= amount
+        remainingWeight -= pos.weight
+      }
+    }
+
+    if (!orders.length) { ElMessage.warning('所有股票都不足 100 股，无法买入'); return }
+
+    const orderRows = orders.map(o =>
+      `<tr><td>${o.pos.code}</td><td>${o.pos.name}</td><td style="text-align:right">${o.shares}</td><td style="text-align:right">¥${o.price.toFixed(2)}</td><td style="text-align:right">¥${o.amount.toFixed(2)}</td></tr>`
+    ).join('')
+    const totalAmount = orders.reduce((s, o) => s + o.amount, 0)
+
+    const confirmed = await ElMessageBox.confirm(
+      `<div style="line-height:1.8">
+        <div>可用资金：¥${cash.toFixed(2)}</div>
+        <table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:12px">
+          <thead><tr style="border-bottom:1px solid var(--border-color)">
+            <th style="text-align:left">代码</th><th style="text-align:left">名称</th><th style="text-align:right">数量</th><th style="text-align:right">价格</th><th style="text-align:right">金额</th>
+          </tr></thead>
+          <tbody>${orderRows}</tbody>
+          <tfoot><tr style="border-top:1px solid var(--border-color);font-weight:700">
+            <td colspan="4" style="text-align:right">合计</td>
+            <td style="text-align:right">¥${totalAmount.toFixed(2)}</td>
+          </tr></tfoot>
+        </table>
+        <div style="margin-top:8px">剩余资金：¥${(cash - totalAmount).toFixed(2)}</div>
+      </div>`,
+      '确认批量买入',
+      { confirmButtonText: '确认买入', cancelButtonText: '取消', dangerouslyUseHTMLString: true, width: '520px', type: 'info' }
+    ).catch(() => false)
+    if (!confirmed) return
+
+    // execute orders sequentially
+    let success = 0
+    for (const o of orders) {
+      try {
+        await paperApi.executeTrade({
+          code: o.pos.code, action: 'buy', shares: o.shares, price: o.price,
+          ai_signal: { action: 'buy', reason: '策略选股组合建议', composite: o.pos.composite },
+        })
+        success++
+      } catch (e: any) {
+        ElMessage.error(`${o.pos.name} 买入失败: ${e?.message || '未知错误'}`)
+      }
+    }
+    ElMessage.success(`批量买入完成，成功 ${success}/${orders.length} 只`)
+  } catch (e: any) {
+    if (e?.message) ElMessage.error(e.message)
+    else ElMessage.error('批量买入失败')
+  } finally {
+    buyingAll.value = false
   }
 }
 
@@ -1018,6 +1154,7 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
 .sp-history-time { font-weight: 600; font-size: 13px; }
 .sp-history-meta { font-size: 11px; color: var(--text-alt-muted); }
 .sp-meta { display: flex; gap: 18px; font-size: 12px; color: var(--text-alt-muted); }
+.sp-cron-bar { display: flex; align-items: center; font-size: 12px; color: var(--text-alt-muted); padding: 8px 0 4px; }
 
 /* 折叠选择区 */
 .sp-collapse-group {

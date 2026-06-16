@@ -658,6 +658,36 @@ def job_ai_monitor():
         logger.error(f"[cron] AI监控刷新失败: {e}")
 
 
+def job_strategy_pick():
+    """定时策略选股：交易日 08:55 / 12:00 / 14:30 自动运行所有选股策略。"""
+    if not _is_weekday():
+        return
+    try:
+        from modules.ai.strategies.storage import StrategyStorage
+        storage = StrategyStorage()
+        strategies = storage.list_by_type("selection", enabled_only=True)
+        strategy_ids = [str(s["_id"]) for s in strategies]
+        if not strategy_ids:
+            logger.info("[cron] 定时策略选股: 无可用选股策略，跳过")
+            return
+
+        from api.routes.strategy_pick import _acquire_run_lock, _run_pipeline
+        if not _acquire_run_lock():
+            logger.info("[cron] 定时策略选股: 已有任务运行中，跳过本次")
+            return
+
+        import threading
+        t = threading.Thread(
+            target=_run_pipeline,
+            args=(strategy_ids, 20, 15, [], []),
+            daemon=True,
+        )
+        t.start()
+        logger.info(f"[cron] 定时策略选股已启动: {len(strategy_ids)} 个策略")
+    except Exception as e:
+        logger.error(f"[cron] 定时策略选股失败: {e}")
+
+
 # ─── 纯 Python 调度核心 ───────────────────────────────────────────────────────
 
 def _next_daily_run(hour: int, minute: int) -> datetime.datetime:
@@ -781,6 +811,9 @@ def start_daily_jobs() -> None:
         _make_job("估值缓存 5min",       job_valuation_cache,     "interval", interval_minutes=5, task_type="valuation_cache"),
         _make_job("任务清理 03:30",      job_task_cleanup,        "daily",  3, 30, task_type="task_cleanup"),
         _make_job("AI监控刷新 15分钟",  job_ai_monitor,           "interval", interval_minutes=15, task_type="ai_monitor"),
+        _make_job("策略选股 08:55",     job_strategy_pick,         "daily", 8, 55, task_type="strategy_pick"),
+        _make_job("策略选股 12:00",     job_strategy_pick,         "daily", 12, 0, task_type="strategy_pick"),
+        _make_job("策略选股 14:30",     job_strategy_pick,         "daily", 14, 30, task_type="strategy_pick"),
     ]
 
     # 选股工作流：仅当 DAILY_WORKFLOW_ID 已配置时才注册，否则它每次触发都只是
