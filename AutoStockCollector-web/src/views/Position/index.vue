@@ -148,8 +148,12 @@
             </el-descriptions-item>
           </el-descriptions>
         </el-card>
+      </el-col>
+    </el-row>
 
-        <el-card shadow="never" class="section-card" style="margin-top: 12px">
+    <el-row :gutter="16" style="margin-top: 16px">
+      <el-col :span="8">
+        <el-card shadow="never" class="section-card stat-card">
           <template #header>
             <span>交易统计</span>
             <el-tooltip content="仅统计已平仓（买入后卖出）的交易，未卖出的持仓不计入" placement="top">
@@ -172,8 +176,10 @@
             <el-descriptions-item label="盈亏比" :span="2">{{ stats.profit_factor.toFixed(2) }}</el-descriptions-item>
           </el-descriptions>
         </el-card>
+      </el-col>
 
-        <el-card shadow="never" class="section-card" style="margin-top: 12px">
+      <el-col :span="8">
+        <el-card shadow="never" class="section-card stat-card">
           <template #header><span>最近交易</span></template>
           <div class="trade-list">
             <div v-for="t in recentTrades" :key="t.traded_at" class="trade-item">
@@ -194,8 +200,10 @@
             <el-empty v-if="recentTrades.length === 0" description="暂无记录" :image-size="40" />
           </div>
         </el-card>
+      </el-col>
 
-        <el-card shadow="never" class="section-card" style="margin-top: 12px">
+      <el-col :span="8">
+        <el-card shadow="never" class="section-card stat-card">
           <template #header><span>持仓分布</span></template>
           <div v-if="positions.length > 0" class="distribution-chart">
             <div v-for="p in positions" :key="p.code" class="distribution-item">
@@ -950,7 +958,8 @@ onUnmounted(() => {
   color: var(--text-primary); font-size: 14px; font-weight: 600;
   display: flex; justify-content: space-between; align-items: center;
 }
-.card-header { display: flex; justify-content: space-between; align-items: center; }
+.card-header { display: flex; justify-content: space-between; align-items: center; flex: 1; }
+.stat-card { height: 100%; }
 .header-hint {
   font-size: 12px; font-weight: 400; color: var(--text-muted);
   background: var(--bg-hover, rgba(0,0,0,0.04)); padding: 1px 8px; border-radius: 10px;
@@ -973,7 +982,7 @@ onUnmounted(() => {
 .trade-time { color: var(--text-faint); }
 .trade-signal { font-size: 11px; color: var(--el-color-warning); margin-top: 2px; }
 
-.distribution-chart { display: flex; flex-direction: column; gap: 8px; }
+.distribution-chart { display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow-y: auto; }
 .distribution-item { display: flex; flex-direction: column; gap: 4px; }
 .dist-info { display: flex; justify-content: space-between; font-size: 12px; }
 .dist-label { color: var(--text-primary); }
