@@ -9,10 +9,15 @@ import pandas as pd
 import akshare as ak
 from .base import BaseCollector, ProgressTracker
 from core.storage.mongo_storage import NewsStorage
+from utils.helpers import call_with_timeout
 from utils.logger import get_logger
 
 
 logger = get_logger(__name__)
+
+# akshare 接口无内置超时，外部源不响应时会无限阻塞，拖死采集任务（卡满后被看门狗强杀）。
+# 所有 akshare 拉取统一套硬超时兜底。
+_AK_TIMEOUT_SECONDS = 30
 
 
 class NewsCollector(BaseCollector):
@@ -64,7 +69,7 @@ class NewsCollector(BaseCollector):
                 func = getattr(ak, func_name, None)
                 if func is None:
                     continue
-                df = func(**params) if params else func()
+                df = call_with_timeout(func, _AK_TIMEOUT_SECONDS, **params)
                 if df is None or df.empty:
                     continue
 
@@ -105,10 +110,7 @@ class NewsCollector(BaseCollector):
 
                 logger.info(f"Trying {source_name} for stock news")
 
-                if params:
-                    df = func(**params)
-                else:
-                    df = func()
+                df = call_with_timeout(func, _AK_TIMEOUT_SECONDS, **params)
 
                 if df is None or df.empty:
                     continue
@@ -155,10 +157,7 @@ class NewsCollector(BaseCollector):
 
                 logger.info(f"Trying {source_name} for announcement")
 
-                if params:
-                    df = func(**params)
-                else:
-                    df = func()
+                df = call_with_timeout(func, _AK_TIMEOUT_SECONDS, **params)
 
                 if df is None or df.empty:
                     continue
@@ -185,7 +184,7 @@ class NewsCollector(BaseCollector):
 
     def collect_plate_news(self, plate_code: str) -> List[Dict[str, Any]]:
         try:
-            df = ak.stock_board_industry_news_em(symbol=plate_code)
+            df = call_with_timeout(ak.stock_board_industry_news_em, _AK_TIMEOUT_SECONDS, symbol=plate_code)
             if df is None or df.empty:
                 return []
 
@@ -215,7 +214,7 @@ class SentimentCollector(BaseCollector):
 
     def collect_market_sentiment(self) -> Optional[Dict[str, Any]]:
         try:
-            df = ak.stock_market_activity_em()
+            df = call_with_timeout(ak.stock_market_activity_em, _AK_TIMEOUT_SECONDS)
             if df is None or df.empty:
                 return None
 
@@ -236,7 +235,7 @@ class SentimentCollector(BaseCollector):
 
     def collect_sector_sentiment(self) -> pd.DataFrame:
         try:
-            df = ak.stock_board_industry_name_em()
+            df = call_with_timeout(ak.stock_board_industry_name_em, _AK_TIMEOUT_SECONDS)
             return df
         except Exception as e:
             logger.error(f"Failed to collect sector sentiment: {e}")
@@ -245,9 +244,9 @@ class SentimentCollector(BaseCollector):
     def collect_hot_stocks(self, date: Optional[str] = None) -> List[Dict[str, Any]]:
         try:
             if date is None:
-                df = ak.stock_hot_rank_wc()
+                df = call_with_timeout(ak.stock_hot_rank_wc, _AK_TIMEOUT_SECONDS)
             else:
-                df = ak.stock_hot_rank_wc(date=date)
+                df = call_with_timeout(ak.stock_hot_rank_wc, _AK_TIMEOUT_SECONDS, date=date)
 
             if df is None or df.empty:
                 return []

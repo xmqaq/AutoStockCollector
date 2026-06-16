@@ -5,7 +5,7 @@
 """
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-from utils.helpers import beijing_now
+from utils.helpers import beijing_now, call_with_timeout
 import re
 import time
 import threading
@@ -41,6 +41,12 @@ HEADERS = {
     "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
     "Referer": "https://finance.sina.com.cn/",
 }
+
+
+# akshare 财新接口（stock_news_main_cx）内部不设超时，外部源不响应时会无限阻塞，
+# 进而拖死整个新闻采集任务（卡满 1 小时后被调度器/cron 看门狗强杀为"已取消"）。
+# 用单独线程包一层硬超时兜底。
+_CAIXIN_TIMEOUT_SECONDS = 30
 
 
 _thread_local = threading.local()
@@ -426,11 +432,16 @@ class NewsManager:
         """获取统计信息"""
         return self.storage.get_news_stats()
 
+    @staticmethod
+    def _fetch_caixin_df(timeout: int = _CAIXIN_TIMEOUT_SECONDS):
+        """带硬超时地拉取财新数据（akshare 接口无 timeout，外部源挂起会拖死任务）。"""
+        import akshare as ak
+        return call_with_timeout(ak.stock_news_main_cx, timeout)
+
     def collect_caixin_news(self) -> int:
         """采集财新最新财经新闻（stock_news_main_cx，~100条）"""
         try:
-            import akshare as ak
-            df = ak.stock_news_main_cx()
+            df = self._fetch_caixin_df()
             if df is None or df.empty:
                 return 0
             records = []

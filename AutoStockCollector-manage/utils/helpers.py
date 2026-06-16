@@ -15,6 +15,25 @@ def beijing_now() -> datetime:
     return datetime.now(_BEIJING_TZ).replace(tzinfo=None)
 
 
+def call_with_timeout(fn, timeout: float, *args, **kwargs):
+    """给一个无超时支持的阻塞调用（典型是 akshare 接口）套一层硬超时。
+
+    akshare 内部不暴露 timeout，外部源不响应时会无限阻塞，进而拖死采集任务
+    （卡满后被调度器/cron 看门狗强杀为"已取消"）。这里把调用丢到单独线程，
+    用 future.result(timeout) 兜底；超时后 **不** 等待该线程结束
+    （shutdown(wait=False)）——否则会退化成无超时阻塞——让卡住的线程自生自灭，
+    调用方立刻被释放。超时抛 concurrent.futures.TimeoutError（Exception 子类），
+    由调用处现有的 try/except 捕获即可。
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ak-timeout")
+    future = executor.submit(fn, *args, **kwargs)
+    try:
+        return future.result(timeout=timeout)
+    finally:
+        executor.shutdown(wait=False)
+
+
 def format_date(date: datetime) -> str:
     return date.strftime("%Y-%m-%d")
 
