@@ -7,11 +7,14 @@
         <span class="ak-title">API Key 管理</span>
         <span class="ak-count">{{ keys.length }} 个厂商</span>
       </div>
-      <button class="ak-add-btn" @click="openAddDialog">
-        <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="5.5" y1="1" x2="5.5" y2="10"/><line x1="1" y1="5.5" x2="10" y2="5.5"/></svg>
-        新增厂商
-      </button>
+      <template v-if="isAdmin">
+        <button class="ak-add-btn" @click="openAddDialog">
+          <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="5.5" y1="1" x2="5.5" y2="10"/><line x1="1" y1="5.5" x2="10" y2="5.5"/></svg>
+          新增厂商
+        </button>
+      </template>
     </div>
+    <div v-if="!isAdmin" class="ak-readonly-banner">只读模式 — 仅管理员可编辑 API Key</div>
 
     <!-- 卡片列表 -->
     <div v-loading="loading" element-loading-background="rgba(8,8,12,0.8)" class="ak-list">
@@ -48,10 +51,11 @@
               <el-switch
                 v-model="row.enabled"
                 size="small"
+                :disabled="!isAdmin"
                 :style="{ '--el-switch-on-color': providerColor(row.provider) }"
                 @change="toggle(row)"
               />
-              <button class="ak-icon-btn ak-del" @click="remove(row.provider)" title="删除">
+              <button v-if="isAdmin" class="ak-icon-btn ak-del" @click="remove(row.provider)" title="删除">
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/></svg>
               </button>
             </div>
@@ -66,11 +70,13 @@
                 type="password"
                 size="small"
                 show-password
-                :placeholder="row.has_key ? '已配置 — 重新输入以更新' : '粘贴 API Key…'"
+                :disabled="!isAdmin"
+                :placeholder="row.has_key ? '已配置' : (isAdmin ? '粘贴 API Key…' : '')"
                 class="ak-key-input"
-                @keyup.enter="saveKey(row)"
+                @keyup.enter="isAdmin && saveKey(row)"
               />
               <button
+                v-if="isAdmin"
                 class="ak-btn ak-btn-save"
                 :class="{ active: !!row.api_key, saving: row._saving, saved: row._saved }"
                 :disabled="!row.api_key || row._saving"
@@ -99,6 +105,7 @@
                 filterable
                 clearable
                 size="small"
+                :disabled="!isAdmin"
                 class="ak-model-select"
                 :loading="modelLoading[row.provider]"
               >
@@ -117,6 +124,7 @@
               </el-select>
               <!-- 从 API 获取模型 -->
               <button
+                v-if="isAdmin"
                 class="ak-icon-btn ak-fetch-btn"
                 :class="{ loading: modelLoading[row.provider] }"
                 :disabled="modelLoading[row.provider]"
@@ -131,7 +139,7 @@
               </button>
               <!-- 确认保存 -->
               <button
-                v-if="selectedModels[row.provider] && selectedModels[row.provider] !== confirmedModels[row.provider]"
+                v-if="isAdmin && selectedModels[row.provider] && selectedModels[row.provider] !== confirmedModels[row.provider]"
                 class="ak-btn ak-btn-confirm"
                 @click="confirmModel(row.provider)"
               >
@@ -153,9 +161,10 @@
                 :min="1"
                 :max="99"
                 size="small"
+                :disabled="!isAdmin"
                 controls-position="right"
                 class="ak-priority-input"
-                @change="savePriority(row)"
+                @change="isAdmin && savePriority(row)"
               />
               <span class="ak-priority-hint">数字越小越先调用，失败自动切换下一家</span>
             </div>
@@ -238,7 +247,7 @@
       </el-form>
       <template #footer>
         <el-button @click="showDialog = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" :disabled="!form.preset" @click="submitAdd">添加</el-button>
+        <el-button v-if="isAdmin" type="primary" :loading="submitting" :disabled="!form.preset" @click="submitAdd">添加</el-button>
       </template>
     </el-dialog>
 
@@ -250,6 +259,10 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { aiKeyApi, type AIKeyConfig } from '@/api/ai'
+import { useAuthStore } from '@/stores/authStore'
+
+const authStore = useAuthStore()
+const isAdmin = computed(() => authStore.isAdmin)
 
 const PRESETS = [
   { value: 'openai',    label: 'OpenAI',                 provider: 'openai',    base_url: 'https://api.openai.com/v1',                         color: '#10a37f' },
@@ -633,6 +646,9 @@ onMounted(loadKeys)
 /* ── 旋转 ── */
 .spin { display: inline-block; animation: spinIt 0.8s linear infinite; }
 @keyframes spinIt { to { transform: rotate(360deg); } }
+
+/* ── 只读提示 ── */
+.ak-readonly-banner { font-size: 12px; color: var(--text-alt-muted); padding: 6px 12px; background: var(--bg-deep); border: 1px dashed var(--border-alt); border-radius: 6px; text-align: center; }
 
 /* ── 空状态 ── */
 .ak-empty { text-align: center; padding: 60px 0; color: var(--text-alt-muted); }

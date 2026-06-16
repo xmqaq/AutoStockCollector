@@ -2,11 +2,12 @@
 待办事项 CRUD 接口
 支持：分页查询（page/pageSize/category）、新增（记录提交IP）、编辑、删除（含批量）
 """
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
 from datetime import datetime
 from utils.helpers import beijing_now
 from typing import Optional
 import uuid
+from api.auth_utils import login_required
 
 todo_bp = Blueprint("todo", __name__, url_prefix="/api/v1/todo")
 
@@ -70,8 +71,9 @@ def list_todos():
 
 
 @todo_bp.route("", methods=["POST"])
+@login_required
 def create_todo():
-    """新增待办事项，记录提交人 IP"""
+    """新增待办事项，记录提交人 IP 和用户名"""
     db = _get_db()
     body = request.get_json() or {}
     text = (body.get("text") or "").strip()
@@ -82,6 +84,9 @@ def create_todo():
     if category not in _VALID_CATEGORIES:
         category = "todo"
 
+    user = g.current_user
+    submitter_name = user.get("nickname") or user.get("username", "未知")
+
     now = beijing_now().strftime("%Y-%m-%d %H:%M:%S")
     doc = {
         "id": str(uuid.uuid4()),
@@ -89,6 +94,7 @@ def create_todo():
         "category": category,
         "done": False,
         "submitterIp": _get_client_ip(),
+        "submitterName": submitter_name,
         "createdAt": now,
         "updatedAt": now,
     }
@@ -97,6 +103,7 @@ def create_todo():
 
 
 @todo_bp.route("/<todo_id>", methods=["PUT"])
+@login_required
 def update_todo(todo_id: str):
     """更新待办事项（text / category / done）"""
     body = request.get_json() or {}
@@ -127,6 +134,7 @@ def update_todo(todo_id: str):
 
 
 @todo_bp.route("/<todo_id>", methods=["DELETE"])
+@login_required
 def delete_todo(todo_id: str):
     """删除单条待办"""
     db = _get_db()
@@ -137,6 +145,7 @@ def delete_todo(todo_id: str):
 
 
 @todo_bp.route("/batch", methods=["DELETE"])
+@login_required
 def batch_delete_todos():
     """批量删除（POST JSON body: {"ids": ["id1", "id2"]}）"""
     body = request.get_json() or {}

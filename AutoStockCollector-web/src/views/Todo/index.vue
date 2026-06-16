@@ -54,7 +54,9 @@
               {{ item.done ? '已完成' : '待完成' }}
             </el-tag>
             <span class="todo-time">
-              <template v-if="item.submitterIp">{{ item.submitterIp }} · </template>{{ item.updatedAt || item.createdAt }}
+              <template v-if="item.submitterName">{{ item.submitterName }}</template>
+              <template v-if="item.submitterIp"> · {{ item.submitterIp }}</template>
+              <template v-if="item.submitterName || item.submitterIp"> · </template>{{ item.updatedAt || item.createdAt }}
             </span>
           </div>
           <div

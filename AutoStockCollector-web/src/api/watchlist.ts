@@ -1,8 +1,8 @@
 import client from './client'
 
 export const watchlistApi = {
-  getWatchlist(userId = 'default') {
-    return client.get('/api/v1/watchlist', { params: { user_id: userId } })
+  getWatchlist() {
+    return client.get('/api/v1/watchlist')
   },
 
   addWatchlist(data: { code: string; priority?: number }) {
@@ -14,6 +14,6 @@ export const watchlistApi = {
   },
 
   list() {
-    return client.get('/api/v1/watchlist', { params: { user_id: 'default' } })
+    return client.get('/api/v1/watchlist')
   },
 }

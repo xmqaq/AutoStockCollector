@@ -1,12 +1,13 @@
 """
 API路由定义
 """
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 import time
 import threading
 from utils.logger import get_logger
+from api.auth_utils import login_required
 from utils.helpers import beijing_now
 from modules.ai.engines.analysis import AnalysisEngine
 from modules.ai.engines.advice import AdviceEngine
@@ -152,8 +153,10 @@ def register_routes(app):
     from api.routes.strategies import strategy_bp
     from api.routes.strategy_pick import strategy_pick_bp
     from api.routes.monitor import monitor_bp
+    from api.routes.auth import auth_bp
 
     app.register_blueprint(api_bp)
+    app.register_blueprint(auth_bp)
     app.register_blueprint(ai_advanced_bp)
     app.register_blueprint(sentiment_bp)
     app.register_blueprint(paper_bp)
@@ -725,10 +728,11 @@ def check_gaps():
 
 
 @api_bp.route("/watchlist", methods=["GET"])
+@login_required
 def get_watchlist():
     from modules.watchlist.watchlist import WatchlistManager
 
-    user_id = request.args.get("user_id", "default")
+    user_id = g.current_user["user_id"]
 
     manager = WatchlistManager()
     stocks = manager.get_watchlist(user_id)
@@ -745,6 +749,7 @@ def get_watchlist():
 
 
 @api_bp.route("/watchlist", methods=["POST"])
+@login_required
 def add_to_watchlist():
     from modules.watchlist.watchlist import WatchlistManager
 
@@ -752,7 +757,7 @@ def add_to_watchlist():
     if not data:
         return jsonify({"error": "No data provided"}), 400
 
-    user_id = data.get("user_id", "default")
+    user_id = g.current_user["user_id"]
     code = data.get("code")
     priority = data.get("priority", 0)
 
@@ -769,11 +774,12 @@ def add_to_watchlist():
 
 
 @api_bp.route("/watchlist/<code>", methods=["DELETE"])
+@login_required
 def remove_from_watchlist(code):
     from modules.watchlist.watchlist import WatchlistManager
 
     code = _normalize_code(code)
-    user_id = request.args.get("user_id", "default")
+    user_id = g.current_user["user_id"]
 
     manager = WatchlistManager()
     success = manager.remove_stock(user_id, code)

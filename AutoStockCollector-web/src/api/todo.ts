@@ -6,6 +6,7 @@ export interface TodoItem {
   category: 'todo' | 'plan' | 'suggestion'
   done: boolean
   submitterIp?: string
+  submitterName?: string
   createdAt: string
   updatedAt: string
 }

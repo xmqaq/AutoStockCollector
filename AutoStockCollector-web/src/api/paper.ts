@@ -63,6 +63,18 @@ export interface NavPoint {
   initial_capital?: number
 }
 
+export interface RankingEntry {
+  rank: number
+  user_id: string
+  username: string
+  raw_username?: string
+  profit_pct: number
+  profit_amount: number
+  initial_capital: number
+  win_rate: number
+  total_trades: number
+}
+
 export interface AiSignal {
   action?: string
   reason?: string
@@ -140,6 +152,15 @@ export const paperApi = {
   async getNav(): Promise<NavPoint[]> {
     const res = await request.get<{ data: NavPoint[] }>('/api/paper/nav')
     return res.data?.data ?? []
+  },
+
+  async getRanking(): Promise<RankingEntry[]> {
+    try {
+      const res = await request.get<{ data: RankingEntry[] }>('/api/paper/ranking')
+      return res.data?.data ?? []
+    } catch {
+      return []
+    }
   },
 
   async getAiAdvice(code: string, cost?: number, position?: number): Promise<AiSignal> {

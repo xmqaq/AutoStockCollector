@@ -135,6 +135,10 @@ class DatabaseConfig:
         cls._safe_index(db.todo, [("category", 1)])
         cls._safe_index(db.todo, [("done", 1)])
 
+        cls._safe_index(db.users, [("username", 1)], unique=True)
+        cls._safe_index(db.users, [("email", 1)], sparse=True)
+        cls._safe_index(db.users, [("user_id", 1)], unique=True)
+
         logger.info("Database indexes ensured successfully")
 
 
