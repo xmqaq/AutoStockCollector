@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 import time
 import threading
 from utils.logger import get_logger
-from api.auth_utils import login_required
+from api.auth_utils import login_required, admin_required
 from utils.helpers import beijing_now
 from modules.ai.engines.analysis import AnalysisEngine
 from modules.ai.engines.advice import AdviceEngine
@@ -1483,8 +1483,9 @@ _ALL_COLLECTIONS = list(_DATA_TYPE_COLLECTION_MAP.values())
 
 
 @api_bp.route("/db/clear", methods=["POST"])
+@admin_required
 def clear_collections():
-    """清空指定的数据集合，默认清空所有8类数据"""
+    """清空指定的数据集合，默认清空所有8类数据。毁灭性操作，仅管理员可用。"""
     from config.database import DatabaseConfig
 
     data = request.get_json() or {}
@@ -1508,8 +1509,9 @@ def clear_collections():
 
 
 @api_bp.route("/collect/clear_single", methods=["POST"])
+@admin_required
 def clear_single_collection():
-    """按数据类型清空单个集合。
+    """按数据类型清空单个集合。毁灭性操作，仅管理员可用。
     Body: {"data_type": "kline"}
     data_type 可选值：kline / stock_info / financial / news / fund_flow / dragon_tiger / sector / margin
     """
@@ -1538,6 +1540,26 @@ def clear_single_collection():
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+def _get_busy_task_types() -> set:
+    """返回当前 running/pending 的采集任务类型集合。
+
+    cron 触发有跨进程锁 `_claim_trigger_slot`，但手动采集入口（补历史/增量更新/
+    立即更新）此前无任何互斥，连点会并发叠加同类型全市场任务、放大请求量触发熔断。
+    此处供手动入口去重：同类型已有在跑/排队的任务时跳过，避免重复触发。
+    """
+    from core.scheduler.scheduler import scheduler
+    busy: set = set()
+    try:
+        for status in ("running", "pending"):
+            for t in scheduler.list_tasks(status=status, limit=200):
+                ttype = t.get("task_type")
+                if ttype:
+                    busy.add(ttype)
+    except Exception as e:
+        logger.warning(f"_get_busy_task_types failed: {e}")
+    return busy
 
 
 def _build_history_tasks(start_date: str, end_date: str, task_types=None) -> list:
@@ -1589,10 +1611,15 @@ def start_history_collection():
 
     tasks = _build_history_tasks(start_date, end_date, task_types)
 
+    busy = _get_busy_task_types()
     started = {}
     failed = {}
+    skipped_busy = []
     for task_cfg in tasks:
         ttype = task_cfg["task_type"]
+        if ttype in busy:
+            skipped_busy.append(ttype)
+            continue
         try:
             task_id = scheduler.create_task(ttype, task_cfg["params"])
             scheduler.start_task(task_id)
@@ -1605,6 +1632,7 @@ def start_history_collection():
         "start_date": start_date,
         "end_date": end_date,
         "started": started,
+        "skipped_busy": skipped_busy,
         "failed": failed,
         "total_started": len(started),
         "timestamp": beijing_now().isoformat()
@@ -1612,18 +1640,22 @@ def start_history_collection():
 
 
 def _get_effective_end_date(today: str) -> str:
-    """返回最近的 A 股交易日（跳过周末；公众假日由调用者自行处理）。
-    17:00 前用昨日，之后用今日；再向前滚直到落在周一~周五。
+    """返回此刻应有数据的最近交易日（增量更新的补抓终点）。
+
+    与健康判定 `_get_expected_latest_td` 统一口径（16:00 收盘分界 + 交易日历），
+    修复此前"增量更新用 17:00 分界只补到昨天、而健康用 16:00 分界期望今天"的口径
+    错配——否则 16:00–17:00 之间点「增量更新」补到的日期仍落后于健康期望，更新后
+    依旧显示「需更新」，用户感觉点了没反应。
+
+    today 为北京时区当天日期串；解析为带当前时分的 datetime 后复用同一判定逻辑。
     """
-    from datetime import datetime, timedelta, timezone
-    beijing_now = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=8)
-    d = datetime.strptime(today, "%Y-%m-%d")
-    if beijing_now.hour < 17:
-        d -= timedelta(days=1)
-    # 向前滚到最近的工作日（周六=5，周日=6）
-    while d.weekday() >= 5:
-        d -= timedelta(days=1)
-    return d.strftime("%Y-%m-%d")
+    try:
+        base = datetime.strptime(today, "%Y-%m-%d")
+        now = beijing_now()
+        anchored = base.replace(hour=now.hour, minute=now.minute, second=0, microsecond=0)
+        return _get_expected_latest_td(anchored)
+    except Exception:
+        return today
 
 
 def _compute_update_latest_tasks(stats: dict, task_types=None, today: str = None,
@@ -1715,9 +1747,14 @@ def start_update_latest():
         force=force
     )
 
+    busy = _get_busy_task_types()
     started, failed = {}, {}
+    skipped_busy = []
     for task_cfg in tasks:
         ttype = task_cfg["task_type"]
+        if ttype in busy:
+            skipped_busy.append(ttype)
+            continue
         try:
             task_id = scheduler.create_task(ttype, task_cfg["params"])
             scheduler.start_task(task_id)
@@ -1729,6 +1766,7 @@ def start_update_latest():
         "success": True,
         "started": started,
         "skipped": skipped,
+        "skipped_busy": skipped_busy,
         "failed": failed,
         "total_started": len(started),
         "timestamp": beijing_now().isoformat()

@@ -30,10 +30,10 @@
           <template #dropdown>
             <el-dropdown-menu class="custom-dropdown">
               <div class="dropdown-header">高级操作</div>
-              <el-dropdown-item @click="confirmClearTasks" class="danger-item warning">
+              <el-dropdown-item @click="handleClearTasks" class="danger-item warning">
                 <el-icon><Delete /></el-icon> 清理任务记录
               </el-dropdown-item>
-              <el-dropdown-item @click="confirmClearDb" class="danger-item critical">
+              <el-dropdown-item @click="handleClearDb" class="danger-item critical">
                 <el-icon><Delete /></el-icon> 强制清空数据库
               </el-dropdown-item>
             </el-dropdown-menu>
@@ -92,6 +92,13 @@
               <div class="card-header">
                 <span>数据完整性（{{ coverage?.ref_date || '--' }}）</span>
                 <div class="header-chips">
+                  <el-tooltip
+                    v-if="coverageRefStale"
+                    content="今日资金流向（覆盖率基准）尚未采集，基准已回退到上一交易日，下列覆盖率反映的是该日数据"
+                    placement="top"
+                  >
+                    <el-tag type="info" size="small">基准非今日</el-tag>
+                  </el-tooltip>
                   <el-tag v-if="freshnessStale > 0" type="warning" size="small">{{ freshnessStale }} 类需更新</el-tag>
                   <el-tag v-if="freshnessError > 0" type="danger" size="small">{{ freshnessError }} 类异常</el-tag>
                   <el-tag v-if="freshnessStale === 0 && freshnessError === 0" type="success" size="small">{{ freshnessOk }} 类时效正常</el-tag>
@@ -342,6 +349,16 @@ async function loadCoverage() {
   } catch { /* 体检失败不阻塞页面其他功能 */ }
 }
 
+// 覆盖率基准日（fund_flow 最近有数据日）是否早于今天：早于则说明今日基准未采集，
+// 覆盖率反映的是旧交易日数据，提示用户避免误判“今天数据正常”。
+const coverageRefStale = computed(() => {
+  const ref = coverage.value?.ref_date
+  if (!ref) return false
+  const d = new Date()
+  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return ref < today
+})
+
 const taskStatusFilter = ref('')
 
 // ---------------- 补历史 ----------------
@@ -388,12 +405,13 @@ async function handleHistory() {
   if (needDate && !historyDateRange.value?.[0]) { ElMessage.warning('请选择日期范围'); return }
   historyLoading.value = true
   try {
-    await collectApi.collectHistory({
+    const res = await collectApi.collectHistory({
       start_date: historyDateRange.value?.[0] ?? '',
       end_date: historyDateRange.value?.[1] ?? '',
       task_types: types,
     })
-    ElMessage.success('历史采集任务已启动')
+    const busy = res.data?.skipped_busy || []
+    ElMessage.success(busy.length ? `已启动，${busy.length} 类正在采集中已跳过` : '历史采集任务已启动')
     showHistoryModal.value = false
     await Promise.all([loadTasks(), collectStore.fetchProgress()])
   } finally { historyLoading.value = false }
@@ -429,7 +447,12 @@ async function handleUpdate() {
   try {
     const res = await collectApi.updateLatest({ task_types: types })
     const skipped = res.data?.skipped || []
-    ElMessage.success(skipped.length ? `已启动，${skipped.length} 类已是最新跳过` : '更新任务已启动')
+    const busy = res.data?.skipped_busy || []
+    const notes = [
+      skipped.length ? `${skipped.length} 类已是最新` : '',
+      busy.length ? `${busy.length} 类采集中已跳过` : '',
+    ].filter(Boolean).join('，')
+    ElMessage.success(notes ? `已启动（${notes}）` : '更新任务已启动')
     showUpdateModal.value = false
     await Promise.all([loadTasks(), collectStore.fetchProgress()])
   } finally { updateLoading.value = false }
@@ -504,24 +527,22 @@ async function loadTasks() {
   await collectStore.fetchTasks(taskStatusFilter.value || undefined, 50)
 }
 
+// cron 状态不必每轮都查：累计经过约 60s 才刷新一次
+let _cronRefreshAccumMs = 0
+
 // 自动轮询：静默更新数据，不触发组件级 loading（不会显示表格遮罩）
-async function pollSilently() {
+async function pollSilently(elapsedMs = 0) {
   try {
     await Promise.all([
       collectStore.fetchProgress(),
       collectStore.fetchTasks(taskStatusFilter.value || undefined, 50),
     ])
-    // cron 状态每分钟刷新一次（不必每次都查）
-    if (Date.now() % 60000 < 15000) loadCronStatus()
+    _cronRefreshAccumMs += elapsedMs
+    if (_cronRefreshAccumMs >= 60000) {
+      _cronRefreshAccumMs = 0
+      loadCronStatus()
+    }
   } catch { /* ignore */ }
-}
-
-function confirmClearDb() {
-  handleClearDb()
-}
-
-function confirmClearTasks() {
-  handleClearTasks()
 }
 
 async function handleClearDb() {
@@ -572,7 +593,7 @@ function hasActiveTasks(): boolean {
 function scheduleNext() {
   const delay = hasActiveTasks() ? 3000 : 15000
   _pollTimer = setTimeout(async () => {
-    await pollSilently()
+    await pollSilently(delay)
     scheduleNext()
   }, delay)
 }

@@ -22,6 +22,12 @@ class Settings:
         "retry_delay": 2,
         "request_timeout": 30,
         "default_batch_size": 100,
+        # 单次外部调用（典型是 akshare 接口）的墙钟硬超时（秒）。
+        # akshare 内部不暴露 timeout，外部源挂起会无限阻塞并占用并发槽，
+        # 直到任务级看门狗（3600s）才强杀。这里把单次调用兜底，使熔断器能对
+        # "挂起不返回"生效。需 < 任务超时(_TASK_TIMEOUT_SECONDS=3600)，
+        # 且 > 单股多接口顺序拉取的正常耗时。
+        "call_timeout": 120,
     }
 
     RATE_LIMIT_CONFIG = {

@@ -8,6 +8,7 @@ from datetime import datetime
 from collections import defaultdict
 from functools import wraps
 from config.settings import Settings
+from utils.helpers import call_with_timeout
 from utils.logger import get_logger
 
 
@@ -241,6 +242,8 @@ class RiskController:
             self.scene_adapter = SceneAdapter()
             self._source_failure_count: Dict[str, int] = defaultdict(int)
             self._source_circuit_breakers: Dict[str, CircuitBreaker] = {}
+            # 单次调用墙钟硬超时（秒），防止外部源挂起永久占用并发槽
+            self.call_timeout = Settings.COLLECTOR_CONFIG.get("call_timeout", 120)
 
             logger.info("RiskController initialized successfully")
 
@@ -302,7 +305,9 @@ class RiskController:
 
             try:
                 with self.concurrent_controller:  # 仅在实际 HTTP 调用期间持有槽
-                    result = func(*args, **kwargs)
+                    # 套墙钟硬超时：外部源挂起时不会无限阻塞，超时抛 TimeoutError，
+                    # 被下方 except 捕获 → 记失败 → 触发熔断 / 退避重试。
+                    result = call_with_timeout(func, self.call_timeout, *args, **kwargs)
                 self.record_success(source)
                 return result
             except Exception as e:

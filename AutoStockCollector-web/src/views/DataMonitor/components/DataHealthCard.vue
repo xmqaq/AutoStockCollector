@@ -259,8 +259,11 @@ async function quickUpdate(taskType: string) {
   try {
     const res = await collectApi.updateLatest({ task_types: [taskType], force: true })
     const started = res.data?.started || {}
+    const busy = res.data?.skipped_busy || []
     if (Object.keys(started).length > 0) {
       ElMessage.success(`${TYPE_LABEL[taskType]} 更新任务已启动`)
+    } else if (busy.includes(taskType)) {
+      ElMessage.info(`${TYPE_LABEL[taskType]} 正在采集中，请稍候`)
     } else {
       ElMessage.info(`${TYPE_LABEL[taskType]} 数据已是最新，无需更新`)
     }
