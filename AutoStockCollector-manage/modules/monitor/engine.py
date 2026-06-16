@@ -173,6 +173,9 @@ class MonitorEngine:
 
         current_price = technical.get("current_price", 0)
 
+        # ── 历史信号反思 ──
+        reflection = self._reflect_on_history(code, current_price)
+
         result = {
             "code": code,
             "name": name or info.get("A股简称", info.get("name", "")),
@@ -201,7 +204,7 @@ class MonitorEngine:
         }
 
         result["trading_advice"] = self._trading_advice(
-            fund_flow, research, technical, composite, price_prediction, valuation, stock_type,
+            fund_flow, research, technical, composite, price_prediction, valuation, stock_type, reflection,
         )
         self._update_price_change(result, code)
         return result
@@ -212,6 +215,7 @@ class MonitorEngine:
         technical: Dict, composite: Dict,
         pp: Dict, valuation: Dict,
         stock_type: str = "自选",
+        reflection: Optional[Dict] = None,
     ) -> Dict[str, Any]:
         """多维度买卖点建议 — 融合主力资金、研报、技术面、估值、综合评分"""
         current = pp.get("current_price", 0)
@@ -237,6 +241,15 @@ class MonitorEngine:
         sc_s = composite.get("short_term", {}).get("score", 50)
         sc_l = composite.get("long_term", {}).get("score", 50)
         divergence = composite.get("divergence", "")
+
+        # ── 维度间分歧检测 ──
+        dim_divergences = self._detect_dim_divergence(ff_s, ff_l, rs_s, tc_s, vl_s, sc_s, sc_l)
+
+        # ── 置信度估计 ──
+        confidence_level = self._calc_advice_confidence(ff_s, rs_s, tc_s, vl_s, sc_s, sc_l)
+
+        # ── 持有期估计 ──
+        time_horizon = self._estimate_holding_period(rr, exp_ret, tc_s, ff_s)
 
         # 位置判断
         if buy_low <= current <= buy_high:
@@ -294,6 +307,8 @@ class MonitorEngine:
             buy_reasons.append(f"盈亏比{rr}，预期{exp_ret:+.1f}%")
             if rs_s >= 55:
                 buy_reasons.append(f"研报短期评分{rs_s:.0f}，基本面支撑")
+            if dim_divergences:
+                buy_reasons.append(f"注意: {'; '.join(dim_divergences[:2])}")
 
         # 买入：在买入区 + 盈亏比好 + 至少一个维度看多
         elif buy_low <= current <= buy_high and rr >= 2 and (ff_s >= 60 or rs_s >= 55 or tc_s >= 60):
@@ -349,10 +364,13 @@ class MonitorEngine:
 
         # ── 剩下：持有 ──
         else:
+            has_divergence = len(dim_divergences) >= 2
             if ff_s >= 55 or tc_s >= 55 or cp_sig in ("buy", "strong_buy"):
                 hold_reason = "各维度信号正常"
                 if cp_sig in ("buy", "strong_buy"):
                     hold_reason += f"，综合看多({cp_sig})"
+                if has_divergence:
+                    hold_reason += f"，{dim_divergences[0]}"
                 buy_reasons.append(hold_reason)
                 buy_reasons.append(f"持有至目标价{target:.2f}(+{exp_ret:.1f}%)")
                 buy_reasons.append(f"止损设在{stop:.2f}(-{max_loss:.1f}%)")
@@ -451,7 +469,12 @@ class MonitorEngine:
                 "hold_period": f"持有至目标价 {round(target, 2) if target else 0}" if target else "",
                 "expected_return": exp_ret,
                 "max_loss": max_loss,
+                "time_horizon": time_horizon,
+                "confidence_level": confidence_level,
+                "entry_price": round(current, 2),
             },
+            "divergence_warnings": dim_divergences[:3],
+            "reflection": reflection,
         }
 
     def _update_price_change(self, result: Dict, code: str):
@@ -468,3 +491,109 @@ class MonitorEngine:
         avg = (s + l) / 2
         consistency = 1 - abs(s - l) / 100
         return round(avg * consistency / 100, 2)
+
+    def _detect_dim_divergence(
+        self, ff_s: float, ff_l: float, rs_s: float,
+        tc_s: float, vl_s: float, sc_s: float, sc_l: float,
+    ) -> List[str]:
+        """检测多维度的方向分歧"""
+        divergences = []
+        if abs(ff_s - tc_s) > 25:
+            if ff_s > tc_s:
+                divergences.append(f"资金偏多({ff_s:.0f})但技术偏空({tc_s:.0f})")
+            else:
+                divergences.append(f"技术偏多({tc_s:.0f})但资金偏空({ff_s:.0f})")
+        if abs(ff_s - rs_s) > 25:
+            if ff_s > rs_s:
+                divergences.append(f"资金积极({ff_s:.0f})但研报谨慎({rs_s:.0f})")
+            else:
+                divergences.append(f"研报看好({rs_s:.0f})但资金流出({ff_s:.0f})")
+        if abs(vl_s - tc_s) > 25:
+            if vl_s > tc_s:
+                divergences.append(f"估值偏低({vl_s:.0f})但有技术压力({tc_s:.0f})")
+            else:
+                divergences.append(f"技术偏多({tc_s:.0f})但估值偏高({vl_s:.0f})")
+        if abs(sc_s - sc_l) > 15:
+            divergences.append(f"短期{sc_s:.0f}/长期{sc_l:.0f}方向分歧")
+        return divergences
+
+    def _calc_advice_confidence(
+        self, ff_s: float, rs_s: float,
+        tc_s: float, vl_s: float,
+        sc_s: float, sc_l: float,
+    ) -> str:
+        """计算建议置信度 — 基于维度间一致性"""
+        scores = [ff_s, rs_s, tc_s, vl_s]
+        avg = sum(scores) / len(scores)
+        variance = sum((s - avg) ** 2 for s in scores) / len(scores)
+        consistency = max(0, 1 - (variance ** 0.5) / 25)
+        term_consistency = max(0, 1 - abs(sc_s - sc_l) / 50)
+        conf = consistency * 0.6 + term_consistency * 0.4
+        if conf >= 0.7:
+            return "高"
+        elif conf >= 0.4:
+            return "中"
+        return "低"
+
+    def _estimate_holding_period(
+        self, rr: float, exp_ret: float,
+        tc_s: float, ff_s: float,
+    ) -> str:
+        """估计建议持有期"""
+        if rr >= 5 and exp_ret >= 30:
+            return "中期持有(15-30天)"
+        elif rr >= 3 and exp_ret >= 15:
+            return "短期持有(5-15天)"
+        elif tc_s >= 65 or ff_s >= 65:
+            return "短线交易(3-7天)"
+        return "中期持有(15-60天)"
+
+    def _reflect_on_history(self, code: str, current_price: float) -> Optional[Dict]:
+        """反思历史信号 — 对比上次建议与当前价格变化"""
+        try:
+            history = list(
+                self._db["monitor_signal_history"]
+                .find({"code": code})
+                .sort("created_at", -1)
+                .limit(5)
+            )
+            if len(history) < 2:
+                return None
+
+            prev = history[1]  # 上一次的信号（最新是本次）
+            prev_action = prev.get("trading_advice", {}).get("action", "持有")
+            prev_price = prev.get("price", 0)
+            prev_target = prev.get("price_prediction", {}).get("target_price", 0)
+
+            if prev_price <= 0:
+                return None
+
+            change_pct = round((current_price - prev_price) / prev_price * 100, 2)
+
+            parts = [f"上次({prev_action})价{prev_price:.2f}→现{current_price:.2f}({change_pct:+.2f}%)"]
+            if prev_action == "买入" and change_pct > 0:
+                parts.append("买入建议正确")
+            elif prev_action == "买入" and change_pct < -3:
+                parts.append("买入后下跌需关注")
+            elif prev_action == "卖出" and change_pct < 0:
+                parts.append("卖出建议正确")
+            elif prev_action == "卖出" and change_pct > 3:
+                parts.append("卖出后上涨需重新评估")
+
+            if prev_target > 0:
+                if current_price >= prev_target:
+                    parts.append("已达上次目标价")
+                else:
+                    pct_to_target = round((prev_target / current_price - 1) * 100, 1)
+                    parts.append(f"距上次目标还差{pct_to_target:+.1f}%")
+
+            return {
+                "previous_action": prev_action,
+                "previous_price": round(prev_price, 2),
+                "current_price": round(current_price, 2),
+                "change_pct": change_pct,
+                "summary": "，".join(parts) if parts else "",
+            }
+        except Exception as e:
+            logger.debug(f"History reflection failed for {code}: {e}")
+            return None
