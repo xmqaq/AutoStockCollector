@@ -129,8 +129,11 @@ class TestCreateTodoIp(unittest.TestCase):
         self.app = _make_app()
         self.client = self.app.test_client()
 
+    # create_todo 受 @login_required 保护：patch _resolve_user 注入假用户，
+    # 让鉴权通过且 g.current_user 有值（否则返回 401）。
+    @patch("api.auth_utils._resolve_user", return_value={"username": "tester", "nickname": "测试员"})
     @patch("api.routes.todo._get_db")
-    def test_stores_submitter_ip(self, mock_get_db):
+    def test_stores_submitter_ip(self, mock_get_db, _mock_user):
         mock_col = MagicMock()
         mock_get_db.return_value = {"todo": mock_col}
 
@@ -144,11 +147,12 @@ class TestCreateTodoIp(unittest.TestCase):
         resp = self.client.post(
             "/api/v1/todo",
             json={"text": "test item", "category": "todo"},
-            headers={"X-Forwarded-For": "9.9.9.9"},
+            headers={"X-Forwarded-For": "9.9.9.9", "Authorization": "Bearer faketoken"},
         )
 
         self.assertEqual(resp.status_code, 201)
         self.assertEqual(inserted.get("submitterIp"), "9.9.9.9")
+        self.assertEqual(inserted.get("submitterName"), "测试员")
         self.assertEqual(resp.get_json()["data"]["submitterIp"], "9.9.9.9")
 
 
