@@ -726,8 +726,9 @@ class QuantMultiFactorExecutor:
             c = history_reflections.get(code)
             reflection_text = None
             if c:
-                change = round((c['prev_change_pct']), 2)
-                reflection_text = f"上次总分{c['prev_score']:.0f}→本次{total:.0f}，上次选入后涨跌{change:+.2f}%"
+                reflection_text = f"上次总分{c['prev_score']:.0f}→本次{total:.0f}"
+                if c.get('prev_change_pct') is not None:
+                    reflection_text += f"，上次选入后涨跌{c['prev_change_pct']:+.2f}%"
 
             scored.append({
                 'code': code,
@@ -772,29 +773,72 @@ class QuantMultiFactorExecutor:
         """加载前次选股结果，对比本次价格变化生成反思"""
         try:
             db = DatabaseConfig.get_database()
+            # 注意: result_type/results/execution_time 嵌在 result 文档下，须用 result. 前缀
             prev = list(
                 db["workflow_execution"]
                 .find(
-                    {"workflow_id": self.workflow_id, "result_type": "quant_multi_factor"},
-                    {"results": 1, "execution_time": 1, "_id": 0},
+                    {"workflow_id": self.workflow_id, "result.result_type": "quant_multi_factor"},
+                    {"result.results": 1, "result.execution_time": 1, "_id": 0},
                 )
-                .sort("execution_time", -1)
+                .sort("result.execution_time", -1)
                 .limit(2)
             )
             if len(prev) < 2:
                 return {}
 
-            prev_results = {r["code"]: r for r in (prev[1].get("results") or []) if "code" in r}
+            prev_result = prev[1].get("result") or {}
+            prev_results = {r["code"]: r for r in (prev_result.get("results") or []) if "code" in r}
+            if not prev_results:
+                return {}
+
+            # 上次执行时间 → 用于在K线中定位当时的收盘价
+            prev_dt = None
+            prev_time = prev_result.get("execution_time", "")
+            if prev_time:
+                try:
+                    prev_dt = datetime.fromisoformat(prev_time)
+                    if prev_dt.tzinfo is not None:
+                        prev_dt = prev_dt.replace(tzinfo=None)
+                except (ValueError, TypeError):
+                    prev_dt = None
+
             reflections = {}
             for code in codes:
                 old = prev_results.get(code)
-                if old and old.get("total_score"):
-                    old_score = old["total_score"]
-                    reflections[code] = {"prev_score": old_score, "prev_change_pct": 0}
+                if not (old and old.get("total_score")):
+                    continue
+                change_pct = self._price_change_since(code, prev_dt)
+                reflections[code] = {
+                    "prev_score": old["total_score"],
+                    "prev_change_pct": change_pct,  # 可能为 None(K线缺失/无法定位时)
+                }
             return reflections
         except Exception as e:
             logger.debug(f"History reflection load failed: {e}")
             return {}
+
+    def _price_change_since(self, code: str, prev_dt: Optional[datetime]) -> Optional[float]:
+        """对比上次执行时点收盘价与当前收盘价的涨跌幅%(基于已加载的K线)"""
+        if prev_dt is None:
+            return None
+        klines = self.kline_data.get(code) or []
+        closes = [(k.get("date"), k.get("close")) for k in klines if k.get("close")]
+        if len(closes) < 2:
+            return None
+        current_close = closes[-1][1]
+        # K线按日期升序，取 <= prev_dt 的最后一根作为上次选入时的收盘价
+        prev_close = None
+        for d, c in closes:
+            if d is None:
+                continue
+            kd = d.replace(tzinfo=None) if getattr(d, "tzinfo", None) is not None else d
+            if kd <= prev_dt:
+                prev_close = c
+            else:
+                break
+        if not prev_close:
+            return None
+        return round((current_close - prev_close) / prev_close * 100, 2)
 
     def _build_reason(self, f: float, t: float, ff: float, v: float, m: float = 50.0) -> str:
         mapping = [
