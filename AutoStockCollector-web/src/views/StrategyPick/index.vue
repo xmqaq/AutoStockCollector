@@ -846,7 +846,7 @@ async function buyAllPositions() {
         <div style="margin-top:8px">剩余资金：¥${(cash - totalAmount).toFixed(2)}</div>
       </div>`,
       '确认批量买入',
-      { confirmButtonText: '确认买入', cancelButtonText: '取消', dangerouslyUseHTMLString: true, width: '520px', type: 'info' }
+      { confirmButtonText: '确认买入', cancelButtonText: '取消', dangerouslyUseHTMLString: true, customStyle: { width: '520px' }, type: 'info' }
     ).catch(() => false)
     if (!confirmed) return
 
