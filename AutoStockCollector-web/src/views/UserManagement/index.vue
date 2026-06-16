@@ -1,82 +1,53 @@
 <template>
   <div class="user-management">
-    <div class="page-header">
-      <h2>用户管理</h2>
-      <span class="page-desc">共 {{ users.length }} 个用户</span>
+    <!-- Premium Header -->
+    <div class="dashboard-header">
+      <div class="header-content">
+        <h2 class="page-title">系统用户管理</h2>
+        <p class="page-subtitle">管理系统中的所有账户权限及信息</p>
+      </div>
+      <div class="header-stats">
+        <div class="stat-item">
+          <div class="stat-label">总用户数</div>
+          <div class="stat-value font-mono">{{ users.length }}</div>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+          <div class="stat-label">管理员</div>
+          <div class="stat-value font-mono text-danger">{{ adminCount }}</div>
+        </div>
+      </div>
     </div>
 
-    <el-card shadow="never" class="table-card">
-      <el-table :data="users" v-loading="loading" stripe style="width: 100%">
-        <el-table-column prop="username" label="用户名" min-width="120" />
-        <el-table-column prop="email" label="邮箱" min-width="180">
-          <template #default="{ row }">
-            {{ row.email || '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="role" label="角色" width="120">
-          <template #default="{ row }">
-            <el-tag :type="row.role === 'admin' ? 'danger' : 'info'" size="small">
-              {{ row.role === 'admin' ? '管理员' : '普通用户' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="注册时间" width="180">
-          <template #default="{ row }">
-            {{ formatDate(row.created_at) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
-          <template #default="{ row }">
-            <el-button
-              v-if="row.user_id !== authStore.user?.user_id"
-              :type="row.role === 'admin' ? 'warning' : 'primary'"
-              size="small"
-              :loading="changingRole === row.user_id"
-              @click="toggleRole(row)"
-            >
-              {{ row.role === 'admin' ? '降为普通用户' : '设为管理员' }}
-            </el-button>
-            <el-popconfirm
-              v-if="row.user_id !== authStore.user?.user_id"
-              title="确定删除该用户？"
-              confirm-button-text="删除"
-              @confirm="handleDelete(row)"
-            >
-              <template #reference>
-                <el-button type="danger" size="small" :loading="deleting === row.user_id">
-                  删除
-                </el-button>
-              </template>
-            </el-popconfirm>
-            <span v-if="row.user_id === authStore.user?.user_id" class="self-tag">当前用户</span>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+    <!-- Main Content -->
+    <div class="content-wrapper">
+      <UserTable 
+        :users="users"
+        :loading="loading"
+        :changingRole="changingRole"
+        :deleting="deleting"
+        @toggle-role="toggleRole"
+        @delete="handleDelete"
+      />
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useAuthStore } from '@/stores/authStore'
+import { ref, onMounted, computed } from 'vue'
 import { authApi } from '@/api/auth'
 import type { UserInfo } from '@/api/auth'
 import { ElMessage } from 'element-plus'
+import UserTable from './components/UserTable.vue'
 
-const authStore = useAuthStore()
 const users = ref<UserInfo[]>([])
 const loading = ref(false)
 const changingRole = ref('')
 const deleting = ref('')
 
-function formatDate(dateStr?: string) {
-  if (!dateStr) return '-'
-  try {
-    return dateStr.slice(0, 19).replace('T', ' ')
-  } catch {
-    return dateStr
-  }
-}
+const adminCount = computed(() => {
+  return users.value.filter(u => u.role === 'admin').length
+})
 
 async function fetchUsers() {
   loading.value = true
@@ -122,35 +93,91 @@ onMounted(fetchUsers)
 
 <style scoped>
 .user-management {
-  padding: 0;
-}
-
-.page-header {
   display: flex;
-  align-items: baseline;
-  gap: 12px;
-  margin-bottom: 20px;
+  flex-direction: column;
+  gap: 20px;
+  height: 100%;
 }
 
-.page-header h2 {
+/* Premium Header Styling */
+.dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: linear-gradient(135deg, #ffffff 0%, #fcfcfd 100%);
+  border: 1px solid var(--border-color, #ebeef5);
+  border-radius: 12px;
+  padding: 24px 32px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.02);
+}
+
+.header-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.page-title {
   margin: 0;
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 600;
   color: var(--text-primary);
+  letter-spacing: 0.5px;
 }
 
-.page-desc {
+.page-subtitle {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.header-stats {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  background: var(--bg-soft, #f8f9fa);
+  padding: 12px 24px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color-light, #f0f2f5);
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 60px;
+}
+
+.stat-label {
   font-size: 13px;
   color: var(--text-muted);
+  font-weight: 500;
 }
 
-.table-card {
-  border-radius: var(--radius-md);
+.stat-value {
+  font-size: 24px;
+  font-weight: bold;
+  color: var(--text-primary);
+  line-height: 1;
 }
 
-.self-tag {
-  font-size: 12px;
-  color: var(--text-muted);
-  padding: 0 8px;
+.stat-divider {
+  width: 1px;
+  height: 32px;
+  background-color: var(--border-color, #ebeef5);
+}
+
+.font-mono {
+  font-family: var(--font-mono, "DIN Alternate", "Helvetica Neue", sans-serif);
+}
+
+.text-danger {
+  color: var(--el-color-danger) !important;
+}
+
+/* Content Area */
+.content-wrapper {
+  flex: 1;
+  min-height: 0;
 }
 </style>

@@ -1,134 +1,82 @@
 <template>
   <div class="todo-page">
-    <div class="stats-bar">
-      <div class="stat-item">
-        <span class="stat-num total">{{ globalStats.total }}</span>
-        <span class="stat-lbl">总计</span>
-      </div>
-      <div class="stat-item">
-        <span class="stat-num done">{{ globalStats.done }}</span>
-        <span class="stat-lbl">已完成</span>
-      </div>
-      <div class="stat-item">
-        <span class="stat-num pending">{{ globalStats.pending }}</span>
-        <span class="stat-lbl">待完成</span>
-      </div>
-      <el-progress
-        :percentage="donePercent"
-        :stroke-width="10"
-        class="stat-progress"
-        :color="donePercent === 100 ? '#3f9d70' : '#3f7fae'"
-      />
+    <div class="page-header">
+      <h2 class="page-title">待办事项管理</h2>
+      <p class="page-desc">高效管理您的任务、计划与意见建议</p>
     </div>
 
-    <el-card shadow="never" class="section-card">
+    <TodoStats :stats="globalStats" />
+
+    <el-card shadow="never" class="pro-card">
       <template #header>
         <div class="card-header">
-          <span>待办事项</span>
-          <el-button type="primary" size="small" @click="showAdd = true">新增</el-button>
+          <span class="card-title">任务列表</span>
+          <el-button type="primary" size="default" @click="showAdd = true">
+            <el-icon class="el-icon--left"><Plus /></el-icon>新增事项
+          </el-button>
         </div>
       </template>
 
       <div class="filter-bar">
-        <el-select v-model="filter" size="small" style="width: 140px">
-          <el-option label="全部" value="all" />
-          <el-option label="待办事项" value="todo" />
-          <el-option label="下一步计划" value="plan" />
-          <el-option label="意见建议" value="suggestion" />
-        </el-select>
-        <el-tag type="info" size="small">
-          {{ pagination.total }} / {{ globalStats.total }}
-        </el-tag>
+        <el-radio-group v-model="filter" size="default" class="filter-group">
+          <el-radio-button label="all">全部任务</el-radio-button>
+          <el-radio-button label="todo">待办事项</el-radio-button>
+          <el-radio-button label="plan">下一步计划</el-radio-button>
+          <el-radio-button label="suggestion">意见建议</el-radio-button>
+        </el-radio-group>
+        <div class="filter-stats">
+          当前展示：<span class="highlight">{{ pagination.total }}</span> / 总计：<span>{{ globalStats.total }}</span>
+        </div>
       </div>
 
       <div v-if="items.length === 0" class="empty-state">
-        暂无{{ filter === 'all' ? '' : `「${filterLabels[filter]}」` }}事项
+        <el-empty 
+          :description="`暂无${filter === 'all' ? '任何' : '「' + filterLabels[filter] + '」'}事项`" 
+          :image-size="120" 
+        />
       </div>
 
-      <div v-for="item in items" :key="item.id" :class="['todo-item', { done: item.done }]">
-        <el-checkbox :model-value="item.done" @change="toggleDone(item)" />
-        <div class="todo-body" @click.stop="toggleDone(item)">
-          <div class="todo-meta">
-            <el-tag size="small" :type="tagType(item.category)">{{ filterLabels[item.category] }}</el-tag>
-            <el-tag size="small" :type="item.done ? 'success' : 'warning'" effect="dark" style="border:0">
-              {{ item.done ? '已完成' : '待完成' }}
-            </el-tag>
-            <span class="todo-time">
-              <template v-if="item.submitterName">{{ item.submitterName }}</template>
-              <template v-if="item.submitterIp"> · {{ item.submitterIp }}</template>
-              <template v-if="item.submitterName || item.submitterIp"> · </template>{{ item.updatedAt || item.createdAt }}
-            </span>
-          </div>
-          <div
-            v-if="editingId !== item.id"
-            class="todo-text"
-            :class="{ 'line-through': item.done }"
-            @dblclick.stop="startEdit(item)"
-          >
-            {{ item.text }}
-          </div>
-          <div v-else class="todo-edit-row">
-            <el-input
-              :ref="(el: any) => setEditRef(item.id, el)"
-              v-model="editText"
-              size="small"
-              @keyup.enter="confirmEdit"
-              @keyup.escape="cancelEdit"
-              @blur="confirmEdit"
-            />
-            <el-select v-model="editCategory" size="small" style="width: 120px" @change="confirmEdit">
-              <el-option label="待办事项" value="todo" />
-              <el-option label="下一步计划" value="plan" />
-              <el-option label="意见建议" value="suggestion" />
-            </el-select>
-          </div>
-        </div>
-        <el-button text size="small" type="danger" @click="remove(item.id)">删除</el-button>
+      <div class="todo-list-wrapper" v-else>
+        <TodoListItem
+          v-for="item in items"
+          :key="item.id"
+          :item="item"
+          :filter-labels="filterLabels"
+          @toggle="toggleDone"
+          @remove="remove"
+          @update="updateItem"
+        />
       </div>
 
-      <div class="pagination-bar">
+      <div class="pagination-bar" v-if="items.length > 0 || pagination.total > 0">
         <el-pagination
           v-model:current-page="pagination.page"
           v-model:page-size="pagination.pageSize"
           :total="pagination.total"
           :page-sizes="[10, 20, 50]"
-          layout="total, sizes, prev, pager, next"
+          layout="total, sizes, prev, pager, next, jumper"
+          background
           @change="load"
         />
       </div>
     </el-card>
 
-    <el-dialog v-model="showAdd" title="新增事项" width="480px" :close-on-click-modal="false">
-      <el-form label-position="top">
-        <el-form-item label="内容">
-          <el-input
-            v-model="newText"
-            type="textarea"
-            :rows="3"
-            placeholder="输入待办事项、下一步计划或意见建议..."
-            @keyup.enter.ctrl="addTodo"
-          />
-        </el-form-item>
-        <el-form-item label="分类">
-          <el-select v-model="newCategory" style="width: 100%">
-            <el-option label="待办事项" value="todo" />
-            <el-option label="下一步计划" value="plan" />
-            <el-option label="意见建议" value="suggestion" />
-          </el-select>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showAdd = false">取消</el-button>
-        <el-button type="primary" :disabled="!newText.trim()" @click="addTodo">添加</el-button>
-      </template>
-    </el-dialog>
+    <TodoAddDialog
+      v-model:visible="showAdd"
+      @add="addTodo"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Plus } from '@element-plus/icons-vue'
 import { todoApi, type TodoItem } from '@/api/todo'
+
+import TodoStats from './components/TodoStats.vue'
+import TodoListItem from './components/TodoListItem.vue'
+import TodoAddDialog from './components/TodoAddDialog.vue'
 
 const filterLabels: Record<string, string> = {
   todo: '待办事项',
@@ -139,38 +87,9 @@ const filterLabels: Record<string, string> = {
 const items = ref<TodoItem[]>([])
 const filter = ref('all')
 const showAdd = ref(false)
-const newText = ref('')
-const newCategory = ref<'todo' | 'plan' | 'suggestion'>('todo')
-const editingId = ref<string | null>(null)
-const editText = ref('')
-const editCategory = ref<'todo' | 'plan' | 'suggestion'>('todo')
-
-const editInputMap = new Map<string, any>()
-function setEditRef(id: string, el: any) {
-  if (el) {
-    editInputMap.set(id, el)
-  } else {
-    editInputMap.delete(id)
-  }
-}
 
 const pagination = ref({ page: 1, pageSize: 20, total: 0 })
 const globalStats = ref({ total: 0, done: 0, pending: 0 })
-
-const donePercent = computed(() =>
-  globalStats.value.total
-    ? Math.round((globalStats.value.done / globalStats.value.total) * 100)
-    : 0
-)
-
-function tagType(cat: string) {
-  switch (cat) {
-    case 'todo': return 'warning'
-    case 'plan': return 'primary'
-    case 'suggestion': return 'success'
-    default: return 'info'
-  }
-}
 
 async function load() {
   try {
@@ -193,12 +112,9 @@ watch(filter, () => {
   load()
 })
 
-async function addTodo() {
-  const text = newText.value.trim()
-  if (!text) return
+async function addTodo(payload: { text: string; category: 'todo' | 'plan' | 'suggestion' }) {
   try {
-    await todoApi.create({ text, category: newCategory.value })
-    newText.value = ''
+    await todoApi.create(payload)
     showAdd.value = false
     pagination.value.page = 1
     await load()
@@ -216,6 +132,15 @@ async function toggleDone(item: TodoItem) {
   }
 }
 
+async function updateItem(id: string, updates: Partial<Pick<TodoItem, 'text' | 'category'>>) {
+  try {
+    await todoApi.update(id, updates)
+    await load()
+  } catch {
+    ElMessage.error('保存失败，请稍后重试')
+  }
+}
+
 async function remove(id: string) {
   try {
     await todoApi.remove(id)
@@ -228,96 +153,43 @@ async function remove(id: string) {
   }
 }
 
-function startEdit(item: TodoItem) {
-  editingId.value = item.id
-  editText.value = item.text
-  editCategory.value = item.category
-  nextTick(() => {
-    const inputComp = editInputMap.get(item.id)
-    inputComp?.focus?.() ?? inputComp?.input?.focus?.()
-  })
-}
-
-async function confirmEdit() {
-  const id = editingId.value
-  if (!id) return
-  editingId.value = null
-  const item = items.value.find(t => t.id === id)
-  if (item) {
-    const text = editText.value.trim()
-    const updates: Partial<Pick<TodoItem, 'text' | 'category'>> = { category: editCategory.value }
-    if (text) updates.text = text
-    try {
-      await todoApi.update(item.id, updates)
-      await load()
-    } catch {
-      ElMessage.error('保存失败，请稍后重试')
-    }
-  }
-}
-
-function cancelEdit() {
-  editingId.value = null
-}
-
 onMounted(load)
 </script>
 
 <style scoped>
 .todo-page {
-  padding: 16px;
+  padding: 24px;
+  background-color: #f5f7fa;
+  min-height: calc(100vh - 84px); /* 根据实际头部高度调整 */
 }
 
-.stats-bar {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  padding: 14px 20px;
-  margin-bottom: 8px;
+.page-header {
+  margin-bottom: 24px;
 }
 
-.stat-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  min-width: 56px;
-}
-
-.stat-num {
+.page-title {
+  margin: 0 0 8px;
   font-size: 24px;
-  font-weight: 700;
-  line-height: 1.2;
-}
-
-.stat-num.total { color: var(--text-primary); }
-.stat-num.done { color: var(--el-color-success); }
-.stat-num.pending { color: var(--el-color-warning); }
-
-.stat-lbl {
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-top: 2px;
-}
-
-.stat-progress {
-  flex: 1;
-  max-width: 300px;
-}
-
-.section-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-}
-
-.section-card :deep(.el-card__header) {
-  border-bottom: 1px solid var(--border-color);
-  padding: 12px 16px;
-  color: var(--text-primary);
-  font-size: 14px;
   font-weight: 600;
+  color: #303133;
+}
+
+.page-desc {
+  margin: 0;
+  font-size: 14px;
+  color: #909399;
+}
+
+.pro-card {
+  border: none;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+  background: #ffffff;
+}
+
+.pro-card :deep(.el-card__header) {
+  border-bottom: 1px solid #ebeef5;
+  padding: 18px 24px;
 }
 
 .card-header {
@@ -326,101 +198,67 @@ onMounted(load)
   justify-content: space-between;
 }
 
+.card-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+  display: flex;
+  align-items: center;
+}
+
+.card-title::before {
+  content: '';
+  display: inline-block;
+  width: 4px;
+  height: 16px;
+  background: var(--el-color-primary);
+  border-radius: 2px;
+  margin-right: 8px;
+}
+
 .filter-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding: 0 4px;
+}
+
+.filter-group :deep(.el-radio-button__inner) {
+  padding: 10px 20px;
+  font-weight: 500;
+}
+
+.filter-stats {
+  font-size: 14px;
+  color: #606266;
+}
+
+.filter-stats .highlight {
+  color: var(--el-color-primary);
+  font-weight: 600;
+  font-size: 16px;
 }
 
 .empty-state {
-  text-align: center;
-  color: var(--text-faint);
-  padding: 40px 0;
-  font-size: 14px;
+  padding: 60px 0;
 }
 
-.todo-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  margin-bottom: 6px;
-  transition: all 0.2s;
-  background: var(--border-color);
-}
-
-.todo-item:hover {
-  border-color: var(--border-strong);
-}
-
-.todo-item.done {
-  opacity: 0.55;
-}
-
-.todo-body {
-  flex: 1;
-  min-width: 0;
-}
-
-.todo-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.todo-time {
-  font-size: 11px;
-  color: var(--text-faint);
-}
-
-.todo-text {
-  font-size: 13px;
-  color: var(--text-primary);
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-word;
-  cursor: pointer;
-}
-
-.todo-text:hover {
-  color: var(--el-color-primary);
-}
-
-.todo-text.line-through {
-  text-decoration: line-through;
-  color: var(--text-faint);
-}
-
-.todo-edit-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.todo-edit-row :deep(.el-input__wrapper) {
-  background: var(--bg-elevated);
-  box-shadow: 0 0 0 1px var(--border-strong) inset;
-}
-
-.todo-edit-row :deep(.el-select .el-input__wrapper) {
-  background: var(--bg-elevated);
+.todo-list-wrapper {
+  min-height: 200px;
 }
 
 .pagination-bar {
   display: flex;
   justify-content: flex-end;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-color);
-  margin-top: 8px;
+  padding-top: 20px;
+  margin-top: 20px;
+  border-top: 1px dashed #ebeef5;
 }
 
-.pagination-bar :deep(.el-pagination) {
-  --el-pagination-bg-color: transparent;
-  --el-pagination-button-bg-color: var(--border-color);
-  --el-pagination-hover-color: var(--el-color-primary);
+.pagination-bar :deep(.el-pagination.is-background .el-pager li:not(.is-disabled).is-active) {
+  background-color: var(--el-color-primary);
+  color: #fff;
+  font-weight: 600;
 }
 </style>
