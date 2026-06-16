@@ -38,6 +38,7 @@
           <span v-else class="indicator-dot indicator-close" />
           <span class="indicator-text">{{ isTradingTime ? '实时价格' : '昨日收盘价' }}</span>
         </div>
+        <el-button size="small" @click="openDepositDialog">入金/出金</el-button>
         <el-button size="small" @click="showInitDialog = true">初始化账户</el-button>
       </div>
       <div v-else class="no-account">
@@ -121,7 +122,40 @@
         </el-card>
 
         <el-card shadow="never" class="section-card" style="margin-top: 12px">
-          <template #header><span>回测统计</span></template>
+          <template #header>
+            <span>浮盈统计</span>
+            <el-tooltip content="基于当前持仓的未实现盈亏，实时变动" placement="top">
+              <span class="header-hint">当前持仓</span>
+            </el-tooltip>
+          </template>
+          <el-descriptions :column="2" border size="small">
+            <el-descriptions-item label="持仓数">{{ floatingStats.count }}</el-descriptions-item>
+            <el-descriptions-item label="盈/亏">
+              <span class="text-rise">{{ floatingStats.winning }}</span> /
+              <span class="text-fall">{{ floatingStats.losing }}</span>
+            </el-descriptions-item>
+            <el-descriptions-item label="最大浮盈">
+              <span class="text-rise" v-if="floatingStats.maxWin">
+                {{ floatingStats.maxWin.code }} +{{ floatingStats.maxWin.pnl_percent.toFixed(2) }}%
+              </span>
+              <span v-else>—</span>
+            </el-descriptions-item>
+            <el-descriptions-item label="最大浮亏">
+              <span class="text-fall" v-if="floatingStats.maxLoss">
+                {{ floatingStats.maxLoss.code }} {{ floatingStats.maxLoss.pnl_percent.toFixed(2) }}%
+              </span>
+              <span v-else>—</span>
+            </el-descriptions-item>
+          </el-descriptions>
+        </el-card>
+
+        <el-card shadow="never" class="section-card" style="margin-top: 12px">
+          <template #header>
+            <span>交易统计</span>
+            <el-tooltip content="仅统计已平仓（买入后卖出）的交易，未卖出的持仓不计入" placement="top">
+              <span class="header-hint">已平仓</span>
+            </el-tooltip>
+          </template>
           <el-descriptions :column="2" border size="small">
             <el-descriptions-item label="总交易次数">{{ stats.total_trades }}</el-descriptions-item>
             <el-descriptions-item label="胜率">
@@ -190,6 +224,28 @@
       <template #footer>
         <el-button @click="showInitDialog = false">取消</el-button>
         <el-button type="primary" :loading="initLoading" @click="doInitAccount">确认初始化</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 入金/出金对话框 -->
+    <el-dialog v-model="showDepositDialog" title="入金 / 出金" width="400px">
+      <el-form label-width="100px">
+        <el-form-item label="方向">
+          <el-radio-group v-model="depositDirection" size="small">
+            <el-radio-button value="in">入金</el-radio-button>
+            <el-radio-button value="out">出金</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="金额">
+          <el-input-number v-model="depositAmount" :min="0" :step="10000" style="width: 100%" />
+        </el-form-item>
+        <div class="dialog-hint">
+          现金与初始资金会同步{{ depositDirection === 'in' ? '增加' : '减少' }}，保留全部持仓与交易记录，总收益率口径不变。
+        </div>
+      </el-form>
+      <template #footer>
+        <el-button @click="showDepositDialog = false">取消</el-button>
+        <el-button type="primary" :loading="depositLoading" @click="doDeposit">确认</el-button>
       </template>
     </el-dialog>
 
@@ -407,6 +463,11 @@ const showBuyDialog = ref(false)
 const showSellDialog = ref(false)
 const initCapital = ref(100000)
 
+const showDepositDialog = ref(false)
+const depositDirection = ref<'in' | 'out'>('in')
+const depositAmount = ref(10000)
+const depositLoading = ref(false)
+
 let refreshTimer: ReturnType<typeof setInterval> | null = null
 
 // --- computed ---
@@ -425,6 +486,23 @@ const totalPnlAmount = computed(() =>
 const totalReturn = computed(() => {
   if (!account.value || account.value.initial_capital === 0) return 0
   return totalPnlAmount.value / account.value.initial_capital * 100
+})
+
+const floatingStats = computed(() => {
+  const list = positions.value
+  const winning = list.filter(p => p.pnl_percent > 0)
+  const losing = list.filter(p => p.pnl_percent < 0)
+  const maxWin = winning.reduce<PaperPosition | null>(
+    (m, p) => (!m || p.pnl_percent > m.pnl_percent ? p : m), null)
+  const maxLoss = losing.reduce<PaperPosition | null>(
+    (m, p) => (!m || p.pnl_percent < m.pnl_percent ? p : m), null)
+  return {
+    count: list.length,
+    winning: winning.length,
+    losing: losing.length,
+    maxWin,
+    maxLoss,
+  }
 })
 
 const navChartData = computed(() =>
@@ -690,6 +768,32 @@ async function doInitAccount() {
   }
 }
 
+// --- deposit / withdraw ---
+function openDepositDialog() {
+  depositDirection.value = 'in'
+  depositAmount.value = 10000
+  showDepositDialog.value = true
+}
+
+async function doDeposit() {
+  if (depositAmount.value <= 0) {
+    ElMessage.warning('金额必须大于 0')
+    return
+  }
+  const signed = depositDirection.value === 'in' ? depositAmount.value : -depositAmount.value
+  depositLoading.value = true
+  try {
+    await paperApi.depositAccount(signed)
+    ElMessage.success(depositDirection.value === 'in' ? '入金成功' : '出金成功')
+    showDepositDialog.value = false
+    loadAll()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error || '操作失败')
+  } finally {
+    depositLoading.value = false
+  }
+}
+
 // --- buy ---
 function openBuyDialog(pos?: PaperPosition) {
   buyTargetPosition.value = pos ?? null
@@ -844,8 +948,14 @@ onUnmounted(() => {
 .section-card :deep(.el-card__header) {
   border-bottom: 1px solid var(--border-color); padding: 12px 16px;
   color: var(--text-primary); font-size: 14px; font-weight: 600;
+  display: flex; justify-content: space-between; align-items: center;
 }
 .card-header { display: flex; justify-content: space-between; align-items: center; }
+.header-hint {
+  font-size: 12px; font-weight: 400; color: var(--text-muted);
+  background: var(--bg-hover, rgba(0,0,0,0.04)); padding: 1px 8px; border-radius: 10px;
+  cursor: default;
+}
 
 .stock-link { color: var(--el-color-primary); text-decoration: none; }
 .stock-link:hover { text-decoration: underline; }
@@ -873,6 +983,7 @@ onUnmounted(() => {
 
 
 .dialog-warn { color: var(--el-color-danger); font-size: 12px; margin-top: 8px; padding-left: 100px; }
+.dialog-hint { color: var(--text-muted); font-size: 12px; margin-top: 8px; padding-left: 100px; line-height: 1.5; }
 .dialog-info { color: var(--text-muted); font-size: 12px; margin-top: 4px; padding-left: 100px; }
 
 .trade-dialog-header {

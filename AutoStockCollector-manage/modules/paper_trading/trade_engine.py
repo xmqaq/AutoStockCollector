@@ -60,6 +60,39 @@ class TradeEngine:
                 pass
         return None
 
+    def _batch_tencent_quotes(self, codes: List[str]) -> Dict[str, Dict[str, Optional[float]]]:
+        """一次请求多只股票，返回 {CODE: {"price":现价, "prev_close":昨收}}。
+
+        腾讯行情支持 q=sh600549,sz000001 多股一次拉取，避免每只持仓 2 次串行 HTTP。
+        """
+        result: Dict[str, Dict[str, Optional[float]]] = {}
+        if not codes:
+            return result
+        import re
+        try:
+            import requests as _req
+            query = ",".join(c.lower() for c in codes)
+            r = _req.get(
+                f"https://qt.gtimg.cn/q={query}",
+                proxies={"http": "", "https": ""},
+                timeout=8,
+            )
+            for code in codes:
+                m = re.search(rf'v_{code.lower()}="([^"]+)"', r.text)
+                if not m:
+                    continue
+                parts = m.group(1).split("~")
+                if len(parts) > 4:
+                    try:
+                        price = float(parts[3]) if parts[3] else None
+                        prev = float(parts[4]) if parts[4] else None
+                    except ValueError:
+                        continue
+                    result[code] = {"price": price or None, "prev_close": prev or None}
+        except Exception:
+            pass
+        return result
+
     def _get_db_price(self, code: str) -> Optional[float]:
         try:
             from core.storage.mongo_storage import FundFlowStorage
@@ -141,13 +174,23 @@ class TradeEngine:
         groups = list(self._trades.aggregate(pipeline))
 
         trading = is_trading_time()
+        # 批量拉行情：所有持仓一次 HTTP 取齐现价+昨收，避免逐只 2 次串行请求
+        held_codes = [g["_id"] for g in groups if (g["buy_shares"] - g["sell_shares"]) > 0]
+        quotes = self._batch_tencent_quotes(held_codes)
+
         positions = []
         for g in groups:
             shares_held = g["buy_shares"] - g["sell_shares"]
             if shares_held <= 0:
                 continue
             avg_cost = g["buy_amount"] / g["buy_shares"] if g["buy_shares"] > 0 else 0
-            price, price_type = self.get_current_price(g["_id"])
+
+            q = quotes.get(g["_id"]) or {}
+            price = q.get("price")
+            price_type = ('realtime' if trading else 'close') if price else None
+            if not price or price <= 0:
+                # 批量未命中（停牌/接口异常）才回退到单只查询（含 DB 兜底）
+                price, price_type = self.get_current_price(g["_id"])
             if not price or price <= 0:
                 price = avg_cost
                 price_type = 'fallback'
@@ -156,7 +199,9 @@ class TradeEngine:
             pnl = market_value - cost_basis
             pnl_pct = (pnl / cost_basis * 100) if cost_basis > 0 else 0
 
-            yesterday_close = self._get_yesterday_close(g["_id"])
+            yesterday_close = q.get("prev_close")
+            if not yesterday_close or yesterday_close <= 0:
+                yesterday_close = self._get_yesterday_close(g["_id"])
             today_pnl_pct = 0.0
             if yesterday_close and yesterday_close > 0:
                 today_pnl_pct = (price - yesterday_close) / yesterday_close * 100

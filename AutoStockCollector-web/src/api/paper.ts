@@ -89,6 +89,13 @@ export const paperApi = {
     return res.data.data
   },
 
+  async depositAccount(amount: number): Promise<PaperAccount> {
+    const res = await request.post<{ data: PaperAccount }>('/api/paper/account/deposit', {
+      amount,
+    })
+    return res.data.data
+  },
+
   async getPositions(): Promise<{ positions: PaperPosition[]; is_trading_time: boolean }> {
     const res = await request.get<{ data: PaperPosition[]; is_trading_time: boolean }>('/api/paper/positions')
     return {

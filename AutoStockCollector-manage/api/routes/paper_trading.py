@@ -50,6 +50,25 @@ def init_account():
     return jsonify({"success": True, "data": doc})
 
 
+@paper_bp.route("/account/deposit", methods=["POST"])
+def deposit_account():
+    """非破坏性入金/出金：amount>0 入金，<0 出金。现金与初始资金同步增减。"""
+    _lazy_init()
+    data = request.get_json() or {}
+    user_id = data.get("user_id", "default")
+    try:
+        amount = float(data.get("amount", 0))
+    except (TypeError, ValueError):
+        return jsonify({"error": "amount 必须为数字"}), 400
+    if amount == 0:
+        return jsonify({"error": "amount 不能为 0"}), 400
+    try:
+        doc = _account.deposit(user_id, amount)
+        return jsonify({"success": True, "data": doc})
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
 @paper_bp.route("/trade", methods=["POST"])
 def execute_trade():
     _lazy_init()

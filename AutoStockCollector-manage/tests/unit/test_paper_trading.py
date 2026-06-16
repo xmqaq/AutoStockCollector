@@ -17,7 +17,7 @@ class TestPaperAccount(unittest.TestCase):
             from modules.paper_trading.account import PaperAccount
             acct = PaperAccount()
             acct._col = MagicMock()
-            acct._db = {"trade_records": MagicMock()}
+            acct._db = {"trade_records": MagicMock(), "portfolio_snapshots": MagicMock()}
             return acct
 
     def test_init_sets_cash_equal_to_capital(self):
