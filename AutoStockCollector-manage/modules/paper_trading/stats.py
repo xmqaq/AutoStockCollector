@@ -48,7 +48,7 @@ class PaperStats:
         profit_factor = round(gross_profit / gross_loss, 2) if gross_loss > 0 else 0
 
         return {
-            "total_trades": len(trades),
+            "total_trades": total_pairs,
             "win_trades": len(wins),
             "loss_trades": len(losses),
             "win_rate": round(win_rate, 2),
