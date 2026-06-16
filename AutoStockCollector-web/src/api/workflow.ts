@@ -66,7 +66,8 @@ export interface WorkflowResult {
   workflow_id: string
   result_count: number
   duration: number
-  results: QuantResultItem[]
+  // 普通工作流结果为 SelectionResult 形状(含 score/recommendation 等)，量化结果(QuantResultItem)走 quantResult，故此处保持异构
+  results: any[]
   execution_time: string
   error?: string
   result_type?: string
