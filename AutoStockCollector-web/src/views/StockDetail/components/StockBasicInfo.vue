@@ -86,11 +86,12 @@ function handleGoToFinancial() {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+  flex-shrink: 0;
 }
 
 .overview-card :deep(.el-card__header) {
   border-bottom: 1px solid var(--border-color);
-  padding: 16px 20px;
+  padding: 10px 16px;
 }
 
 .card-header {
@@ -106,13 +107,13 @@ function handleGoToFinancial() {
 }
 
 .header-icon {
-  font-size: 18px;
+  font-size: 16px;
   color: var(--el-color-primary);
 }
 
 .header-title {
   color: var(--text-primary);
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
 }
 
@@ -123,8 +124,8 @@ function handleGoToFinancial() {
 }
 
 .stock-name-tag {
-  font-size: 14px;
-  padding: 0 16px;
+  font-size: 13px;
+  padding: 0 12px;
   font-weight: bold;
 }
 
@@ -138,27 +139,27 @@ function handleGoToFinancial() {
 .info-layout {
   display: flex;
   align-items: center;
-  gap: 32px;
-  padding: 8px;
+  gap: 24px;
+  padding: 4px;
 }
 
 .layout-divider {
-  height: 80px;
+  height: 60px;
   border-left-style: dashed;
 }
 
 /* 核心指标区域 */
 .core-metrics {
   display: flex;
-  gap: 24px;
+  gap: 16px;
   flex: 3;
 }
 
 .metric-box {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 16px;
+  gap: 4px;
+  padding: 10px 14px;
   border-radius: 8px;
   background: var(--bg-soft);
   flex: 1;
@@ -186,12 +187,12 @@ function handleGoToFinancial() {
 }
 
 .metric-label {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-muted);
 }
 
 .metric-value {
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -204,7 +205,7 @@ function handleGoToFinancial() {
 .detail-grid {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 8px;
   flex: 1;
   min-width: 200px;
 }
@@ -213,7 +214,7 @@ function handleGoToFinancial() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-bottom: 8px;
+  padding-bottom: 6px;
   border-bottom: 1px dashed var(--border-color);
 }
 
@@ -226,12 +227,12 @@ function handleGoToFinancial() {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text-muted);
 }
 
 .detail-value {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text-primary);
 }

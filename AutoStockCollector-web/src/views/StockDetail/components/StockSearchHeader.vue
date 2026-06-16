@@ -46,13 +46,14 @@ defineEmits<{
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+  flex-shrink: 0;
 }
 
 .search-bar {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 8px 4px;
+  padding: 4px;
 }
 
 .divider {

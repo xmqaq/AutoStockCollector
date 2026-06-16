@@ -1,15 +1,26 @@
 <template>
   <div class="kline-chart-wrapper">
-    <div class="chart-toolbar">
-      <el-checkbox-group v-model="selectedMAs" size="small">
-        <el-checkbox-button label="MA5" value="MA5" />
-        <el-checkbox-button label="MA10" value="MA10" />
-        <el-checkbox-button label="MA20" value="MA20" />
-      </el-checkbox-group>
-      <el-divider direction="vertical" />
-      <el-checkbox v-model="showAnnotations" size="small">AI标注</el-checkbox>
-      <el-checkbox v-model="showLevels" size="small">支撑压力位</el-checkbox>
-      <el-checkbox v-model="showVolume" size="small">成交量</el-checkbox>
+    <div class="chart-toolbar-container">
+      <div class="chart-toolbar">
+        <div class="toolbar-left">
+          <el-checkbox-group v-model="selectedMAs" size="small">
+            <el-checkbox-button label="MA5" value="MA5" />
+            <el-checkbox-button label="MA10" value="MA10" />
+            <el-checkbox-button label="MA20" value="MA20" />
+          </el-checkbox-group>
+        </div>
+        <div class="toolbar-right">
+          <el-checkbox v-model="showAnnotations" size="small" border>AI标注</el-checkbox>
+          <el-checkbox v-model="showLevels" size="small" border>支撑压力位</el-checkbox>
+          <el-checkbox v-model="showVolume" size="small" border>成交量</el-checkbox>
+        </div>
+      </div>
+      <div v-if="annotations.length > 0 && showAnnotations" class="annotation-legend">
+        <span class="legend-item buy"><span class="dot"></span> 买入信号</span>
+        <span class="legend-item sell"><span class="dot"></span> 卖出信号</span>
+        <span class="legend-item hold"><span class="dot"></span> 持有</span>
+        <span class="legend-item alert"><span class="dot"></span> 告警</span>
+      </div>
     </div>
     <v-chart
       ref="chartRef"
@@ -17,12 +28,6 @@
       :style="{ height: chartHeight }"
       autoresize
     />
-    <div v-if="annotations.length > 0 && showAnnotations" class="annotation-legend">
-      <span class="legend-item buy">● 买入信号</span>
-      <span class="legend-item sell">● 卖出信号</span>
-      <span class="legend-item hold">● 持有</span>
-      <span class="legend-item alert">● 告警</span>
-    </div>
   </div>
 </template>
 
@@ -250,11 +255,11 @@ const chartOption = computed(() => {
 
   const yAxis = showVolume.value
     ? [
-        { scale: true, splitArea: { show: false }, axisLine: { lineStyle: { color: ct().axisLineColor } }, splitLine: { lineStyle: { color: ct().splitLineColor } }, axisLabel: { color: ct().textColor, fontSize: 11 }, gridIndex: 0 },
-        { scale: true, splitArea: { show: false }, axisLine: { lineStyle: { color: ct().axisLineColor } }, splitLine: { lineStyle: { color: ct().splitLineColor } }, axisLabel: { color: ct().textColor, fontSize: 11, formatter: (v: number) => (v / 100 / 1e4).toFixed(0) + '万' }, gridIndex: 1 },
+        { scale: true, splitArea: { show: false }, axisLine: { lineStyle: { color: ct().axisLineColor } }, splitLine: { lineStyle: { color: ct().splitLineColor, type: 'dashed', opacity: 0.5 } }, axisLabel: { color: ct().textColor, fontSize: 11 }, gridIndex: 0 },
+        { scale: true, splitArea: { show: false }, axisLine: { lineStyle: { color: ct().axisLineColor } }, splitLine: { lineStyle: { color: ct().splitLineColor, type: 'dashed', opacity: 0.5 } }, axisLabel: { color: ct().textColor, fontSize: 11, formatter: (v: number) => (v / 100 / 1e4).toFixed(0) + '万' }, gridIndex: 1 },
       ]
     : [
-        { scale: true, splitArea: { show: false }, axisLine: { lineStyle: { color: ct().axisLineColor } }, splitLine: { lineStyle: { color: ct().splitLineColor } }, axisLabel: { color: ct().textColor, fontSize: 11 } },
+        { scale: true, splitArea: { show: false }, axisLine: { lineStyle: { color: ct().axisLineColor } }, splitLine: { lineStyle: { color: ct().splitLineColor, type: 'dashed', opacity: 0.5 } }, axisLabel: { color: ct().textColor, fontSize: 11 } },
       ]
 
   const xAxis = showVolume.value
@@ -284,9 +289,12 @@ const chartOption = computed(() => {
         type: 'cross',
         crossStyle: { color: '#888' },
       },
-      backgroundColor: ct().tooltipBg,
+      backgroundColor: 'rgba(30, 30, 30, 0.85)',
       borderColor: ct().tooltipBorder,
-      textStyle: { color: ct().tooltipText, fontSize: 12 },
+      borderWidth: 0,
+      borderRadius: 8,
+      padding: 12,
+      textStyle: { color: '#e0e0e0', fontSize: 12 },
       formatter(params: unknown[]) {
         const arr = params as Array<{ seriesName: string; dataIndex: number }>
         if (!arr || !arr.length) return ''
@@ -355,9 +363,17 @@ const chartOption = computed(() => {
         start: 0,
         end: 100,
         textStyle: { color: ct().textColor },
-        borderColor: ct().tooltipBorder,
+        borderColor: 'transparent',
         fillerColor: 'rgba(63, 127, 174, 0.1)',
-        handleStyle: { color: '#3f7fae' },
+        handleStyle: { color: '#888', opacity: 0.5 },
+        dataBackground: {
+          lineStyle: { opacity: 0 },
+          areaStyle: { opacity: 0 }
+        },
+        selectedDataBackground: {
+          lineStyle: { opacity: 0 },
+          areaStyle: { opacity: 0 }
+        }
       },
     ],
     series: allSeries,
@@ -400,13 +416,23 @@ watch(() => props.data, () => {
 
 <style scoped>
 .kline-chart-wrapper {
-  background: var(--bg-card);
-  border-radius: 4px;
-  padding: 12px;
+  width: 100%;
+}
+
+.chart-toolbar-container {
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .chart-toolbar {
-  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.toolbar-left, .toolbar-right {
   display: flex;
   gap: 8px;
   align-items: center;
@@ -415,18 +441,42 @@ watch(() => props.data, () => {
 .annotation-legend {
   display: flex;
   gap: 16px;
-  padding: 8px 0;
   font-size: 12px;
+  justify-content: flex-end;
 }
 
 .legend-item {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  color: var(--text-muted);
 }
 
-.legend-item.buy { color: var(--el-color-success); }
-.legend-item.sell { color: var(--el-color-danger); }
-.legend-item.hold { color: var(--el-color-primary); }
-.legend-item.alert { color: var(--el-color-warning); }
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.legend-item.buy .dot { background-color: #3f9d70; }
+.legend-item.sell .dot { background-color: #d05a51; }
+.legend-item.hold .dot { background-color: #3f7fae; }
+.legend-item.alert .dot { background-color: #c9943a; }
+
+/* 覆盖 Element Plus checkbox-button 和 border checkbox 的样式，使其更精致 */
+:deep(.el-checkbox-button__inner) {
+  border-radius: 4px !important;
+  border: 1px solid var(--border-color) !important;
+  box-shadow: none !important;
+  margin-right: 4px;
+}
+:deep(.el-checkbox-button.is-checked .el-checkbox-button__inner) {
+  border-color: var(--el-color-primary) !important;
+}
+:deep(.el-checkbox.is-bordered) {
+  border-radius: 4px;
+  padding: 0 12px;
+  height: 28px;
+}
 </style>

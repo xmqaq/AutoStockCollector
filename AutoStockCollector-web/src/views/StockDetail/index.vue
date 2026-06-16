@@ -204,7 +204,9 @@ onMounted(async () => {
 .stock-detail {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
+  height: 100%;
+  overflow: hidden;
 }
 
 .empty-hint {

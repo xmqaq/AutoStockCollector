@@ -13,6 +13,7 @@
       <el-menu
         :default-active="activeMenu"
         :default-openeds="openedMenus"
+        unique-opened
         @select="handleMenuSelect"
       >
         <template v-for="group in menuGroups" :key="group.key">
@@ -328,16 +329,42 @@ onUnmounted(() => {
 }
 
 .el-menu-item {
-  margin: 4px 12px;
+  margin: 0 12px; /* 移除垂直方向的 margin，改为 0 */
   border-radius: var(--radius-sm);
   height: 44px;
   line-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
 }
 
 .el-menu-item.is-active {
   background-color: var(--bg-hover);
   color: var(--el-color-primary);
   font-weight: 600;
+}
+
+.el-menu-item .el-icon {
+  margin-right: 12px;
+  width: 20px;
+  text-align: center;
+}
+
+/* 移除 :deep(.el-sub-menu__title) 的 margin，只保留左右的 margin，以解决折叠时的抖动问题 */
+:deep(.el-sub-menu__title) {
+  margin: 0 12px; 
+  border-radius: var(--radius-sm);
+  height: 44px;
+  line-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+:deep(.el-sub-menu__title .el-icon) {
+  margin-right: 12px;
+  width: 20px;
+  text-align: center;
 }
 
 .header {

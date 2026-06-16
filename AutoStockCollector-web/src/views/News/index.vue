@@ -1,163 +1,65 @@
 <template>
-  <div class="news-view">
-    <!-- Filter -->
-    <el-card shadow="never" class="section-card">
-      <div class="filter-bar">
-        <el-select
-          v-model="typeFilter"
-          placeholder="新闻类型"
-          size="small"
-          style="width:140px"
-          clearable
-        >
-          <el-option
-            v-for="cat in categories"
-            :key="cat.id"
-            :label="cat.name"
-            :value="cat.id"
+  <div class="news-dashboard">
+    <!-- 顶部数据概览 -->
+    <div class="news-header-section">
+      <NewsStats 
+        :stats="stats" 
+        :active-type="typeFilter"
+        @filter="handleTypeFilter"
+      />
+    </div>
+
+    <!-- 主体内容：左侧新闻流，右侧过滤器或全部作为新闻流顶部过滤器 -->
+    <div class="news-main-section">
+      <div class="news-feed-container">
+        <div class="feed-header">
+          <h2 class="feed-title">全球财经观察</h2>
+          <NewsFilter 
+            :categories="categories"
+            v-model:typeFilter="typeFilter"
+            v-model:codeFilter="codeFilter"
+            @search="handleSearch"
           />
-        </el-select>
-        <el-input
-          v-model="codeFilter"
-          placeholder="关键词/股票名"
-          size="small"
-          style="width:160px"
-          clearable
+        </div>
+        
+        <NewspaperLayout 
+          :loading="loading"
+          :newsList="newsList"
         />
-        <el-button type="primary" size="small" @click="handleSearch">
-          <el-icon><Search /></el-icon> 查询
-        </el-button>
-      </div>
-    </el-card>
 
-    <!-- Stats -->
-    <el-card v-if="stats" shadow="never" class="section-card stats-card">
-      <div class="stats-grid">
-        <div class="stat-item">
-          <span class="stat-label">总数</span>
-          <span class="stat-value">{{ stats.total }}</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">突发</span>
-          <span class="stat-value breaking">{{ stats.breaking_count }}</span>
-        </div>
-        <div v-for="(count, type) in stats.by_type" :key="type" class="stat-item">
-          <span class="stat-label">{{ typeLabel(String(type)) }}</span>
-          <span class="stat-value">{{ count }}</span>
+        <div class="pagination-wrapper" v-if="totalCount > 0">
+          <el-pagination
+            :current-page="currentPage"
+            @update:current-page="currentPage = $event"
+            :page-size="pageSize"
+            @update:page-size="pageSize = $event"
+            :page-sizes="[20, 50, 100]"
+            :total="totalCount"
+            layout="total, sizes, prev, pager, next, jumper"
+            background
+          />
         </div>
       </div>
-    </el-card>
-
-    <!-- News list -->
-    <el-card shadow="never" class="section-card" v-loading="loading">
-      <template #header>
-        <span>新闻舆情（共 {{ totalCount }} 条）</span>
-      </template>
-      <el-empty v-if="newsList.length === 0 && !loading" description="暂无新闻数据" />
-      <div v-else class="news-list">
-        <el-collapse>
-          <el-collapse-item
-            v-for="(news, idx) in newsList"
-            :key="idx"
-            :name="idx"
-          >
-            <template #title>
-              <div class="news-item-title">
-                <span class="news-headline">{{ news.title }}</span>
-                <div class="news-meta">
-                  <span class="news-time">{{ fmtNewsTime(news.publish_date || news.datetime || news.date) }}</span>
-                  <el-tag v-if="(news as any).channel_name" size="small" type="info" class="news-source">
-                    {{ (news as any).channel_name }}
-                  </el-tag>
-                  <el-tag v-else-if="(news as any).news_type" size="small" type="info" class="news-source">
-                    {{ typeLabel((news as any).news_type) }}
-                  </el-tag>
-                  <el-tag v-if="news.source" size="small" type="info" class="news-source">
-                    {{ sourceLabel(news.source) }}
-                  </el-tag>
-                  <el-tag v-if="(news as any).is_breaking" size="small" type="danger">突发</el-tag>
-                </div>
-              </div>
-            </template>
-            <div class="news-content">
-              <p v-if="news.summary">{{ news.summary }}</p>
-              <p v-else-if="news.content">{{ news.content }}</p>
-              <p v-else-if="!news.url" class="text-muted">暂无内容</p>
-              <el-link v-if="news.url" type="primary" :href="news.url" target="_blank">
-                点击阅读原文
-              </el-link>
-            </div>
-          </el-collapse-item>
-        </el-collapse>
-        <el-pagination
-          v-if="totalCount > pageSize"
-          v-model:current-page="currentPage"
-          v-model:page-size="pageSize"
-          :page-sizes="[20, 50, 100]"
-          :total="totalCount"
-          layout="total, sizes, prev, pager, next"
-          background
-          class="table-pagination"
-        />
-      </div>
-    </el-card>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
 import { newsApi } from '@/api/news'
-import dayjs from 'dayjs'
 import type { NewsRecord } from '@/types'
-import type { NewsCategory, NewsStats } from '@/api/news'
-import { Search } from '@element-plus/icons-vue'
+import type { NewsCategory, NewsStats as NewsStatsType } from '@/api/news'
 
-/**
- * 智能时间格式：
- * - 精确到分钟 (HH:MM != 00:00)：显示 "YYYY-MM-DD HH:mm"
- * - 仅有日期 (时间为 00:00:00)：显示 "YYYY-MM-DD"
- * - null/空：显示 "--"
- */
-function fmtNewsTime(v: string | undefined | null): string {
-  if (!v) return '--'
-  const d = dayjs(v)
-  if (!d.isValid()) return '--'
-  const timeStr = d.format('HH:mm')
-  return timeStr === '00:00' ? d.format('YYYY-MM-DD') : d.format('YYYY-MM-DD HH:mm')
-}
-
-// 新闻类型中文映射
-const NEWS_TYPE_MAP: Record<string, string> = {
-  general:  '综合财经',
-  futures:  '期货要闻',
-  nmetal:   '有色金属',
-  research: '机构研报',
-  stock:    '股票',
-  forex:    '外汇',
-  bond:     '债券',
-  fund:     '基金',
-}
-function typeLabel(t: string): string {
-  return NEWS_TYPE_MAP[t] || NEWS_TYPE_MAP[t?.toLowerCase()] || t
-}
-
-// 来源中文映射（为多源接入预留）
-const NEWS_SOURCE_MAP: Record<string, string> = {
-  cls:    '财联社',
-  sina:   '新浪财经',
-  '新浪财经': '新浪财经',
-  em:     '东方财富',
-}
-function sourceLabel(s: string): string {
-  return NEWS_SOURCE_MAP[s] || s
-}
+import NewsFilter from './components/NewsFilter.vue'
+import NewsStats from './components/NewsStats.vue'
+import NewspaperLayout from './components/NewspaperLayout.vue'
 
 const loading = ref(false)
 const newsList = ref<NewsRecord[]>([])
 const codeFilter = ref('')
 const typeFilter = ref('')
 const categories = ref<NewsCategory[]>([])
-const stats = ref<NewsStats | null>(null)
+const stats = ref<NewsStatsType | null>(null)
 const totalCount = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(20)
@@ -177,6 +79,15 @@ function handleSearch() {
   } else {
     loadNews()
   }
+}
+
+function handleTypeFilter(type: string) {
+  if (typeFilter.value === type) {
+    typeFilter.value = ''
+  } else {
+    typeFilter.value = type
+  }
+  handleSearch()
 }
 
 async function loadNews() {
@@ -228,157 +139,84 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.news-view {
+.news-dashboard {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-}
-
-.section-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-}
-
-.section-card :deep(.el-card__header) {
-  border-bottom: 1px solid var(--border-color);
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--bg-body, #f5f7fa);
   padding: 12px 16px;
-  color: var(--text-primary);
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.filter-bar {
-  display: flex;
   gap: 12px;
-  align-items: center;
+  box-sizing: border-box;
 }
 
-.news-list :deep(.el-collapse) {
-  border: none;
+.news-header-section {
+  flex-shrink: 0;
 }
 
-.news-list :deep(.el-collapse) {
-  border-top: 1px solid var(--border-color);
+.news-main-section {
+  flex: 1;
+  display: flex;
+  min-height: 0;
 }
 
-.news-list :deep(.el-collapse-item) {
-  border-left: 3px solid transparent;
-  transition: border-color 0.2s;
-  padding-left: 10px;
-}
-
-.news-list :deep(.el-collapse-item:hover) {
-  border-left-color: var(--el-color-primary);
-}
-
-.news-list :deep(.el-collapse-item.is-active) {
-  border-left-color: var(--el-color-primary);
-}
-
-.news-list :deep(.el-collapse-item__header) {
-  background: transparent;
-  border-bottom: 1px solid var(--border-color);
-  color: var(--text-primary);
-  padding: 14px 0;
-  height: auto;
-  line-height: 1.4;
-}
-
-.news-list :deep(.el-collapse-item__wrap) {
-  background: transparent;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.news-list :deep(.el-collapse-item__content) {
-  padding: 12px 0;
-  color: var(--text-muted);
-}
-
-.news-item-title {
+.news-feed-container {
+  width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  background: var(--bg-card, #ffffff);
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+  min-height: 0;
+}
+
+.dashboard-grid {
   flex: 1;
-  padding-right: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 16px;
+  padding: 16px;
+  min-height: 0;
+  background: var(--bg-body, #f5f7fa);
 }
 
-.news-headline {
-  font-size: 14px;
-  color: var(--text-primary);
-  line-height: 1.5;
-  font-weight: 500;
-}
-
-.news-meta {
+.feed-header {
   display: flex;
-  gap: 10px;
+  justify-content: space-between;
   align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-color-light, #ebeef5);
+  background: var(--bg-card, #ffffff);
 }
 
-.news-time {
-  font-size: 12px;
-  color: var(--text-muted);
+.feed-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary, #303133);
+  position: relative;
+  padding-left: 12px;
 }
 
-.news-source {
-  font-size: 11px;
+.feed-title::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 18px;
+  background-color: var(--el-color-primary, #409eff);
+  border-radius: 2px;
 }
 
-.news-content {
-  padding: 0 8px;
-  font-size: 13px;
-  color: var(--text-muted);
-  line-height: 1.6;
-}
-
-.text-muted {
-  color: var(--text-faint);
-  font-style: italic;
-}
-
-.table-pagination {
-  margin-top: 12px;
+.pagination-wrapper {
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-color-light, #ebeef5);
   display: flex;
   justify-content: flex-end;
-}
-.table-pagination :deep(.el-pagination__total),
-.table-pagination :deep(.el-pagination__sizes .el-select .el-input__wrapper) {
-  color: var(--text-muted);
-}
-
-.stats-card {
-  background: var(--bg-elevated);
-}
-
-.stats-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-
-.stat-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  min-width: 60px;
-  padding: 8px 12px;
-  background: var(--bg-soft);
-  border-radius: 6px;
-}
-
-.stat-label {
-  font-size: 11px;
-  color: var(--text-muted);
-  text-transform: capitalize;
-}
-
-.stat-value {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--el-color-primary);
-}
-
-.stat-value.breaking {
-  color: var(--el-color-danger);
+  background: var(--bg-card, #ffffff);
 }
 </style>
