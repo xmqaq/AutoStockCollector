@@ -266,6 +266,18 @@ def get_ranking():
     db = DatabaseConfig.get_database()
     users = list(db.users.find({}, {"username": 1, "nickname": 1, "user_id": 1, "_id": 0}))
 
+    # 各用户累计手续费（佣金 + 印花税），一次聚合取齐，供前端解释「今日盈亏 vs 累计收益」的差额
+    fee_map = {}
+    try:
+        for r in db["trade_records"].aggregate([
+            {"$group": {"_id": "$user_id", "fee": {"$sum": {"$add": [
+                {"$ifNull": ["$commission", 0]}, {"$ifNull": ["$stamp_tax", 0]},
+            ]}}}},
+        ]):
+            fee_map[r["_id"]] = r.get("fee", 0)
+    except Exception:
+        pass
+
     _lazy_init()
 
     result = []
@@ -318,6 +330,7 @@ def get_ranking():
             "profit_pct": round(profit_pct, 2),
             "profit_amount": round(profit_amount, 2),
             "today_pnl": round(today_pnl, 2),
+            "total_fee": round(fee_map.get(query_uid, 0), 2),
             "win_rate": round(stats.get("win_rate", 0.0), 2),
             "total_trades": stats.get("total_trades", 0),
         })

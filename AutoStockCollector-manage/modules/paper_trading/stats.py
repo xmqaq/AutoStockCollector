@@ -34,6 +34,9 @@ class PaperStats:
                     remaining -= matched
                 buy_queue[code] = [h for h in buy_queue.get(code, []) if h["shares"] > 0]
 
+        # 累计手续费 = 所有成交的佣金 + 印花税（买入只有佣金，卖出含印花税）
+        total_fee = sum((t.get("commission") or 0) + (t.get("stamp_tax") or 0) for t in trades)
+
         total_pairs = len(completed_pairs)
         # 平本（pnl=0）既不算盈也不算亏，但仍计入完成交易次数
         wins = [p for p in completed_pairs if p["pnl_amount"] > 0]
@@ -55,6 +58,7 @@ class PaperStats:
             "avg_profit_pct": round(avg_profit, 2),
             "avg_loss_pct": round(avg_loss, 2),
             "profit_factor": profit_factor,
+            "total_fee": round(total_fee, 2),
         }
 
     def get_nav(self, user_id: str, account) -> List[Dict[str, Any]]:

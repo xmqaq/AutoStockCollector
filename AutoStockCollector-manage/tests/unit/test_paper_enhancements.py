@@ -80,6 +80,15 @@ class TestStatsMethodology(unittest.TestCase):
         # gross_profit=1000, gross_loss=500 -> 2.0
         self.assertEqual(s["profit_factor"], 2.0)
 
+    def test_total_fee_sums_commission_and_stamp(self):
+        trades = [
+            {"code": "A", "action": "buy", "shares": 100, "price": 10.0, "commission": 5.0},
+            {"code": "A", "action": "sell", "shares": 100, "price": 11.0,
+             "commission": 5.0, "stamp_tax": 1.1},
+        ]
+        s = self._stats_with_trades(trades).get_stats()
+        self.assertAlmostEqual(s["total_fee"], 11.1, places=2)
+
     def test_breakeven_not_counted_as_loss(self):
         trades = [
             {"code": "A", "action": "buy", "shares": 100, "price": 10.0},

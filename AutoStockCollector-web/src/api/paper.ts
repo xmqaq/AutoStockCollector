@@ -51,6 +51,7 @@ export interface PaperStats {
   avg_profit_pct: number
   avg_loss_pct: number
   profit_factor: number
+  total_fee: number
 }
 
 export interface NavPoint {
@@ -76,6 +77,7 @@ export interface RankingEntry {
   profit_pct: number
   profit_amount: number
   today_pnl: number
+  total_fee: number
   win_rate: number
   total_trades: number
 }
@@ -150,7 +152,7 @@ export const paperApi = {
     const res = await request.get<{ data: PaperStats }>('/api/paper/stats')
     return res.data?.data ?? {
       total_trades: 0, win_trades: 0, loss_trades: 0,
-      win_rate: 0, avg_profit_pct: 0, avg_loss_pct: 0, profit_factor: 0,
+      win_rate: 0, avg_profit_pct: 0, avg_loss_pct: 0, profit_factor: 0, total_fee: 0,
     }
   },
 

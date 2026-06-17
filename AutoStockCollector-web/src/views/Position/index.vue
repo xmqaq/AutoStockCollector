@@ -109,7 +109,7 @@ const positions = ref<PaperPosition[]>([])
 const recentTrades = ref<TradeRecord[]>([])
 const stats = ref<PaperStats>({
   total_trades: 0, win_trades: 0, loss_trades: 0,
-  win_rate: 0, avg_profit_pct: 0, avg_loss_pct: 0, profit_factor: 0,
+  win_rate: 0, avg_profit_pct: 0, avg_loss_pct: 0, profit_factor: 0, total_fee: 0,
 })
 const navData = ref<NavPoint[]>([])
 const isTradingTime = ref(false)

@@ -59,6 +59,12 @@
             <span :class="['secondary-data', getProfitColorClass(row.profit_amount, true)]">
               {{ row.profit_amount > 0 ? '+' : '' }}¥{{ formatAmount(row.profit_amount) }}
             </span>
+            <el-tooltip
+              content="累计收益已扣手续费；今日表现为不含手续费的当日股价浮动，故两者会差一笔手续费"
+              placement="top"
+            >
+              <span class="tertiary-data">手续费 ¥{{ formatAmount(row.total_fee || 0) }}</span>
+            </el-tooltip>
           </div>
         </template>
       </el-table-column>
@@ -254,6 +260,13 @@ function getProfitBgClass(val: number) {
   font-size: 12px;
   color: var(--text-muted);
   font-family: var(--font-mono);
+}
+
+.tertiary-data {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  cursor: help;
 }
 
 /* Profits & Colors */

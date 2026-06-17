@@ -32,9 +32,19 @@
         <div class="stat-value text-fall">{{ stats.avg_loss_pct.toFixed(2) }}%</div>
       </div>
       
-      <div class="stat-item full-width">
+      <div class="stat-item">
         <div class="stat-label">盈亏比</div>
         <div class="stat-value">{{ stats.profit_factor.toFixed(2) }}</div>
+      </div>
+
+      <div class="stat-item">
+        <div class="stat-label">
+          累计手续费
+          <el-tooltip content="累计佣金 + 印花税，已计入总收益；今日盈亏不含手续费" placement="top">
+            <el-icon class="inline-icon"><InfoFilled /></el-icon>
+          </el-tooltip>
+        </div>
+        <div class="stat-value">¥{{ (stats.total_fee ?? 0).toFixed(2) }}</div>
       </div>
     </div>
   </el-card>
@@ -121,6 +131,12 @@ defineProps<{
 .stat-label {
   font-size: 13px;
   color: var(--text-muted, #909399);
+}
+
+.inline-icon {
+  font-size: 12px;
+  vertical-align: -1px;
+  cursor: help;
 }
 
 .stat-value {
