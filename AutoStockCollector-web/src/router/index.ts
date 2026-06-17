@@ -145,6 +145,12 @@ const router = createRouter({
           meta: { title: '用户管理', adminOnly: true },
         },
         {
+          path: 'ai-call-history',
+          name: 'AICallHistory',
+          component: () => import('@/views/AICallHistory/index.vue'),
+          meta: { title: 'AI调用记录' },
+        },
+        {
           path: 'ai-monitor',
           name: 'AiMonitor',
           component: () => import('@/views/AiMonitor/index.vue'),

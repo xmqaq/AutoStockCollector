@@ -1197,6 +1197,70 @@ def get_cron_status():
         return jsonify({"success": False, "error": str(e), "jobs": []}), 200
 
 
+@api_bp.route("/ai-call-history", methods=["GET"])
+def get_ai_call_history():
+    """AI调用历史查询，支持分页/过滤/聚合统计"""
+    from config.database import DatabaseConfig
+    db = DatabaseConfig.get_database()
+    page = int(request.args.get("page", 1))
+    size = min(int(request.args.get("size", 50)), 200)
+    provider = request.args.get("provider")
+    task_type = request.args.get("task_type")
+    success = request.args.get("success")
+    keyword = request.args.get("keyword")
+
+    match: Dict = {}
+    if provider: match["provider"] = provider
+    if task_type: match["task_type"] = task_type
+    if success in ("true", "false"): match["success"] = success == "true"
+    if keyword: match["$or"] = [
+        {"provider": {"$regex": keyword, "$options": "i"}},
+        {"task_type": {"$regex": keyword, "$options": "i"}},
+        {"error": {"$regex": keyword, "$options": "i"}},
+    ]
+
+    total = db["ai_call_history"].count_documents(match)
+    records = list(db["ai_call_history"].find(
+        match,
+        {"_id": 0},
+        sort=[("timestamp", -1)],
+        skip=(page - 1) * size,
+        limit=size,
+    ))
+
+    # 聚合统计
+    coll = db["ai_call_history"]
+    stats = {
+        "total": coll.count_documents({}),
+        "by_provider": {
+            r["_id"]: r["count"]
+            for r in coll.aggregate([
+                {"$group": {"_id": "$provider", "count": {"$sum": 1}}},
+                {"$sort": {"count": -1}},
+            ])
+        },
+        "by_task_type": {
+            r["_id"]: r["count"]
+            for r in coll.aggregate([
+                {"$group": {"_id": "$task_type", "count": {"$sum": 1}}},
+                {"$sort": {"count": -1}},
+            ])
+        },
+        "success": coll.count_documents({"success": True}),
+        "fail": coll.count_documents({"success": False}),
+        "today": coll.count_documents({"timestamp": {"$gte": beijing_now().strftime("%Y-%m-%d")}}),
+    }
+
+    return jsonify({
+        "success": True,
+        "total": total,
+        "page": page,
+        "size": size,
+        "data": records,
+        "stats": stats,
+    })
+
+
 @api_bp.route("/collect/kline", methods=["POST"])
 def collect_kline():
     from core.collector.kline_collector import KlineCollector

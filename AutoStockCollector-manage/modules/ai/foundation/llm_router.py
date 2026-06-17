@@ -61,9 +61,13 @@ class LLMRouter:
         from modules.ai.foundation.llm_caller import ProviderCaller
         if not hasattr(self, "_provider_caller"):
             self._provider_caller = ProviderCaller()
-        return self._provider_caller(provider, prompt,
-                                     temperature=temperature, max_tokens=max_tokens,
-                                     messages=messages)
+        result = self._provider_caller(provider, prompt,
+                                       temperature=temperature, max_tokens=max_tokens,
+                                       messages=messages)
+        self._last_model = self._provider_caller.last_model
+        self._last_input_tokens = self._provider_caller.last_input_tokens
+        self._last_output_tokens = self._provider_caller.last_output_tokens
+        return result
 
     def _caller_accepts(self, name: str) -> bool:
         """检测 caller 是否支持某关键字参数（结果缓存）。"""
@@ -233,15 +237,17 @@ class LLMRouter:
         for provider in self.providers:
             raw = None
             got_response = False
-            for attempt in (1, 2):  # 网络类瞬时错误重试 1 次再降级下一家
+            for attempt in (1, 2):
                 try:
+                    t0 = beijing_now()
                     if send_messages is not None:
                         raw = self.caller(provider, full_prompt, messages=send_messages, **call_kwargs)
                     else:
                         raw = self.caller(provider, full_prompt, **call_kwargs)
+                    resp_time = (beijing_now() - t0).total_seconds()
                     got_response = True
                     break
-                except ValueError as e:        # 配置错误，不重试
+                except ValueError as e:
                     last_error = str(e)
                     self._log_history(provider, task_type, False, str(e))
                     break
@@ -260,7 +266,12 @@ class LLMRouter:
                     continue
             else:
                 data = {"content": raw}
-            self._log_history(provider, task_type, True)
+            model_name = getattr(self, '_last_model', provider)
+            input_tokens = getattr(self, '_last_input_tokens', 0)
+            output_tokens = getattr(self, '_last_output_tokens', 0)
+            self._log_history(provider, task_type, True, model_name=model_name,
+                              input_tokens=input_tokens, output_tokens=output_tokens,
+                              response_time=resp_time)
             if use_cache:
                 self._cache[key] = {
                     "provider": provider, "data": data,
@@ -301,13 +312,21 @@ class LLMRouter:
 
         return None
 
-    def _log_history(self, provider: str, task_type: str, success: bool, error: str = ""):
+    def _log_history(self, provider: str, task_type: str, success: bool, error: str = "",
+                     model_name: str = "", input_tokens: int = 0, output_tokens: int = 0,
+                     response_time: float = 0.0):
         try:
             from config.database import DatabaseConfig
             db = DatabaseConfig.get_database()
             db["ai_call_history"].insert_one({
-                "provider": provider, "task_type": task_type,
-                "success": success, "error": error,
+                "provider": provider,
+                "task_type": task_type,
+                "model_name": model_name,
+                "success": success,
+                "error": error,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "response_time": round(response_time, 3),
                 "timestamp": beijing_now().isoformat(),
             })
         except Exception:
@@ -324,6 +343,7 @@ class LLMRouter:
             try:
                 from modules.ai.foundation.llm_caller import ProviderCaller
                 caller = ProviderCaller()
+                t0 = beijing_now()
                 chunks = caller.stream_call(provider, full_prompt, messages=messages)
 
                 for chunk in chunks:
@@ -331,13 +351,18 @@ class LLMRouter:
                         yielded = True
                         yield chunk
 
-                self._log_history(provider, task_type, True)
+                resp_time = (beijing_now() - t0).total_seconds()
+                model_name = caller.last_model or provider
+                self._log_history(provider, task_type, True,
+                                  model_name=model_name,
+                                  input_tokens=caller.last_input_tokens,
+                                  output_tokens=caller.last_output_tokens,
+                                  response_time=resp_time)
                 return
 
             except Exception as e:
                 self._log_history(provider, task_type, False, str(e))
                 if yielded:
-                    # 已产出部分内容:换下一家会从头重播导致内容重复,直接上抛让上游报错/降级
                     raise
                 continue
 

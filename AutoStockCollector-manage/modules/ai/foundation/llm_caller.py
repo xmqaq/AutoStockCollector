@@ -35,6 +35,9 @@ class ProviderCaller:
     ):
         self.key_loader = key_loader or _default_key_loader
         self.poster = poster or _default_poster
+        self.last_model: str = ""
+        self.last_input_tokens: int = 0
+        self.last_output_tokens: int = 0
 
     def __call__(self, provider: str, prompt: str,
                  temperature: float = 0.7, max_tokens: int = 2000,
@@ -52,10 +55,13 @@ class ProviderCaller:
         model = doc.get("model") or _DEFAULT_MODELS.get(provider.lower(), "")
         p = provider.lower()
 
+        self.last_model = model
+        self.last_input_tokens = 0
+        self.last_output_tokens = 0
+
         msg_list = messages if messages else [{"role": "user", "content": prompt}]
 
         if p == "anthropic":
-            # Anthropic 不支持 system role 混在 messages 里，过滤出 system 单独传
             system_msgs = [m["content"] for m in msg_list if m.get("role") == "system"]
             user_msgs = [m for m in msg_list if m.get("role") != "system"]
             payload: Dict[str, Any] = {"model": model, "max_tokens": max_tokens,
@@ -68,12 +74,14 @@ class ProviderCaller:
                 json=payload,
                 timeout=_TIMEOUT,
             )
+            usage = data.get("usage", {})
+            self.last_input_tokens = usage.get("input_tokens", 0)
+            self.last_output_tokens = usage.get("output_tokens", 0)
             blocks = data.get("content", [])
             texts = [b.get("text", "") for b in blocks if b.get("type") == "text"]
             return texts[0] if texts else ""
 
         if p == "gemini":
-            # Gemini 用 contents 格式，多轮用 role=user/model
             role_map = {"user": "user", "assistant": "model", "system": "user"}
             contents = [{"role": role_map.get(m["role"], "user"), "parts": [{"text": m["content"]}]}
                         for m in msg_list]
@@ -84,6 +92,9 @@ class ProviderCaller:
                       "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens}},
                 timeout=_TIMEOUT,
             )
+            usage = data.get("usageMetadata", {})
+            self.last_input_tokens = usage.get("promptTokenCount", 0)
+            self.last_output_tokens = usage.get("candidatesTokenCount", 0)
             cands = data.get("candidates", [])
             if not cands:
                 return ""
@@ -98,6 +109,9 @@ class ProviderCaller:
                   "temperature": temperature, "max_tokens": max_tokens},
             timeout=_TIMEOUT,
         )
+        usage = data.get("usage", {})
+        self.last_input_tokens = usage.get("prompt_tokens", 0)
+        self.last_output_tokens = usage.get("completion_tokens", 0)
         choices = data.get("choices", [])
         if not choices:
             return ""

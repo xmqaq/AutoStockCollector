@@ -748,12 +748,14 @@ class ModelManager:
 
         collection = get_collection("ai_call_history")
         collection.insert_one({
+            "provider": model_name,
             "model_name": model_name,
+            "task_type": "model_call",
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
             "total_tokens": total_tokens,
             "success": success,
-            "error": error,
+            "error": error or "",
             "response_time": response_time,
             "cost": cost,
             "timestamp": beijing_now()
