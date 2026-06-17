@@ -153,15 +153,13 @@ class TestTradeEngine(unittest.TestCase):
 
     def test_get_positions_aggregates_buy_minus_sell(self):
         engine = self._make_engine()
-        engine._trades.aggregate = MagicMock(return_value=[
-            {
-                "_id": "SH600000",
-                "name": "测试股票",
-                "buy_shares": 1000,
-                "sell_shares": 300,
-                "buy_amount": 10000.0,
-            }
+        engine._trades.find = MagicMock(return_value=[
+            {"action": "buy", "code": "SH600000", "name": "测试股票", "shares": 1000,
+             "price": 10.0, "amount": 10000.0, "total_cost": 10000.0, "traded_at": "2026-01-01T10:00:00"},
+            {"action": "sell", "code": "SH600000", "name": "测试股票", "shares": 300,
+             "price": 11.0, "traded_at": "2026-01-02T10:00:00"},
         ])
+        engine._batch_tencent_quotes = MagicMock(return_value={})
         engine.get_current_price = MagicMock(return_value=(11.0, 'realtime'))
         engine._get_yesterday_close = MagicMock(return_value=10.5)
 
@@ -169,24 +167,43 @@ class TestTradeEngine(unittest.TestCase):
 
         self.assertEqual(len(positions), 1)
         self.assertEqual(positions[0]["shares"], 700)
+        # 卖出按均价等比例冲减成本：成本 10000×700/1000=7000，均价 10.0
         self.assertAlmostEqual(positions[0]["avg_cost"], 10.0, places=4)
 
     def test_get_positions_excludes_fully_sold(self):
         engine = self._make_engine()
-        engine._trades.aggregate = MagicMock(return_value=[
-            {
-                "_id": "SH600000",
-                "name": "测试股票",
-                "buy_shares": 500,
-                "sell_shares": 500,
-                "buy_amount": 5000.0,
-            }
+        engine._trades.find = MagicMock(return_value=[
+            {"action": "buy", "code": "SH600000", "name": "测试股票", "shares": 500,
+             "price": 10.0, "amount": 5000.0, "total_cost": 5000.0, "traded_at": "2026-01-01T10:00:00"},
+            {"action": "sell", "code": "SH600000", "name": "测试股票", "shares": 500,
+             "price": 10.0, "traded_at": "2026-01-02T10:00:00"},
         ])
+        engine._batch_tencent_quotes = MagicMock(return_value={})
         engine.get_current_price = MagicMock(return_value=(10.0, 'realtime'))
         engine._get_yesterday_close = MagicMock(return_value=10.0)
 
         positions, _ = engine.get_positions("default")
         self.assertEqual(len(positions), 0)
+
+    def test_get_positions_rebuy_after_sell_uses_latest_cost(self):
+        """卖空后再以不同价买回，成本应反映新买入价，而非全历史均值。"""
+        engine = self._make_engine()
+        engine._trades.find = MagicMock(return_value=[
+            {"action": "buy", "code": "SH600000", "name": "测试股票", "shares": 100,
+             "price": 10.0, "amount": 1000.0, "total_cost": 1000.0, "traded_at": "2026-01-01T10:00:00"},
+            {"action": "sell", "code": "SH600000", "name": "测试股票", "shares": 100,
+             "price": 12.0, "traded_at": "2026-01-02T10:00:00"},
+            {"action": "buy", "code": "SH600000", "name": "测试股票", "shares": 100,
+             "price": 20.0, "amount": 2000.0, "total_cost": 2000.0, "traded_at": "2026-01-03T10:00:00"},
+        ])
+        engine._batch_tencent_quotes = MagicMock(return_value={})
+        engine.get_current_price = MagicMock(return_value=(20.0, 'realtime'))
+        engine._get_yesterday_close = MagicMock(return_value=20.0)
+
+        positions, _ = engine.get_positions("default")
+        self.assertEqual(len(positions), 1)
+        self.assertEqual(positions[0]["shares"], 100)
+        self.assertAlmostEqual(positions[0]["avg_cost"], 20.0, places=4)
 
 
 class TestPaperStats(unittest.TestCase):

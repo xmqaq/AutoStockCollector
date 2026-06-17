@@ -58,22 +58,40 @@ class PaperStats:
         }
 
     def get_nav(self, user_id: str, account) -> List[Dict[str, Any]]:
+        """每日净值序列（仅 portfolio_snapshots 缺失时的回退）。
+
+        回放成交并用「最近成交价」给未平仓持仓估值，得到每个交易日末的净值
+        （现金 + 持仓市值）。旧实现 nav = cash_after/initial 完全忽略持仓市值，
+        导致一买入净值就塌方。这里用成交价估值是近似（无当日收盘价时的兜底），
+        但已平仓/最新一笔的净值是精确的。
+        """
         trades = list(self._trades.find({"user_id": user_id}, sort=[("traded_at", 1)]))
         account_doc = account.get(user_id)
         if not account_doc or not trades:
             return []
 
         initial = account_doc["initial_capital"]
-        daily_cash: Dict[str, float] = {}
+        holdings: Dict[str, Dict[str, float]] = {}
+        daily_net: Dict[str, float] = {}
         for t in trades:
+            code = t.get("code")
+            h = holdings.setdefault(code, {"shares": 0, "price": 0.0})
+            h["price"] = t.get("price") or h["price"]
+            shares = t.get("shares", 0) or 0
+            if t.get("action") == "buy":
+                h["shares"] += shares
+            elif t.get("action") == "sell":
+                h["shares"] = max(0, h["shares"] - shares)
+            cash = t.get("cash_after", 0)
+            market_value = sum(x["shares"] * x["price"] for x in holdings.values())
             date = t["traded_at"][:10]
-            daily_cash[date] = t["cash_after"]
+            daily_net[date] = cash + market_value
 
         return [
             {
                 "date": date,
-                "cash": daily_cash[date],
-                "nav": round(daily_cash[date] / initial, 4) if initial > 0 else 1.0,
+                "net_value": round(daily_net[date], 2),
+                "nav": round(daily_net[date] / initial, 4) if initial > 0 else 1.0,
             }
-            for date in sorted(daily_cash)
+            for date in sorted(daily_net)
         ]

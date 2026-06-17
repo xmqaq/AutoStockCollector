@@ -161,54 +161,72 @@ class TradeEngine:
         return code
 
     def get_positions(self, user_id: str = "default") -> Tuple[List[Dict[str, Any]], bool]:
-        pipeline = [
-            {"$match": {"user_id": user_id}},
-            {"$group": {
-                "_id": "$code",
-                "name": {"$last": "$name"},
-                "buy_shares": {"$sum": {"$cond": [{"$eq": ["$action", "buy"]}, "$shares", 0]}},
-                "sell_shares": {"$sum": {"$cond": [{"$eq": ["$action", "sell"]}, "$shares", 0]}},
-                "buy_amount": {"$sum": {"$cond": [{"$eq": ["$action", "buy"]}, "$amount", 0]}},
-            }},
-        ]
-        groups = list(self._trades.aggregate(pipeline))
+        # 按成交时间顺序回放，用「移动加权平均成本法」算持仓成本：
+        #   - 买入：股数累加，成本累加「含佣金的 total_cost」（而非仅 amount）；
+        #   - 卖出：按当前均价等比例冲减成本（cost × 卖出股数/当前持股）。
+        # 旧实现用 buy_amount/buy_shares 的全历史均值，且 amount 不含佣金，
+        # 导致「卖出后再以不同价买回」成本算歪、单只盈亏恒少算一笔买入佣金。
+        trades = list(self._trades.find({"user_id": user_id}, sort=[("traded_at", 1)]))
+
+        book: Dict[str, Dict[str, Any]] = {}
+        for t in trades:
+            code = t.get("code")
+            if not code:
+                continue
+            b = book.setdefault(code, {"name": code, "shares": 0, "cost": 0.0})
+            if t.get("name"):
+                b["name"] = t["name"]
+            shares = t.get("shares", 0) or 0
+            if t.get("action") == "buy":
+                cost = t.get("total_cost")
+                if cost is None:
+                    amount = t.get("amount")
+                    if amount is None:
+                        amount = shares * (t.get("price") or 0)
+                    cost = amount + (t.get("commission") or 0)
+                b["shares"] += shares
+                b["cost"] += cost
+            elif t.get("action") == "sell":
+                if b["shares"] > 0:
+                    sell_shares = min(shares, b["shares"])
+                    b["cost"] -= b["cost"] * (sell_shares / b["shares"])
+                    b["shares"] -= sell_shares
 
         trading = is_trading_time()
         # 批量拉行情：所有持仓一次 HTTP 取齐现价+昨收，避免逐只 2 次串行请求
-        held_codes = [g["_id"] for g in groups if (g["buy_shares"] - g["sell_shares"]) > 0]
+        held_codes = [c for c, b in book.items() if b["shares"] > 0]
         quotes = self._batch_tencent_quotes(held_codes)
 
         positions = []
-        for g in groups:
-            shares_held = g["buy_shares"] - g["sell_shares"]
-            if shares_held <= 0:
-                continue
-            avg_cost = g["buy_amount"] / g["buy_shares"] if g["buy_shares"] > 0 else 0
+        for code in held_codes:
+            b = book[code]
+            shares_held = b["shares"]
+            avg_cost = b["cost"] / shares_held if shares_held > 0 else 0
 
-            q = quotes.get(g["_id"]) or {}
+            q = quotes.get(code) or {}
             price = q.get("price")
             price_type = ('realtime' if trading else 'close') if price else None
             if not price or price <= 0:
                 # 批量未命中（停牌/接口异常）才回退到单只查询（含 DB 兜底）
-                price, price_type = self.get_current_price(g["_id"])
+                price, price_type = self.get_current_price(code)
             if not price or price <= 0:
                 price = avg_cost
                 price_type = 'fallback'
             market_value = shares_held * price
-            cost_basis = shares_held * avg_cost
+            cost_basis = b["cost"]
             pnl = market_value - cost_basis
             pnl_pct = (pnl / cost_basis * 100) if cost_basis > 0 else 0
 
             yesterday_close = q.get("prev_close")
             if not yesterday_close or yesterday_close <= 0:
-                yesterday_close = self._get_yesterday_close(g["_id"])
+                yesterday_close = self._get_yesterday_close(code)
             today_pnl_pct = 0.0
             if yesterday_close and yesterday_close > 0:
                 today_pnl_pct = (price - yesterday_close) / yesterday_close * 100
 
             positions.append({
-                "code": g["_id"],
-                "name": g["name"],
+                "code": code,
+                "name": b["name"],
                 "shares": shares_held,
                 "avg_cost": round(avg_cost, 4),
                 "current_price": round(price, 2),
