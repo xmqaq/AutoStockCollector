@@ -173,19 +173,20 @@ const router = createRouter({
   ],
 })
 
-router.beforeEach((to, _from, next) => {
+router.beforeEach((to, _from) => {
   const token = localStorage.getItem('auth_token')
   const user = (() => {
     try { return JSON.parse(localStorage.getItem('auth_user') || 'null') } catch { return null }
   })()
+  
   if (to.meta.noAuth) {
-    next()
+    return true
   } else if (!token && to.meta.requiresAuth !== false) {
-    next({ path: '/login', query: { redirect: to.fullPath } })
+    return { path: '/login', query: { redirect: to.fullPath } }
   } else if (to.meta.adminOnly && user?.role !== 'admin') {
-    next('/dashboard')
+    return '/dashboard'
   } else {
-    next()
+    return true
   }
 })
 
