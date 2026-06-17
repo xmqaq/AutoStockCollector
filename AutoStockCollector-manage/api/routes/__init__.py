@@ -1273,6 +1273,27 @@ def get_ai_call_history():
     })
 
 
+@api_bp.route("/platform-config", methods=["GET"])
+@login_required
+def get_platform_config():
+    """读取平台配置（交易费率等）。"""
+    from modules.platform.config import PlatformConfig
+    return jsonify({"success": True, "data": PlatformConfig().get(force=True)})
+
+
+@api_bp.route("/platform-config", methods=["PUT"])
+@admin_required
+def update_platform_config():
+    """更新平台配置（仅管理员）。只影响新交易，不改历史成交。"""
+    from modules.platform.config import PlatformConfig
+    data = request.get_json() or {}
+    try:
+        cfg = PlatformConfig().update(data)
+        return jsonify({"success": True, "data": cfg})
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
 @api_bp.route("/collect/kline", methods=["POST"])
 def collect_kline():
     from core.collector.kline_collector import KlineCollector

@@ -210,6 +210,7 @@ const menuGroups = computed((): MenuGroup[] => [
       { key: '/ai-agents',        label: 'AI Agent管理',   icon: MagicStick },
       { key: '/strategy-manager', label: '策略管理',       icon: List },
       { key: '/ai-call-history',  label: 'AI调用记录',    icon: Monitor },
+      ...(authStore.isAdmin ? [{ key: '/platform-config', label: '平台配置', icon: Setting }] : []),
       ...(authStore.isAdmin ? [{ key: '/user-management', label: '用户管理', icon: User }] : []),
     ],
   },

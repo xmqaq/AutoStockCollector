@@ -151,6 +151,12 @@ const router = createRouter({
           meta: { title: 'AI调用记录' },
         },
         {
+          path: 'platform-config',
+          name: 'PlatformConfig',
+          component: () => import('@/views/PlatformConfig/index.vue'),
+          meta: { title: '平台配置', adminOnly: true },
+        },
+        {
           path: 'ai-monitor',
           name: 'AiMonitor',
           component: () => import('@/views/AiMonitor/index.vue'),

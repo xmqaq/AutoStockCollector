@@ -110,5 +110,64 @@ class TestBatchQuotes(unittest.TestCase):
         self.assertEqual(te._batch_tencent_quotes([]), {})
 
 
+class TestPlatformConfig(unittest.TestCase):
+    def _make(self, stored=None):
+        from modules.platform.config import PlatformConfig
+        pc = PlatformConfig.__new__(PlatformConfig)
+        pc._col = MagicMock()
+        pc._col.find_one.return_value = ({"_id": "default", **stored} if stored else None)
+        PlatformConfig._cache = None  # 重置进程级共享缓存
+        return pc
+
+    def test_defaults_when_empty(self):
+        from modules.platform.config import DEFAULTS
+        cfg = self._make(None).get(force=True)
+        self.assertEqual(cfg["buy_commission_rate"], DEFAULTS["buy_commission_rate"])
+        self.assertEqual(cfg["min_commission"], 5.0)
+        self.assertEqual(cfg["stamp_tax_rate"], 0.001)
+
+    def test_stored_overrides_defaults(self):
+        cfg = self._make({"buy_commission_rate": 0.00015}).get(force=True)
+        self.assertEqual(cfg["buy_commission_rate"], 0.00015)
+        self.assertEqual(cfg["stamp_tax_rate"], 0.001)  # 未覆盖项保留默认
+
+    def test_update_validates_and_ignores_unknown(self):
+        pc = self._make(None)
+        pc.update({"buy_commission_rate": 0.0002, "bogus": 1})
+        set_arg = pc._col.update_one.call_args[0][1]["$set"]
+        self.assertEqual(set_arg["buy_commission_rate"], 0.0002)
+        self.assertNotIn("bogus", set_arg)
+
+    def test_update_rejects_negative(self):
+        with self.assertRaises(ValueError):
+            self._make(None).update({"buy_commission_rate": -1})
+
+    def test_update_rejects_rate_too_high(self):
+        with self.assertRaises(ValueError):
+            self._make(None).update({"stamp_tax_rate": 0.5})
+
+
+class TestTradeEngineConfigurableFees(unittest.TestCase):
+    def _make_engine(self):
+        from modules.paper_trading.trade_engine import TradeEngine
+        engine = TradeEngine.__new__(TradeEngine)
+        engine._trades = MagicMock()
+        return engine
+
+    def test_buy_uses_configured_commission_rate(self):
+        engine = self._make_engine()
+        engine.get_current_price = MagicMock(return_value=(10.0, 'realtime'))
+        engine._get_name = MagicMock(return_value="x")
+        engine._fees = MagicMock(return_value={
+            "buy_commission_rate": 0.002, "sell_commission_rate": 0.001,
+            "min_commission": 1.0, "stamp_tax_rate": 0.001,
+        })
+        acct = MagicMock()
+        acct.get.return_value = {"cash_balance": 100000.0, "initial_capital": 100000.0}
+        record = engine.buy("default", "SH600000", 500, {}, acct)
+        # amount=5000, commission=max(1, 5000*0.002=10)=10, total=5010 → 94990
+        self.assertAlmostEqual(record["cash_after"], 94990.0, places=2)
+
+
 if __name__ == "__main__":
     unittest.main()

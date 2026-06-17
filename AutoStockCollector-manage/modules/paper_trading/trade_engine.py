@@ -23,6 +23,19 @@ class TradeEngine:
         db = DatabaseConfig.get_database()
         self._trades = db["trade_records"]
 
+    def _fees(self) -> Dict[str, float]:
+        """读取平台费率配置；配置不可用时回退到模块默认常量。"""
+        try:
+            from modules.platform.config import PlatformConfig
+            return PlatformConfig().get()
+        except Exception:
+            return {
+                "buy_commission_rate": COMMISSION_RATE,
+                "sell_commission_rate": COMMISSION_RATE,
+                "min_commission": COMMISSION_MIN,
+                "stamp_tax_rate": STAMP_TAX_RATE,
+            }
+
     def _fetch_tencent_parts(self, code: str) -> Optional[list]:
         """腾讯行情接口，返回字段数组。parts[3]=现价，parts[4]=昨收。"""
         import re
@@ -291,8 +304,9 @@ class TradeEngine:
         if shares % 100 != 0:
             raise ValueError("买入数量必须为100的整数倍")
 
+        fees = self._fees()
         amount = shares * price
-        commission = round(max(COMMISSION_MIN, amount * COMMISSION_RATE), 2)
+        commission = round(max(fees["min_commission"], amount * fees["buy_commission_rate"]), 2)
         total_cost = round(amount + commission, 2)
 
         account_doc = account.get(user_id)
@@ -349,9 +363,10 @@ class TradeEngine:
                 raise ValueError(f"无法获取 {code} 的最新价格")
             price = p
 
+        fees = self._fees()
         amount = shares * price
-        stamp_tax = round(amount * STAMP_TAX_RATE, 2)
-        commission = round(max(COMMISSION_MIN, amount * COMMISSION_RATE), 2)
+        stamp_tax = round(amount * fees["stamp_tax_rate"], 2)
+        commission = round(max(fees["min_commission"], amount * fees["sell_commission_rate"]), 2)
         actual_gain = round(amount - stamp_tax - commission, 2)
 
         cost_price = pos["avg_cost"]
