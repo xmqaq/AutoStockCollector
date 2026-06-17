@@ -1,5 +1,5 @@
 """策略选股 API：多策略合并候选 → 多 Agent 深度分析 → 辩论 → 综合结论。"""
-from flask import Blueprint, jsonify, request, Response, stream_with_context
+from flask import Blueprint, jsonify, request, Response, stream_with_context, g
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 import json
@@ -845,6 +845,56 @@ def get_result():
     run_id = request.args.get("run_id")
     result = _get_result(run_id=run_id)
     return jsonify({"success": True, "data": result})
+
+
+@strategy_pick_bp.route("/rebalance-advice", methods=["GET"])
+def get_rebalance_advice():
+    """根据最新选股结果的目标组合 + 实时持仓/现金，生成再平衡买卖清单。"""
+    from modules.ai_selector.advisor import build_rebalance_orders
+    from modules.paper_trading.trade_engine import TradeEngine
+    from modules.paper_trading.account import PaperAccount
+
+    try:
+        buffer = float(request.args.get("buffer", 0.05))
+    except (TypeError, ValueError):
+        buffer = 0.05
+
+    # admin 映射到 default，兼容旧数据；与 paper_trading._resolve_user_id 同口径
+    uid = g.current_user["user_id"] if hasattr(g, "current_user") and g.current_user else "default"
+    account = PaperAccount()
+    if uid == "admin" and account.get("default"):
+        uid = "default"
+
+    result = _get_result()
+    targets = (result.get("portfolio_suggestion") or {}).get("positions") or []
+    if not targets:
+        return jsonify({"success": True, "data": {
+            "total_value": 0, "buffer": buffer, "cash": 0, "orders": [],
+            "message": "暂无选股结果，请先运行策略选股",
+        }})
+
+    engine = TradeEngine()
+    positions, _ = engine.get_positions(uid)
+    acc = account.get(uid)
+    cash = acc["cash_balance"] if acc else 0.0
+
+    codes = list({t["code"] for t in targets} | {p["code"] for p in positions})
+    quotes = engine._batch_tencent_quotes(codes)
+    prices = {c: (q.get("price") or 0) for c, q in quotes.items() if q.get("price")}
+    # 行情接口未命中的持仓，回退到 get_positions 已算出的 current_price
+    for p in positions:
+        prices.setdefault(p["code"], p.get("current_price") or 0)
+
+    advice = build_rebalance_orders(
+        target_positions=targets,
+        current_positions=positions,
+        cash=cash,
+        prices=prices,
+        buffer=buffer,
+        fees=engine._fees(),
+    )
+    advice["cash"] = round(cash, 2)
+    return jsonify({"success": True, "data": advice})
 
 
 @strategy_pick_bp.route("/history", methods=["GET"])
