@@ -1,2 +1,2 @@
 allowBuilds:
-  vue-demi: set this to true or false
+  vue-demi: true
