@@ -145,7 +145,8 @@ def execute_trade():
 
 @paper_bp.route("/positions", methods=["GET"])
 def get_positions():
-    user_id = _resolve_user_id()
+    _lazy_init()
+    user_id = request.args.get("user_id") or _resolve_user_id()
     positions, trading = _engine.get_positions(user_id)
     return jsonify({
         "success": True,
@@ -181,7 +182,8 @@ def get_price():
 @paper_bp.route("/trades", methods=["GET"])
 def get_trades():
     from config.database import DatabaseConfig
-    user_id = _resolve_user_id()
+    _lazy_init()
+    user_id = request.args.get("user_id") or _resolve_user_id()
     try:
         limit = int(request.args.get("limit", 50))
     except (TypeError, ValueError):

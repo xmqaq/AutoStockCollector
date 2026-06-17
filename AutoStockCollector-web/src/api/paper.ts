@@ -161,6 +161,24 @@ export const paperApi = {
     return res.data?.data ?? []
   },
 
+  async getPositionsByUser(userId: string): Promise<PaperPosition[]> {
+    try {
+      const res = await request.get<{ data: PaperPosition[] }>(`/api/paper/positions?user_id=${encodeURIComponent(userId)}`)
+      return res.data?.data ?? []
+    } catch {
+      return []
+    }
+  },
+
+  async getTradesByUser(userId: string, limit = 50): Promise<TradeRecord[]> {
+    try {
+      const res = await request.get<{ data: TradeRecord[] }>(`/api/paper/trades?user_id=${encodeURIComponent(userId)}&limit=${limit}`)
+      return res.data?.data ?? []
+    } catch {
+      return []
+    }
+  },
+
   async getRanking(live = false): Promise<RankingEntry[]> {
     try {
       const res = await request.get<{ data: RankingEntry[] }>(`/api/paper/ranking${live ? '?live=1' : ''}`)
