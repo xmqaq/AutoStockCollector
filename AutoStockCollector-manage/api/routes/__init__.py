@@ -1126,6 +1126,56 @@ def ai_pick_results():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@api_bp.route("/ai/pick/rebalance-advice", methods=["GET"])
+def ai_pick_rebalance_advice():
+    """根据最近一次量化选股结果（按评分加权成目标组合）+ 实时持仓/现金，生成再平衡买卖清单。
+
+    与策略选股的 /rebalance-advice 同源复用 build_rebalance_orders；区别仅在目标组合来源：
+    量化选股只产出排名+评分，这里用 build_score_weighted_targets 现算目标权重。
+    """
+    from modules.ai_selector.advisor import build_rebalance_orders, build_score_weighted_targets
+    from modules.paper_trading.trade_engine import TradeEngine
+    from modules.paper_trading.account import PaperAccount
+    from api.routes.paper_trading import _resolve_user_id
+
+    try:
+        buffer = float(request.args.get("buffer", 0.05))
+    except (TypeError, ValueError):
+        buffer = 0.05
+
+    doc = _latest_pick_result()
+    picks = (doc or {}).get("picks") or []
+    targets = build_score_weighted_targets(picks)
+    if not targets:
+        return jsonify({"success": True, "data": {
+            "total_value": 0, "buffer": buffer, "cash": 0, "orders": [],
+            "message": "暂无量化选股结果，请先运行量化选股",
+        }})
+
+    uid = _resolve_user_id()
+    engine = TradeEngine()
+    positions, _ = engine.get_positions(uid)
+    acc = PaperAccount().get(uid)
+    cash = acc["cash_balance"] if acc else 0.0
+
+    codes = list({t["code"] for t in targets} | {p["code"] for p in positions})
+    quotes = engine._batch_tencent_quotes(codes)
+    prices = {c: (q.get("price") or 0) for c, q in quotes.items() if q.get("price")}
+    for p in positions:
+        prices.setdefault(p["code"], p.get("current_price") or 0)
+
+    advice = build_rebalance_orders(
+        target_positions=targets,
+        current_positions=positions,
+        cash=cash,
+        prices=prices,
+        buffer=buffer,
+        fees=engine._fees(),
+    )
+    advice["cash"] = round(cash, 2)
+    return jsonify({"success": True, "data": advice})
+
+
 @api_bp.route("/data/coverage", methods=["GET"])
 def data_coverage():
     """数据完整性体检：各数据源对全市场的覆盖率与缺口示例。"""
