@@ -2,6 +2,7 @@
 AI 实时监控 API 路由 — 主力资金流量 + 研报分析，长短线投资建议
 """
 import threading
+from typing import Dict
 from flask import Blueprint, jsonify, request, g
 
 from modules.monitor.storage import MonitorStorage
@@ -162,4 +163,77 @@ def get_backtest_all():
         return jsonify({"success": True, "count": len(results), "data": results})
     except Exception as e:
         logger.error(f"Backtest all failed: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@monitor_bp.route("/sector-sentiment", methods=["GET"])
+def get_sector_sentiment():
+    """板块舆情热度排行 — 按行业聚合新闻情感评分"""
+    try:
+        from config.database import DatabaseConfig
+        db = DatabaseConfig.get_database()
+        signals = list(db["monitor_signals"].find(
+            {"analysis.news_sentiment": {"$exists": True}},
+            {"industry": 1, "analysis.news_sentiment": 1, "name": 1, "code": 1, "_id": 0},
+        ))
+
+        sector_map: Dict[str, Dict] = {}
+        for s in signals:
+            industry = s.get("industry", "") or "未知"
+            ns = s.get("analysis", {}).get("news_sentiment", {})
+            overall = ns.get("overall", {})
+            score = overall.get("score", 50)
+            pos = ns.get("positive_count", 0)
+            neg = ns.get("negative_count", 0)
+            total = ns.get("news_count", 0)
+            bullish = overall.get("bullish", False)
+
+            if industry not in sector_map:
+                sector_map[industry] = {
+                    "industry": industry,
+                    "stock_count": 0,
+                    "total_score": 0.0,
+                    "total_news": 0,
+                    "positive_news": 0,
+                    "negative_news": 0,
+                    "bullish_stocks": 0,
+                    "top_stocks": [],
+                }
+            sec = sector_map[industry]
+            sec["stock_count"] += 1
+            sec["total_score"] += score
+            sec["total_news"] += total
+            sec["positive_news"] += pos
+            sec["negative_news"] += neg
+            if bullish:
+                sec["bullish_stocks"] += 1
+            if total > 0:
+                sec["top_stocks"].append({
+                    "code": s.get("code", ""),
+                    "name": s.get("name", ""),
+                    "news_count": total,
+                    "sentiment_score": round(score, 1),
+                    "bullish": bullish,
+                })
+
+        result = []
+        for industry, sec in sector_map.items():
+            avg_score = sec["total_score"] / sec["stock_count"] if sec["stock_count"] > 0 else 50
+            sec["top_stocks"].sort(key=lambda x: x["news_count"], reverse=True)
+            result.append({
+                "industry": industry,
+                "stock_count": sec["stock_count"],
+                "avg_sentiment_score": round(avg_score, 1),
+                "total_news": sec["total_news"],
+                "positive_news": sec["positive_news"],
+                "negative_news": sec["negative_news"],
+                "bullish_stock_ratio": round(sec["bullish_stocks"] / sec["stock_count"] * 100, 1) if sec["stock_count"] > 0 else 0,
+                "top_stocks": sec["top_stocks"][:5],
+                "signal": "bullish" if avg_score >= 60 else "bearish" if avg_score <= 40 else "neutral",
+            })
+
+        result.sort(key=lambda x: x["avg_sentiment_score"], reverse=True)
+        return jsonify({"success": True, "count": len(result), "data": result})
+    except Exception as e:
+        logger.error(f"Sector sentiment failed: {e}")
         return jsonify({"success": False, "error": str(e)}), 500

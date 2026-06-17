@@ -19,6 +19,7 @@ from .analyzers import (
     FundamentalAnalyzer,
     ValuationAnalyzer,
     CompositeAnalyzer,
+    StockNewsSentimentAnalyzer,
 )
 
 logger = get_logger(__name__)
@@ -37,6 +38,7 @@ class MonitorEngine:
         self._valuation = ValuationAnalyzer()
         self._composite = CompositeAnalyzer()
         self._price_prediction = PricePredictionAnalyzer()
+        self._news_sentiment = StockNewsSentimentAnalyzer()
         self._backtest = SignalBacktest()
         self._watchlist = WatchlistStorage()
         self._db = DatabaseConfig.get_database()
@@ -156,6 +158,8 @@ class MonitorEngine:
         code = stock["code"]
         name = stock.get("name", "")
         stock_type = stock.get("type", "自选")
+        info = self._stock_info.get_by_code(code) or {}
+        industry = info.get("industry", info.get("所属行业", ""))
 
         try:
             fund_flow = self._fund_flow.analyze(code)
@@ -164,12 +168,11 @@ class MonitorEngine:
             fundamental = self._fundamental.analyze(code)
             valuation = self._valuation.analyze(code)
             price_prediction = self._price_prediction.analyze(code)
-            composite = self._composite.composite(fund_flow, research, technical, fundamental, valuation)
+            news_sentiment = self._news_sentiment.analyze(code, name, industry)
+            composite = self._composite.composite(fund_flow, research, technical, fundamental, valuation, news_sentiment)
         except Exception as e:
             logger.error(f"Analyze {code} failed: {e}")
             return None
-
-        info = self._stock_info.get_by_code(code) or {}
 
         current_price = technical.get("current_price", 0)
 
@@ -199,12 +202,13 @@ class MonitorEngine:
                 "technical": technical,
                 "fundamental": fundamental,
                 "valuation": valuation,
+                "news_sentiment": news_sentiment,
             },
             "updated_at": datetime.now().isoformat(),
         }
 
         result["trading_advice"] = self._trading_advice(
-            fund_flow, research, technical, composite, price_prediction, valuation, stock_type, reflection,
+            fund_flow, research, technical, composite, price_prediction, valuation, stock_type, reflection, news_sentiment,
         )
         self._update_price_change(result, code)
         return result
@@ -216,6 +220,7 @@ class MonitorEngine:
         pp: Dict, valuation: Dict,
         stock_type: str = "自选",
         reflection: Optional[Dict] = None,
+        news_sentiment: Optional[Dict] = None,
     ) -> Dict[str, Any]:
         """多维度买卖点建议 — 融合主力资金、研报、技术面、估值、综合评分"""
         current = pp.get("current_price", 0)
@@ -241,6 +246,13 @@ class MonitorEngine:
         sc_s = composite.get("short_term", {}).get("score", 50)
         sc_l = composite.get("long_term", {}).get("score", 50)
         divergence = composite.get("divergence", "")
+
+        # ── 新闻舆情（利好催化剂） ──
+        ns = news_sentiment or {}
+        ns_overall = ns.get("overall", {})
+        ns_bullish = ns_overall.get("bullish", False)
+        ns_score = ns_overall.get("score", 50)
+        ns_pos_count = ns.get("positive_count", 0)
 
         # ── 维度间分歧检测 ──
         dim_divergences = self._detect_dim_divergence(ff_s, ff_l, rs_s, tc_s, vl_s, sc_s, sc_l)
@@ -307,6 +319,8 @@ class MonitorEngine:
             buy_reasons.append(f"盈亏比{rr}，预期{exp_ret:+.1f}%")
             if rs_s >= 55:
                 buy_reasons.append(f"研报短期评分{rs_s:.0f}，基本面支撑")
+            if ns_bullish:
+                buy_reasons.append(f"舆情偏向利好(评分{ns_score:.0f})")
             if dim_divergences:
                 buy_reasons.append(f"注意: {'; '.join(dim_divergences[:2])}")
 
@@ -317,6 +331,8 @@ class MonitorEngine:
             if ff_s >= 60: buy_reasons.append(f"主力资金积极(评分{ff_s:.0f})")
             if rs_s >= 55: buy_reasons.append(f"研报短期看好(评分{rs_s:.0f})")
             if tc_s >= 60: buy_reasons.append(f"技术面偏多(评分{tc_s:.0f})")
+            if ns_bullish:
+                buy_reasons.append(f"舆情偏向利好(评分{ns_score:.0f})，{ns_pos_count}条利好新闻")
 
         # 买入：略高于买入区但多维度共振强烈
         elif current <= buy_high * 1.2 and sc_s >= 65 and ff_s >= 60 and tc_s >= 55 and rr >= 2:
@@ -355,6 +371,12 @@ class MonitorEngine:
             action = "观望"; sig = "watch"
             watch_reasons.append(f"综合评分{sc_s:.0f}看多但价格略高于买入区上限")
             watch_reasons.append("可小仓位试探，注意回调风险")
+
+        # 舆情利好但价格不配合 → 关注
+        elif ns_bullish and ns_score >= 65 and sc_s < 55:
+            action = "观望"; sig = "watch"
+            watch_reasons.append(f"舆情利好(评分{ns_score:.0f})，{ns_pos_count}条利好新闻")
+            watch_reasons.append("但综合评分偏低，可跟踪等待技术确认")
 
         # 短期长期分歧
         elif divergence and abs(sc_s - sc_l) > 20:

@@ -5,6 +5,7 @@ from .fundamental import FundamentalAnalyzer
 from .valuation import ValuationAnalyzer
 from .composite import CompositeAnalyzer
 from .price_prediction import PricePredictionAnalyzer
+from .stock_news_sentiment import StockNewsSentimentAnalyzer
 
 __all__ = [
     "FundFlowAnalyzer",
@@ -14,4 +15,5 @@ __all__ = [
     "ValuationAnalyzer",
     "CompositeAnalyzer",
     "PricePredictionAnalyzer",
+    "StockNewsSentimentAnalyzer",
 ]

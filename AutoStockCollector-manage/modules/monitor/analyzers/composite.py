@@ -1,13 +1,14 @@
 """
 综合评分器 — 将各维度分析结果融合为短线和长线投资建议
 
-参考量化选股+策略选股评分体系，扩展五维度评分:
+参考量化选股+策略选股评分体系，扩展六维度评分:
 
 短期信号权重:
-  - 资金流向短期 (35%) — 短期资金博弈主导
-  - 技术面短期 (30%) — 价格趋势确认
-  - 研报短期 momentum (20%) — 催化剂
+  - 资金流向短期 (30%) — 短期资金博弈主导
+  - 技术面短期 (25%) — 价格趋势确认
+  - 研报短期 momentum (15%) — 催化剂
   - 估值面 (15%) — 安全边际参考
+  - 新闻舆情 (15%) — 利好/利空催化剂
 
 长期信号权重:
   - 基本面 (30%) — 盈利质量
@@ -16,14 +17,15 @@
   - 估值面 (15%) — 估值水位
   - 技术面 (10%) — 趋势辅助
 """
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 class CompositeAnalyzer:
     SHORT_WEIGHTS = {
-        "fund_flow": 0.35,
-        "technical": 0.30,
-        "research": 0.20,
+        "fund_flow": 0.30,
+        "technical": 0.25,
+        "research": 0.15,
         "valuation": 0.15,
+        "news_sentiment": 0.15,
     }
     LONG_WEIGHTS = {
         "fundamental": 0.30,
@@ -49,8 +51,9 @@ class CompositeAnalyzer:
         technical: Dict[str, Any],
         fundamental: Dict[str, Any],
         valuation: Dict[str, Any],
+        news_sentiment: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        short = self._compose_short(fund_flow, research, technical, valuation)
+        short = self._compose_short(fund_flow, research, technical, valuation, news_sentiment)
         long_ = self._compose_long(fund_flow, research, fundamental, valuation, technical)
         final = self._final_advice(short, long_)
         return {
@@ -65,6 +68,7 @@ class CompositeAnalyzer:
         research: Dict,
         technical: Dict,
         valuation: Dict,
+        news_sentiment: Optional[Dict] = None,
     ) -> Dict:
         scores = []
         reasons = []
@@ -86,6 +90,12 @@ class CompositeAnalyzer:
         val_score = valuation.get("score", 50)
         scores.append(("估值", val_score, self.SHORT_WEIGHTS["valuation"]))
         self._add_reason(reasons, valuation, val_score)
+
+        ns_score = (news_sentiment or {}).get("overall", {}).get("score", 50)
+        scores.append(("舆情", ns_score, self.SHORT_WEIGHTS["news_sentiment"]))
+        ns_reasons = (news_sentiment or {}).get("reasons", [])
+        if ns_reasons:
+            reasons.extend(ns_reasons[:1])
 
         raw_score = sum(s * w for _, s, w in scores)
         total_score = self._stretch(raw_score)
