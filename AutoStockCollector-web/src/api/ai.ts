@@ -606,14 +606,23 @@ export interface FinalVerdict {
   generatedAt: string
 }
 
+/** SSE/fetch 流式请求统一带上鉴权头（fetch 不走 axios 拦截器，需手动注入 JWT），
+ *  否则后端无法按当前登录用户解析持仓上下文，会退化为 default 账户。 */
+function sseHeaders(): Record<string, string> {
+  const token = localStorage.getItem('auth_token')
+  return token
+    ? { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+    : { 'Content-Type': 'application/json' }
+}
+
 export const orchestrationApi = {
-  analyze(params: { code: string }) {
+  analyze(params: { code: string; use_tools?: boolean; max_debate_rounds?: number }) {
     return client.post('/api/v1/ai/orchestrate', params)
   },
-  analyzeStream(params: { code: string }) {
+  analyzeStream(params: { code: string; use_tools?: boolean; max_debate_rounds?: number }) {
     return fetch('/api/v1/ai/orchestrate/stream', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: sseHeaders(),
       body: JSON.stringify(params),
     })
   },
@@ -687,7 +696,7 @@ export const philosophyApi = {
   stream(params: { code: string; agents: string[] }) {
     return fetch('/api/v1/ai/philosophy/stream', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: sseHeaders(),
       body: JSON.stringify(params),
     })
   },
@@ -698,14 +707,14 @@ export const philosophyApi = {
 
 // ── Research-Battle ──────────────────────────────
 export const researchBattleApi = {
-  stream(params: { code: string; num_rounds?: number; user_id?: string }) {
+  stream(params: { code: string; num_rounds?: number; user_id?: string; use_tools?: boolean }) {
     return fetch('/api/v1/ai/research-battle/stream', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: sseHeaders(),
       body: JSON.stringify(params),
     })
   },
-  quick(params: { code: string; num_rounds?: number; user_id?: string }) {
+  quick(params: { code: string; num_rounds?: number; user_id?: string; use_tools?: boolean }) {
     return client.post('/api/v1/ai/research-battle/quick', params)
   },
 }

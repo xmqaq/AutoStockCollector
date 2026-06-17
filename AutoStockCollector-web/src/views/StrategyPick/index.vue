@@ -162,6 +162,7 @@
     <div v-if="result" class="sp-rebalance-panel">
       <div class="sp-ps-header">
         <span class="sp-ps-title">再平衡建议（缓冲带 5%）</span>
+        <el-checkbox v-model="rebalanceAiMode" size="small" style="margin-right:8px">AI 复核</el-checkbox>
         <el-button size="small" :loading="rebalanceLoading" @click="loadRebalance">生成建议</el-button>
         <el-button size="small" type="primary"
                    :disabled="!rebalance || !rebalance.orders.length"
@@ -170,7 +171,7 @@
       <div v-if="rebalance?.message" class="sp-empty-hint" style="padding:8px 14px 14px">{{ rebalance.message }}</div>
       <div v-else-if="rebalance" class="sp-ps-table-wrap">
         <table class="sp-ps-table">
-          <thead><tr><th>动作</th><th>股票</th><th>股数</th><th>现价</th><th>目标/当前权重</th><th>说明</th><th style="width:80px">操作</th></tr></thead>
+          <thead><tr><th>动作</th><th>股票</th><th>股数</th><th>现价</th><th>目标/当前权重</th><th>说明</th><th v-if="rebalance?.mode === 'ai'">AI复核</th><th style="width:80px">操作</th></tr></thead>
           <tbody>
             <tr v-for="o in rebalance.orders" :key="o.code" class="sp-ps-row">
               <td><span class="sp-sig-badge" :class="o.action === 'buy' ? 'sp-sig-买入' : 'sp-sig-卖出'">{{ o.action === 'buy' ? '买入' : '卖出' }}</span></td>
@@ -179,6 +180,12 @@
               <td class="num">{{ o.price != null ? o.price.toFixed(2) : '-' }}</td>
               <td class="num">{{ o.target_weight }}% / {{ o.current_weight }}%</td>
               <td class="sp-signal-reason" :title="o.reason">{{ o.reason }}</td>
+              <td v-if="rebalance?.mode === 'ai'">
+                <el-tooltip v-if="o.ai_action" :content="o.ai_reason || ''" placement="top">
+                  <span class="sp-ai-tag">{{ o.ai_action }}</span>
+                </el-tooltip>
+                <span v-else class="sp-na">-</span>
+              </td>
               <td>
                 <el-button v-if="!o.skipped" size="small" plain :disabled="executingAll" :loading="executing[o.code]" @click.stop="execOne(o)">执行</el-button>
                 <el-tooltip v-else :content="o.skip_reason || ''" placement="top">
@@ -976,13 +983,14 @@ async function buyAllPositions() {
 
 const rebalance = ref<RebalanceAdvice | null>(null)
 const rebalanceLoading = ref(false)
+const rebalanceAiMode = ref(false)
 const executing = ref<Record<string, boolean>>({})
 const executingAll = ref(false)
 
 async function loadRebalance() {
   rebalanceLoading.value = true
   try {
-    const res = await strategyPickApi.getRebalanceAdvice(0.05)
+    const res = await strategyPickApi.getRebalanceAdvice(0.05, rebalanceAiMode.value ? 'ai' : 'quant')
     rebalance.value = res.data.data
   } catch {
     ElMessage.error('加载再平衡建议失败')
@@ -1789,6 +1797,16 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
   border-radius: 6px;
   overflow: hidden;
 }
+.sp-ai-tag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  background: rgba(96, 160, 240, 0.15);
+  color: #60a0f0;
+  cursor: default;
+}
+.sp-na { color: var(--text-faint); }
 
 /* 对比 */
 .sp-compare-check { margin-left: auto; }

@@ -44,10 +44,11 @@ export const strategyPickApi = {
     return client.get<{ success: boolean; data: StrategyPickHistoryItem[] }>('/api/v1/strategy-pick/history')
   },
 
-  /** 获取再平衡建议（基于最新选股结果 + 实时持仓/现金） */
-  getRebalanceAdvice(buffer = 0.05) {
+  /** 获取再平衡建议（基于最新选股结果 + 实时持仓/现金）。
+   *  mode='ai' 时后端用买卖建议引擎逐条复核，返回 ai_action/ai_reason，并拦截看空买单。 */
+  getRebalanceAdvice(buffer = 0.05, mode: 'quant' | 'ai' = 'quant') {
     return client.get<{ success: boolean; data: RebalanceAdvice }>(
-      '/api/v1/strategy-pick/rebalance-advice', { params: { buffer } },
+      '/api/v1/strategy-pick/rebalance-advice', { params: { buffer, mode } },
     )
   },
 }
@@ -208,6 +209,8 @@ export interface RebalanceOrder {
   reason: string
   skipped: boolean
   skip_reason: string | null
+  ai_action?: string
+  ai_reason?: string
 }
 
 export interface RebalanceAdvice {
@@ -216,4 +219,5 @@ export interface RebalanceAdvice {
   cash: number
   orders: RebalanceOrder[]
   message?: string
+  mode?: 'quant' | 'ai'
 }

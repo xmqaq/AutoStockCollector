@@ -85,6 +85,9 @@
               <span class="rounds-label">辩论轮数</span>
               <el-input-number v-model="debateRounds" :min="1" :max="5" size="small" style="width: 100px" />
             </div>
+            <el-checkbox v-if="enableDebate" v-model="enableTools" size="small">
+              <span class="config-hint">分析师工具增强（更准但更慢）</span>
+            </el-checkbox>
           </div>
         </div>
       </div>
@@ -227,6 +230,7 @@ const detailSignal = ref<any>(null)
 // ── Agent selection ──
 const enableDebate = ref(false)
 const debateRounds = ref(3)
+const enableTools = ref(true)
 
 // ── Debate state ──
 const debatePhase = ref<'idle' | 'research' | 'battle' | 'judge' | 'done'>('idle')
@@ -474,7 +478,7 @@ async function startResearchBattle(code: string) {
   resetDebate()
   debatePhase.value = 'research'
   try {
-    const response = await researchBattleApi.stream({ code, num_rounds: debateRounds.value })
+    const response = await researchBattleApi.stream({ code, num_rounds: debateRounds.value, use_tools: enableTools.value })
     console.log('[DEBUG] stream response', response.status, response.ok, !!response.body)
     if (!response.ok || !response.body) { console.log('[DEBUG] stream not ok, returning'); return }
     const reader = response.body.getReader()

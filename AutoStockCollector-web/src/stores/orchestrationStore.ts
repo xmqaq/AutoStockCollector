@@ -72,6 +72,19 @@ export const useOrchestrationStore = defineStore('orchestration', () => {
         }
         break
 
+      case 'graph:node_token':
+        {
+          // token 级流式：逐字追加到对应节点(通常是 portfolio_manager)，前端呈现打字机效果
+          let n = nodes.value.find(n => n.node_id === nodeId)
+          if (!n) {
+            n = { node_id: nodeId, name: nodeName || nodeId, status: 'running', content: '' }
+            nodes.value.push(n)
+          }
+          n.status = 'running'
+          n.content += (data?.token || '')
+        }
+        break
+
       case 'graph:node_complete':
         {
           const n = nodes.value.find(n => n.node_id === nodeId)

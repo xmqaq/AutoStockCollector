@@ -27,6 +27,19 @@ def _normalize_code(code: str) -> str:
     return normalize_stock_code_flexible(code)
 
 
+def _resolve_orch_uid(data) -> str:
+    """编排类接口统一解析用户：优先 JWT(与持仓页一致, admin→default)，
+    回退请求体 user_id，再回退 default。这样多智能体注入的持仓上下文与持仓页一致。"""
+    try:
+        from api.routes.paper_trading import _resolve_user_id
+        uid = _resolve_user_id()
+        if uid and uid != "default":
+            return uid
+    except Exception:
+        pass
+    return (data or {}).get("user_id", "default")
+
+
 def _save_batch_task_to_db(task_id: str, task_data: Dict):
     """保存批量任务到MongoDB"""
     db = _get_db()
@@ -815,7 +828,7 @@ def research_battle_stream():
     data = request.get_json() or {}
     code = data.get("code", "")
     num_rounds = int(data.get("num_rounds", 3))
-    user_id = data.get("user_id", "default")
+    user_id = _resolve_orch_uid(data)
 
     if not code:
         return jsonify({"error": "code is required"}), 400
@@ -827,7 +840,7 @@ def research_battle_stream():
             from modules.ai.orchestration.graph import create_trading_graph
             from modules.ai.orchestration.signal_processing import extract_final_verdict
 
-            graph = create_trading_graph(use_tools=data.get("use_tools"))
+            graph = create_trading_graph(use_tools=data.get("use_tools"), max_debate_rounds=data.get("num_rounds") or data.get("max_debate_rounds"))
             result = graph.run(normalized, user_id=user_id)
             verdict = result.get("verdict", {})
 
@@ -893,9 +906,9 @@ def orchestrate_analysis():
         return jsonify({"error": "code is required"}), 400
 
     normalized = _normalize_code(code)
-    user_id = data.get("user_id", "default")
+    user_id = _resolve_orch_uid(data)
     try:
-        graph = create_trading_graph(use_tools=data.get("use_tools"))
+        graph = create_trading_graph(use_tools=data.get("use_tools"), max_debate_rounds=data.get("num_rounds") or data.get("max_debate_rounds"))
         result = graph.run(normalized, user_id=user_id)
 
         decision_logger = DecisionLogger()
@@ -919,11 +932,11 @@ def orchestrate_analysis_stream():
     if not code:
         return jsonify({"error": "code is required"}), 400
     normalized = _normalize_code(code)
-    user_id = data.get("user_id", "default")
+    user_id = _resolve_orch_uid(data)
 
     def generate():
         try:
-            graph = create_trading_graph(use_tools=data.get("use_tools"))
+            graph = create_trading_graph(use_tools=data.get("use_tools"), max_debate_rounds=data.get("num_rounds") or data.get("max_debate_rounds"))
             # 逐节点真流式：节点一执行完，其事件立即推送，而非跑完整体回放
             for event in graph.run_stream(normalized, user_id=user_id):
                 yield f"data: {_json.dumps({'event': event.get('event'), 'data': event.get('data')})}\n\n"
@@ -949,10 +962,10 @@ def research_battle_quick():
         return jsonify({"error": "code is required"}), 400
 
     normalized = _normalize_code(code)
-    user_id = data.get("user_id", "default")
+    user_id = _resolve_orch_uid(data)
 
     try:
-        graph = create_trading_graph(use_tools=data.get("use_tools"))
+        graph = create_trading_graph(use_tools=data.get("use_tools"), max_debate_rounds=data.get("num_rounds") or data.get("max_debate_rounds"))
         result = graph.run(normalized, user_id=user_id)
 
         return jsonify({

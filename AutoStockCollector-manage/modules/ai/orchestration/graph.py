@@ -28,19 +28,22 @@ class TradingGraph:
         "fundamental_analyst", "sentiment_analyst", "risk_analyst",
     ]
 
-    def __init__(self, use_tools: Optional[bool] = None):
+    def __init__(self, use_tools: Optional[bool] = None,
+                 max_debate_rounds: Optional[int] = None):
         self.checkpointer = MongoCheckpointer()
         self._executor = ThreadPoolExecutor(max_workers=4)
-        self.max_debate_rounds = 3
-        if use_tools is None:
+        try:
+            from config.settings import Settings
+            cfg = Settings.ORCHESTRATION_CONFIG
+        except Exception:
+            cfg = {}
+        self.use_tools = cfg.get("analyst_use_tools", True) if use_tools is None else use_tools
+        self.max_debate_rounds = cfg.get("max_debate_rounds", 3)
+        if max_debate_rounds is not None:
             try:
-                from config.settings import Settings
-                cfg = Settings.ORCHESTRATION_CONFIG
-                use_tools = cfg.get("analyst_use_tools", True)
-                self.max_debate_rounds = cfg.get("max_debate_rounds", 3)
-            except Exception:
-                use_tools = True
-        self.use_tools = use_tools
+                self.max_debate_rounds = max(1, min(int(max_debate_rounds), 5))
+            except (TypeError, ValueError):
+                pass
         self._build_nodes()
 
     def _build_nodes(self):
@@ -299,5 +302,6 @@ class TradingGraph:
         yield {"event": "done", "data": {}}
 
 
-def create_trading_graph(use_tools: Optional[bool] = None) -> TradingGraph:
-    return TradingGraph(use_tools=use_tools)
+def create_trading_graph(use_tools: Optional[bool] = None,
+                         max_debate_rounds: Optional[int] = None) -> TradingGraph:
+    return TradingGraph(use_tools=use_tools, max_debate_rounds=max_debate_rounds)
