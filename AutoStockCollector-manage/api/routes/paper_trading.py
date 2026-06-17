@@ -278,8 +278,9 @@ def get_ranking():
             if computed is None:
                 continue
             profit_pct, profit_amount, initial_capital = computed
-            cash = _account.get(query_uid, {}).get("cash_balance", 0) if _account.get(query_uid) else 0
-            positions, _ = _engine.get_positions(query_uid)
+            account_doc = _account.get(query_uid) if _account else None
+            cash = account_doc.get("cash_balance", 0) if account_doc else 0
+            positions, _ = _engine.get_positions(query_uid) if _engine else ([], None)
             market_value = sum(p["market_value"] for p in positions)
             today_pnl = sum(p.get("today_pnl_percent", 0.0) * p["market_value"] / 100 for p in positions)
         else:
@@ -298,12 +299,14 @@ def get_ranking():
                 if computed is None:
                     continue
                 profit_pct, profit_amount, initial_capital = computed
-                cash = _account.get(query_uid, {}).get("cash_balance", 0) if _account.get(query_uid) else 0
-                positions, _ = _engine.get_positions(query_uid)
+                account_doc = _account.get(query_uid) if _account else None
+                cash = account_doc.get("cash_balance", 0) if account_doc else 0
+                positions, _ = _engine.get_positions(query_uid) if _engine else ([], None)
                 market_value = sum(p["market_value"] for p in positions)
                 today_pnl = sum(p.get("today_pnl_percent", 0.0) * p["market_value"] / 100 for p in positions)
 
-        stats = _stats.get_stats(query_uid) if _account.get(query_uid) else {"win_rate": 0.0, "total_trades": 0}
+        account_doc = _account.get(query_uid) if _account else None
+        stats = _stats.get_stats(query_uid) if account_doc else {"win_rate": 0.0, "total_trades": 0}
         result.append({
             "user_id": uid,
             "username": user.get("nickname", user.get("username", uid)),

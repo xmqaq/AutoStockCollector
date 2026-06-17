@@ -688,7 +688,7 @@ def job_strategy_pick():
         import threading
         t = threading.Thread(
             target=_run_pipeline,
-            args=(strategy_ids, 20, 15, [], []),
+            args=(strategy_ids, 20, 15, [], [], "default"),
             daemon=True,
         )
         t.start()

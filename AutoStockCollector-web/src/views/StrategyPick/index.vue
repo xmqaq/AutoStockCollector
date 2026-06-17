@@ -171,7 +171,7 @@
             <th>代码</th><th>名称</th><th>信号</th><th>优先级</th><th>综合评分</th><th>当前持仓</th><th>理由</th>
           </tr></thead>
           <tbody>
-            <tr v-for="s in result.trade_signals" :key="s.code" class="sp-signal-row">
+              <tr v-for="s in personalSignals" :key="s.code" class="sp-signal-row">
               <td><span class="sp-code" @click.stop="goAnalysis(s.code)">{{ s.code }}</span></td>
               <td>{{ s.name }}</td>
               <td><span class="sp-sig-badge" :class="'sp-sig-' + s.action">{{ s.action }}</span></td>
@@ -554,8 +554,77 @@ const agentAnalyses = computed(() => {
   }] : [])
 })
 
+// 当前用户持仓（用于重算买卖信号）
+const userPositions = ref<Map<string, number>>(new Map())
+let positionsFetched = false
+
+async function fetchUserPositions() {
+  if (positionsFetched) return
+  positionsFetched = true
+  try {
+    const posResult = await paperApi.getPositions()
+    const map = new Map<string, number>()
+    for (const p of posResult.positions) map.set(p.code, p.shares)
+    userPositions.value = map
+  } catch {
+    // ignore
+  }
+}
+
+// 根据当前用户持仓重算买卖信号
+function computePersonalSignals(picks: any[], held: Map<string, number>) {
+  const actions: { code: string; name: string; action: string; priority: string; composite: number; current_shares: number; reason: string }[] = []
+  for (const p of picks) {
+    const code = p.code
+    const composite = p.composite ?? 0
+    const shares = held.get(code) ?? 0
+    let action: string
+    if (shares > 0) {
+      if (composite >= 72) action = '加仓'
+      else if (composite >= 55) action = '持有'
+      else action = '减仓'
+    } else {
+      if (composite >= 72) action = '买入'
+      else if (composite >= 55) action = '关注'
+      else action = '观望'
+    }
+    const priority = composite >= 72 ? '高' : composite >= 55 ? '中' : '低'
+    actions.push({
+      code, name: p.name || '',
+      action, priority, composite,
+      current_shares: shares,
+      reason: `综合评分${Math.round(composite)}，${shares > 0 ? `持仓${shares}股` : '未持仓'}，建议${action}`,
+    })
+  }
+  // 持有但未入选的 → 卖出
+  for (const [code, shares] of held) {
+    if (shares <= 0) continue
+    if (!picks.some((p: any) => p.code === code)) {
+      const pick = picks.find((p: any) => p.code === code)
+      actions.push({
+        code, name: pick?.name || code,
+        action: '卖出', priority: '高', composite: 0,
+        current_shares: shares,
+        reason: `未入选本次选股结果，持仓${shares}股建议卖出清仓`,
+      })
+    }
+  }
+  const order: Record<string, number> = { '买入': 0, '加仓': 1, '关注': 2, '持有': 3, '观望': 4, '减仓': 5, '卖出': 6 }
+  actions.sort((a, b) => (order[a.action] ?? 99) - (order[b.action] ?? 99) || (b.composite ?? 0) - (a.composite ?? 0))
+  return actions
+}
+
+// 根据选股结果与"执行者用户"判断是否需要重算信号
+const personalSignals = computed(() => {
+  const picks = result.value?.picks
+  if (!picks?.length) return result.value?.trade_signals || []
+  const held = userPositions.value
+  if (held.size === 0) return result.value?.trade_signals || []
+  return computePersonalSignals(picks, held)
+})
+
 const signalGroups = computed(() => {
-  const signals = result.value?.trade_signals || []
+  const signals = personalSignals.value
   const map: Record<string, number> = {}
   for (const s of signals) {
     map[s.action] = (map[s.action] || 0) + 1
@@ -905,6 +974,7 @@ async function loadResult() {
   try {
     const res = await strategyPickApi.getResult()
     result.value = res.data?.data || null
+    if (result.value) fetchUserPositions()
   } catch {
     ElMessage.error('加载结果失败')
   } finally {

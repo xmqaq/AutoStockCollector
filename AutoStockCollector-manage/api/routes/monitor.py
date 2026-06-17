@@ -99,6 +99,7 @@ def get_signal_history(code: str):
 
 
 @monitor_bp.route("/refresh", methods=["POST"])
+@login_required
 def refresh_all():
     if _refresh_lock.locked():
         return jsonify({"success": False, "error": "刷新任务正在运行中，请稍候再试"}), 429
@@ -116,6 +117,7 @@ def refresh_all():
 
 
 @monitor_bp.route("/refresh/<code>", methods=["POST"])
+@login_required
 def refresh_stock(code: str):
     try:
         result = _get_engine().refresh_stock(code)
@@ -128,6 +130,7 @@ def refresh_stock(code: str):
 
 
 @monitor_bp.route("/scan", methods=["GET"])
+@login_required
 def scan_once():
     try:
         result = _get_engine().refresh_all()

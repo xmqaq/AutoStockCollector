@@ -163,11 +163,11 @@ def _get_philosophy_signals(code: str, bundle) -> tuple:
     return signals, dim_scores_flat, flat_details, comp_details
 
 
-def _generate_trade_signals(picks: List[Dict]) -> List[Dict]:
+def _generate_trade_signals(picks: List[Dict], user_id: str = "default") -> List[Dict]:
     """对比选股结果与当前持仓，生成买卖信号。"""
     try:
         from modules.paper_trading.trade_engine import TradeEngine
-        positions, _ = TradeEngine().get_positions("default")
+        positions, _ = TradeEngine().get_positions(user_id)
     except Exception:
         positions = []
 
@@ -432,7 +432,8 @@ def _acquire_run_lock() -> bool:
 
 def _run_pipeline(strategy_ids: List[str], top_n: int, per_strategy_top: int,
                    agent_ids: Optional[List[str]] = None,
-                   philosophy_ids: Optional[List[str]] = None) -> None:
+                   philosophy_ids: Optional[List[str]] = None,
+                   caller_user_id: str = "default") -> None:
     """后台流水线：多策略 preview → 合并去重 → 多 Agent 深度分析 → 辩论 → 排序。"""
     try:
         from modules.ai.engines.picker import PickerEngine
@@ -748,7 +749,7 @@ def _run_pipeline(strategy_ids: List[str], top_n: int, per_strategy_top: int,
         debate_summary = _generate_debate_summary(debate_results, final_picks) if debate_results else ""
 
         # 买卖信号（对比持仓）
-        trade_signals = _generate_trade_signals(final_picks)
+        trade_signals = _generate_trade_signals(final_picks, user_id=caller_user_id)
         portfolio_suggestion = _build_portfolio_suggestion(final_picks, trade_signals, max_positions=5)
 
         _save_result({
@@ -765,6 +766,7 @@ def _run_pipeline(strategy_ids: List[str], top_n: int, per_strategy_top: int,
             "portfolio_metrics": portfolio_metrics,
             "timestamp": beijing_now(),
             "pick_config": {"strategy_ids": strategy_ids, "agent_ids": agent_ids or [], "philosophy_ids": philosophy_ids or [], "top_n": top_n},
+            "caller_user_id": caller_user_id,
         })
 
         _update_progress(100, "策略选股完成", is_running=False)
@@ -805,9 +807,10 @@ def run_strategy_pick():
 
     import uuid as uuid_mod
     _CURRENT_RUN_ID = str(uuid_mod.uuid4())[:8]
-    _update_progress(1, "策略选股启动中...", extra={"strategy_ids": valid_ids, "run_id": _CURRENT_RUN_ID})
+    user_id = g.current_user["user_id"] if hasattr(g, "current_user") and g.current_user else "default"
+    _update_progress(1, "策略选股启动中...", extra={"strategy_ids": valid_ids, "run_id": _CURRENT_RUN_ID, "user_id": user_id})
     t = threading.Thread(target=_run_pipeline,
-                         args=(valid_ids, top_n, per_strategy_top, agent_ids, philosophy_ids), daemon=True)
+                         args=(valid_ids, top_n, per_strategy_top, agent_ids, philosophy_ids, user_id), daemon=True)
     t.start()
     return jsonify({"success": True, "message": f"策略选股已启动，共 {len(valid_ids)} 个策略"})
 

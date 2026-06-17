@@ -1,13 +1,12 @@
 """
 JWT authentication utilities
 """
-import os
-import hashlib
 import uuid
 from datetime import datetime, timedelta
 from functools import wraps
 from typing import Optional, Callable
 
+import os
 import jwt
 from flask import request, jsonify, current_app, g
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -19,7 +18,7 @@ JWT_EXPIRY_HOURS = 24
 
 
 def hash_password(password: str) -> str:
-    return generate_password_hash(password)
+    return generate_password_hash(password, method="pbkdf2:sha256")
 
 
 def verify_password(password: str, hashed: str) -> bool:
