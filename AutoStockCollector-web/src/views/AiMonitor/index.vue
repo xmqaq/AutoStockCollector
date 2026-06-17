@@ -697,6 +697,10 @@ const signalsWithNewsCount = computed(() =>
   signals.value.filter(s => (s.analysis.news_sentiment?.news_count ?? 0) > 0).length
 )
 
+const sentimentBullishCount = computed(() =>
+  signals.value.filter(s => s.analysis.news_sentiment?.overall?.bullish).length
+)
+
 function fetchSignals() {
   loading.value = true
   monitorApi.getSignals().then(resp => {
