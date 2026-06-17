@@ -1,8 +1,41 @@
-from modules.ai_selector.advisor import build_rebalance_orders
+from modules.ai_selector.advisor import build_rebalance_orders, build_score_weighted_targets
 
 
 def _orders_by_code(result):
     return {o["code"]: o for o in result["orders"]}
+
+
+def _w(targets):
+    return {t["code"]: t["weight"] for t in targets}
+
+
+def test_score_weighted_targets_basic():
+    # 评分 50/30/20，上限放到 100% 不封顶 → 权重严格按评分比例 50%/30%/20%
+    targets = build_score_weighted_targets([
+        {"code": "A", "name": "甲", "composite": 50, "industry": "x"},
+        {"code": "B", "name": "乙", "composite": 30, "industry": "y"},
+        {"code": "C", "name": "丙", "composite": 20, "industry": "z"},
+    ], max_weight=1.0)
+    w = _w(targets)
+    assert w["A"] == 50.0 and w["B"] == 30.0 and w["C"] == 20.0
+    assert abs(sum(w.values()) - 100.0) < 0.1
+
+
+def test_score_weighted_targets_cap_binds():
+    # 评分 90 远高于其它 → 首位被封在 30%，不会出现 90% 的过集中
+    targets = build_score_weighted_targets([
+        {"code": "BIG", "name": "巨", "composite": 90, "industry": "x"},
+        {"code": "S1", "name": "小1", "composite": 5, "industry": "y"},
+        {"code": "S2", "name": "小2", "composite": 5, "industry": "z"},
+    ], max_weight=0.30)
+    w = _w(targets)
+    assert w["BIG"] == 30.0
+    assert all(v <= 30.0 + 0.01 for v in w.values())
+
+
+def test_score_weighted_targets_empty():
+    assert build_score_weighted_targets([]) == []
+    assert build_score_weighted_targets([{"code": "Z", "composite": 0}]) == []
 
 
 def test_underweight_target_generates_buy_round_lot():

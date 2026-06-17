@@ -24,6 +24,42 @@ def _sell_net(amount: float, fees: Dict[str, float]) -> float:
     return amount - commission - tax
 
 
+def build_score_weighted_targets(
+    picks: List[Dict[str, Any]],
+    max_weight: float = 0.30,
+) -> List[Dict[str, Any]]:
+    """把"只有评分、没有权重"的选股结果（如量化选股）转成按综合评分加权的目标组合。
+
+    weight_i = composite_i / Σcomposite，单仓上限 max_weight（超限的截断在上限，
+    剩余权重在未封顶的票里按评分再分配，迭代到收敛）。
+    返回 [{code, name, weight(0-100), composite, industry}]，供 build_rebalance_orders 消费。
+    """
+    valid = [p for p in picks if (p.get("composite") or 0) > 0]
+    if not valid:
+        return []
+    capped: Dict[str, float] = {}
+    remaining = list(valid)
+    budget = 1.0
+    while remaining:
+        total = sum(p["composite"] for p in remaining)
+        over = [p for p in remaining if p["composite"] / total * budget > max_weight]
+        if not over:
+            for p in remaining:
+                capped[p["code"]] = p["composite"] / total * budget
+            break
+        for p in over:
+            capped[p["code"]] = max_weight
+            budget -= max_weight
+        remaining = [p for p in remaining if p["code"] not in capped]
+    return [{
+        "code": p["code"],
+        "name": p.get("name", p["code"]),
+        "weight": round(capped[p["code"]] * 100, 2),
+        "composite": p["composite"],
+        "industry": p.get("industry", "未知"),
+    } for p in valid]
+
+
 def build_rebalance_orders(
     target_positions: List[Dict[str, Any]],
     current_positions: List[Dict[str, Any]],
