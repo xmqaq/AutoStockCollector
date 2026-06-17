@@ -827,9 +827,11 @@ def analyze_with_agent_stream(agent_id: str):
 - 主力净流入：{main_net}
 - 最新新闻：{news_titles}
 """
+            monitor_block = _get_monitor_signal_block(stock_code)
             prompt = f"""{agent['system_prompt']}
 
 {price_info}
+{monitor_block}
 
 请结合以上数据给出专业的分析和建议。"""
 
@@ -943,6 +945,51 @@ def get_skill(skill_name: str):
     if not content:
         return jsonify({"error": "Skill not found"}), 404
     return jsonify({"success": True, "data": {"name": skill_name, "content": content}})
+
+
+def _get_monitor_signal_block(stock_code: str) -> str:
+    """从 monitor_signals 获取预分析数据（含新闻舆情），返回格式化文本。"""
+    try:
+        db = _get_db()
+        sig = db["monitor_signals"].find_one({"code": stock_code},
+            {"composite": 1, "trading_advice": 1, "analysis.news_sentiment": 1, "_id": 0})
+        if not sig:
+            return ""
+
+        lines = []
+        cp = sig.get("composite", {})
+        if cp.get("score") is not None:
+            lines.append(f"- 综合信号：{cp.get('label','')}（评分 {cp['score']}/100）")
+
+        ns = sig.get("analysis", {}).get("news_sentiment", {})
+        ns_overall = ns.get("overall", {})
+        if ns.get("news_count", 0) > 0:
+            labels = {"bullish": "利好", "bearish": "利空", "neutral": "中性"}
+            sl = labels.get(ns_overall.get("signal", ""), "中性")
+            lines.append(f"- 新闻舆情：{sl}（评分 {ns_overall.get('score',50)}，共 {ns['news_count']} 条新闻）")
+            lines.append(f"  · 利好 {ns.get('positive_count',0)} 条 / 利空 {ns.get('negative_count',0)} 条")
+            for n in ns.get("recent_positive_news", [])[:2]:
+                lines.append(f"  · 📰 {n.get('title','')[:60]}")
+            for n in ns.get("recent_negative_news", [])[:2]:
+                lines.append(f"  · ⚠️ {n.get('title','')[:60]}")
+
+        ta = sig.get("trading_advice", {})
+        if ta.get("action"):
+            pp = ta.get("advice", {})
+            lines.append(f"- 交易建议：{ta['action']}（置信度 {pp.get('confidence_level','中')}）")
+            if pp.get("buy_price_low") and pp.get("buy_price_high"):
+                lines.append(f"  · 买入区间：{pp['buy_price_low']}~{pp['buy_price_high']}")
+            if pp.get("target_price"):
+                lines.append(f"  · 目标价：{pp['target_price']} | 止损：{pp.get('stop_loss_price',0)}")
+            if pp.get("expected_return"):
+                lines.append(f"  · 预期收益：{pp['expected_return']:+.1f}% | 最大亏损：{pp['max_loss']:.1f}%")
+
+        if not lines:
+            return ""
+        return "\n".join(["", "【监控预分析】"] + lines)
+    except Exception as e:
+        logger.debug(f"Monitor signal fetch failed: {e}")
+        return ""
 
 
 @ai_agent_bp.route("/<agent_id>/analyze", methods=["POST"])
