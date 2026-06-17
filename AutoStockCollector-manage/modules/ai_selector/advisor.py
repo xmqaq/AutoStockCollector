@@ -76,11 +76,7 @@ def build_rebalance_orders(
             continue
 
         target_value = t["weight"] / 100.0 * total_value
-        target_shares_float = target_value / price
-        target_shares = int(math.floor(target_shares_float / 100) * 100)
-        # 如果目标金额非零但四舍五入到0，则至少买一手（100股）
-        if target_shares == 0 and target_shares_float > 0:
-            target_shares = 100
+        target_shares = int(math.floor(target_value / price / 100) * 100)
         diff = target_shares - cur_shares
 
         # 缓冲带：调仓金额占净值比 < buffer → 不动
