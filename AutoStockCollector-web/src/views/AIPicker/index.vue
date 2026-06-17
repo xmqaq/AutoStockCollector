@@ -38,6 +38,44 @@
       @go-analysis="goAnalysis"
     />
 
+    <!-- 再平衡建议（一键操作）：按评分加权成目标组合，对比模拟盘持仓/现金给出买卖清单 -->
+    <div v-if="result?.picks?.length" class="ap-rebalance">
+      <div class="ap-rebalance-head">
+        <span class="ap-rebalance-title">再平衡建议（缓冲带 5%，按评分加权）</span>
+        <el-button size="small" :loading="rebalanceLoading" @click="loadRebalance">生成建议</el-button>
+        <el-button size="small" type="primary"
+                   :disabled="!rebalance || !rebalance.orders.length"
+                   :loading="executingAll" @click="execAll">全部执行</el-button>
+      </div>
+      <div v-if="rebalance?.message" class="ap-rebalance-empty">{{ rebalance.message }}</div>
+      <el-table v-else-if="rebalance" :data="rebalance.orders" size="small" border>
+        <el-table-column label="动作" width="72">
+          <template #default="{ row }">
+            <el-tag :type="row.action === 'buy' ? 'danger' : 'success'" size="small">{{ row.action === 'buy' ? '买入' : '卖出' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="股票">
+          <template #default="{ row }">{{ row.name }}（{{ row.code }}）</template>
+        </el-table-column>
+        <el-table-column label="股数" prop="shares" width="84" align="right" />
+        <el-table-column label="现价" width="84" align="right">
+          <template #default="{ row }">{{ row.price != null ? row.price.toFixed(2) : '-' }}</template>
+        </el-table-column>
+        <el-table-column label="目标/当前" width="116" align="right">
+          <template #default="{ row }">{{ row.target_weight }}% / {{ row.current_weight }}%</template>
+        </el-table-column>
+        <el-table-column label="说明" prop="reason" show-overflow-tooltip />
+        <el-table-column label="操作" width="92">
+          <template #default="{ row }">
+            <el-button v-if="!row.skipped" size="small" plain :disabled="executingAll" :loading="executing[row.code]" @click="execOne(row)">执行</el-button>
+            <el-tooltip v-else :content="row.skip_reason || ''" placement="top">
+              <el-tag type="info" size="small">已跳过</el-tag>
+            </el-tooltip>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
+
     <AIPickerDetailPanel
       :pick="expandedPick"
       @close="expandedCode = ''"
@@ -68,6 +106,8 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
 import { aiServiceApi, type AIPickResult, type AIPick, type PickTrackData } from '@/api/ai'
+import { paperApi } from '@/api/paper'
+import type { RebalanceAdvice, RebalanceOrder } from '@/api/strategyPick'
 
 import AIPickerToolbar from './components/AIPickerToolbar.vue'
 import AIPickerTable from './components/AIPickerTable.vue'
@@ -84,6 +124,60 @@ const candidatePool = ref(50)
 const expandedCode = ref('')
 const showDoneTip = ref(false)
 const summaryExpanded = ref(false)
+
+// ── 再平衡建议（一键操作）──
+const rebalance = ref<RebalanceAdvice | null>(null)
+const rebalanceLoading = ref(false)
+const executing = ref<Record<string, boolean>>({})
+const executingAll = ref(false)
+
+async function loadRebalance() {
+  rebalanceLoading.value = true
+  try {
+    const res = await aiServiceApi.pickRebalanceAdvice(0.05)
+    rebalance.value = res.data.data
+  } catch {
+    ElMessage.error('加载再平衡建议失败')
+  } finally {
+    rebalanceLoading.value = false
+  }
+}
+
+async function execOne(o: RebalanceOrder): Promise<boolean> {
+  if (o.skipped || !o.price) return false
+  executing.value[o.code] = true
+  try {
+    await paperApi.executeTrade({
+      code: o.code, action: o.action, shares: o.shares,
+      price: o.price, ai_signal: { reason: o.reason, position_advice: '再平衡建议' },
+    })
+    await loadRebalance() // 执行后刷新清单（现金/持仓已变）
+    return true
+  } catch (e: any) {
+    ElMessage.error(`执行失败：${e?.response?.data?.error || e?.message || e}`)
+    return false
+  } finally {
+    executing.value[o.code] = false
+  }
+}
+
+async function execAll() {
+  if (!rebalance.value) return
+  executingAll.value = true
+  try {
+    // 先卖后买：卖出释放现金才够买
+    const ordered = [...rebalance.value.orders].sort(
+      (a, b) => (a.action === 'sell' ? 0 : 1) - (b.action === 'sell' ? 0 : 1),
+    )
+    for (const o of ordered) {
+      if (o.skipped || !o.price) continue
+      const ok = await execOne(o)
+      if (!ok) break // 卖出失败即中断，避免后续买入在现金未释放的情况下执行
+    }
+  } finally {
+    executingAll.value = false
+  }
+}
 
 // ── 历史选股效果跟踪（首次展开时懒加载）──
 const trackExpanded = ref(false)
@@ -213,6 +307,17 @@ onBeforeUnmount(stopProgressPolling)
 <style scoped>
 .ap-page { display: flex; flex-direction: column; gap: 10px; }
 .ap-meta { display: flex; gap: 18px; font-size: 12px; color: var(--text-alt-muted, #909399); }
+
+/* 再平衡建议 */
+.ap-rebalance {
+  background: var(--bg-card-alt, #ffffff);
+  border: 1px solid var(--border-alt, #ebeef5);
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+.ap-rebalance-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.ap-rebalance-title { font-size: 13px; font-weight: 600; color: var(--text-alt-body, #303133); margin-right: auto; }
+.ap-rebalance-empty { font-size: 12px; color: var(--text-alt-muted, #909399); padding: 6px 0; }
 
 /* 进度条 */
 .ap-progress-box {
