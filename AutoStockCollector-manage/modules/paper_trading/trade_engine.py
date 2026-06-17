@@ -168,29 +168,45 @@ class TradeEngine:
         # 导致「卖出后再以不同价买回」成本算歪、单只盈亏恒少算一笔买入佣金。
         trades = list(self._trades.find({"user_id": user_id}, sort=[("traded_at", 1)]))
 
+        # 当日盈亏用「券商口径的逐日盯市」：当日盈亏 = 现市值 + 当日卖出额 − 当日买入额
+        #   − 昨日持仓市值(隔夜股数×昨收)。这样「当天新建仓」的盈亏基准是你的买入价，
+        # 而非昨收——否则会把「昨收→你买入价」这段你没吃到的涨幅也算进当日盈亏。
+        today = beijing_now().strftime("%Y-%m-%d")
+
         book: Dict[str, Dict[str, Any]] = {}
         for t in trades:
             code = t.get("code")
             if not code:
                 continue
-            b = book.setdefault(code, {"name": code, "shares": 0, "cost": 0.0})
+            b = book.setdefault(code, {
+                "name": code, "shares": 0, "cost": 0.0,
+                "prev_shares": None, "today_buy_amt": 0.0, "today_sell_amt": 0.0,
+            })
             if t.get("name"):
                 b["name"] = t["name"]
+            is_today = str(t.get("traded_at", ""))[:10] == today
+            # 第一笔「今日成交」前的持股数 = 隔夜持仓（昨收口径的基准股数）
+            if is_today and b["prev_shares"] is None:
+                b["prev_shares"] = b["shares"]
             shares = t.get("shares", 0) or 0
+            amount = t.get("amount")
+            if amount is None:
+                amount = shares * (t.get("price") or 0)
             if t.get("action") == "buy":
                 cost = t.get("total_cost")
                 if cost is None:
-                    amount = t.get("amount")
-                    if amount is None:
-                        amount = shares * (t.get("price") or 0)
                     cost = amount + (t.get("commission") or 0)
                 b["shares"] += shares
                 b["cost"] += cost
+                if is_today:
+                    b["today_buy_amt"] += amount
             elif t.get("action") == "sell":
                 if b["shares"] > 0:
                     sell_shares = min(shares, b["shares"])
                     b["cost"] -= b["cost"] * (sell_shares / b["shares"])
                     b["shares"] -= sell_shares
+                if is_today:
+                    b["today_sell_amt"] += amount
 
         trading = is_trading_time()
         # 批量拉行情：所有持仓一次 HTTP 取齐现价+昨收，避免逐只 2 次串行请求
@@ -224,6 +240,17 @@ class TradeEngine:
             if yesterday_close and yesterday_close > 0:
                 today_pnl_pct = (price - yesterday_close) / yesterday_close * 100
 
+            # 当日盈亏（金额）：逐日盯市口径，当天买入按买入价、隔夜持仓按昨收为基准。
+            prev_shares = b["prev_shares"]
+            if prev_shares is None:
+                prev_shares = shares_held  # 无今日成交 → 全部隔夜持仓
+            today_pnl_amount = 0.0
+            if yesterday_close and yesterday_close > 0:
+                today_pnl_amount = (
+                    market_value + b["today_sell_amt"] - b["today_buy_amt"]
+                    - prev_shares * yesterday_close
+                )
+
             positions.append({
                 "code": code,
                 "name": b["name"],
@@ -234,6 +261,7 @@ class TradeEngine:
                 "pnl": round(pnl, 2),
                 "pnl_percent": round(pnl_pct, 2),
                 "today_pnl_percent": round(today_pnl_pct, 2),
+                "today_pnl_amount": round(today_pnl_amount, 2),
                 "yesterday_close": round(yesterday_close, 2) if yesterday_close else None,
                 "price_type": price_type,
                 "position_ratio": 0,

@@ -18,6 +18,7 @@ export interface PaperPosition {
   pnl: number
   pnl_percent: number
   today_pnl_percent: number
+  today_pnl_amount: number
   yesterday_close: number | null
   price_type: 'realtime' | 'close' | 'fallback' | 'unknown'
   position_ratio: number

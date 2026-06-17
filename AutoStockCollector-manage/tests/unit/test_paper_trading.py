@@ -185,6 +185,40 @@ class TestTradeEngine(unittest.TestCase):
         positions, _ = engine.get_positions("default")
         self.assertEqual(len(positions), 0)
 
+    def test_today_pnl_uses_buy_price_for_same_day_buy(self):
+        """当天新建仓：当日盈亏基准应是买入价，而非昨收。"""
+        from utils.helpers import beijing_now
+        today = beijing_now().strftime("%Y-%m-%d")
+        engine = self._make_engine()
+        engine._trades.find = MagicMock(return_value=[
+            {"action": "buy", "code": "SH600000", "name": "测试股票", "shares": 100,
+             "price": 18.0, "amount": 1800.0, "total_cost": 1805.0,
+             "traded_at": f"{today}T10:00:00"},
+        ])
+        engine._batch_tencent_quotes = MagicMock(return_value={})
+        engine.get_current_price = MagicMock(return_value=(20.0, 'realtime'))
+        engine._get_yesterday_close = MagicMock(return_value=15.0)
+
+        positions, _ = engine.get_positions("default")
+        # 当日盈亏 = 100×(20−18) = 200，而非按昨收的 100×(20−15)=500
+        self.assertAlmostEqual(positions[0]["today_pnl_amount"], 200.0, places=2)
+
+    def test_today_pnl_uses_prev_close_for_overnight_hold(self):
+        """隔夜持仓（今日无成交）：当日盈亏按昨收为基准。"""
+        engine = self._make_engine()
+        engine._trades.find = MagicMock(return_value=[
+            {"action": "buy", "code": "SH600000", "name": "测试股票", "shares": 100,
+             "price": 18.0, "amount": 1800.0, "total_cost": 1805.0,
+             "traded_at": "2020-01-01T10:00:00"},
+        ])
+        engine._batch_tencent_quotes = MagicMock(return_value={})
+        engine.get_current_price = MagicMock(return_value=(20.0, 'realtime'))
+        engine._get_yesterday_close = MagicMock(return_value=15.0)
+
+        positions, _ = engine.get_positions("default")
+        # 隔夜持仓：100×(20−15)=500
+        self.assertAlmostEqual(positions[0]["today_pnl_amount"], 500.0, places=2)
+
     def test_get_positions_rebuy_after_sell_uses_latest_cost(self):
         """卖空后再以不同价买回，成本应反映新买入价，而非全历史均值。"""
         engine = self._make_engine()

@@ -282,10 +282,7 @@ def get_ranking():
             cash = account_doc.get("cash_balance", 0) if account_doc else 0
             positions, _ = _engine.get_positions(query_uid) if _engine else ([], None)
             market_value = sum(p["market_value"] for p in positions)
-            today_pnl = sum(
-                p["shares"] * (p["current_price"] - p["yesterday_close"])
-                for p in positions if p.get("yesterday_close")
-            )
+            today_pnl = sum(p.get("today_pnl_amount", 0.0) for p in positions)
         else:
             snap = db["portfolio_snapshots"].find_one(
                 {"user_id": query_uid}, sort=[("date", -1)]
@@ -306,10 +303,7 @@ def get_ranking():
                 cash = account_doc.get("cash_balance", 0) if account_doc else 0
                 positions, _ = _engine.get_positions(query_uid) if _engine else ([], None)
                 market_value = sum(p["market_value"] for p in positions)
-                today_pnl = sum(
-                    p["shares"] * (p["current_price"] - p["yesterday_close"])
-                    for p in positions if p.get("yesterday_close")
-                )
+                today_pnl = sum(p.get("today_pnl_amount", 0.0) for p in positions)
 
         account_doc = _account.get(query_uid) if _account else None
         stats = _stats.get_stats(query_uid) if account_doc else {"win_rate": 0.0, "total_trades": 0}
