@@ -43,6 +43,13 @@ export const strategyPickApi = {
   getHistory() {
     return client.get<{ success: boolean; data: StrategyPickHistoryItem[] }>('/api/v1/strategy-pick/history')
   },
+
+  /** 获取再平衡建议（基于最新选股结果 + 实时持仓/现金） */
+  getRebalanceAdvice(buffer = 0.05) {
+    return client.get<{ success: boolean; data: RebalanceAdvice }>(
+      '/api/v1/strategy-pick/rebalance-advice', { params: { buffer } },
+    )
+  },
 }
 
 export interface StrategyPickAgent {
@@ -188,4 +195,25 @@ export interface StrategyPickResult {
     philosophy_ids: string[]
     top_n: number
   }
+}
+
+export interface RebalanceOrder {
+  code: string
+  name: string
+  action: 'buy' | 'sell'
+  shares: number
+  price: number | null
+  target_weight: number
+  current_weight: number
+  reason: string
+  skipped: boolean
+  skip_reason: string | null
+}
+
+export interface RebalanceAdvice {
+  total_value: number
+  buffer: number
+  cash: number
+  orders: RebalanceOrder[]
+  message?: string
 }
