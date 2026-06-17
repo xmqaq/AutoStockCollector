@@ -33,13 +33,13 @@ function sanitize(node: Node): Node {
 function sanitizeHtml(html: string): string {
   const template = document.createElement('template')
   template.innerHTML = html
-  const fragment = document.createDocumentFragment()
+  // 装进一个容器元素再读 innerHTML：DocumentFragment 没有 innerHTML 属性，
+  // 旧实现 (fragment as unknown as Element).innerHTML 恒为 undefined，导致任何非空内容都被渲染成空白。
+  const container = document.createElement('div')
   for (const child of Array.from(template.content.childNodes)) {
-    fragment.appendChild(sanitize(child))
+    container.appendChild(sanitize(child))
   }
-  return fragment.firstChild
-    ? (fragment as unknown as Element).innerHTML || ''
-    : ''
+  return container.innerHTML
 }
 
 export function renderMd(text: string): string {
