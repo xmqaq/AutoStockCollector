@@ -110,12 +110,12 @@ def test_insufficient_cash_skips_lowest_priority_buy():
             {"code": "BBB", "name": "低分", "weight": 50.0, "composite": 60, "industry": "B"},
         ],
         current_positions=[],
-        cash=12000.0,                  # 净值=12000，每个目标想要6000
-        prices={"AAA": 100.0, "BBB": 100.0},
+        cash=12000.0,                  # 净值=12000，每个目标想要6000元
+        prices={"AAA": 10.0, "BBB": 10.0},   # 6000/10/100=6 → 600股≈6005元/只，现金只够买一只
         buffer=0.0,
     )
     by = _orders_by_code(res)
-    # 高分先买（6000+佣金），剩余现金不足再买低分 → 低分 skipped
+    # 高分先买（≈6005），剩余现金不足再买低分 → 低分 skipped
     assert by["AAA"]["skipped"] is False and by["AAA"]["action"] == "buy"
     assert by["BBB"]["skipped"] is True
     assert "现金不足" in by["BBB"]["skip_reason"]
