@@ -39,7 +39,9 @@ class TradingGraph:
         self.nodes["data_fetch"] = GraphNode("data_fetch", create_data_fetch_node(), ["factor_calc"])
         self.nodes["factor_calc"] = GraphNode("factor_calc", create_factor_calc_node(), ["analyst_team"])
 
-        self.nodes["analyst_team"] = GraphNode("analyst_team", self._run_analyst_team, ["bull_analyst"])
+        self.nodes["analyst_team"] = GraphNode("analyst_team", self._run_analyst_team, ["debate"])
+
+        self.nodes["debate"] = GraphNode("debate", self._run_debate, ["research_manager"])
 
         for aid in self.ANALYST_IDS:
             name_map = {
@@ -51,8 +53,8 @@ class TradingGraph:
                 f"analyst_{aid}", create_analyst_node(aid, name_map.get(aid, aid)), []
             )
 
-        self.nodes["bull_analyst"] = GraphNode("bull_analyst", create_bull_node(), ["bear_analyst"])
-        self.nodes["bear_analyst"] = GraphNode("bear_analyst", create_bear_node(), ["research_manager"])
+        self.nodes["bull_analyst"] = GraphNode("bull_analyst", create_bull_node(), [])
+        self.nodes["bear_analyst"] = GraphNode("bear_analyst", create_bear_node(), [])
         self.nodes["research_manager"] = GraphNode("research_manager", create_research_manager_node(), ["trader"])
         self.nodes["trader"] = GraphNode("trader", create_trader_node(), ["risk_debate_team"])
 
@@ -88,6 +90,42 @@ class TradingGraph:
                 state.errors.append(f"analyst_team_{aid}: {e}")
 
         return {"analyst_outputs": state.analyst_outputs}
+
+    def _run_debate(self, state: TradingState):
+        """多空多轮辩论：每轮 bull 先发、bear 针对反驳，逐轮写入 debate_history。
+
+        max_debate_rounds 控制轮数；若某轮多空净倾向已高度一致（分差<5）则提前收敛，
+        避免无谓的 LLM 调用。最终 bull_analysis/bear_analysis 保留最后一轮，供研判与裁决。
+        """
+        bull_fn = self.nodes["bull_analyst"].fn
+        bear_fn = self.nodes["bear_analyst"].fn
+        rounds = max(1, getattr(state, "max_debate_rounds", 1))
+
+        for i in range(rounds):
+            state.debate_round = i + 1
+            bull_fn(state)
+            bear_fn(state)
+            state.debate_history.append(DebateEntry(
+                round_number=state.debate_round,
+                bull_argument=state.bull_analysis,
+                bear_argument=state.bear_analysis,
+                bull_score=state.bull_score,
+                bear_score=state.bear_score,
+            ))
+            state.add_event("graph:node_stream", {
+                "node_id": "debate",
+                "content": f"第{state.debate_round}轮：多头{state.bull_score} vs 空头{state.bear_score}",
+            })
+            # 提前收敛：多头看涨度与空头看跌度的净倾向已趋同
+            net = (state.bull_score + (100 - state.bear_score)) / 2
+            if i >= 1 and abs(net - 50) < 5:
+                break
+
+        return {
+            "bull_analysis": state.bull_analysis, "bear_analysis": state.bear_analysis,
+            "bull_score": state.bull_score, "bear_score": state.bear_score,
+            "debate_history": state.debate_history,
+        }
 
     def _run_risk_debate_team(self, state: TradingState):
         debaters = ["aggressive", "conservative", "neutral"]
@@ -147,9 +185,10 @@ class TradingGraph:
             return {}
         return node.fn(state)
 
-    def run(self, stock_code: str, run_id: Optional[str] = None) -> Dict[str, Any]:
+    def run(self, stock_code: str, run_id: Optional[str] = None,
+            user_id: str = "default") -> Dict[str, Any]:
         run_id = run_id or f"run_{uuid.uuid4().hex[:12]}"
-        state = TradingState(stock_code=stock_code)
+        state = TradingState(stock_code=stock_code, user_id=user_id)
 
         logger.info(f"[TradingGraph] Starting run {run_id} for {stock_code}")
 
@@ -160,7 +199,7 @@ class TradingGraph:
 
         execution_order = [
             "data_fetch", "factor_calc", "analyst_team",
-            "bull_analyst", "bear_analyst",
+            "debate",
             "research_manager", "trader",
             "risk_debate_team", "portfolio_manager",
         ]
@@ -191,6 +230,51 @@ class TradingGraph:
 
         logger.info(f"[TradingGraph] Run {run_id} completed")
         return result
+
+    def run_stream(self, stock_code: str, run_id: Optional[str] = None,
+                   user_id: str = "default"):
+        """逐节点真流式：每个节点执行完立即把新产生的事件 yield 出去（而非跑完回放）。
+
+        最后 yield 一个 verdict 事件与 done 事件，并落决策记录。
+        """
+        run_id = run_id or f"run_{uuid.uuid4().hex[:12]}"
+        state = TradingState(stock_code=stock_code, user_id=user_id)
+
+        checkpoint = self.checkpointer.load(run_id)
+        if checkpoint:
+            self._deserialize_state(state, checkpoint)
+
+        execution_order = [
+            "data_fetch", "factor_calc", "analyst_team",
+            "debate",
+            "research_manager", "trader",
+            "risk_debate_team", "portfolio_manager",
+        ]
+
+        emitted = 0
+        try:
+            for node_name in execution_order:
+                self._execute_node(node_name, state)
+                self.checkpointer.save(run_id, self._serialize_state(state))
+                while emitted < len(state.stream_events):
+                    yield state.stream_events[emitted]
+                    emitted += 1
+        except Exception as e:
+            logger.error(f"[TradingGraph] Stream run {run_id} failed: {e}")
+            state.errors.append(f"graph_execution: {e}")
+            while emitted < len(state.stream_events):
+                yield state.stream_events[emitted]
+                emitted += 1
+
+        verdict = extract_final_verdict(state)
+        try:
+            from modules.ai.reflection.decision_logger import DecisionLogger
+            DecisionLogger().log_decision(run_id, stock_code, state.final_decision or {})
+        except Exception as e:
+            logger.warning(f"Decision log failed in stream: {e}")
+
+        yield {"event": "graph:complete", "data": {"verdict": verdict, "run_id": run_id}}
+        yield {"event": "done", "data": {}}
 
 
 def create_trading_graph() -> TradingGraph:

@@ -828,7 +828,7 @@ def research_battle_stream():
             from modules.ai.orchestration.signal_processing import extract_final_verdict
 
             graph = create_trading_graph()
-            result = graph.run(normalized)
+            result = graph.run(normalized, user_id=user_id)
             verdict = result.get("verdict", {})
 
             yield f"data: {_json.dumps({'type': 'research:start', 'data': {'code': normalized}})}\n\n"
@@ -893,9 +893,10 @@ def orchestrate_analysis():
         return jsonify({"error": "code is required"}), 400
 
     normalized = _normalize_code(code)
+    user_id = data.get("user_id", "default")
     try:
         graph = create_trading_graph()
-        result = graph.run(normalized)
+        result = graph.run(normalized, user_id=user_id)
 
         decision_logger = DecisionLogger()
         decision_logger.log_decision(result.get("run_id", ""), normalized, result.get("final_decision", {}))
@@ -918,21 +919,14 @@ def orchestrate_analysis_stream():
     if not code:
         return jsonify({"error": "code is required"}), 400
     normalized = _normalize_code(code)
+    user_id = data.get("user_id", "default")
 
     def generate():
         try:
             graph = create_trading_graph()
-            result = graph.run(normalized)
-
-            for event in result.get("events", []):
+            # 逐节点真流式：节点一执行完，其事件立即推送，而非跑完整体回放
+            for event in graph.run_stream(normalized, user_id=user_id):
                 yield f"data: {_json.dumps({'event': event.get('event'), 'data': event.get('data')})}\n\n"
-
-            from modules.ai.reflection.decision_logger import DecisionLogger
-            DecisionLogger().log_decision(result.get("run_id", ""), normalized, result.get("final_decision", {}))
-
-            verdict = result.get("verdict", {})
-            yield f"data: {_json.dumps({'event': 'graph:complete', 'data': {'verdict': verdict}})}\n\n"
-            yield f"data: {_json.dumps({'event': 'done'})}\n\n"
         except Exception as e:
             yield f"data: {_json.dumps({'event': 'error', 'data': str(e)})}\n\n"
 
@@ -955,10 +949,11 @@ def research_battle_quick():
         return jsonify({"error": "code is required"}), 400
 
     normalized = _normalize_code(code)
+    user_id = data.get("user_id", "default")
 
     try:
         graph = create_trading_graph()
-        result = graph.run(normalized)
+        result = graph.run(normalized, user_id=user_id)
 
         return jsonify({
             "success": True,
