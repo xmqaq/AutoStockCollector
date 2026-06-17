@@ -5,10 +5,44 @@ caller 边界：(provider, prompt) -> str。默认实现接 model_manager 适配
 """
 import hashlib
 import json
+import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from utils.helpers import beijing_now
 from typing import Any, Callable, Dict, List, Optional
+
+# ai_call_history 是只增不查→现在已有查询页的审计日志，需要索引 + TTL，否则会无限增长、
+# 且分页/聚合查询全表扫描越来越慢。索引创建是幂等的，用进程级标记保证只建一次。
+_AI_HISTORY_INDEXES_READY = False
+
+
+def ensure_ai_call_history_indexes(db) -> None:
+    """为 ai_call_history 建立 timestamp TTL 索引 + 过滤索引（幂等，进程内仅执行一次）。
+
+    TTL 天数可用环境变量 AI_CALL_HISTORY_TTL_DAYS 配置（默认 90 天，<=0 关闭过期）。
+    注意：TTL 只会删除 timestamp 为 BSON 日期类型的文档，历史遗留的 ISO 字符串记录
+    不会被自动清理。
+    """
+    global _AI_HISTORY_INDEXES_READY
+    if _AI_HISTORY_INDEXES_READY:
+        return
+    try:
+        coll = db["ai_call_history"]
+        try:
+            ttl_days = int(os.environ.get("AI_CALL_HISTORY_TTL_DAYS", "90"))
+        except (TypeError, ValueError):
+            ttl_days = 90
+        if ttl_days > 0:
+            coll.create_index([("timestamp", 1)], name="ttl_timestamp",
+                              expireAfterSeconds=ttl_days * 86400)
+        else:
+            coll.create_index([("timestamp", 1)], name="ts")
+        coll.create_index([("provider", 1), ("timestamp", -1)], name="provider_ts")
+        coll.create_index([("task_type", 1), ("timestamp", -1)], name="tasktype_ts")
+        _AI_HISTORY_INDEXES_READY = True
+    except Exception:
+        # 建索引失败（权限/已存在冲突）不应阻塞写日志
+        pass
 
 
 @dataclass
@@ -318,16 +352,20 @@ class LLMRouter:
         try:
             from config.database import DatabaseConfig
             db = DatabaseConfig.get_database()
+            ensure_ai_call_history_indexes(db)
+            # timestamp 统一存 datetime（与 model_manager 一致）：字符串/日期混存会让
+            # 排序与 $gte 范围查询按 BSON 类型分桶而非按时间，且 TTL 只对 date 字段生效。
             db["ai_call_history"].insert_one({
                 "provider": provider,
                 "task_type": task_type,
                 "model_name": model_name,
                 "success": success,
-                "error": error,
+                "error": error or "",
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
+                "total_tokens": (input_tokens or 0) + (output_tokens or 0),
                 "response_time": round(response_time, 3),
-                "timestamp": beijing_now().isoformat(),
+                "timestamp": beijing_now(),
             })
         except Exception:
             pass

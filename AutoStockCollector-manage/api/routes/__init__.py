@@ -1201,9 +1201,17 @@ def get_cron_status():
 def get_ai_call_history():
     """AI调用历史查询，支持分页/过滤/聚合统计"""
     from config.database import DatabaseConfig
+    from modules.ai.foundation.llm_router import ensure_ai_call_history_indexes
     db = DatabaseConfig.get_database()
-    page = int(request.args.get("page", 1))
-    size = min(int(request.args.get("size", 50)), 200)
+    ensure_ai_call_history_indexes(db)
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        size = min(max(1, int(request.args.get("size", 50))), 200)
+    except (TypeError, ValueError):
+        size = 50
     provider = request.args.get("provider")
     task_type = request.args.get("task_type")
     success = request.args.get("success")
@@ -1248,7 +1256,11 @@ def get_ai_call_history():
         },
         "success": coll.count_documents({"success": True}),
         "fail": coll.count_documents({"success": False}),
-        "today": coll.count_documents({"timestamp": {"$gte": beijing_now().strftime("%Y-%m-%d")}}),
+        # timestamp 现统一为 datetime，用当日零点 datetime 边界过滤（字符串边界对
+        # datetime 记录的 $gte 会因 BSON 类型不同而失配，导致 today 漏计）。
+        "today": coll.count_documents({
+            "timestamp": {"$gte": beijing_now().replace(hour=0, minute=0, second=0, microsecond=0)}
+        }),
     }
 
     return jsonify({
