@@ -860,6 +860,10 @@ def get_rebalance_advice():
     except (TypeError, ValueError):
         buffer = 0.05
 
+    # mode=ai：在量化目标权重基础上，用买卖建议引擎(AdviceEngine)对每条订单做一次
+    # AI 复核——给出操作倾向与理由，并把 AI 明确看空的买单标记为跳过。
+    mode = (request.args.get("mode") or "quant").strip().lower()
+
     uid = _resolve_user_id()
     account = PaperAccount()
 
@@ -892,7 +896,50 @@ def get_rebalance_advice():
         fees=engine._fees(),
     )
     advice["cash"] = round(cash, 2)
+    advice["mode"] = mode
+
+    if mode == "ai":
+        _annotate_orders_with_ai(advice.get("orders", []), positions)
+
     return jsonify({"success": True, "data": advice})
+
+
+_AI_NEGATIVE = ("回避", "卖出", "减仓", "清仓", "观望")
+
+
+def _annotate_orders_with_ai(orders: List[Dict[str, Any]], positions: List[Dict[str, Any]]) -> None:
+    """用 AdviceEngine 逐条复核：写入 ai_action/ai_reason；AI 看空的买单标记跳过。"""
+    try:
+        from modules.ai.engines.advice import AdviceEngine
+    except Exception as e:
+        logger.warning(f"AdviceEngine unavailable: {e}")
+        return
+    engine = AdviceEngine()
+    held = {p["code"]: p for p in positions}
+    cache: Dict[str, Dict[str, Any]] = {}
+    for o in orders:
+        code = o.get("code")
+        if not code:
+            continue
+        if code not in cache:
+            try:
+                pos = held.get(code)
+                cache[code] = engine.advise(
+                    code,
+                    cost=(pos.get("avg_cost") if pos else None),
+                    position=(o.get("current_weight") if pos else None),
+                )
+            except Exception as e:
+                logger.warning(f"AI advise failed for {code}: {e}")
+                cache[code] = {}
+        adv = (cache[code] or {}).get("advice") or {}
+        action = str(adv.get("action") or "")
+        o["ai_action"] = action
+        o["ai_reason"] = adv.get("reason") or ""
+        # AI 明确看空时，拦截买单（卖单不拦——减仓/清仓与 AI 看空方向一致）
+        if o.get("action") == "buy" and not o.get("skipped") and any(k in action for k in _AI_NEGATIVE):
+            o["skipped"] = True
+            o["skip_reason"] = f"AI 复核为「{action}」，本次不买入"
 
 
 @strategy_pick_bp.route("/history", methods=["GET"])

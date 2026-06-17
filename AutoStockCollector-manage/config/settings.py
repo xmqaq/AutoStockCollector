@@ -108,6 +108,12 @@ class Settings:
         "layer3_llm_model": "quick",
     }
 
+    # 多智能体编排配置
+    ORCHESTRATION_CONFIG = {
+        "analyst_use_tools": True,   # 分析师工具增强(计划→取数→分析)总开关；关闭可省 LLM 调用
+        "max_debate_rounds": 3,      # 多空辩论最大轮数
+    }
+
     BACKTEST_CONFIG = {
         "default_cash": 1000000,
         "default_commission": 0.001,

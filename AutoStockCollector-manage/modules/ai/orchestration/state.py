@@ -64,9 +64,12 @@ class RiskEntry:
 
 class TradingState:
     stock_code: str
+    user_id: str
     stock_data: Dict[str, Any]
     factor_results: Dict[str, Any]
     enriched_context: str
+    holding_context: str
+    reflection_context: str
 
     analyst_outputs: Dict[str, AnalystOutput]
     debate_history: List[DebateEntry]
@@ -91,11 +94,14 @@ class TradingState:
     errors: List[str]
     stream_events: List[Dict[str, Any]]
 
-    def __init__(self, stock_code: str = ""):
+    def __init__(self, stock_code: str = "", user_id: str = "default"):
         self.stock_code = stock_code
+        self.user_id = user_id
         self.stock_data = {}
         self.factor_results = {}
         self.enriched_context = ""
+        self.holding_context = ""
+        self.reflection_context = ""
         self.analyst_outputs = {}
         self.debate_history = []
         self.debate_round = 0
