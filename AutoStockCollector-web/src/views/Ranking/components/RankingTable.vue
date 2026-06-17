@@ -5,6 +5,7 @@
       v-loading="loading" 
       :row-class-name="tableRowClassName"
       class="custom-table"
+      @row-click="handleRowClick"
     >
       <!-- 排名 -->
       <el-table-column label="排名" width="100" align="center">
@@ -103,6 +104,14 @@ const props = defineProps<{
   ranking: RankingEntry[]
   loading: boolean
 }>()
+
+const emit = defineEmits<{
+  viewUser: [userId: string, username: string]
+}>()
+
+function handleRowClick(row: RankingEntry) {
+  emit('viewUser', row.user_id, row.username)
+}
 
 const authStore = useAuthStore()
 const currentUserId = computed(() => authStore.user?.user_id)

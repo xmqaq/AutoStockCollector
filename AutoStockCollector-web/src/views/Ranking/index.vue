@@ -21,7 +21,13 @@
       </div>
     </div>
 
-    <RankingTable :ranking="ranking" :loading="loading" />
+    <RankingTable :ranking="ranking" :loading="loading" @view-user="openDrawer" />
+
+    <UserPositionsDrawer
+      v-model="drawerVisible"
+      :user-id="drawerUserId"
+      :username="drawerUsername"
+    />
   </div>
 </template>
 
@@ -31,12 +37,22 @@ import { Refresh, Trophy as TrophyBase } from '@element-plus/icons-vue'
 import { paperApi } from '@/api/paper'
 import type { RankingEntry } from '@/api/paper'
 import RankingTable from './components/RankingTable.vue'
+import UserPositionsDrawer from './components/UserPositionsDrawer.vue'
 
 const ranking = ref<RankingEntry[]>([])
 const loading = ref(false)
 const refreshing = ref(false)
 const lastUpdated = ref('')
+const drawerVisible = ref(false)
+const drawerUserId = ref('')
+const drawerUsername = ref('')
 let _pollTimer: ReturnType<typeof setInterval> | undefined
+
+function openDrawer(userId: string, username: string) {
+  drawerUserId.value = userId
+  drawerUsername.value = username
+  drawerVisible.value = true
+}
 
 // A股交易时段：周一~周五 9:30-11:30 / 13:00-15:00（按本地时间近似，用于决定是否自动轮询）
 function isTradingNow(): boolean {
