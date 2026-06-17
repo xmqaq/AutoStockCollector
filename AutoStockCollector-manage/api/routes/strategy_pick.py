@@ -853,17 +853,15 @@ def get_rebalance_advice():
     from modules.ai_selector.advisor import build_rebalance_orders
     from modules.paper_trading.trade_engine import TradeEngine
     from modules.paper_trading.account import PaperAccount
+    from api.routes.paper_trading import _resolve_user_id
 
     try:
         buffer = float(request.args.get("buffer", 0.05))
     except (TypeError, ValueError):
         buffer = 0.05
 
-    # admin 映射到 default，兼容旧数据；与 paper_trading._resolve_user_id 同口径
-    uid = g.current_user["user_id"] if hasattr(g, "current_user") and g.current_user else "default"
+    uid = _resolve_user_id()
     account = PaperAccount()
-    if uid == "admin" and account.get("default"):
-        uid = "default"
 
     result = _get_result()
     targets = (result.get("portfolio_suggestion") or {}).get("positions") or []
