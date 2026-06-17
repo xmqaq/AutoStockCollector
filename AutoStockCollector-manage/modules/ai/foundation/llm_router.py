@@ -98,9 +98,9 @@ class LLMRouter:
         result = self._provider_caller(provider, prompt,
                                        temperature=temperature, max_tokens=max_tokens,
                                        messages=messages)
-        self._last_model = self._provider_caller.last_model
-        self._last_input_tokens = self._provider_caller.last_input_tokens
-        self._last_output_tokens = self._provider_caller.last_output_tokens
+        self._last_model = getattr(self._provider_caller, "last_model", None)
+        self._last_input_tokens = getattr(self._provider_caller, "last_input_tokens", 0)
+        self._last_output_tokens = getattr(self._provider_caller, "last_output_tokens", 0)
         return result
 
     def _caller_accepts(self, name: str) -> bool:
