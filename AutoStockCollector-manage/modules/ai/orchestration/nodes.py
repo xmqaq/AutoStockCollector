@@ -377,15 +377,13 @@ def create_risk_debater_node(debater_id: str, debater_name: str, stance: str):
     return risk_debater
 
 
-def create_portfolio_manager_node():
-    def portfolio_manager(state: TradingState) -> Dict[str, Any]:
-        state.add_event("graph:node_start", {"node_id": "portfolio_manager", "name": "投资组合经理"})
-        risk_context = "\n".join(
-            f"【{e.agent_id}】{e.stance}视角: {e.argument[:300]}"
-            for e in state.risk_discuss_history
-        )
-        holding_block = f"\n{state.holding_context}\n" if state.holding_context else ""
-        prompt = f"""你是投资组合经理。请综合所有信息做出最终决策。
+def _build_portfolio_prompt(state: TradingState) -> str:
+    risk_context = "\n".join(
+        f"【{e.agent_id}】{e.stance}视角: {e.argument[:300]}"
+        for e in state.risk_discuss_history
+    )
+    holding_block = f"\n{state.holding_context}\n" if state.holding_context else ""
+    return f"""你是投资组合经理。请综合所有信息做出最终决策。
 
 研究摘要: {state.research_summary[:1500]}
 交易员建议: {state.trader_decision[:1000]}
@@ -396,17 +394,27 @@ def create_portfolio_manager_node():
 
 请给出最终决策: 方向(买入/卖出/持有)、仓位(0-100%)、止损位、止盈位。
 结合当前持仓与可用现金，给出可执行的加/减/清仓建议（避免超出现金或满仓追高）。"""
+
+
+def _finalize_decision(state: TradingState, decision_text: str) -> None:
+    state.final_decision = {
+        "decision": decision_text or "观望",
+        "bull_score": state.bull_score,
+        "bear_score": state.bear_score,
+        "confidence": state.trader_confidence,
+        "timestamp": beijing_now().isoformat(),
+    }
+
+
+def create_portfolio_manager_node():
+    def portfolio_manager(state: TradingState) -> Dict[str, Any]:
+        state.add_event("graph:node_start", {"node_id": "portfolio_manager", "name": "投资组合经理"})
+        prompt = _build_portfolio_prompt(state)
         try:
             router = LLMRouter()
             result = router.chat(prompt, use_cache=False, tier="deep", task_type="portfolio_manager")
             decision_text = result.raw if result.success else "观望"
-            state.final_decision = {
-                "decision": decision_text,
-                "bull_score": state.bull_score,
-                "bear_score": state.bear_score,
-                "confidence": state.trader_confidence,
-                "timestamp": beijing_now().isoformat(),
-            }
+            _finalize_decision(state, decision_text)
             state.add_event("graph:node_stream", {"node_id": "portfolio_manager", "content": decision_text[:300]})
         except Exception as e:
             logger.error(f"Portfolio manager failed: {e}")
@@ -414,6 +422,32 @@ def create_portfolio_manager_node():
         state.add_event("graph:node_complete", {"node_id": "portfolio_manager"})
         return {"final_decision": state.final_decision}
     return portfolio_manager
+
+
+def portfolio_manager_stream(state: TradingState):
+    """token 级流式版组合经理：逐块 yield 最终决策文本，结束时写入 final_decision。
+
+    被 graph.run_stream 在最后一节点特例调用。任何异常都降级为一次性结果，
+    保证 final_decision 一定被写入。事件同时 add_event 入 state，供回放/落库一致。
+    """
+    state.add_event("graph:node_start", {"node_id": "portfolio_manager", "name": "投资组合经理"})
+    yield {"event": "graph:node_start", "data": {"node_id": "portfolio_manager", "name": "投资组合经理"}}
+
+    prompt = _build_portfolio_prompt(state)
+    full = ""
+    try:
+        router = LLMRouter()
+        for chunk in router.chat_stream(prompt, task_type="portfolio_manager"):
+            if not chunk:
+                continue
+            full += chunk
+            yield {"event": "graph:node_token", "data": {"node_id": "portfolio_manager", "token": chunk}}
+    except Exception as e:
+        logger.error(f"Portfolio manager stream failed: {e}")
+
+    _finalize_decision(state, full or "观望")
+    state.add_event("graph:node_complete", {"node_id": "portfolio_manager"})
+    yield {"event": "graph:node_complete", "data": {"node_id": "portfolio_manager"}}
 
 
 def _coerce_score(val) -> Optional[float]:

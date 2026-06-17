@@ -28,9 +28,19 @@ class TradingGraph:
         "fundamental_analyst", "sentiment_analyst", "risk_analyst",
     ]
 
-    def __init__(self):
+    def __init__(self, use_tools: Optional[bool] = None):
         self.checkpointer = MongoCheckpointer()
         self._executor = ThreadPoolExecutor(max_workers=4)
+        self.max_debate_rounds = 3
+        if use_tools is None:
+            try:
+                from config.settings import Settings
+                cfg = Settings.ORCHESTRATION_CONFIG
+                use_tools = cfg.get("analyst_use_tools", True)
+                self.max_debate_rounds = cfg.get("max_debate_rounds", 3)
+            except Exception:
+                use_tools = True
+        self.use_tools = use_tools
         self._build_nodes()
 
     def _build_nodes(self):
@@ -50,7 +60,9 @@ class TradingGraph:
                 "sentiment_analyst": "舆情分析师", "risk_analyst": "风险分析师",
             }
             self.nodes[f"analyst_{aid}"] = GraphNode(
-                f"analyst_{aid}", create_analyst_node(aid, name_map.get(aid, aid)), []
+                f"analyst_{aid}",
+                create_analyst_node(aid, name_map.get(aid, aid), use_tools=self.use_tools),
+                [],
             )
 
         self.nodes["bull_analyst"] = GraphNode("bull_analyst", create_bull_node(), [])
@@ -189,6 +201,7 @@ class TradingGraph:
             user_id: str = "default") -> Dict[str, Any]:
         run_id = run_id or f"run_{uuid.uuid4().hex[:12]}"
         state = TradingState(stock_code=stock_code, user_id=user_id)
+        state.max_debate_rounds = self.max_debate_rounds
 
         logger.info(f"[TradingGraph] Starting run {run_id} for {stock_code}")
 
@@ -239,6 +252,7 @@ class TradingGraph:
         """
         run_id = run_id or f"run_{uuid.uuid4().hex[:12]}"
         state = TradingState(stock_code=stock_code, user_id=user_id)
+        state.max_debate_rounds = self.max_debate_rounds
 
         checkpoint = self.checkpointer.load(run_id)
         if checkpoint:
@@ -254,6 +268,14 @@ class TradingGraph:
         emitted = 0
         try:
             for node_name in execution_order:
+                if node_name == "portfolio_manager":
+                    # 最终决策做 token 级流式：逐字推送给前端
+                    from modules.ai.orchestration.nodes import portfolio_manager_stream
+                    for ev in portfolio_manager_stream(state):
+                        yield ev
+                    emitted = len(state.stream_events)  # 标记已消费，避免重复推送
+                    self.checkpointer.save(run_id, self._serialize_state(state))
+                    continue
                 self._execute_node(node_name, state)
                 self.checkpointer.save(run_id, self._serialize_state(state))
                 while emitted < len(state.stream_events):
@@ -277,5 +299,5 @@ class TradingGraph:
         yield {"event": "done", "data": {}}
 
 
-def create_trading_graph() -> TradingGraph:
-    return TradingGraph()
+def create_trading_graph(use_tools: Optional[bool] = None) -> TradingGraph:
+    return TradingGraph(use_tools=use_tools)

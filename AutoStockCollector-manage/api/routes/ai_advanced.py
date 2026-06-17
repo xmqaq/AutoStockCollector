@@ -827,7 +827,7 @@ def research_battle_stream():
             from modules.ai.orchestration.graph import create_trading_graph
             from modules.ai.orchestration.signal_processing import extract_final_verdict
 
-            graph = create_trading_graph()
+            graph = create_trading_graph(use_tools=data.get("use_tools"))
             result = graph.run(normalized, user_id=user_id)
             verdict = result.get("verdict", {})
 
@@ -895,7 +895,7 @@ def orchestrate_analysis():
     normalized = _normalize_code(code)
     user_id = data.get("user_id", "default")
     try:
-        graph = create_trading_graph()
+        graph = create_trading_graph(use_tools=data.get("use_tools"))
         result = graph.run(normalized, user_id=user_id)
 
         decision_logger = DecisionLogger()
@@ -923,7 +923,7 @@ def orchestrate_analysis_stream():
 
     def generate():
         try:
-            graph = create_trading_graph()
+            graph = create_trading_graph(use_tools=data.get("use_tools"))
             # 逐节点真流式：节点一执行完，其事件立即推送，而非跑完整体回放
             for event in graph.run_stream(normalized, user_id=user_id):
                 yield f"data: {_json.dumps({'event': event.get('event'), 'data': event.get('data')})}\n\n"
@@ -952,7 +952,7 @@ def research_battle_quick():
     user_id = data.get("user_id", "default")
 
     try:
-        graph = create_trading_graph()
+        graph = create_trading_graph(use_tools=data.get("use_tools"))
         result = graph.run(normalized, user_id=user_id)
 
         return jsonify({
