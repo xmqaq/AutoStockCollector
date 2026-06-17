@@ -39,6 +39,22 @@ export interface TradingAdvice {
   }
 }
 
+export interface NewsSentiment {
+  overall: {
+    score: number
+    signal: string
+    bullish: boolean
+  }
+  news_count: number
+  positive_count: number
+  negative_count: number
+  neutral_count: number
+  recent_positive_news: { title: string; date: string; source: string; keywords: string[] }[]
+  recent_negative_news: { title: string; date: string; source: string; keywords: string[] }[]
+  keywords_found: { bullish: string[]; bearish: string[] }
+  reasons: string[]
+}
+
 export interface PricePrediction {
   target_price: number
   stop_loss: number
@@ -77,6 +93,7 @@ export interface MonitorSignal {
     technical: any
     fundamental: any
     valuation: any
+    news_sentiment?: NewsSentiment
   }
   updated_at: string
 }
@@ -119,5 +136,8 @@ export const monitorApi = {
   },
   scan() {
     return client.get('/api/v1/monitor/scan')
+  },
+  getSectorSentiment() {
+    return client.get('/api/v1/monitor/sector-sentiment')
   },
 }

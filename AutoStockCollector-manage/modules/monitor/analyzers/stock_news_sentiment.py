@@ -12,18 +12,20 @@ logger = get_logger(__name__)
 
 
 class StockNewsSentimentAnalyzer:
+    # 注意：关键词只在标题中匹配（content含免责声明/邮箱等干扰信息）
     POSITIVE_KEYWORDS = [
         "增长", "盈利", "突破", "利好", "创新", "合作", "扩张", "订单", "签约",
-        "中标", "技术突破", "新高", "大涨", "涨停", "放量", "拉升", "回暖",
-        "扭亏", "预增", "分红", "回购", "增持", "利好政策", "扶持",
+        "中标", "新高", "大涨", "涨停", "放量", "拉升", "回暖",
+        "扭亏", "预增", "分红", "回购", "增持", "扶持",
+        "上涨", "涨", "走高", "反弹", "回升", "向好", "改善", "加速",
     ]
     NEGATIVE_KEYWORDS = [
-        "亏损", "下跌", "减持", "利空", "违规", "诉讼", "风险", "召回",
-        "调查", "处罚", "业绩下滑", "跌停", "暴跌", "暴雷", "违约",
-        "st", "退市", "预警", "资金流出", "评级下调",
+        "亏损", "下跌", "跌", "减持", "利空", "违规", "诉讼",
+        "召回", "调查", "处罚", "业绩下滑", "跌停", "暴跌", "暴雷", "违约",
+        "退市", "预警", "资金流出", "评级下调", "下滑", "下挫", "做空",
     ]
 
-    def __init__(self, news_days: int = 7, max_news: int = 30):
+    def __init__(self, news_days: int = 30, max_news: int = 50):
         self._db = DatabaseConfig.get_database()
         self.news_days = news_days
         self.max_news = max_news
@@ -72,8 +74,8 @@ class StockNewsSentimentAnalyzer:
 
         for item in news_items:
             title = item.get("title", "") or ""
-            content = (item.get("content") or item.get("summary") or "") or ""
-            text = title + " " + content
+            # 只在标题中匹配（正文含免责声明"市场有风险"、邮箱"biz@staff.*"等干扰）
+            text = title
 
             pos_kws = [kw for kw in self.POSITIVE_KEYWORDS if kw in text]
             neg_kws = [kw for kw in self.NEGATIVE_KEYWORDS if kw in text]
@@ -109,8 +111,10 @@ class StockNewsSentimentAnalyzer:
 
         if total == 0:
             score = 50.0
+        elif pos_count == 0 and neg_count == 0:
+            score = 50.0
         else:
-            score = (pos_count / total) * 100
+            score = ((pos_count - neg_count) / total) * 50 + 50
 
         if score >= 60:
             signal = "bullish"
@@ -133,7 +137,7 @@ class StockNewsSentimentAnalyzer:
             "overall": {
                 "score": round(score, 1),
                 "signal": signal,
-                "bullish": score >= 60,
+                "bullish": signal == "bullish",
             },
             "news_count": total,
             "positive_count": pos_count,

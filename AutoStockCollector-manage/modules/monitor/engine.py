@@ -96,7 +96,7 @@ class MonitorEngine:
         return result
 
     def _collect_stocks(self) -> List[Dict[str, Any]]:
-        """收集需要分析的股票: 持仓(positions + paper_account) + 自选(watchlist)"""
+        """收集需要分析的股票: 持仓 + 自选 + 策略选股 + 量化选股"""
         seen = set()
         stocks = []
 
@@ -150,6 +150,35 @@ class MonitorEngine:
                     })
         except Exception as e:
             logger.error(f"Get watchlist failed: {e}")
+
+        # 策略选股: ai_pick_results
+        try:
+            for r in self._db["ai_pick_results"].find({}):
+                for pick in (r.get("picks") or []):
+                    code = pick.get("code", "")
+                    if code and code not in seen:
+                        seen.add(code)
+                        stocks.append({
+                            "code": code,
+                            "name": pick.get("name", ""),
+                            "type": "策略选股",
+                        })
+        except Exception as e:
+            logger.error(f"Get ai_pick_results failed: {e}")
+
+        # 量化选股: factor_cache
+        try:
+            for f in self._db["factor_cache"].find({}):
+                code = f.get("code", "")
+                if code and code not in seen:
+                    seen.add(code)
+                    stocks.append({
+                        "code": code,
+                        "name": f.get("name", f.get("A股简称", "")),
+                        "type": "量化选股",
+                    })
+        except Exception as e:
+            logger.error(f"Get factor_cache failed: {e}")
 
         logger.info(f"Collected {len(stocks)} stocks to analyze ({len(seen)} unique)")
         return stocks

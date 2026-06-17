@@ -16,6 +16,18 @@
       </div>
     </div>
 
+    <!-- Tabs -->
+    <el-tabs v-model="activeTab" class="main-tabs">
+      <el-tab-pane label="综合信号" name="signal" />
+      <el-tab-pane label="新闻舆情" name="news_sentiment">
+        <template #label>
+          <span>新闻舆情 <el-tag v-if="sentimentBullishCount" size="small" type="danger" effect="light" class="sentiment-count">{{ sentimentBullishCount }}利好</el-tag></span>
+        </template>
+      </el-tab-pane>
+    </el-tabs>
+
+    <!-- Signal View -->
+    <template v-if="activeTab === 'signal'">
     <!-- Filter -->
     <div class="filter-bar">
       <el-input
@@ -99,6 +111,8 @@
               </el-tag>
               <span class="confidence">{{ (s.confidence * 100).toFixed(0) }}% 置信</span>
               <span class="profit-badge">{{ profitScore(s).toFixed(0) }}</span>
+              <el-tag v-if="s.analysis.news_sentiment?.overall?.bullish" size="small" type="danger" effect="light" class="ns-card-badge">利好</el-tag>
+              <el-tag v-else-if="s.analysis.news_sentiment?.overall?.signal === 'bearish'" size="small" type="success" effect="light" class="ns-card-badge">利空</el-tag>
             </div>
 
             <!-- Dual signal bars -->
@@ -154,6 +168,87 @@
 
       <el-empty v-if="!loading && filteredSignals.length === 0" description="暂无监控信号" />
     </div>
+
+    </template>
+    <!-- end signal view -->
+
+    <!-- News Sentiment View -->
+    <template v-if="activeTab === 'news_sentiment'">
+      <div class="sentiment-page">
+        <!-- Stats -->
+        <div class="stats-bar">
+          <el-card shadow="never" class="stat-card stat-bullish">
+            <div class="stat-label">利好新闻</div>
+            <div class="stat-value">{{ newsFeedPositive.length }}</div>
+          </el-card>
+          <el-card shadow="never" class="stat-card stat-bearish">
+            <div class="stat-label">利空新闻</div>
+            <div class="stat-value">{{ newsFeedNegative.length }}</div>
+          </el-card>
+          <el-card shadow="never" class="stat-card">
+            <div class="stat-label">涉及股票</div>
+            <div class="stat-value">{{ signalsWithNewsCount }}</div>
+          </el-card>
+        </div>
+
+        <!-- Filter -->
+        <div class="filter-bar">
+          <el-input
+            v-model="newsSearchText"
+            placeholder="搜索新闻标题/股票代码"
+            clearable
+            size="small"
+            class="search-input"
+          />
+        </div>
+
+        <!-- Positive News -->
+        <div class="sentiment-group" v-if="filteredPositiveNews.length">
+          <h3 class="sg-header sg-bullish">📈 利好新闻 <small>{{ filteredPositiveNews.length }} 条</small></h3>
+          <div v-for="n in filteredPositiveNews" :key="n._key" class="news-feed-card card-bullish" @click="showStockDetail(n.code)">
+            <div class="nfc-header">
+              <span class="nfc-stock" @click.stop="showStockDetail(n.code)">
+                <strong>{{ n.code }}</strong>
+                <span class="nfc-name">{{ n.name }}</span>
+              </span>
+              <el-tag size="small" type="danger" effect="dark" class="nfc-tag">利好</el-tag>
+            </div>
+            <div class="nfc-title">{{ n.title }}</div>
+            <div class="nfc-meta">
+              <span class="nfc-date">{{ n.date }}</span>
+              <span class="nfc-source">{{ n.source }}</span>
+              <span class="nfc-kws" v-if="n.keywords?.length">
+                <el-tag v-for="kw in n.keywords.slice(0,4)" :key="kw" size="small" type="danger" effect="plain">{{ kw }}</el-tag>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Negative News -->
+        <div class="sentiment-group" v-if="filteredNegativeNews.length">
+          <h3 class="sg-header sg-bearish">⚠️ 利空新闻 <small>{{ filteredNegativeNews.length }} 条</small></h3>
+          <div v-for="n in filteredNegativeNews" :key="n._key" class="news-feed-card card-bearish" @click="showStockDetail(n.code)">
+            <div class="nfc-header">
+              <span class="nfc-stock" @click.stop="showStockDetail(n.code)">
+                <strong>{{ n.code }}</strong>
+                <span class="nfc-name">{{ n.name }}</span>
+              </span>
+              <el-tag size="small" type="success" effect="dark" class="nfc-tag">利空</el-tag>
+            </div>
+            <div class="nfc-title">{{ n.title }}</div>
+            <div class="nfc-meta">
+              <span class="nfc-date">{{ n.date }}</span>
+              <span class="nfc-source">{{ n.source }}</span>
+              <span class="nfc-kws" v-if="n.keywords?.length">
+                <el-tag v-for="kw in n.keywords.slice(0,4)" :key="kw" size="small" type="success" effect="plain">{{ kw }}</el-tag>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <el-empty v-if="filteredPositiveNews.length === 0 && filteredNegativeNews.length === 0" description="暂无舆情新闻数据" />
+      </div>
+    </template>
 
     <!-- Detail Dialog -->
     <el-dialog
@@ -434,6 +529,7 @@
               </div>
             </div>
           </el-tab-pane>
+
         </el-tabs>
         <!-- Price Prediction Detail (可折叠) -->
         <el-collapse v-if="detailData.price_prediction" class="pp-collapse">
@@ -480,6 +576,7 @@ const lastRefresh = ref('')
 const searchText = ref('')
 const signalFilter = ref('')
 const typeFilter = ref('')
+const activeTab = ref('signal')
 const detailVisible = ref(false)
 const detailData = ref<MonitorSignal | null>(null)
 const detailTab = ref('fund_flow')
@@ -523,6 +620,83 @@ const longBuyCount = computed(() => signals.value.filter(s => s.long_term.score 
 const shortSellCount = computed(() => signals.value.filter(s => s.short_term.score < 40).length)
 const longSellCount = computed(() => signals.value.filter(s => s.long_term.score < 40).length)
 
+// ── News Feed view ──
+const newsSearchText = ref('')
+
+interface NewsFeedItem {
+  _key: string
+  code: string
+  name: string
+  title: string
+  date: string
+  source: string
+  keywords: string[]
+}
+
+const newsFeedPositive = computed<NewsFeedItem[]>(() => {
+  const items: NewsFeedItem[] = []
+  for (const s of signals.value) {
+    const ns = s.analysis.news_sentiment
+    if (!ns?.recent_positive_news?.length) continue
+    for (const n of ns.recent_positive_news) {
+      items.push({
+        _key: `${s.code}_pos_${n.title}_${n.date}`,
+        code: s.code,
+        name: s.name,
+        title: n.title,
+        date: n.date || '',
+        source: n.source || '',
+        keywords: n.keywords || [],
+      })
+    }
+  }
+  return items
+})
+
+const newsFeedNegative = computed<NewsFeedItem[]>(() => {
+  const items: NewsFeedItem[] = []
+  for (const s of signals.value) {
+    const ns = s.analysis.news_sentiment
+    if (!ns?.recent_negative_news?.length) continue
+    for (const n of ns.recent_negative_news) {
+      items.push({
+        _key: `${s.code}_neg_${n.title}_${n.date}`,
+        code: s.code,
+        name: s.name,
+        title: n.title,
+        date: n.date || '',
+        source: n.source || '',
+        keywords: n.keywords || [],
+      })
+    }
+  }
+  return items
+})
+
+const filteredPositiveNews = computed(() => {
+  if (!newsSearchText.value) return newsFeedPositive.value
+  const q = newsSearchText.value.toLowerCase()
+  return newsFeedPositive.value.filter(n =>
+    n.title.toLowerCase().includes(q) ||
+    n.code.toLowerCase().includes(q) ||
+    n.name.toLowerCase().includes(q)
+  )
+})
+
+const filteredNegativeNews = computed(() => {
+  if (!newsSearchText.value) return newsFeedNegative.value
+  const q = newsSearchText.value.toLowerCase()
+  return newsFeedNegative.value.filter(n =>
+    n.title.toLowerCase().includes(q) ||
+    n.code.toLowerCase().includes(q) ||
+    n.name.toLowerCase().includes(q)
+  )
+})
+
+const signalsWithNewsCount = computed(() =>
+  signals.value.filter(s => (s.analysis.news_sentiment?.news_count ?? 0) > 0).length
+)
+
 function fetchSignals() {
   loading.value = true
   monitorApi.getSignals().then(resp => {
@@ -551,6 +725,11 @@ function showDetail(s: MonitorSignal) {
   detailData.value = s
   detailTab.value = 'fund_flow'
   detailVisible.value = true
+}
+
+function showStockDetail(code: string) {
+  const s = signals.value.find(x => x.code === code)
+  if (s) showDetail(s)
 }
 
 function signalLabel(sig: string): string {
@@ -783,6 +962,14 @@ onUnmounted(() => {
 .short-reason { color: #e6a23c; }
 .long-reason { color: #409eff; }
 
+.ns-card-badge {
+  margin-left: auto;
+  font-size: 10px;
+  padding: 0 4px;
+  height: 18px;
+  line-height: 18px;
+}
+
 .divergence-tip {
   margin-top: 6px;
   padding: 4px 8px;
@@ -791,6 +978,56 @@ onUnmounted(() => {
   font-size: 11px;
   color: #e6a23c;
 }
+
+/* ===== Main Tabs ===== */
+.main-tabs { margin-top: 8px; }
+.main-tabs .el-tabs__header { margin-bottom: 12px; }
+.main-tabs .el-tabs__item { font-weight: 600; font-size: 14px; }
+.sentiment-count { margin-left: 4px; }
+
+/* ===== Sentiment Page (News Feed) ===== */
+.sentiment-page { min-height: 60vh; }
+.sentiment-group { margin-bottom: 24px; }
+.sg-header {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 10px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sg-header small { font-size: 12px; font-weight: 400; color: #999; }
+.sg-bullish { background: #fef0f0; color: #f56c6c; }
+.sg-bearish { background: #f0f9eb; color: #67c23a; }
+
+.news-feed-card {
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: #fff;
+  border-left: 3px solid #f56c6c;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all .15s;
+  box-shadow: 0 1px 2px rgba(0,0,0,.06);
+}
+.news-feed-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,.1); transform: translateY(-1px); }
+.news-feed-card.card-bearish { border-left-color: #67c23a; }
+
+.nfc-header { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.nfc-stock { cursor: pointer; font-size: 13px; }
+.nfc-stock:hover { color: #409eff; }
+.nfc-name { font-size: 12px; color: #999; margin-left: 4px; }
+.nfc-tag { margin-left: auto; font-size: 10px; height: 20px; line-height: 20px; }
+.nfc-title { font-size: 13px; font-weight: 500; margin-bottom: 6px; line-height: 1.4; color: #333; }
+.nfc-meta { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #999; flex-wrap: wrap; }
+.nfc-date { white-space: nowrap; }
+.nfc-source { white-space: nowrap; }
+.nfc-kws { display: flex; gap: 2px; flex-wrap: wrap; }
+
+.stat-bullish .stat-value { color: #f56c6c; }
+.stat-bearish .stat-value { color: #67c23a; }
 
 /* Price Prediction Row */
 .pp-row {

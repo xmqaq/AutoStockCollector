@@ -19,19 +19,27 @@ _refresh_lock = threading.Lock()
 
 
 def _get_user_stock_codes(user_id: str) -> set:
-    """获取用户关心的股票代码（持仓 + 自选）"""
+    """获取用户关心的股票代码（持仓 + 自选 + 策略选股/量化选股）"""
     from config.database import DatabaseConfig
     db = DatabaseConfig.get_database()
     codes = set()
+    # 兼容 pre-auth 遗留数据（user_id="default"）和当前用户
+    uid_filter = {"$in": [user_id, "default"]}
     try:
-        for p in db["positions"].find({"user_id": user_id}):
+        for p in db["positions"].find({"user_id": uid_filter}):
+            c = p.get("code", "")
+            if c: codes.add(c)
+    except Exception:
+        pass
+    try:
+        for p in db["positions"].find({"user_id": {"$exists": False}}):
             c = p.get("code", "")
             if c: codes.add(c)
     except Exception:
         pass
     try:
         for p in db["trade_records"].aggregate([
-            {"$match": {"user_id": user_id, "action": "buy"}},
+            {"$match": {"user_id": uid_filter, "action": "buy"}},
             {"$group": {"_id": None, "codes": {"$addToSet": "$code"}}},
         ]):
             for c in p.get("codes", []):
@@ -39,8 +47,21 @@ def _get_user_stock_codes(user_id: str) -> set:
     except Exception:
         pass
     try:
-        for w in db["watchlist"].find({"user_id": user_id, "enabled": True}):
+        for w in db["watchlist"].find({"user_id": uid_filter, "enabled": True}):
             c = w.get("code", "")
+            if c: codes.add(c)
+    except Exception:
+        pass
+    try:
+        for r in db["ai_pick_results"].find({}):
+            for pick in (r.get("picks") or []):
+                c = pick.get("code", "")
+                if c: codes.add(c)
+    except Exception:
+        pass
+    try:
+        for f in db["factor_cache"].find({}):
+            c = f.get("code", "")
             if c: codes.add(c)
     except Exception:
         pass
