@@ -180,7 +180,7 @@
               <td class="num">{{ o.target_weight }}% / {{ o.current_weight }}%</td>
               <td class="sp-signal-reason" :title="o.reason">{{ o.reason }}</td>
               <td>
-                <el-button v-if="!o.skipped" size="small" plain :loading="executing[o.code]" @click.stop="execOne(o)">执行</el-button>
+                <el-button v-if="!o.skipped" size="small" plain :disabled="executingAll" :loading="executing[o.code]" @click.stop="execOne(o)">执行</el-button>
                 <el-tooltip v-else :content="o.skip_reason || ''" placement="top">
                   <el-tag type="info" size="small">已跳过</el-tag>
                 </el-tooltip>
@@ -991,8 +991,8 @@ async function loadRebalance() {
   }
 }
 
-async function execOne(o: RebalanceOrder) {
-  if (o.skipped || !o.price) return
+async function execOne(o: RebalanceOrder): Promise<boolean> {
+  if (o.skipped || !o.price) return false
   executing.value[o.code] = true
   try {
     await paperApi.executeTrade({
@@ -1000,8 +1000,10 @@ async function execOne(o: RebalanceOrder) {
       price: o.price, ai_signal: { reason: o.reason, position_advice: '再平衡建议' },
     })
     await loadRebalance() // 执行后刷新清单（现金/持仓已变）
+    return true
   } catch (e: any) {
     ElMessage.error(`执行失败：${e?.response?.data?.error || e?.message || e}`)
+    return false
   } finally {
     executing.value[o.code] = false
   }
@@ -1017,7 +1019,8 @@ async function execAll() {
     )
     for (const o of ordered) {
       if (o.skipped || !o.price) continue
-      await execOne(o)
+      const ok = await execOne(o)
+      if (!ok) break // 卖出失败即中断，避免后续买入在现金未释放的情况下执行
     }
   } finally {
     executingAll.value = false
