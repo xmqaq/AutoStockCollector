@@ -48,13 +48,18 @@ defineEmits<{
 
 // 计算现代金融热力图颜色，使用不透明的纯色，防止视觉杂乱
 function getHeatColor(rate: number) {
-  if (rate >= 3) return '#c62828' // 强红
-  if (rate >= 1) return '#ef5350' // 中红
-  if (rate > 0.2) return '#ef9a9a' // 弱红
-  if (rate >= -0.2 && rate <= 0.2) return '#424242' // 平盘（深灰）
-  if (rate > -1) return '#80cbc4' // 弱绿
-  if (rate > -3) return '#26a69a' // 中绿
-  return '#00695c' // 强绿
+  // 按照A股习惯：红涨绿跌。根据板块常规涨跌幅区间划分（板块波动通常小于个股）
+  if (rate >= 4) return '#F23645'      // 极强红：>= 4% (暴涨)
+  if (rate >= 2) return '#D92634'      // 强红：2% ~ 4% (大涨)
+  if (rate >= 1) return '#BF1D28'      // 中红：1% ~ 2% (中涨)
+  if (rate > 0.2) return '#8A151F'     // 弱红：0.2% ~ 1% (小涨)
+  
+  if (rate >= -0.2 && rate <= 0.2) return '#434651' // 平盘：-0.2% ~ 0.2% (深灰)
+  
+  if (rate > -1) return '#065738'      // 弱绿：-1% ~ -0.2% (小跌)
+  if (rate > -2) return '#097A4F'      // 中绿：-2% ~ -1% (中跌)
+  if (rate > -4) return '#0D9E67'      // 强绿：-4% ~ -2% (大跌)
+  return '#11C27E'                     // 极强绿：<= -4% (暴跌)
 }
 
 const treemapOption = computed(() => {
@@ -123,6 +128,7 @@ const treemapOption = computed(() => {
       {
         type: 'treemap',
         data,
+        sort: false,
         left: 'center',
         top: 'middle',
         width: '90%',

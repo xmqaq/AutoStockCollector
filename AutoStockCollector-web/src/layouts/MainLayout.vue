@@ -451,6 +451,7 @@ onUnmounted(() => {
   flex: 1;
   background: var(--bg-page);
   overflow-y: auto;
+  scrollbar-gutter: stable; /* 预留滚动条空间，防止出现滚动条时页面整体左移 */
   padding: 1.5%;
   min-height: 0;
 }

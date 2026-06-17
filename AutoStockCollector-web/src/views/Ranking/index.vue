@@ -1,101 +1,37 @@
 <template>
   <div class="ranking-page">
     <div class="page-header">
-      <h2>盈利排行榜</h2>
-      <span class="page-desc">所有用户按实时总收益率排序{{ isTradingNow() ? '（交易时段每 15 秒自动刷新）' : '（当前非交易时段，价格为最近收盘价）' }}</span>
+      <div class="header-content">
+        <h2 class="page-title">
+          <el-icon class="title-icon"><TrophyBase /></el-icon>
+          盈利排行榜
+        </h2>
+        <span class="page-desc">
+          <el-tag size="small" :type="isTradingNow() ? 'success' : 'info'" effect="light" class="status-tag">
+            {{ isTradingNow() ? '交易中' : '已收盘' }}
+          </el-tag>
+          {{ isTradingNow() ? '榜单每 15 秒自动刷新实时数据' : '展示最新收盘结算数据' }}
+        </span>
+      </div>
       <div class="header-actions">
-        <span v-if="lastUpdated" class="last-updated">更新于 {{ lastUpdated }}</span>
-        <el-button size="small" :loading="loading || refreshing" @click="fetchRanking(false)" round>
-          <el-icon><Refresh /></el-icon> 刷新
+        <span v-if="lastUpdated" class="last-updated">最后更新于 {{ lastUpdated }}</span>
+        <el-button type="primary" :loading="loading || refreshing" @click="fetchRanking(false)" round plain>
+          <el-icon><Refresh /></el-icon> 刷新榜单
         </el-button>
       </div>
     </div>
 
-    <el-card shadow="never" class="ranking-card">
-      <el-table :data="ranking" v-loading="loading" stripe style="width: 100%">
-        <el-table-column label="排名" width="80" align="center">
-          <template #default="{ $index, row }">
-            <span :class="['rank-badge', rankClass($index)]">
-              {{ row.rank }}
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column label="用户" min-width="160">
-          <template #default="{ row }">
-            <div class="user-cell">
-              <span class="nickname">{{ row.username }}</span>
-              <span v-if="row.raw_username && row.raw_username !== row.username" class="login-name">@{{ row.raw_username }}</span>
-              <span v-if="row.user_id === currentUserId" class="self-tag">我</span>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="总资产" width="140" align="right">
-          <template #default="{ row }">
-            ¥{{ formatAmount(row.total_asset) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="本金" width="110" align="right">
-          <template #default="{ row }">
-            ¥{{ formatAmount(row.initial_capital) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="现金" width="110" align="right">
-          <template #default="{ row }">
-            ¥{{ formatAmount(row.cash_balance) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="持仓市值" width="110" align="right">
-          <template #default="{ row }">
-            ¥{{ formatAmount(row.market_value) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="总收益率" width="120" align="right">
-          <template #default="{ row }">
-            <span :class="['profit-text', row.profit_pct >= 0 ? 'up' : 'dn']">
-              {{ row.profit_pct >= 0 ? '+' : '' }}{{ row.profit_pct }}%
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column label="总收益额" width="130" align="right">
-          <template #default="{ row }">
-            <span :class="['profit-text', row.profit_amount >= 0 ? 'up' : 'dn']">
-              {{ row.profit_amount >= 0 ? '+' : '' }}¥{{ formatAmount(row.profit_amount) }}
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column label="今日盈亏" width="120" align="right">
-          <template #default="{ row }">
-            <span :class="['profit-text', row.today_pnl >= 0 ? 'up' : 'dn']">
-              {{ row.today_pnl >= 0 ? '+' : '' }}¥{{ formatAmount(row.today_pnl) }}
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column label="胜率" width="80" align="center">
-          <template #default="{ row }">
-            {{ row.win_rate }}%
-          </template>
-        </el-table-column>
-        <el-table-column label="交易次数" width="80" align="center">
-          <template #default="{ row }">
-            {{ row.total_trades }}
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <el-empty v-if="!loading && ranking.length === 0" description="暂无排行数据，快去交易吧" />
-    </el-card>
+    <RankingTable :ranking="ranking" :loading="loading" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { Refresh } from '@element-plus/icons-vue'
-import { useAuthStore } from '@/stores/authStore'
+import { ref, onMounted, onUnmounted } from 'vue'
+import { Refresh, Trophy as TrophyBase } from '@element-plus/icons-vue'
 import { paperApi } from '@/api/paper'
 import type { RankingEntry } from '@/api/paper'
+import RankingTable from './components/RankingTable.vue'
 
-const authStore = useAuthStore()
-const currentUserId = computed(() => authStore.user?.user_id)
 const ranking = ref<RankingEntry[]>([])
 const loading = ref(false)
 const refreshing = ref(false)
@@ -109,18 +45,6 @@ function isTradingNow(): boolean {
   if (day === 0 || day === 6) return false
   const mins = d.getHours() * 60 + d.getMinutes()
   return (mins >= 570 && mins <= 690) || (mins >= 780 && mins <= 900)
-}
-
-function rankClass(index: number) {
-  if (index === 0) return 'gold'
-  if (index === 1) return 'silver'
-  if (index === 2) return 'bronze'
-  return ''
-}
-
-function formatAmount(v: number) {
-  if (Math.abs(v) >= 1e4) return (v / 1e4).toFixed(2) + '万'
-  return v.toFixed(2)
 }
 
 async function fetchRanking(silent = false) {
@@ -157,107 +81,60 @@ onUnmounted(() => {
 <style scoped>
 .ranking-page {
   padding: 0;
+  max-width: 1200px;
+  margin: 0 auto;
 }
 
 .page-header {
   display: flex;
-  align-items: baseline;
-  gap: 12px;
-  margin-bottom: 20px;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  padding: 0 8px;
 }
 
-.header-actions {
-  margin-left: auto;
+.header-content {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.last-updated {
-  font-size: 12px;
-  color: var(--text-faint);
-  font-variant-numeric: tabular-nums;
-}
-
-.page-header h2 {
+.page-title {
   margin: 0;
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.page-desc {
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.ranking-card {
-  border-radius: var(--radius-md);
-}
-
-.rank-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  font-size: 13px;
+  font-size: 24px;
   font-weight: 700;
-  background: var(--bg-soft);
-  color: var(--text-secondary);
-}
-
-.rank-badge.gold {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  color: #fff;
-}
-
-.rank-badge.silver {
-  background: linear-gradient(135deg, #94a3b8, #64748b);
-  color: #fff;
-}
-
-.rank-badge.bronze {
-  background: linear-gradient(135deg, #d97706, #92400e);
-  color: #fff;
-}
-
-.user-cell {
+  color: var(--text-primary);
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.nickname {
-  font-weight: 500;
-  color: var(--text-primary);
+.title-icon {
+  color: #F59E0B;
+  font-size: 28px;
 }
 
-.login-name {
-  font-size: 12px;
-  color: var(--text-faint);
+.page-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.self-tag {
-  font-size: 11px;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: var(--el-color-primary, #409eff);
-  color: #fff;
-  font-weight: 500;
-}
-
-.profit-text {
+.status-tag {
   font-weight: 600;
-  font-variant-numeric: tabular-nums;
 }
 
-.profit-text.up {
-  color: #ef4444;
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
-.profit-text.dn {
-  color: #10b981;
+.last-updated {
+  font-size: 13px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
 }
 </style>

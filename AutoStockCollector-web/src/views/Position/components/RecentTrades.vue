@@ -44,6 +44,7 @@ defineProps<{
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.02);
   display: flex;
   flex-direction: column;
+  max-height: 700px;
 }
 
 .pro-card :deep(.el-card__header) {
@@ -84,6 +85,7 @@ defineProps<{
   gap: 12px; 
   flex: 1;
   overflow-y: auto; 
+  max-height: 630px;
   padding-right: 4px;
   padding-bottom: 20px;
 }

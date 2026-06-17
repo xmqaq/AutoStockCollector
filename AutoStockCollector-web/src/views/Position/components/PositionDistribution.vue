@@ -40,6 +40,7 @@ const sortedPositions = computed(() => {
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.02);
   display: flex;
   flex-direction: column;
+  max-height: 440px;
 }
 
 .pro-card :deep(.el-card__header) {
@@ -81,7 +82,7 @@ const sortedPositions = computed(() => {
   flex-direction: column; 
   gap: 16px; 
   padding: 8px 4px 8px 0;
-  max-height: 200px; /* 约等于 5 行数据的高度 */
+  max-height: 380px; /* 适当增加高度以容纳更多项，超出则滚动 */
   overflow-y: auto;
 }
 

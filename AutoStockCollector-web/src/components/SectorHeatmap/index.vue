@@ -30,11 +30,11 @@
     </div>
 
     <div class="heatmap-legend">
-      <span class="legend-label">涨</span>
+      <span class="legend-label">跌</span>
       <div class="legend-bar">
         <div class="legend-gradient"></div>
       </div>
-      <span class="legend-label">跌</span>
+      <span class="legend-label">涨</span>
     </div>
 
     <div v-if="loading" class="loading-mask">

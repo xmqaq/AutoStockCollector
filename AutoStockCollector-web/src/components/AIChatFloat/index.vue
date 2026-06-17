@@ -1,5 +1,9 @@
 <template>
-  <div class="ai-chat-fab" @click="toggleChat">
+  <div 
+    class="ai-chat-fab" 
+    :style="{ right: fabPos.right + 'px', bottom: fabPos.bottom + 'px' }"
+    @mousedown="onFabMouseDown"
+  >
     <el-badge :value="unreadCount" :hidden="unreadCount === 0" :max="99">
       <div :class="['fab-button', { 'fab-active': showChat }]">
         <el-icon :size="24"><ChatDotRound /></el-icon>
@@ -8,16 +12,23 @@
     </el-badge>
   </div>
 
-  <el-drawer
-    v-model="showChat"
-    title="AI助手"
-    direction="rtl"
-    size="420px"
-    :before-close="handleClose"
-    class="ai-chat-drawer"
-  >
-    <div class="chat-container">
-      <div class="toolbar">
+  <transition name="el-zoom-in-bottom">
+    <div
+      v-show="showChat"
+      class="ai-chat-window"
+      :style="{ right: windowPos.right + 'px', bottom: windowPos.bottom + 'px' }"
+    >
+      <div class="window-header" @mousedown="onWindowMouseDown">
+        <div class="header-left">
+          <el-icon :size="18"><ChatDotRound /></el-icon>
+          <span>AI助手</span>
+        </div>
+        <div class="header-right">
+          <el-icon class="close-btn" @click.stop="showChat = false"><Close /></el-icon>
+        </div>
+      </div>
+      <div class="chat-container">
+        <div class="toolbar">
         <el-select v-model="selectedAgent" placeholder="选择分析师" size="small" class="agent-select">
           <el-option
             v-for="agent in agents"
@@ -129,13 +140,14 @@
         </div>
       </div>
     </div>
-  </el-drawer>
+  </div>
+  </transition>
 </template>
 
 <script setup lang="ts">
 import { ref, nextTick, computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { ChatDotRound, MagicStick, User, UserFilled } from '@element-plus/icons-vue'
+import { ChatDotRound, MagicStick, User, UserFilled, Close } from '@element-plus/icons-vue'
 import { aiAgentApi, aiKeyApi, type AIAgent, type AIKeyConfig } from '@/api/ai'
 import { stockApi } from '@/api/stock'
 import { sanitizeHtml } from '@/utils/markdown'
@@ -159,6 +171,68 @@ const selectedProvider = ref('')
 
 const route = useRoute()
 const stockName = ref('')
+
+const fabPos = ref({ right: 24, bottom: 24 })
+const windowPos = ref({ right: 24, bottom: 84 })
+
+function onFabMouseDown(e: MouseEvent) {
+  if (e.button !== 0) return
+  let isDragging = false
+  const startX = e.clientX
+  const startY = e.clientY
+  const initialRight = fabPos.value.right
+  const initialBottom = fabPos.value.bottom
+
+  function onMouseMove(moveEvent: MouseEvent) {
+    const dx = moveEvent.clientX - startX
+    const dy = moveEvent.clientY - startY
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+      isDragging = true
+      fabPos.value = {
+        right: initialRight - dx,
+        bottom: initialBottom - dy
+      }
+    }
+  }
+
+  function onMouseUp() {
+    document.removeEventListener('mousemove', onMouseMove)
+    document.removeEventListener('mouseup', onMouseUp)
+    if (!isDragging) {
+      toggleChat()
+    }
+  }
+
+  document.addEventListener('mousemove', onMouseMove)
+  document.addEventListener('mouseup', onMouseUp)
+}
+
+function onWindowMouseDown(e: MouseEvent) {
+  if (e.button !== 0) return
+  if ((e.target as HTMLElement).closest('.close-btn')) return
+
+  const startX = e.clientX
+  const startY = e.clientY
+  const initialRight = windowPos.value.right
+  const initialBottom = windowPos.value.bottom
+
+  function onMouseMove(moveEvent: MouseEvent) {
+    const dx = moveEvent.clientX - startX
+    const dy = moveEvent.clientY - startY
+    windowPos.value = {
+      right: initialRight - dx,
+      bottom: initialBottom - dy
+    }
+  }
+
+  function onMouseUp() {
+    document.removeEventListener('mousemove', onMouseMove)
+    document.removeEventListener('mouseup', onMouseUp)
+  }
+
+  document.addEventListener('mousemove', onMouseMove)
+  document.addEventListener('mouseup', onMouseUp)
+}
 
 const stockContext = computed(() => (route.query.code as string) || '')
 
@@ -244,11 +318,6 @@ function toggleChat() {
       loadAIKeys()
     }
   }
-}
-
-function handleClose(done: () => void) {
-  showChat.value = false
-  done()
 }
 
 function formatMessage(content: string): string {
@@ -382,9 +451,8 @@ onMounted(() => {
 <style scoped>
 .ai-chat-fab {
   position: fixed;
-  right: 24px;
-  bottom: 24px;
   z-index: 1000;
+  user-select: none;
 }
 
 .fab-button {
@@ -418,13 +486,64 @@ onMounted(() => {
   letter-spacing: 0.02em;
 }
 
+.ai-chat-window {
+  position: fixed;
+  width: 420px;
+  height: 650px;
+  max-height: 85vh;
+  background: var(--bg-overlay);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  z-index: 999;
+  overflow: hidden;
+}
+
+.window-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-color);
+  cursor: move;
+  user-select: none;
+}
+
+.window-header .header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.window-header .header-right {
+  display: flex;
+  align-items: center;
+}
+
+.close-btn {
+  cursor: pointer;
+  font-size: 18px;
+  color: var(--text-muted);
+  transition: color 0.2s;
+}
+
+.close-btn:hover {
+  color: var(--el-color-danger);
+}
+
 .chat-container {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--bg-overlay);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
+  background: transparent;
 }
 
 .toolbar {
@@ -714,34 +833,6 @@ onMounted(() => {
 </style>
 
 <style>
-/* 覆盖抽屉全局样式，实现完全的玻璃拟态 */
-.ai-chat-drawer {
-  background: transparent !important;
-  box-shadow: -10px 0 30px rgba(0, 0, 0, 0.1) !important;
-}
-
-.ai-chat-drawer .el-drawer__header {
-  margin-bottom: 0;
-  padding: 20px 24px;
-  background: var(--bg-overlay);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border-bottom: 1px solid var(--border-color);
-}
-
-.ai-chat-drawer .el-drawer__header span {
-  color: var(--text-primary);
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-
-.ai-chat-drawer .el-drawer__body {
-  padding: 0;
-  overflow: hidden;
-  background: transparent;
-}
-
 .agent-select .el-select-dropdown__item {
   height: auto;
   padding: 10px 14px;

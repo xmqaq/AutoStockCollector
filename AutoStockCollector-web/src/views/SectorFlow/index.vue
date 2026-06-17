@@ -77,8 +77,48 @@ const currentView = ref<'chart' | 'table'>('chart')
 
 // 播放控制
 const isPlaying = ref(false)
-const currentTime = ref(240) // 240分钟，代表 15:00
+const maxTime = ref(240) // 当前真实时间对应的最大允许进度
+const currentTime = ref(240) // 滑块当前所在进度
 let playTimer: number | null = null
+
+// 根据当前真实时间计算当前进度
+function updateMaxTimeByRealTime() {
+  const now = new Date()
+  const hours = now.getHours()
+  const minutes = now.getMinutes()
+  
+  // 转换成从 00:00 开始的分钟数
+  const currentTotalMinutes = hours * 60 + minutes
+  
+  // 9:30 的分钟数是 570
+  // 11:30 的分钟数是 690
+  // 13:00 的分钟数是 780
+  // 15:00 的分钟数是 900
+  
+  if (currentTotalMinutes < 570) {
+    // 9:30 之前，当天还没开盘，最大进度为0（代表当天最初时刻）
+    maxTime.value = 0
+  } else if (currentTotalMinutes >= 570 && currentTotalMinutes <= 690) {
+    // 9:30 - 11:30 之间
+    const progress = currentTotalMinutes - 570
+    maxTime.value = progress
+  } else if (currentTotalMinutes > 690 && currentTotalMinutes < 780) {
+    // 11:30 - 13:00 中午休盘
+    maxTime.value = 120
+  } else if (currentTotalMinutes >= 780 && currentTotalMinutes <= 900) {
+    // 13:00 - 15:00 之间
+    const progress = 120 + (currentTotalMinutes - 780)
+    maxTime.value = progress
+  } else {
+    // 15:00 之后，展示满进度
+    maxTime.value = 240
+  }
+  
+  // 如果当前滑块时间超出了新的最大时间，强制拉回
+  if (currentTime.value > maxTime.value) {
+    currentTime.value = maxTime.value
+  }
+}
 
 function formatTime(minutes: number) {
   let h = 9
@@ -107,7 +147,7 @@ function togglePlay() {
   if (isPlaying.value) {
     pause()
   } else {
-    if (currentTime.value >= 240) {
+    if (currentTime.value >= maxTime.value) {
       currentTime.value = 0
     }
     play()
@@ -117,8 +157,8 @@ function togglePlay() {
 function play() {
   isPlaying.value = true
   playTimer = window.setInterval(() => {
-    if (currentTime.value >= 240) {
-      currentTime.value = 240
+    if (currentTime.value >= maxTime.value) {
+      currentTime.value = maxTime.value
       pause()
     } else {
       currentTime.value += 1 // 每次前进1分钟
@@ -136,6 +176,10 @@ function pause() {
 
 function handleSliderChange() {
   if (isPlaying.value) pause()
+  // 如果手动拖动超出了当前允许的最大进度，强制拉回
+  if (currentTime.value > maxTime.value) {
+    currentTime.value = maxTime.value
+  }
 }
 
 onUnmounted(() => {
@@ -144,31 +188,41 @@ onUnmounted(() => {
 
 // 计算展示的模拟数据
 const displaySectors = computed(() => {
-  if (currentTime.value >= 240) return sectors.value
+  let result = sectors.value
 
-  return sectors.value.map((sector, index) => {
-    const finalFlow = sector.net_flow || 0
-    const finalChange = sector.change_rate || 0
-    
-    // 进度 0 -> 1
-    const progress = currentTime.value / 240
-    
-    // 使用正弦波和 index 制造确定性的伪随机波动，越接近尾声波动越小
-    const noiseAmplitude = 0.3 * (1 - progress)
-    const noise = Math.sin(currentTime.value / 10 + index) * noiseAmplitude
-    
-    // 对于早盘刚开始的情况，赋予一个小基数避免全是 0
-    const baseProgress = Math.max(progress, 0.05)
-    
-    const currentFlow = finalFlow * baseProgress + finalFlow * noise
-    const currentChange = finalChange * baseProgress + finalChange * noise
-    
-    return {
-      ...sector,
-      net_flow: currentFlow,
-      change_rate: currentChange
-    }
-  })
+  // 如果进度在 0（最初时刻），则直接返回原始数据（即昨天最后时刻的数据）
+  if (currentTime.value === 0) {
+    return [...result].sort((a, b) => (b.change_rate || 0) - (a.change_rate || 0))
+  }
+
+  if (currentTime.value < 240) {
+    result = sectors.value.map((sector, index) => {
+      const finalFlow = sector.net_flow || 0
+      const finalChange = sector.change_rate || 0
+      
+      // 进度 0 -> 1，基于收盘时间(240)计算
+      const progress = currentTime.value / 240
+      
+      // 使用正弦波和 index 制造确定性的伪随机波动，越接近尾声波动越小
+      const noiseAmplitude = 0.3 * (1 - progress)
+      const noise = Math.sin(currentTime.value / 10 + index) * noiseAmplitude
+      
+      // 对于早盘刚开始的情况，赋予一个小基数避免全是 0
+      const baseProgress = Math.max(progress, 0.05)
+      
+      const currentFlow = finalFlow * baseProgress + finalFlow * noise
+      const currentChange = finalChange * baseProgress + finalChange * noise
+      
+      return {
+        ...sector,
+        net_flow: currentFlow,
+        change_rate: currentChange
+      }
+    })
+  }
+
+  // 按照涨幅高的排下顺序
+  return [...result].sort((a, b) => (b.change_rate || 0) - (a.change_rate || 0))
 })
 
 async function loadData() {
@@ -204,7 +258,21 @@ function handleSectorClick(params: any) {
 }
 
 onMounted(() => {
+  updateMaxTimeByRealTime()
+  // 初始化时，让当前时间等于最大允许时间
+  currentTime.value = maxTime.value
+  
+  // 定时每分钟更新一下真实时间的最大进度，并处理越界
+  const realTimer = window.setInterval(() => {
+    updateMaxTimeByRealTime()
+  }, 60 * 1000)
+  
   loadData()
+  
+  onUnmounted(() => {
+    pause()
+    clearInterval(realTimer)
+  })
 })
 </script>
 
