@@ -25,7 +25,13 @@
       <span>策略：{{ result.strategy }}</span>
       <span v-if="result.universe_count">
         全市场 {{ result.universe_count }}
-        <template v-if="result.filtered_count"> → 剔除 {{ result.filtered_count }}</template>
+        <template v-if="result.filtered_count">
+          →
+          <el-tooltip v-if="filteredText" :content="filteredText" placement="top">
+            <span class="ap-filtered">剔除 {{ result.filtered_count }}</span>
+          </el-tooltip>
+          <template v-else> 剔除 {{ result.filtered_count }}</template>
+        </template>
         → 候选 {{ result.candidate_count }} → 精选 {{ result.picks.length }}
       </span>
       <span>更新：{{ fmtTime(result.timestamp) }}</span>
@@ -225,6 +231,21 @@ function fmtTime(t: string): string {
   return t ? dayjs(t).format('MM-DD HH:mm') : '--'
 }
 
+const FILTER_LABELS: Record<string, string> = {
+  st: 'ST/退市',
+  insufficient_kline: '次新/K线不足',
+  low_liquidity: '低流动性',
+}
+// 把后端 filtered_detail 拆成「ST/退市 87、次新 120、低流动性 304」供剔除数 tooltip 展示
+const filteredText = computed(() => {
+  const d = result.value?.filtered_detail
+  if (!d) return ''
+  return Object.entries(d)
+    .filter(([, n]) => n > 0)
+    .map(([k, n]) => `${FILTER_LABELS[k] || k} ${n}`)
+    .join('、')
+})
+
 function goAnalysis(code: string) {
   router.push({ path: '/stock-analysis', query: { code } })
 }
@@ -316,6 +337,7 @@ onBeforeUnmount(stopProgressPolling)
 <style scoped>
 .ap-page { display: flex; flex-direction: column; gap: 10px; }
 .ap-meta { display: flex; gap: 18px; font-size: 12px; color: var(--text-alt-muted, #909399); }
+.ap-filtered { border-bottom: 1px dashed currentColor; cursor: help; }
 
 /* 再平衡建议 */
 .ap-rebalance {
