@@ -374,3 +374,51 @@ def get_fund_flow_anomalies():
     except Exception as e:
         logger.error(f"Fund flow anomalies failed: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+@monitor_bp.route("/config", methods=["GET"])
+@login_required
+def get_monitor_config():
+    """读当前用户的双轨道监控配置（不存在返回默认值）。"""
+    try:
+        from modules.monitor.config import MonitorConfig
+        config = MonitorConfig().get(g.current_user["user_id"])
+        return jsonify({"success": True, "data": config})
+    except Exception as e:
+        logger.error(f"Get monitor config failed: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@monitor_bp.route("/config", methods=["PUT"])
+@login_required
+def put_monitor_config():
+    """保存（部分或完整）监控配置，merge_with_default 后落库，返回合并后的完整配置。"""
+    try:
+        from modules.monitor.config import MonitorConfig
+        body = request.get_json(silent=True) or {}
+        mc = MonitorConfig()
+        merged = mc.merge_with_default(body)
+        mc.save(g.current_user["user_id"], merged)
+        return jsonify({"success": True, "data": merged})
+    except Exception as e:
+        logger.error(f"Save monitor config failed: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@monitor_bp.route("/portfolio", methods=["GET"])
+@login_required
+def get_monitor_portfolio():
+    """读最近一次 refresh_all 的双轨道调仓建议 + 组合概览 + 异动预警。"""
+    try:
+        from config.database import DatabaseConfig
+        db = DatabaseConfig.get_database()
+        uid = g.current_user["user_id"]
+        doc = (db["monitor_signals"].find_one({"type": "portfolio_advice", "user_id": uid})
+               or db["monitor_signals"].find_one({"type": "portfolio_advice", "user_id": "default"}))
+        if not doc:
+            return jsonify({"success": True, "data": None})
+        doc.pop("_id", None)
+        return jsonify({"success": True, "data": doc})
+    except Exception as e:
+        logger.error(f"Get monitor portfolio failed: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500

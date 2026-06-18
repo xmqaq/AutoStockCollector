@@ -337,16 +337,54 @@ class PickerEngine:
 
     @staticmethod
     def _hard_filter(fi, filter_overrides: Optional[Dict[str, Any]] = None) -> Optional[str]:
+        f = filter_overrides or {}
         name = (fi.name or "").upper()
-        if (filter_overrides or {}).get("exclude_st", True):
+        if f.get("exclude_st", True):
             if "ST" in name or "退" in name:
                 return "st"
-        min_bars = (filter_overrides or {}).get("min_kline_bars", _MIN_KLINE_BARS)
+        min_bars = f.get("min_kline_bars", _MIN_KLINE_BARS)
         if len(fi.closes) < min_bars:
             return "insufficient_kline"
-        min_amount = (filter_overrides or {}).get("min_avg_amount", _MIN_AVG_AMOUNT)
+        min_amount = f.get("min_avg_amount", _MIN_AVG_AMOUNT)
         if fi.total_amount is not None and fi.total_amount < min_amount:
             return "low_liquidity"
+
+        # 双轨道监控用：阈值不存在则不过滤；字段缺失(None)不过滤，避免误杀无数据股
+        roe_min = f.get("roe_min")
+        if roe_min is not None and fi.roe is not None and fi.roe < roe_min:
+            return "low_roe"
+        rg_min = f.get("revenue_growth_min")
+        if rg_min is not None and fi.revenue_growth is not None and fi.revenue_growth < rg_min:
+            return "low_revenue_growth"
+        inflow_min = f.get("main_net_inflow_min")
+        if inflow_min is not None and fi.main_net_inflow is not None and fi.main_net_inflow < inflow_min:
+            return "low_inflow"
+
+        # 仅 news_positive_min>0 才查；为 0 不过滤，避免无新闻数据时误杀全市场。
+        # ponytail: 全市场初筛逐只查 news 是 O(universe) 次 DB 查询，仅短线轨道开启时生效；
+        #           如成性能瓶颈，改为预加载 24h 正面新闻计数缓存。
+        news_min = f.get("news_positive_min")
+        if news_min and news_min > 0:
+            from datetime import datetime, timedelta
+            from config.database import DatabaseConfig
+            _POS = ("增长", "盈利", "突破", "利好", "创新", "合作", "扩张", "订单", "签约",
+                    "中标", "新高", "大涨", "涨停", "放量", "拉升", "回暖", "扭亏", "预增",
+                    "分红", "回购", "增持", "扶持", "上涨", "涨", "走高", "反弹", "回升",
+                    "向好", "改善", "加速")
+            _NEG = ("亏损", "下跌", "跌", "减持", "利空", "违规", "诉讼", "召回", "调查",
+                    "处罚", "业绩下滑", "跌停", "暴跌", "暴雷", "违约", "退市", "预警",
+                    "资金流出", "评级下调", "下滑", "下挫", "做空")
+            since = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+            try:
+                docs = DatabaseConfig.get_database()["news"].find(
+                    {"code": fi.code, "publish_date": {"$gte": since}}, {"title": 1})
+                pos = sum(1 for d in docs
+                          if (t := d.get("title", "") or "")
+                          and any(k in t for k in _POS) and not any(k in t for k in _NEG))
+            except Exception:
+                pos = news_min  # 查询失败放行，不因 DB 抖动误杀
+            if pos < news_min:
+                return "low_positive_news"
         return None
 
     def _screen_score(self, fi,
