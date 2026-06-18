@@ -36,7 +36,7 @@
           <!-- Concepts & Limit-up -->
           <div class="tags-row">
             <el-tag v-if="s.limit_up?.is_limit_up" size="small" type="warning" effect="dark" class="limit-up-badge">
-              {{ s.limit_up.consecutive_limit_days > 1 ? `${s.limit_up.consecutive_limit_days}连板` : '涨停' }}
+              {{ (s.limit_up.consecutive_limit_days ?? 0) > 1 ? `${s.limit_up.consecutive_limit_days}连板` : '涨停' }}
             </el-tag>
             <el-tag v-else-if="s.limit_up?.is_limit_down" size="small" type="success" effect="dark" class="limit-down-badge">跌停</el-tag>
             <el-tag v-for="c in (s.concepts || []).slice(0, 3)" :key="c" size="small" effect="plain" class="concept-chip">{{ c }}</el-tag>
