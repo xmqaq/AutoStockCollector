@@ -161,7 +161,8 @@
     <!-- 再平衡建议 -->
     <div v-if="result" class="sp-rebalance-panel">
       <div class="sp-ps-header">
-        <span class="sp-ps-title">再平衡建议（缓冲带 5%）</span>
+        <span class="sp-ps-title">再平衡建议</span>
+        <span style="margin-right:auto;font-size:12px;color:var(--el-text-color-secondary)">按评分配比目标仓位，对比你的持仓给出买卖清单（小幅偏离不调）</span>
         <el-checkbox v-model="rebalanceAiMode" size="small" style="margin-right:8px">AI 复核</el-checkbox>
         <el-button size="small" :loading="rebalanceLoading" @click="loadRebalance">生成建议</el-button>
         <el-button size="small" type="primary"

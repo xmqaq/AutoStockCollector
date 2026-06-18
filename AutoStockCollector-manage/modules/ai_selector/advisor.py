@@ -115,8 +115,9 @@ def build_rebalance_orders(
         target_shares = int(math.floor(target_value / price / 100) * 100)
         diff = target_shares - cur_shares
 
-        # 缓冲带：调仓金额占净值比 < buffer → 不动
-        if total_value > 0 and abs(diff) * price / total_value < buffer:
+        # 缓冲带：已持仓的票，调仓金额占净值比 < buffer → 不动（防小幅频繁调仓）。
+        # 空仓建仓(cur_shares==0)不走缓冲带，否则小权重目标永远买不进。
+        if cur_shares > 0 and total_value > 0 and abs(diff) * price / total_value < buffer:
             continue
         if diff == 0:
             continue
@@ -168,4 +169,12 @@ if __name__ == "__main__":
         [], 100000.0, {"600519": 200.0},
     )
     assert r["orders"][0]["shares"] == 200, r
+
+    # 空仓建仓：小权重目标(3% < 5%缓冲带)也必须建仓，不能被缓冲带吞掉
+    r2 = build_rebalance_orders(
+        [{"code": "000001", "name": "小仓", "weight": 3.0, "composite": 60, "industry": "银行"}],
+        [], 100000.0, {"000001": 10.0},
+    )
+    bought = [o for o in r2["orders"] if o["action"] == "buy" and not o["skipped"]]
+    assert bought and bought[0]["shares"] == 300, r2  # 3000元/10元=300股
     print("advisor self-check OK")

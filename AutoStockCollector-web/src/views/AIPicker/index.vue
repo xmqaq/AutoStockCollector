@@ -41,7 +41,8 @@
     <!-- 再平衡建议（一键操作）：按评分加权成目标组合，对比模拟盘持仓/现金给出买卖清单 -->
     <div v-if="result?.picks?.length" class="ap-rebalance">
       <div class="ap-rebalance-head">
-        <span class="ap-rebalance-title">再平衡建议（缓冲带 5%，按评分加权）</span>
+        <span class="ap-rebalance-title">再平衡建议</span>
+        <span style="margin-right:auto;font-size:12px;color:var(--el-text-color-secondary)">按评分配比目标仓位，对比你的持仓给出买卖清单（小幅偏离不调）</span>
         <el-button size="small" :loading="rebalanceLoading" @click="loadRebalance">生成建议</el-button>
         <el-button size="small" type="primary"
                    :disabled="!rebalance || !rebalance.orders.length"
