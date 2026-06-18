@@ -24,6 +24,12 @@
           <span>新闻舆情 <el-tag v-if="sentimentBullishCount" size="small" type="danger" effect="light" class="sentiment-count">{{ sentimentBullishCount }}利好</el-tag></span>
         </template>
       </el-tab-pane>
+      <el-tab-pane label="资金异动" name="fund_flow" />
+      <el-tab-pane label="持仓建议" name="position_advice">
+        <template #label>
+          <span>持仓建议 <el-tag v-if="positionAdviceCount" size="small" type="warning" effect="light" class="sentiment-count">{{ positionAdviceCount }}条建议</el-tag></span>
+        </template>
+      </el-tab-pane>
     </el-tabs>
 
     <!-- Signal View -->
@@ -61,6 +67,16 @@
       />
     </template>
 
+    <!-- Fund Flow Anomalies View -->
+    <AiMonitorFundFlow v-if="activeTab === 'fund_flow'" />
+
+    <!-- Position Advice View -->
+    <AiMonitorPositionAdvice
+      v-if="activeTab === 'position_advice'"
+      :signals="signals"
+      :loading="loading"
+    />
+
     <!-- Detail Dialog -->
     <AiMonitorDetailDialog
       v-model:visible="detailVisible"
@@ -81,6 +97,8 @@ import AiMonitorStats from './components/AiMonitorStats.vue'
 import AiMonitorSignalGrid from './components/AiMonitorSignalGrid.vue'
 import AiMonitorNewsFeed from './components/AiMonitorNewsFeed.vue'
 import AiMonitorDetailDialog from './components/AiMonitorDetailDialog.vue'
+import AiMonitorFundFlow from './components/AiMonitorFundFlow.vue'
+import AiMonitorPositionAdvice from './components/AiMonitorPositionAdvice.vue'
 
 const signals = ref<MonitorSignal[]>([])
 const loading = ref(false)
@@ -192,6 +210,10 @@ const signalsWithNewsCount = computed(() =>
 
 const sentimentBullishCount = computed(() =>
   signals.value.filter(s => s.analysis.news_sentiment?.overall?.bullish).length
+)
+
+const positionAdviceCount = computed(() =>
+  signals.value.filter(s => s.type === '持仓' && s.trading_advice?.action_signal && s.trading_advice.action_signal !== 'hold').length
 )
 
 function fetchSignals() {

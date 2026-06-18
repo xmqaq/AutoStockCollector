@@ -38,6 +38,10 @@
               <span class="ap-label">建议买入</span>
               <span class="ap-value up">{{ fmtPrice(detailData.trading_advice.advice?.buy_price_low) }} ~ {{ fmtPrice(detailData.trading_advice.advice?.buy_price_high) }}</span>
             </div>
+            <div class="adv-price-item" v-else-if="detailData.trading_advice.action_signal === 'add'">
+              <span class="ap-label">加仓区间</span>
+              <span class="ap-value up">{{ fmtPrice(detailData.trading_advice.advice?.buy_price_low) }} ~ {{ fmtPrice(detailData.trading_advice.advice?.buy_price_high) }}</span>
+            </div>
             <div class="adv-price-item">
               <span class="ap-label">目标卖出</span>
               <span class="ap-value up">{{ fmtPrice(detailData.trading_advice.advice?.target_price) }} <small v-if="detailData.trading_advice.advice?.expected_return">(+{{ detailData.trading_advice.advice.expected_return.toFixed(1) }}%)</small></span>
@@ -273,6 +277,61 @@
             </div>
           </div>
         </el-tab-pane>
+        <el-tab-pane label="板块" name="sector">
+          <div class="tab-content" v-if="detailData.sector_flow">
+            <div class="detail-grid">
+              <div class="detail-item"><span class="di-label">行业</span><span class="di-value">{{ detailData.sector_flow.industry_name || '--' }}</span></div>
+              <div class="detail-item"><span class="di-label">行业涨幅</span><span :class="['di-value', (detailData.sector_flow.industry_change || 0) >= 0 ? 'up' : 'down']">{{ (detailData.sector_flow.industry_change || 0) >= 0 ? '+' : '' }}{{ (detailData.sector_flow.industry_change || 0).toFixed(2) }}%</span></div>
+              <div class="detail-item"><span class="di-label">行业净流入</span><span class="di-value">{{ formatAmount(detailData.sector_flow.industry_net_flow) }}</span></div>
+              <div class="detail-item"><span class="di-label">成交额</span><span class="di-value">{{ formatAmount(detailData.sector_flow.industry_total_amount) }}</span></div>
+            </div>
+          </div>
+          <div class="tab-content" v-if="detailData.concepts?.length">
+            <h4 style="margin: 8px 0 4px;">所属概念</h4>
+            <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px;">
+              <el-tag v-for="c in detailData.concepts" :key="c" size="small" effect="plain" class="concept-chip">{{ c }}</el-tag>
+            </div>
+          </div>
+        </el-tab-pane>
+        <el-tab-pane label="涨停" name="limit_up">
+          <div class="tab-content" v-if="detailData.limit_up">
+            <div class="detail-grid">
+              <div class="detail-item"><span class="di-label">状态</span><span class="di-value">{{ detailData.limit_up.is_limit_up ? '涨停' : detailData.limit_up.is_limit_down ? '跌停' : '正常' }}</span></div>
+              <div class="detail-item"><span class="di-label">连板天数</span><span class="di-value">{{ detailData.limit_up.consecutive_limit_days || 0 }}天</span></div>
+              <div class="detail-item"><span class="di-label">涨停类型</span><span class="di-value">{{ detailData.limit_up.limit_type || '--' }}</span></div>
+              <div class="detail-item"><span class="di-label">涨跌幅</span><span :class="['di-value', (detailData.limit_up.change_pct || 0) >= 0 ? 'up' : 'down']">{{ (detailData.limit_up.change_pct || 0).toFixed(2) }}%</span></div>
+              <div class="detail-item"><span class="di-label">换手率</span><span class="di-value">{{ (detailData.limit_up.turnover_rate || 0).toFixed(2) }}%</span></div>
+              <div class="detail-item"><span class="di-label">量比</span><span class="di-value">{{ (detailData.limit_up.volume_ratio || 0).toFixed(2) }}</span></div>
+            </div>
+          </div>
+        </el-tab-pane>
+        <el-tab-pane label="龙虎榜" name="dragon_tiger">
+          <div class="tab-content" v-if="detailData.dragon_tiger">
+            <div class="detail-grid">
+              <div class="detail-item"><span class="di-label">上榜次数</span><span class="di-value">{{ detailData.dragon_tiger.appearances || 0 }}次</span></div>
+              <div class="detail-item"><span class="di-label">总净买入</span><span :class="['di-value', (detailData.dragon_tiger.total_net_buy || 0) >= 0 ? 'up' : 'down']">{{ formatAmount(detailData.dragon_tiger.total_net_buy) }}</span></div>
+              <div class="detail-item"><span class="di-label">机构净买入</span><span :class="['di-value', (detailData.dragon_tiger.institution_net_buy || 0) >= 0 ? 'up' : 'down']">{{ formatAmount(detailData.dragon_tiger.institution_net_buy) }}</span></div>
+              <div class="detail-item"><span class="di-label">游资净买入</span><span :class="['di-value', (detailData.dragon_tiger.hot_unknown_net_buy || 0) >= 0 ? 'up' : 'down']">{{ formatAmount(detailData.dragon_tiger.hot_unknown_net_buy) }}</span></div>
+              <div class="detail-item" v-if="detailData.dragon_tiger.top_brokers?.length">
+                <span class="di-label">上榜席位</span>
+                <span class="di-value" style="font-size:11px;">{{ detailData.dragon_tiger.top_brokers.join('、') }}</span>
+              </div>
+            </div>
+          </div>
+        </el-tab-pane>
+        <el-tab-pane label="融资融券" name="margin">
+          <div class="tab-content" v-if="detailData.margin">
+            <div class="detail-grid">
+              <div class="detail-item"><span class="di-label">融资余额</span><span class="di-value">{{ formatAmount(detailData.margin.margin_balance) }}</span></div>
+              <div class="detail-item"><span class="di-label">融资余额变动</span><span :class="['di-value', (detailData.margin.margin_balance_change_pct || 0) >= 0 ? 'up' : 'down']">{{ (detailData.margin.margin_balance_change_pct || 0).toFixed(2) }}%</span></div>
+              <div class="detail-item"><span class="di-label">融资趋势</span><span class="di-value">{{ trendLabel(detailData.margin.trend) }}</span></div>
+              <div class="detail-item"><span class="di-label">融券余量</span><span class="di-value">{{ detailData.margin.short_volume?.toLocaleString() || 0 }}</span></div>
+              <div class="detail-item"><span class="di-label">融券变动</span><span :class="['di-value', (detailData.margin.short_change_pct || 0) >= 0 ? 'up' : 'down']">{{ (detailData.margin.short_change_pct || 0).toFixed(2) }}%</span></div>
+              <div class="detail-item"><span class="di-label">融券趋势</span><span class="di-value">{{ trendLabel(detailData.margin.short_trend) }}</span></div>
+              <div class="detail-item"><span class="di-label">融券占比</span><span class="di-value">{{ (detailData.margin.short_ratio || 0).toFixed(2) }}%</span></div>
+            </div>
+          </div>
+        </el-tab-pane>
       </el-tabs>
       <!-- Price Prediction Detail (可折叠) -->
       <el-collapse v-if="detailData.price_prediction" class="pp-collapse">
@@ -343,6 +402,8 @@ function fmtChange(v: number | undefined | null): string {
 
 function adviceTagType(signal?: string): string {
   if (signal === 'buy') return 'danger'
+  if (signal === 'add') return 'warning'
+  if (signal === 'reduce') return 'info'
   if (signal === 'sell') return 'success'
   if (signal === 'watch') return 'info'
   return 'warning'
@@ -376,6 +437,19 @@ function signalTagType(sig: string): string {
   if (sig === 'strong_buy' || sig === 'buy') return 'danger'
   if (sig === 'sell' || sig === 'strong_sell') return 'success'
   return 'info'
+}
+
+function formatAmount(v: number | undefined | null): string {
+  if (v == null) return '--'
+  if (Math.abs(v) >= 1e8) return (v / 1e8).toFixed(2) + '亿'
+  if (Math.abs(v) >= 1e4) return (v / 1e4).toFixed(2) + '万'
+  return v.toFixed(2)
+}
+
+function trendLabel(t?: string): string {
+  if (!t) return '--'
+  const m: Record<string, string> = { up: '增加↑', down: '减少↓', stable: '稳定→' }
+  return m[t] || t
 }
 </script>
 
@@ -414,6 +488,8 @@ function signalTagType(sig: string): string {
   border-left: 4px solid #909399;
 }
 .dl-advice.advice-buy { border-left-color: #f56c6c; }
+.dl-advice.advice-add { border-left-color: #e6a23c; }
+.dl-advice.advice-reduce { border-left-color: #909399; }
 .dl-advice.advice-sell { border-left-color: #67c23a; }
 .dl-advice.advice-watch { border-left-color: #909399; }
 .dl-advice.advice-hold { border-left-color: #e6a23c; }
@@ -669,4 +745,7 @@ function signalTagType(sig: string): string {
 .pp-dl-label { font-size: 11px; color: #999; }
 .pp-dl-val { font-size: 14px; font-weight: 600; font-family: 'IBM Plex Mono', monospace; }
 .pp-dl-val.down { color: #67c23a; }
+.concept-chip { font-size: 11px; padding: 0 4px; height: 20px; line-height: 20px; color: #F23645; border-color: #F23645; }
+.tab-content .di-value.up { color: #f56c6c; }
+.tab-content .di-value.down { color: #67c23a; }
 </style>

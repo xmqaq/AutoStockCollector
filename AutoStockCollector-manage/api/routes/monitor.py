@@ -258,3 +258,119 @@ def get_sector_sentiment():
     except Exception as e:
         logger.error(f"Sector sentiment failed: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+@monitor_bp.route("/fund-flow-anomalies", methods=["GET"])
+@login_required
+def get_fund_flow_anomalies():
+    """主力资金异动监测: 最近5日异常净流入/流出、连续异动、趋势反转"""
+    try:
+        from config.database import DatabaseConfig
+        import numpy as np
+        db = DatabaseConfig.get_database()
+        days = int(request.args.get("days", 5))
+        limit = int(request.args.get("limit", 100))
+
+        from datetime import datetime, timedelta
+        cutoff = (datetime.now() - timedelta(days=days * 2)).strftime("%Y-%m-%d")
+        pipe = [
+            {"$match": {"date": {"$gte": cutoff}}},
+            {"$sort": {"date": -1}},
+            {"$group": {
+                "_id": "$code",
+                "name": {"$first": "$name"},
+                "latest_date": {"$first": "$date"},
+                "latest_net": {"$first": "$main_net_inflow"},
+                "latest_amount": {"$first": "$total_amount"},
+                "latest_price": {"$first": "$price"},
+                "latest_change": {"$first": "$change_pct"},
+                "latest_turnover": {"$first": "$turnover_rate"},
+                "latest_amount": {"$first": "$total_amount"},
+                "nets": {"$push": "$main_net_inflow"},
+                "count": {"$sum": 1},
+            }},
+            {"$match": {"count": {"$gte": days - 1}}},
+        ]
+
+        results = []
+        for doc in db["fund_flow"].aggregate(pipe, allowDiskUse=True):
+            code = doc["_id"]
+            nets = [float(x or 0) for x in doc["nets"]]
+            latest_net = float(doc["latest_net"] or 0)
+            if len(nets) < 2:
+                continue
+
+            avg_net = float(np.mean(nets))
+            std_net = float(np.std(nets)) if len(nets) > 1 else 1
+            z_score = (latest_net - avg_net) / std_net if std_net > 0 else 0
+
+            # 连续正/负天数
+            consec = 0
+            for v in nets:
+                if v > 0: consec += 1
+                elif v < 0: consec -= 1
+                else: break
+
+            # 趋势反转判断: 前3天 vs 最近2天
+            first_half = float(np.mean(nets[:-2])) if len(nets) > 2 else avg_net
+            second_half = float(np.mean(nets[:2])) if len(nets) >= 2 else latest_net
+            reversal = second_half > 0 > first_half or second_half < 0 < first_half
+
+            # 净流入占比
+            latest_amount = float(doc["latest_amount"] or 1)
+            net_ratio = latest_net / latest_amount if latest_amount > 0 else 0
+
+            anomaly_score = abs(z_score) * 40 + abs(consec) * 8 + (20 if reversal else 0) + abs(net_ratio) * 10
+
+            anomaly_type = "大幅流入" if latest_net > 0 and z_score > 1.5 else \
+                           "大幅流出" if latest_net < 0 and z_score < -1.5 else \
+                           "连续流入" if consec >= 3 else \
+                           "连续流出" if consec <= -3 else \
+                           "趋势反转" if reversal else "关注"
+
+            results.append({
+                "code": code,
+                "name": doc.get("name", code),
+                "latest_date": doc["latest_date"],
+                "latest_net": round(latest_net, 2),
+                "latest_amount": round(latest_amount, 2) if latest_amount else 0,
+                "latest_price": round(float(doc["latest_price"] or 0), 2),
+                "latest_change": round(float((doc.get("latest_change", "") or "0").replace("%", "")), 2),
+                "latest_turnover": round(float((doc.get("latest_turnover", "") or "0").replace("%", "")), 2),
+                "avg_net": round(avg_net, 2),
+                "std_net": round(std_net, 2),
+                "z_score": round(z_score, 2),
+                "consecutive_days": consec,
+                "net_ratio": round(net_ratio, 4),
+                "reversal": reversal,
+                "anomaly_score": round(anomaly_score, 1),
+                "anomaly_type": anomaly_type,
+                "data_days": len(nets),
+            })
+
+        results.sort(key=lambda r: r["anomaly_score"], reverse=True)
+
+        # 统计摘要
+        total = len(results)
+        big_inflow = sum(1 for r in results if r["anomaly_type"] == "大幅流入")
+        big_outflow = sum(1 for r in results if r["anomaly_type"] == "大幅流出")
+        consec_inflow = sum(1 for r in results if r["anomaly_type"] == "连续流入")
+        consec_outflow = sum(1 for r in results if r["anomaly_type"] == "连续流出")
+        reversals = sum(1 for r in results if r["reversal"])
+
+        return jsonify({
+            "success": True,
+            "count": len(results[:limit]),
+            "data": results[:limit],
+            "summary": {
+                "total": total,
+                "big_inflow": big_inflow,
+                "big_outflow": big_outflow,
+                "consec_inflow": consec_inflow,
+                "consec_outflow": consec_outflow,
+                "reversals": reversals,
+            },
+        })
+    except Exception as e:
+        logger.error(f"Fund flow anomalies failed: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500

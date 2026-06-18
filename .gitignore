@@ -38,3 +38,4 @@ console-errors.json
 
 # Run script artifacts
 .pids/
+*.sh

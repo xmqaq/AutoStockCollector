@@ -33,6 +33,18 @@
             <el-tag v-else-if="s.analysis.news_sentiment?.overall?.signal === 'bearish'" size="small" type="success" effect="light" class="ns-card-badge">利空</el-tag>
           </div>
 
+          <!-- Concepts & Limit-up -->
+          <div class="tags-row">
+            <el-tag v-if="s.limit_up?.is_limit_up" size="small" type="warning" effect="dark" class="limit-up-badge">
+              {{ s.limit_up.consecutive_limit_days > 1 ? `${s.limit_up.consecutive_limit_days}连板` : '涨停' }}
+            </el-tag>
+            <el-tag v-else-if="s.limit_up?.is_limit_down" size="small" type="success" effect="dark" class="limit-down-badge">跌停</el-tag>
+            <el-tag v-for="c in (s.concepts || []).slice(0, 3)" :key="c" size="small" effect="plain" class="concept-chip">{{ c }}</el-tag>
+            <el-tag v-if="s.trading_advice?.action_signal && s.trading_advice.action_signal !== 'hold'" size="small" :type="actionTagType(s.trading_advice.action_signal)" effect="dark" class="action-mini-badge">
+              {{ actionLabel(s.trading_advice.action_signal) }}
+            </el-tag>
+          </div>
+
           <!-- Dual signal bars -->
           <div class="signal-bars">
             <div class="signal-bar-row">
@@ -141,10 +153,23 @@ function scoreColor(score: number): string {
 }
 
 function adviceTagType(signal?: string): string {
-  if (signal === 'buy') return 'danger'
-  if (signal === 'sell') return 'success'
+  if (signal === 'buy' || signal === 'add') return 'danger'
+  if (signal === 'sell' || signal === 'reduce') return 'success'
   if (signal === 'watch') return 'info'
   return 'warning'
+}
+
+function actionTagType(signal?: string): string {
+  if (signal === 'buy') return 'danger'
+  if (signal === 'add') return 'warning'
+  if (signal === 'reduce') return 'info'
+  if (signal === 'sell') return 'success'
+  return 'info'
+}
+
+function actionLabel(signal?: string): string {
+  const map: Record<string, string> = { buy: '买入', add: '加仓', reduce: '减仓', sell: '卖出' }
+  return map[signal || ''] || ''
 }
 
 function riskLevelClass(level: string): string {
@@ -273,6 +298,19 @@ function riskLevelClass(level: string): string {
   height: 18px;
   line-height: 18px;
 }
+
+/* Tags Row */
+.tags-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.limit-up-badge { font-size: 10px; padding: 0 4px; height: 18px; line-height: 18px; }
+.limit-down-badge { font-size: 10px; padding: 0 4px; height: 18px; line-height: 18px; }
+.concept-chip { font-size: 10px; padding: 0 4px; height: 18px; line-height: 18px; color: #F23645; border-color: #F23645; }
+.action-mini-badge { font-size: 10px; font-weight: 700; padding: 0 4px; height: 18px; line-height: 18px; }
 
 .divergence-tip {
   margin-top: 6px;

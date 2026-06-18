@@ -3,11 +3,13 @@ import client from './client'
 export interface TradingAdvice {
   action: string
   action_signal: string
+  signal_source?: string
   reason: string
   details: Record<string, number>
   buy_reasons?: string[]
   sell_reasons?: string[]
   watch_reasons?: string[]
+  reasons?: string[]
   entry_price_range: { low: number; high: number }
   take_profit: number
   stop_loss: number
@@ -37,6 +39,42 @@ export interface TradingAdvice {
     change_pct: number
     summary: string
   }
+}
+
+export interface SectorFlow {
+  industry_name?: string
+  industry_change?: number
+  industry_net_flow?: number
+  industry_total_amount?: number
+}
+
+export interface LimitUpInfo {
+  is_limit_up?: boolean
+  is_limit_down?: boolean
+  consecutive_limit_days?: number
+  limit_type?: string | null
+  change_pct?: number
+  turnover_rate?: number
+  volume_ratio?: number
+  amount?: number
+}
+
+export interface DragonTigerInfo {
+  appearances?: number
+  total_net_buy?: number
+  institution_net_buy?: number
+  hot_unknown_net_buy?: number
+  top_brokers?: string[]
+}
+
+export interface MarginInfo {
+  margin_balance?: number
+  margin_balance_change_pct?: number
+  short_volume?: number
+  short_change_pct?: number
+  short_ratio?: number
+  trend?: string
+  short_trend?: string
 }
 
 export interface NewsSentiment {
@@ -76,6 +114,12 @@ export interface MonitorSignal {
   price: number
   change_rate: number
   industry: string
+  concepts?: string[]
+  concept_details?: { name: string; change_pct: number; net_flow: number }[]
+  sector_flow?: SectorFlow
+  limit_up?: LimitUpInfo
+  dragon_tiger?: DragonTigerInfo
+  margin?: MarginInfo
   confidence: number
   short_term: SignalDimension
   long_term: SignalDimension
@@ -140,4 +184,27 @@ export const monitorApi = {
   getSectorSentiment() {
     return client.get('/api/v1/monitor/sector-sentiment')
   },
+  getFundFlowAnomalies(days = 5, limit = 100) {
+    return client.get('/api/v1/monitor/fund-flow-anomalies', { params: { days, limit } })
+  },
+}
+
+export interface FundFlowAnomaly {
+  code: string
+  name: string
+  latest_date: string
+  latest_net: number
+  latest_amount: number
+  latest_price: number
+  latest_change: number
+  latest_turnover: number
+  avg_net: number
+  std_net: number
+  z_score: number
+  consecutive_days: number
+  net_ratio: number
+  reversal: boolean
+  anomaly_score: number
+  anomaly_type: string
+  data_days: number
 }
