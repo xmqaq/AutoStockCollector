@@ -1130,8 +1130,8 @@ def ai_pick_results():
 def ai_pick_rebalance_advice():
     """根据最近一次量化选股结果（按评分加权成目标组合）+ 实时持仓/现金，生成再平衡买卖清单。
 
-    与策略选股的 /rebalance-advice 同源复用 build_rebalance_orders；区别仅在目标组合来源：
-    量化选股只产出排名+评分，这里用 build_score_weighted_targets 现算目标权重。
+    量化选股只产出排名+评分，这里用 build_score_weighted_targets 现算目标权重，
+    再交给 build_rebalance_orders 生成订单。
     """
     from modules.ai_selector.advisor import build_rebalance_orders, build_score_weighted_targets
     from modules.paper_trading.trade_engine import TradeEngine

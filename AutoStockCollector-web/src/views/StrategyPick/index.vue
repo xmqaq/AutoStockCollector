@@ -158,47 +158,6 @@
       </div>
     </div>
 
-    <!-- 再平衡建议 -->
-    <div v-if="result" class="sp-rebalance-panel">
-      <div class="sp-ps-header">
-        <span class="sp-ps-title">再平衡建议</span>
-        <span style="margin-right:auto;font-size:12px;color:var(--el-text-color-secondary)">按评分配比目标仓位，对比你的持仓给出买卖清单（小幅偏离不调）</span>
-        <el-checkbox v-model="rebalanceAiMode" size="small" style="margin-right:8px">AI 复核</el-checkbox>
-        <el-button size="small" :loading="rebalanceLoading" @click="loadRebalance">生成建议</el-button>
-        <el-button size="small" type="primary"
-                   :disabled="!rebalance || !rebalance.orders.length"
-                   :loading="executingAll" @click="execAll">全部执行</el-button>
-      </div>
-      <div v-if="rebalance?.message" class="sp-empty-hint" style="padding:8px 14px 14px">{{ rebalance.message }}</div>
-      <div v-else-if="rebalance" class="sp-ps-table-wrap">
-        <table class="sp-ps-table">
-          <thead><tr><th>动作</th><th>股票</th><th>股数</th><th>现价</th><th>目标/当前权重</th><th>说明</th><th v-if="rebalance?.mode === 'ai'">AI复核</th><th style="width:80px">操作</th></tr></thead>
-          <tbody>
-            <tr v-for="o in rebalance.orders" :key="o.code" class="sp-ps-row">
-              <td><span class="sp-sig-badge" :class="o.action === 'buy' ? 'sp-sig-买入' : 'sp-sig-卖出'">{{ o.action === 'buy' ? '买入' : '卖出' }}</span></td>
-              <td>{{ o.name }}（{{ o.code }}）</td>
-              <td class="num">{{ o.shares }}</td>
-              <td class="num">{{ o.price != null ? o.price.toFixed(2) : '-' }}</td>
-              <td class="num">{{ o.target_weight }}% / {{ o.current_weight }}%</td>
-              <td class="sp-signal-reason" :title="o.reason">{{ o.reason }}</td>
-              <td v-if="rebalance?.mode === 'ai'">
-                <el-tooltip v-if="o.ai_action" :content="o.ai_reason || ''" placement="top">
-                  <span class="sp-ai-tag">{{ o.ai_action }}</span>
-                </el-tooltip>
-                <span v-else class="sp-na">-</span>
-              </td>
-              <td>
-                <el-button v-if="!o.skipped" size="small" plain :disabled="executingAll" :loading="executing[o.code]" @click.stop="execOne(o)">执行</el-button>
-                <el-tooltip v-else :content="o.skip_reason || ''" placement="top">
-                  <el-tag type="info" size="small">已跳过</el-tag>
-                </el-tooltip>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
     <div v-if="result?.trade_signals?.length" class="sp-signals-box">
       <div class="sp-signals-header">
         <span class="sp-signals-title">买卖信号建议（基于当前持仓）</span>
@@ -480,7 +439,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { renderMd } from '@/utils/markdown'
 import dayjs from 'dayjs'
-import { strategyPickApi, type StrategyPickItem, type StrategyPickResult, type StrategyPickProgress, type StrategyPickHistoryItem, type PortfolioMetrics, type StrategyPickAgent, type DebateConsensus, type PortfolioSuggestionPosition, type RebalanceOrder, type RebalanceAdvice } from '@/api/strategyPick'
+import { strategyPickApi, type StrategyPickItem, type StrategyPickResult, type StrategyPickProgress, type StrategyPickHistoryItem, type PortfolioMetrics, type StrategyPickAgent, type DebateConsensus, type PortfolioSuggestionPosition } from '@/api/strategyPick'
 import { paperApi } from '@/api/paper'
 import type { StrategyRule } from '@/types'
 import VChart from 'vue-echarts'
@@ -979,60 +938,6 @@ async function buyAllPositions() {
     else ElMessage.error('批量买入失败')
   } finally {
     buyingAll.value = false
-  }
-}
-
-const rebalance = ref<RebalanceAdvice | null>(null)
-const rebalanceLoading = ref(false)
-const rebalanceAiMode = ref(false)
-const executing = ref<Record<string, boolean>>({})
-const executingAll = ref(false)
-
-async function loadRebalance() {
-  rebalanceLoading.value = true
-  try {
-    const res = await strategyPickApi.getRebalanceAdvice(0.05, rebalanceAiMode.value ? 'ai' : 'quant')
-    rebalance.value = res.data.data
-  } catch {
-    ElMessage.error('加载再平衡建议失败')
-  } finally {
-    rebalanceLoading.value = false
-  }
-}
-
-async function execOne(o: RebalanceOrder): Promise<boolean> {
-  if (o.skipped || !o.price) return false
-  executing.value[o.code] = true
-  try {
-    await paperApi.executeTrade({
-      code: o.code, action: o.action, shares: o.shares,
-      price: o.price, ai_signal: { reason: o.reason, position_advice: '再平衡建议' },
-    })
-    await loadRebalance() // 执行后刷新清单（现金/持仓已变）
-    return true
-  } catch (e: any) {
-    ElMessage.error(`执行失败：${e?.response?.data?.error || e?.message || e}`)
-    return false
-  } finally {
-    executing.value[o.code] = false
-  }
-}
-
-async function execAll() {
-  if (!rebalance.value) return
-  executingAll.value = true
-  try {
-    // 先卖后买：卖出释放现金才够买
-    const ordered = [...rebalance.value.orders].sort(
-      (a, b) => (a.action === 'sell' ? 0 : 1) - (b.action === 'sell' ? 0 : 1),
-    )
-    for (const o of ordered) {
-      if (o.skipped || !o.price) continue
-      const ok = await execOne(o)
-      if (!ok) break // 卖出失败即中断，避免后续买入在现金未释放的情况下执行
-    }
-  } finally {
-    executingAll.value = false
   }
 }
 
@@ -1789,24 +1694,6 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
 .sp-ps-weight { font-weight: 600; color: var(--el-color-primary); }
 .sp-ps-cum { font-size: 11px; color: var(--text-alt-muted); }
 
-/* 再平衡建议 */
-.sp-rebalance-panel {
-  margin-top: 14px;
-  background: var(--bg-deep-soft);
-  border: 1px solid var(--border-alt);
-  border-left: 3px solid #60a0f0;
-  border-radius: 6px;
-  overflow: hidden;
-}
-.sp-ai-tag {
-  display: inline-block;
-  padding: 1px 8px;
-  border-radius: 10px;
-  font-size: 12px;
-  background: rgba(96, 160, 240, 0.15);
-  color: #60a0f0;
-  cursor: default;
-}
 .sp-na { color: var(--text-faint); }
 
 /* 对比 */
