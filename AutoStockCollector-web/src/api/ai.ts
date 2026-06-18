@@ -493,9 +493,9 @@ export const aiServiceApi = {
     return client.get('/api/v1/ai/pick/track', { params })
   },
   /** 基于最近量化选股结果 + 实时持仓/现金，生成再平衡买卖清单 */
-  pickRebalanceAdvice(buffer = 0.05) {
+  pickRebalanceAdvice(buffer = 0.05, ratio = 1.0) {
     return client.get<{ success: boolean; data: RebalanceAdvice }>(
-      '/api/v1/ai/pick/rebalance-advice', { params: { buffer } },
+      '/api/v1/ai/pick/rebalance-advice', { params: { buffer, ratio } },
     )
   },
 }

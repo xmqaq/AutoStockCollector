@@ -43,10 +43,17 @@
       <div class="ap-rebalance-head">
         <span class="ap-rebalance-title">再平衡建议</span>
         <span style="margin-right:auto;font-size:12px;color:var(--el-text-color-secondary)">按评分配比目标仓位，对比你的持仓给出买卖清单（小幅偏离不调）</span>
+        <span style="font-size:12px;color:var(--el-text-color-secondary)">目标仓位</span>
+        <el-select v-model="investRatio" size="small" style="width:96px" @change="loadRebalance">
+          <el-option v-for="r in [0.5,0.6,0.7,0.8,0.9,1.0]" :key="r" :label="Math.round(r*100)+'%'" :value="r" />
+        </el-select>
         <el-button size="small" :loading="rebalanceLoading" @click="loadRebalance">生成建议</el-button>
         <el-button size="small" type="primary"
                    :disabled="!rebalance || !rebalance.orders.length"
                    :loading="executingAll" @click="execAll">全部执行</el-button>
+      </div>
+      <div v-if="rebalance?.dropped?.length" class="ap-rebalance-dropped">
+        ⚠️ {{ rebalance.dropped.length }} 只高价票因本金不足一手已跳过：{{ rebalance.dropped.map(d => `${d.name}(${d.price}元)`).join('、') }}
       </div>
       <div v-if="rebalance?.message" class="ap-rebalance-empty">{{ rebalance.message }}</div>
       <el-table v-else-if="rebalance" :data="rebalance.orders" size="small" border>
@@ -129,13 +136,14 @@ const summaryExpanded = ref(false)
 // ── 再平衡建议（一键操作）──
 const rebalance = ref<RebalanceAdvice | null>(null)
 const rebalanceLoading = ref(false)
+const investRatio = ref(1.0)
 const executing = ref<Record<string, boolean>>({})
 const executingAll = ref(false)
 
 async function loadRebalance() {
   rebalanceLoading.value = true
   try {
-    const res = await aiServiceApi.pickRebalanceAdvice(0.05)
+    const res = await aiServiceApi.pickRebalanceAdvice(0.05, investRatio.value)
     rebalance.value = res.data.data
   } catch {
     ElMessage.error('加载再平衡建议失败')
@@ -319,6 +327,7 @@ onBeforeUnmount(stopProgressPolling)
 .ap-rebalance-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 .ap-rebalance-title { font-size: 13px; font-weight: 600; color: var(--text-alt-body, #303133); margin-right: auto; }
 .ap-rebalance-empty { font-size: 12px; color: var(--text-alt-muted, #909399); padding: 6px 0; }
+.ap-rebalance-dropped { font-size: 12px; color: var(--el-color-warning, #e6a23c); padding: 6px 0; line-height: 1.5; }
 
 /* 进度条 */
 .ap-progress-box {

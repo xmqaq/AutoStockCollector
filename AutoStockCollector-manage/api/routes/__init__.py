@@ -1142,6 +1142,10 @@ def ai_pick_rebalance_advice():
         buffer = float(request.args.get("buffer", 0.05))
     except (TypeError, ValueError):
         buffer = 0.05
+    try:
+        invest_ratio = float(request.args.get("ratio", 1.0))
+    except (TypeError, ValueError):
+        invest_ratio = 1.0
 
     doc = _latest_pick_result()
     picks = (doc or {}).get("picks") or []
@@ -1165,12 +1169,19 @@ def ai_pick_rebalance_advice():
         prices.setdefault(p["code"], p.get("current_price") or 0)
     capital = cash + sum((p.get("market_value") or 0) for p in positions)
 
-    targets = build_score_weighted_targets(picks, prices=prices, capital=capital)
+    targets = build_score_weighted_targets(picks, prices=prices, capital=capital,
+                                           invest_ratio=invest_ratio)
     if not targets:
         return jsonify({"success": True, "data": {
             "total_value": 0, "buffer": buffer, "cash": 0, "orders": [],
             "message": "暂无量化选股结果，请先运行量化选股",
         }})
+
+    # 被 A1 剔除的高价票（评分入选但本金不足一手），回给前端做提示
+    target_codes = {t["code"] for t in targets}
+    dropped = [{"code": p["code"], "name": p.get("name", p["code"]), "price": prices.get(p["code"])}
+               for p in picks
+               if (p.get("composite") or 0) > 0 and p["code"] not in target_codes and prices.get(p["code"])]
 
     advice = build_rebalance_orders(
         target_positions=targets,
@@ -1181,6 +1192,8 @@ def ai_pick_rebalance_advice():
         fees=engine._fees(),
     )
     advice["cash"] = round(cash, 2)
+    advice["dropped"] = dropped
+    advice["invest_ratio"] = invest_ratio
     return jsonify({"success": True, "data": advice})
 
 

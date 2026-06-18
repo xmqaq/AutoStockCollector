@@ -212,4 +212,6 @@ export interface RebalanceAdvice {
   orders: RebalanceOrder[]
   message?: string
   mode?: 'quant' | 'ai'
+  invest_ratio?: number
+  dropped?: { code: string; name: string; price: number | null }[]
 }
