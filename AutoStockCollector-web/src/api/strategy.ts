@@ -83,6 +83,11 @@ export const strategyApi = {
       timestamp: string
     }>>('/api/v1/strategies/test/result')
   },
+
+  /** 调仓建议 — 基于 AI 监控信号 + 当前持仓 */
+  rebalance() {
+    return client.post('/api/v1/strategy-pick/rebalance')
+  },
 }
 
 export interface StrategyTestPick {

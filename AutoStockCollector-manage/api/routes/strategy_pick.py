@@ -9,6 +9,7 @@ import time
 from modules.ai.strategies.storage import StrategyStorage
 from utils.logger import get_logger
 from utils.helpers import beijing_now
+from api.auth_utils import login_required
 
 logger = get_logger(__name__)
 strategy_pick_bp = Blueprint("strategy_pick", __name__, url_prefix="/api/v1/strategy-pick")
@@ -913,3 +914,242 @@ def list_agents():
         result.append(entry)
 
     return jsonify({"success": True, "data": result})
+
+
+# ──────────────────────────────────────────────
+# 调仓建议（基于 AI 监控信号 + 当前持仓）
+# ──────────────────────────────────────────────
+
+def _score_sell_urgency(pos: Dict, sig: Optional[Dict]) -> tuple:
+    if not sig:
+        return 0, ""
+    tr = sig.get("trading_advice", {}) or {}
+    action_signal = tr.get("action_signal", "hold")
+    composite = sig.get("composite", {}) or {}
+    comp_score = composite.get("score", 50)
+    ff_score = tr.get("details", {}).get("fund_flow_score", 50)
+    pnl = pos.get("pnl", 0)
+
+    if action_signal == "sell":
+        source = tr.get("signal_source", "")
+        if "止损" in source: return 98, "触及止损线，建议卖出"
+        if "止盈" in source: return 92, "已达目标价，建议止盈"
+        return 88, f"卖出信号({source})"
+    if action_signal == "reduce":
+        return 72, "建议减仓"
+    if comp_score < 35:
+        return 58, f"综合评分{comp_score:.0f}，持仓偏弱"
+    if comp_score < 45:
+        return 42, f"综合评分{comp_score:.0f}，考虑减仓"
+    if ff_score < 40 and comp_score < 55:
+        return 35, f"资金流出(评分{ff_score:.0f})"
+    if pnl and pnl < -0.15 and comp_score < 50:
+        return 30, f"浮亏{pnl*100:.0f}%且信号偏弱"
+    return 0, ""
+
+
+def _score_buy_priority(sig: Dict) -> tuple:
+    tr = sig.get("trading_advice", {}) or {}
+    action_signal = tr.get("action_signal", "hold")
+    composite = sig.get("composite", {}) or {}
+    comp_score = composite.get("score", 50)
+    pp = sig.get("price_prediction", {}) or {}
+    confidence = sig.get("confidence", 0)
+
+    if action_signal == "buy":
+        source = tr.get("signal_source", "")
+        base = 88
+        if "多维共振" in source: base = 95
+        elif "盈亏比" in source: base = 88
+        elif "板块轮动" in source: base = 82
+        elif "龙虎榜" in source: base = 80
+        expected_return = pp.get("expected_return", 0)
+        rr = tr.get("risk_reward_ratio", 0)
+        bonus = min(max(expected_return, 0), 30) * 0.3 + min(rr, 5) * 2
+        return min(base + bonus, 100), f"买入信号({source})，预期收益{expected_return:+.1f}%"
+
+    if comp_score >= 70 and confidence > 0.5:
+        rr_bonus = min(tr.get("risk_reward_ratio", 0) * 3, 10)
+        expected_return = pp.get("expected_return", 0)
+        ret_bonus = min(max(expected_return, 0) * 0.4, 10)
+        score = min(60 + rr_bonus + ret_bonus, 85)
+        return score, f"综合评分{comp_score:.0f}，预期{expected_return:+.1f}%"
+    return 0, ""
+
+
+@strategy_pick_bp.route("/rebalance", methods=["POST"])
+@login_required
+def rebalance():
+    """基于 AI 监控信号 + 当前持仓，生成调仓买卖订单。"""
+    from modules.monitor.storage import MonitorStorage
+    from modules.ai_selector.advisor import build_rebalance_orders, build_score_weighted_targets
+    from config.database import DatabaseConfig
+    db = DatabaseConfig.get_database()
+
+    user_id = g.current_user["user_id"]
+
+    # 1. 监控信号
+    storage = MonitorStorage()
+    all_signals = storage.get_all_signals()
+    signal_map = {s["code"]: s for s in all_signals}
+
+    # 2. 持仓 + 资金
+    positions, cash, total_capital = [], 0.0, 100000.0
+    seen = set()
+    try:
+        acct = db["paper_account"].find_one(
+            {"user_id": {"$in": [user_id, "default"]}}, sort=[("_id", -1)])
+        if acct:
+            total_capital = float(acct.get("total_assets", acct.get("capital", total_capital)))
+            cash = float(acct.get("balance", acct.get("cash", 0)))
+            for h in (acct.get("holdings") or acct.get("positions") or []):
+                code = str(h.get("code", "")).strip()
+                if code and code not in seen:
+                    seen.add(code)
+                    price = float(h.get("price", h.get("current_price", 0)))
+                    shares = int(h.get("shares", 0))
+                    positions.append({
+                        "code": code, "name": h.get("name", ""), "shares": shares,
+                        "avg_cost": float(h.get("avg_cost", 0)),
+                        "market_value": float(h.get("market_value", 0) or (price * shares)),
+                        "current_price": price, "pnl": float(h.get("pnl", 0)),
+                    })
+    except Exception as e:
+        logger.error(f"Load portfolio: {e}")
+
+    if not positions:
+        try:
+            for p in db["positions"].find({"user_id": {"$in": [user_id, "default"]}}):
+                code = str(p.get("code", "")).strip()
+                if code and code not in seen:
+                    seen.add(code)
+                    positions.append({
+                        "code": code, "name": p.get("name", ""),
+                        "shares": int(p.get("shares", 0)),
+                        "avg_cost": float(p.get("avg_cost", 0)),
+                        "market_value": float(p.get("market_value", 0)),
+                        "current_price": float(p.get("price", 0)),
+                        "pnl": float(p.get("pnl", 0)),
+                    })
+        except Exception as e:
+            logger.error(f"Load positions: {e}")
+
+    if positions and total_capital == 100000 and cash == 0:
+        total_capital = sum(p.get("market_value", 0) for p in positions)
+
+    # 3. 卖出紧迫度评分
+    position_codes = {p["code"] for p in positions}
+    sell_list = []
+    for pos in positions:
+        sig = signal_map.get(pos["code"])
+        score, reason = _score_sell_urgency(pos, sig)
+        if score > 0:
+            sell_list.append({**pos, "sell_score": score, "sell_reason": reason})
+
+    # 4. 买入优先度评分
+    buy_list = []
+    for sig in all_signals:
+        if sig["code"] in position_codes:
+            continue
+        score, reason = _score_buy_priority(sig)
+        if score > 0:
+            pp = sig.get("price_prediction", {}) or {}
+            tr = sig.get("trading_advice", {}) or {}
+            buy_list.append({
+                "code": sig["code"], "name": sig.get("name", ""),
+                "buy_score": score, "buy_reason": reason,
+                "composite": sig.get("composite", {}).get("score", 50),
+                "industry": sig.get("industry", ""),
+                "price": sig.get("price", 0) or pp.get("current_price", 0),
+                "expected_return": pp.get("expected_return", 0),
+                "risk_reward_ratio": tr.get("risk_reward_ratio", 0),
+            })
+
+    sell_list.sort(key=lambda x: x["sell_score"], reverse=True)
+    buy_list.sort(key=lambda x: x["buy_score"], reverse=True)
+
+    # 5. 目标组合权重
+    prices = {}
+    target_positions = []
+    for b in buy_list[:10]:
+        price = b.get("price", 0)
+        if price <= 0:
+            continue
+        prices[b["code"]] = price
+        target_positions.append({
+            "code": b["code"], "name": b["name"],
+            "composite": b["composite"], "industry": b["industry"],
+        })
+    weighted = build_score_weighted_targets(
+        target_positions, prices=prices, capital=total_capital, invest_ratio=0.95,
+    )
+
+    # 6. 生成订单
+    cur_positions = [{
+        "code": p["code"], "name": p.get("name", ""),
+        "shares": p.get("shares", 0),
+        "current_price": p.get("current_price", p.get("price", 0)),
+        "market_value": p.get("market_value", 0) or (
+            p.get("shares", 0) * p.get("current_price", p.get("price", 0))),
+    } for p in positions]
+    for cp in cur_positions:
+        px = prices.get(cp["code"])
+        if not px or px <= 0:
+            sig = signal_map.get(cp["code"])
+            px = sig.get("price", 0) if sig else 0
+        if not px or px <= 0:
+            px = 10.0
+        prices[cp["code"]] = px
+
+    rb = build_rebalance_orders(weighted, cur_positions, cash, prices)
+
+    # 7. 补充原因
+    sell_reason_map = {s["code"]: s["sell_reason"] for s in sell_list}
+    buy_info_map = {b["code"]: b for b in buy_list}
+    for o in rb.get("orders", []):
+        if o["action"] == "sell" and o["code"] in sell_reason_map:
+            o["reason"] = sell_reason_map[o["code"]]
+        if o["action"] == "buy":
+            bi = buy_info_map.get(o["code"])
+            if bi:
+                o["reason"] = bi["buy_reason"]
+                o["expected_return"] = bi.get("expected_return", 0)
+                o["risk_reward_ratio"] = bi.get("risk_reward_ratio", 0)
+
+    sell_urgent = len([s for s in sell_list if s["sell_score"] >= 60])
+    buy_hot = len(buy_list)
+    sells = [o for o in rb.get("orders", []) if o["action"] == "sell" and not o.get("skipped")]
+    buys = [o for o in rb.get("orders", []) if o["action"] == "buy" and not o.get("skipped")]
+    skipped = [o for o in rb.get("orders", []) if o.get("skipped")]
+
+    parts = []
+    if sells:
+        sv = sum(s["shares"] * (s["price"] or 0) for s in sells)
+        parts.append(f"卖出{'、'.join(s['name'] for s in sells)}（{len(sells)}只，释放约¥{sv:.0f}）")
+    if buys:
+        bv = sum(b["shares"] * (b["price"] or 0) for b in buys)
+        parts.append(f"买入{'、'.join(b['name'] for b in buys)}（{len(buys)}只，约¥{bv:.0f}）")
+    parts.append(f"剩余现金约¥{cash:.0f}")
+    if skipped:
+        parts.append(f"{len(skipped)}只因现金不足跳过")
+
+    return jsonify({
+        "success": True,
+        "total_capital": round(total_capital, 2),
+        "available_cash": round(cash, 2),
+        "position_count": len(positions),
+        "sell_urgent_count": sell_urgent,
+        "buy_hot_count": buy_hot,
+        "sell_list": [{"code": s["code"], "name": s["name"], "sell_score": s["sell_score"],
+                        "sell_reason": s["sell_reason"],
+                        "market_value": round(s.get("market_value", 0) or 0, 2),
+                        "pnl": round(s.get("pnl", 0) * 100, 1) if s.get("pnl") else 0}
+                       for s in sell_list[:10]],
+        "buy_list": [{"code": b["code"], "name": b["name"], "buy_score": b["buy_score"],
+                       "buy_reason": b["buy_reason"], "composite": b["composite"],
+                       "expected_return": b.get("expected_return", 0),
+                       "risk_reward_ratio": b.get("risk_reward_ratio", 0)}
+                      for b in buy_list[:10]],
+        "orders": rb.get("orders", []),
+        "summary": "，".join(parts) if parts else "暂无调仓需求",
+    })

@@ -177,14 +177,33 @@ def get_backtest(code: str):
 
 @monitor_bp.route("/backtest", methods=["GET"])
 def get_backtest_all():
-    """获取所有信号回测结果"""
-    try:
-        from modules.monitor.backtest import SignalBacktest
-        results = SignalBacktest().evaluate_all()
-        return jsonify({"success": True, "count": len(results), "data": results})
-    except Exception as e:
-        logger.error(f"Backtest all failed: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
+    """获取所有信号回测结果（可能较慢）"""
+    import threading
+    results = []
+    exception = [None]
+
+    def _run():
+        try:
+            from modules.monitor.backtest import SignalBacktest
+            r = SignalBacktest().evaluate_all()
+            results.extend(r)
+        except Exception as e:
+            exception[0] = e
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    t.join(timeout=20)
+    if t.is_alive():
+        return jsonify({
+            "success": True,
+            "count": 0,
+            "data": [],
+            "message": "回测查询超时（远程数据库较慢），请稍后重试或使用单个股票回测"
+        })
+    if exception[0]:
+        logger.error(f"Backtest all failed: {exception[0]}")
+        return jsonify({"success": False, "error": str(exception[0])}), 500
+    return jsonify({"success": True, "count": len(results), "data": results})
 
 
 @monitor_bp.route("/sector-sentiment", methods=["GET"])
