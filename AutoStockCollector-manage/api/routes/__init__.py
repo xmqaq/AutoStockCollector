@@ -1145,8 +1145,7 @@ def ai_pick_rebalance_advice():
 
     doc = _latest_pick_result()
     picks = (doc or {}).get("picks") or []
-    targets = build_score_weighted_targets(picks)
-    if not targets:
+    if not picks:
         return jsonify({"success": True, "data": {
             "total_value": 0, "buffer": buffer, "cash": 0, "orders": [],
             "message": "暂无量化选股结果，请先运行量化选股",
@@ -1158,11 +1157,20 @@ def ai_pick_rebalance_advice():
     acc = PaperAccount().get(uid)
     cash = acc["cash_balance"] if acc else 0.0
 
-    codes = list({t["code"] for t in targets} | {p["code"] for p in positions})
+    # 先取价 + 算本金（现金+持仓市值），供 A1 整手可行性剔除买不起一手的高价票
+    codes = list({p["code"] for p in picks} | {p["code"] for p in positions})
     quotes = engine._batch_tencent_quotes(codes)
     prices = {c: (q.get("price") or 0) for c, q in quotes.items() if q.get("price")}
     for p in positions:
         prices.setdefault(p["code"], p.get("current_price") or 0)
+    capital = cash + sum((p.get("market_value") or 0) for p in positions)
+
+    targets = build_score_weighted_targets(picks, prices=prices, capital=capital)
+    if not targets:
+        return jsonify({"success": True, "data": {
+            "total_value": 0, "buffer": buffer, "cash": 0, "orders": [],
+            "message": "暂无量化选股结果，请先运行量化选股",
+        }})
 
     advice = build_rebalance_orders(
         target_positions=targets,

@@ -24,21 +24,12 @@ def _sell_net(amount: float, fees: Dict[str, float]) -> float:
     return amount - commission - tax
 
 
-def build_score_weighted_targets(
-    picks: List[Dict[str, Any]],
-    max_weight: float = 0.30,
-) -> List[Dict[str, Any]]:
-    """把"只有评分、没有权重"的选股结果（如量化选股）转成按综合评分加权的目标组合。
-
-    weight_i = composite_i / Σcomposite，单仓上限 max_weight（超限的截断在上限，
-    剩余权重在未封顶的票里按评分再分配，迭代到收敛）。
-    返回 [{code, name, weight(0-100), composite, industry}]，供 build_rebalance_orders 消费。
-    """
-    valid = [p for p in picks if (p.get("composite") or 0) > 0]
-    if not valid:
-        return []
+def _capped_weights(items: List[Dict[str, Any]], max_weight: float) -> Dict[str, float]:
+    """评分加权 + 单仓上限，返回 {code: weight_frac(0-1)}。
+    weight_i = composite_i / Σcomposite，超 max_weight 的截断在上限，剩余权重在未封顶的
+    票里按评分再分配，迭代到收敛。"""
     capped: Dict[str, float] = {}
-    remaining = list(valid)
+    remaining = list(items)
     budget = 1.0
     while remaining:
         total = sum(p["composite"] for p in remaining)
@@ -51,6 +42,35 @@ def build_score_weighted_targets(
             capped[p["code"]] = max_weight
             budget -= max_weight
         remaining = [p for p in remaining if p["code"] not in capped]
+    return capped
+
+
+def build_score_weighted_targets(
+    picks: List[Dict[str, Any]],
+    max_weight: float = 0.30,
+    prices: Optional[Dict[str, float]] = None,
+    capital: Optional[float] = None,
+) -> List[Dict[str, Any]]:
+    """把"只有评分、没有权重"的选股结果（如量化选股）转成按综合评分加权的目标组合。
+
+    返回 [{code, name, weight(0-100), composite, industry}]，供 build_rebalance_orders 消费。
+
+    A1 整手可行性：传入 prices+capital 时，剔除"按目标预算连一手(100股)都买不起"的高价票
+    （如 10 万本金下茅台一手十几万），权重在买得起的票里重新归一化。否则那部分钱永远投不出去。
+    """
+    valid = [p for p in picks if (p.get("composite") or 0) > 0]
+    if not valid:
+        return []
+    if prices and capital and capital > 0:
+        while len(valid) > 1:
+            w = _capped_weights(valid, max_weight)
+            # 一手成本 > 该票目标预算(weight×capital) → 买不起一手，剔除
+            unaffordable = {p["code"] for p in valid
+                            if prices.get(p["code"]) and prices[p["code"]] * 100 > w[p["code"]] * capital}
+            if not unaffordable or len(unaffordable) >= len(valid):
+                break  # 没有买不起的，或全都买不起(本金过小)→ 不再剔除
+            valid = [p for p in valid if p["code"] not in unaffordable]
+    capped = _capped_weights(valid, max_weight)
     return [{
         "code": p["code"],
         "name": p.get("name", p["code"]),
@@ -177,4 +197,15 @@ if __name__ == "__main__":
     )
     bought = [o for o in r2["orders"] if o["action"] == "buy" and not o["skipped"]]
     assert bought and bought[0]["shares"] == 300, r2  # 3000元/10元=300股
+
+    # A1：10万本金下，茅台(一手16万)买不起一手 → 被剔除；其余低价票归一化（单仓上限30%内）
+    picks = [{"code": "600519", "name": "茅台", "composite": 80}] + \
+            [{"code": f"00000{i}", "name": f"低价{i}", "composite": 70} for i in range(4)]
+    px = {"600519": 1600, **{f"00000{i}": 20 for i in range(4)}}
+    t = build_score_weighted_targets(picks, prices=px, capital=100000.0)
+    codes = {x["code"] for x in t}
+    assert "600519" not in codes and len(codes) == 4, t          # 茅台剔除，4只低价票留下
+    assert abs(sum(x["weight"] for x in t) - 100.0) < 0.5, t      # 权重归一化到~100%
+    # 不传 prices/capital 时不剔除（向后兼容）
+    assert len(build_score_weighted_targets(picks)) == 5
     print("advisor self-check OK")
