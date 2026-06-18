@@ -355,6 +355,7 @@ class MonitorEngine:
             long_picks, positions, long_available, long_cfg["max_positions"], "long_term")
         short_advice = self._build_track_advice(
             short_picks, positions, short_available, short_cfg["max_positions"], "short_term")
+        swap_out_advice = self._build_swap_out(long_picks, short_picks, positions)
         anomaly_alerts = self._get_anomaly_alerts(account, positions)
         portfolio_summary = self._portfolio_summary(account, positions, cfg)
 
@@ -366,6 +367,7 @@ class MonitorEngine:
             "user_id": user_id,
             "long_term_advice": long_advice,
             "short_term_advice": short_advice,
+            "swap_out_advice": swap_out_advice,
             "portfolio_summary": portfolio_summary,
             "anomaly_alerts": anomaly_alerts,
             "analyzed": analyzed,
@@ -378,6 +380,7 @@ class MonitorEngine:
             "success": True,
             "long_term_advice": long_advice,
             "short_term_advice": short_advice,
+            "swap_out_advice": swap_out_advice,
             "portfolio_summary": portfolio_summary,
             "anomaly_alerts": anomaly_alerts,
             "analyzed": analyzed,
@@ -441,10 +444,8 @@ class MonitorEngine:
                             available_cash: float, max_positions: int, track: str) -> List[Dict]:
         analyses = getattr(self, "_last_analyses", {})
         pos_by_code = {p["code"]: p for p in current_positions}
-        pick_codes = {p.get("code") for p in picks}
         suggested = round(available_cash / max_positions, 2) if max_positions else 0.0
         advice: List[Dict] = []
-
         for pick in picks[:max_positions]:
             code = pick.get("code")
             a = analyses.get(code, {})
@@ -460,19 +461,27 @@ class MonitorEngine:
                 reason = pick.get("recommendation") or f"{track}新晋候选(综合{composite})，建议建仓"
             advice.append(self._advice_item(code, pick.get("name", "") or a.get("name", ""),
                                             track, action, reason, pp, suggested, composite))
+        return advice
 
-        # 持仓不在本轨道 picks 中 → 换股 (持仓未按轨道打标，故每轨道各自判定)
-        for code, pos in pos_by_code.items():
-            if code in pick_codes:
+    def _build_swap_out(self, long_picks: List[Dict], short_picks: List[Dict],
+                        positions: List[Dict]) -> List[Dict]:
+        """换股建议：持仓未进入任一轨道候选 → 被更高评分标的替代，建议调出。
+        在组合层判定（而非各轨道），避免持仓在两条轨道里被重复/错误标记换股。"""
+        analyses = getattr(self, "_last_analyses", {})
+        kept = {p.get("code") for p in long_picks} | {p.get("code") for p in short_picks}
+        out: List[Dict] = []
+        for pos in positions:
+            code = pos.get("code")
+            if code in kept:
                 continue
             a = analyses.get(code, {})
             pp = a.get("price_prediction", {}) or {}
             composite = round((a.get("composite", {}) or {}).get("score", 0) or 0, 1)
-            advice.append(self._advice_item(
-                code, pos.get("name", ""), track, "换股",
-                f"未入选{track}最新候选，已被更高评分标的替代，建议调出",
+            out.append(self._advice_item(
+                code, pos.get("name", ""), "swap_out", "换股",
+                "未入选长线/短线最新候选，已被更高评分标的替代，建议调出",
                 pp, 0.0, composite))
-        return advice
+        return out
 
     @staticmethod
     def _advice_item(code, name, track, action, reason, pp, suggested, composite) -> Dict:

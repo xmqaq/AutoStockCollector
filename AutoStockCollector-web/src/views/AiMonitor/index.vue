@@ -30,6 +30,7 @@
           <span>持仓建议 <el-tag v-if="positionAdviceCount" size="small" type="warning" effect="light" class="sentiment-count">{{ positionAdviceCount }}条建议</el-tag></span>
         </template>
       </el-tab-pane>
+      <el-tab-pane label="双轨道调仓" name="dual_track" />
     </el-tabs>
 
     <!-- Signal View -->
@@ -77,6 +78,9 @@
       :loading="loading"
     />
 
+    <!-- Dual-Track Rebalance View -->
+    <AiMonitorDualTrack v-if="activeTab === 'dual_track'" />
+
     <!-- Detail Dialog -->
     <AiMonitorDetailDialog
       v-model:visible="detailVisible"
@@ -99,6 +103,7 @@ import AiMonitorNewsFeed from './components/AiMonitorNewsFeed.vue'
 import AiMonitorDetailDialog from './components/AiMonitorDetailDialog.vue'
 import AiMonitorFundFlow from './components/AiMonitorFundFlow.vue'
 import AiMonitorPositionAdvice from './components/AiMonitorPositionAdvice.vue'
+import AiMonitorDualTrack from './components/AiMonitorDualTrack.vue'
 
 const signals = ref<MonitorSignal[]>([])
 const loading = ref(false)

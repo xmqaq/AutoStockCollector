@@ -187,6 +187,96 @@ export const monitorApi = {
   getFundFlowAnomalies(days = 5, limit = 100) {
     return client.get('/api/v1/monitor/fund-flow-anomalies', { params: { days, limit } })
   },
+  getConfig() {
+    return client.get('/api/v1/monitor/config')
+  },
+  saveConfig(config: MonitorTrackConfig) {
+    return client.put('/api/v1/monitor/config', config)
+  },
+  getPortfolio() {
+    return client.get('/api/v1/monitor/portfolio')
+  },
+}
+
+// ── 双轨道调仓监控 ──
+
+export interface TrackWeights {
+  fundamental: number
+  technical: number
+  fund_flow: number
+  valuation: number
+}
+
+export interface LongTermConfig {
+  roe_min: number
+  revenue_growth_min: number
+  pe_percentile_max: number
+  max_positions: number
+  fund_ratio: number
+  weight_overrides: TrackWeights
+  candidate_pool: number
+}
+
+export interface ShortTermConfig {
+  main_net_inflow_min: number
+  news_positive_min: number
+  max_positions: number
+  fund_ratio: number
+  weight_overrides: TrackWeights
+  candidate_pool: number
+}
+
+export interface MonitorTrackConfig {
+  long_term: LongTermConfig
+  short_term: ShortTermConfig
+}
+
+export interface TrackAdvice {
+  code: string
+  name: string
+  track: string
+  action: string
+  reason: string
+  buy_price_low: number
+  buy_price_high: number
+  target_price: number
+  stop_loss: number
+  suggested_amount: number
+  composite_score: number
+}
+
+export interface PortfolioSummary {
+  total_value: number
+  cash: number
+  position_value: number
+  long_available: number
+  short_available: number
+  long_ratio: number
+  short_ratio: number
+  position_count: number
+}
+
+export interface AnomalyAlert {
+  code: string
+  name: string
+  latest_date: string
+  latest_net: number
+  z_score: number
+  consecutive_days: number
+  reversal: boolean
+  anomaly_score: number
+  anomaly_type: string
+  is_holding: boolean
+}
+
+export interface MonitorPortfolio {
+  long_term_advice: TrackAdvice[]
+  short_term_advice: TrackAdvice[]
+  swap_out_advice: TrackAdvice[]
+  portfolio_summary: PortfolioSummary
+  anomaly_alerts: AnomalyAlert[]
+  analyzed: number
+  timestamp: string
 }
 
 export interface FundFlowAnomaly {
