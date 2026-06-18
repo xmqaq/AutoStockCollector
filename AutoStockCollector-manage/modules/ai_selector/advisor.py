@@ -93,8 +93,6 @@ def build_rebalance_orders(
     prices: Dict[str, float],
     buffer: float = 0.05,
     fees: Optional[Dict[str, float]] = None,
-    deploy_leftover: bool = False,
-    max_weight: float = 0.30,
 ) -> Dict[str, Any]:
     fees = fees or DEFAULT_FEES
     held = {p["code"]: p for p in current_positions}
@@ -184,50 +182,6 @@ def build_rebalance_orders(
             available -= cost
         buy_orders.append(o)
 
-    # ── 4. 零钱二次投放（可选，仅目标仓位=100%时）：剩余现金按评分给买得起的票追加整手，
-    #     允许超目标权重但每只不超 max_weight 上限，直到买不动。把整手取整的零头也投出去。──
-    if deploy_leftover and total_value > 0:
-        sold = {o["code"] for o in sell_orders}
-        order_by_code = {o["code"]: o for o in buy_orders if not o["skipped"]}
-        planned: Dict[str, int] = {}   # code -> 计划持股(现持+本轮买单)
-        meta: Dict[str, Any] = {}      # code -> (price, composite, name, target_weight)
-        for t in target_positions:
-            code = t["code"]
-            price = prices.get(code)
-            if not price or price <= 0 or code in sold:
-                continue
-            base = held.get(code, {}).get("shares", 0)
-            planned[code] = base + (order_by_code[code]["shares"] if code in order_by_code else 0)
-            meta[code] = (price, t.get("composite") or 0, t.get("name", code), t["weight"])
-        ranked = sorted(meta, key=lambda c: -meta[c][1])
-        added: Dict[str, int] = {}
-        progress = True
-        while progress:
-            progress = False
-            for code in ranked:
-                price = meta[code][0]
-                cost = _buy_cost(100 * price, fees)
-                cap_shares = max_weight * total_value / price
-                if planned[code] + 100 <= cap_shares and cost <= available:
-                    planned[code] += 100
-                    added[code] = added.get(code, 0) + 100
-                    available -= cost
-                    progress = True
-        for code, extra in added.items():
-            price, _comp, name, tw = meta[code]
-            if code in order_by_code:                       # 已有买单 → 加量
-                o = order_by_code[code]
-                o["shares"] += extra
-                o["reason"] = f"目标权重 {tw}%，欠配+零钱投满，买入 {o['shares']} 股"
-            else:                                           # 原本已到位 → 新建追加单
-                buy_orders.append({
-                    "code": code, "name": name, "action": "buy",
-                    "shares": extra, "price": price,
-                    "target_weight": tw, "current_weight": _cur_weight(code),
-                    "reason": f"零钱投满，超目标权重追加买入 {extra} 股",
-                    "skipped": False, "skip_reason": None,
-                })
-
     orders = sell_orders + buy_orders
     for o in orders:
         o.pop("composite", None)
@@ -266,16 +220,16 @@ if __name__ == "__main__":
         [{"code": f"00000{i}", "composite": 70} for i in range(5)], invest_ratio=0.5)
     assert abs(sum(x["weight"] for x in t5) - 50.0) < 0.5, t5
 
-    # deploy_leftover：低价票整手零钱也投出去，但每只不超 30% 上限
-    picks2 = [{"code": f"S{i}", "name": f"S{i}", "composite": 80 - i} for i in range(6)]
-    px = {f"S{i}": 28.0 for i in range(6)}              # 价28→一手2800，必有整手零头
-    tg = build_score_weighted_targets(picks2, prices=px, capital=100000.0)  # 权重均<30%
-    base = build_rebalance_orders(tg, [], 100000.0, px)
-    full = build_rebalance_orders(tg, [], 100000.0, px, deploy_leftover=True)
-    spent0 = sum(o["shares"] * px[o["code"]] for o in base["orders"] if not o["skipped"])
-    spent1 = sum(o["shares"] * px[o["code"]] for o in full["orders"] if not o["skipped"])
-    assert spent1 > spent0, (spent0, spent1)            # 投出更多
-    assert 100000 - spent1 < 2800, 100000 - spent1      # 现金压到买不动一手(<一手2800)为止
-    for o in full["orders"]:                            # 任何一只都不超 30% 上限
-        assert o["shares"] * px[o["code"]] <= 30000 + 1, o
+    # 幂等性：建仓后再次生成应无新订单（不能反复买卖震荡）
+    tg = build_score_weighted_targets(
+        [{"code": f"S{i}", "name": f"S{i}", "composite": 80 - i} for i in range(6)],
+        prices={f"S{i}": 28.0 for i in range(6)}, capital=100000.0)
+    px = {f"S{i}": 28.0 for i in range(6)}
+    a1 = build_rebalance_orders(tg, [], 100000.0, px)
+    pos = [{"code": o["code"], "name": o["code"], "shares": o["shares"],
+            "market_value": o["shares"] * px[o["code"]], "current_price": px[o["code"]]}
+           for o in a1["orders"] if o["action"] == "buy" and not o["skipped"]]
+    spent = sum(p["market_value"] for p in pos)
+    a2 = build_rebalance_orders(tg, pos, 100000.0 - spent, px)
+    assert not [o for o in a2["orders"] if not o["skipped"]], a2  # 第二轮无可执行订单
     print("advisor self-check OK")

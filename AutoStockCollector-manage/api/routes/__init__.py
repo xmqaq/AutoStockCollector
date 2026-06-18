@@ -1190,8 +1190,6 @@ def ai_pick_rebalance_advice():
         prices=prices,
         buffer=buffer,
         fees=engine._fees(),
-        # 目标仓位=100% 时把整手取整的零钱也按评分追加投出去（不超30%上限）
-        deploy_leftover=(invest_ratio >= 1.0),
     )
     advice["cash"] = round(cash, 2)
     advice["dropped"] = dropped
