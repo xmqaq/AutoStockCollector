@@ -3,6 +3,7 @@ API路由定义
 """
 from flask import Blueprint, request, jsonify, g
 from datetime import datetime, timedelta
+import os
 from typing import Any, Dict, Optional
 import time
 import threading
@@ -146,7 +147,6 @@ def register_routes(app):
     from api.routes.paper_trading import paper_bp
     from api.routes.market import market_bp
     from api.routes.ai_agent import ai_agent_bp
-    from api.routes.workflow import workflow_bp
     from api.routes.todo import todo_bp
     from api.routes.memory import memory_bp
     from api.routes.philosophy import philosophy_bp
@@ -162,7 +162,6 @@ def register_routes(app):
     app.register_blueprint(paper_bp)
     app.register_blueprint(market_bp)
     app.register_blueprint(ai_agent_bp)
-    app.register_blueprint(workflow_bp)
     app.register_blueprint(todo_bp)
     app.register_blueprint(memory_bp)
     app.register_blueprint(philosophy_bp)
@@ -176,6 +175,41 @@ def register_routes(app):
             "status": "ok",
             "timestamp": beijing_now().isoformat()
         })
+
+    @app.route("/api-docs", methods=["GET"])
+    def api_docs():
+        import markdown as md
+        api_doc_path = os.path.join(os.path.dirname(__file__), "..", "..", "API.md")
+        try:
+            with open(api_doc_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            html = md.markdown(content, extensions=["fenced_code", "tables", "codehilite", "toc"])
+            return f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>AutoStockCollector API 文档</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body {{ font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 960px; margin: 0 auto; padding: 20px; background: #fafafa; }}
+  h1 {{ border-bottom: 2px solid #5a7af0; padding-bottom: 10px; }}
+  h2 {{ border-bottom: 1px solid #e0e0e0; padding-bottom: 6px; margin-top: 36px; color: #2c3e50; }}
+  h3 {{ margin-top: 24px; color: #5a7af0; }}
+  h4 {{ margin-top: 16px; }}
+  pre {{ background: #1e1e1e; color: #d4d4d4; padding: 12px 16px; border-radius: 6px; overflow-x: auto; font-size: 13px; }}
+  code {{ font-family: "SF Mono", "Fira Code", monospace; }}
+  p code, li code {{ background: #e8e8e8; padding: 2px 6px; border-radius: 3px; font-size: 13px; }}
+  table {{ border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 13px; }}
+  th, td {{ border: 1px solid #ddd; padding: 8px 12px; text-align: left; }}
+  th {{ background: #5a7af0; color: #fff; }}
+  tr:nth-child(even) {{ background: #f5f5f5; }}
+  a {{ color: #5a7af0; text-decoration: none; }}
+  a:hover {{ text-decoration: underline; }}
+  hr {{ border: none; border-top: 1px solid #eee; margin: 24px 0; }}
+  blockquote {{ border-left: 4px solid #5a7af0; margin: 0; padding: 4px 16px; background: #f0f4ff; }}
+</style>
+</head>
+<body>{html}</body></html>"""
+        except Exception as e:
+            return f"<pre>Error loading API doc: {e}</pre>", 500
 
     @app.errorhandler(404)
     def not_found(e):

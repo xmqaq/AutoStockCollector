@@ -575,87 +575,6 @@ def job_portfolio_snapshot():
         _persist_cron_status("portfolio_snapshot", _now().isoformat(), False, str(e))
 
 
-# ─── 选股工作流定时调度 ────────────────────────────────────────────────────────
-
-def job_workflow_daily():
-    """每日定时触发选股工作流。"""
-    if not _is_weekday():
-        return
-    workflow_id = _os.environ.get("DAILY_WORKFLOW_ID", "")
-    if not workflow_id:
-        logger.info("[cron] 选股工作流: DAILY_WORKFLOW_ID 未设置，跳过")
-        return
-    try:
-        from modules.workflow.models import (
-            WorkflowStorage, WorkflowExecutionStorage, WorkflowExecution, ExecutionStatus,
-        )
-        from modules.workflow.executor import WorkflowExecutor
-        import uuid
-        from datetime import datetime
-
-        storage = WorkflowStorage()
-        workflow = storage.get_workflow(workflow_id)
-        if not workflow:
-            logger.warning(f"[cron] 选股工作流: workflow {workflow_id} 不存在")
-            return
-        if not workflow.enabled:
-            logger.info(f"[cron] 选股工作流: workflow {workflow_id} 已禁用，跳过")
-            return
-
-        exec_storage = WorkflowExecutionStorage()
-        existing = exec_storage.get_running_execution(workflow_id)
-        if existing:
-            logger.info(f"[cron] 选股工作流: workflow {workflow_id} 已有执行中任务，跳过")
-            return
-
-        execution_id = str(uuid.uuid4())
-        execution = WorkflowExecution(
-            id=execution_id,
-            workflow_id=workflow_id,
-            status=ExecutionStatus.RUNNING.value,
-            progress=0,
-            current_node="",
-            current_step="准备执行...",
-            steps=[],
-            started_at=_now().isoformat(),
-        )
-        exec_storage.create_execution(execution)
-
-        def progress_callback(node_id, node_label, step, progress, detail=None):
-            step_data = {
-                "node_id": node_id,
-                "node_label": node_label,
-                "step": step,
-                "progress": progress,
-                "detail": detail or {},
-                "timestamp": _now().isoformat(),
-            }
-            exec_storage.update_progress(execution_id, progress, node_id, step, step_data)
-
-        def run():
-            try:
-                nodes = [n.to_dict() for n in workflow.nodes]
-                edges = [e.to_dict() for e in workflow.edges]
-                executor = WorkflowExecutor(workflow_id, execution_id, progress_callback)
-                result = executor.execute(nodes, edges, {})
-                if result.get("success"):
-                    exec_storage.complete_execution(execution_id, result)
-                    storage.update_last_run(workflow_id)
-                else:
-                    exec_storage.fail_execution(execution_id, result.get("error", "执行失败"))
-            except Exception as e:
-                import traceback
-                logger.error(f"[cron] 选股工作流执行异常: {e}\n{traceback.format_exc()}")
-                exec_storage.fail_execution(execution_id, str(e))
-
-        import threading
-        thread = threading.Thread(target=run, daemon=True)
-        thread.start()
-        logger.info(f"[cron] 选股工作流 {workflow_id} 已触发: execution_id={execution_id}")
-    except Exception as e:
-        logger.error(f"[cron] 选股工作流触发失败: {e}")
-
-
 def job_ai_monitor():
     """AI 实时监控刷新：持仓+自选股的资金流向、研报、长短线信号。"""
     try:
@@ -798,12 +717,6 @@ def start_daily_jobs() -> None:
     except Exception:
         ai_hour, ai_minute = 15, 30
 
-    wf_time = _os.environ.get("DAILY_WORKFLOW_TIME", "17:00")
-    try:
-        wf_hour, wf_minute = map(int, wf_time.split(":"))
-    except Exception:
-        wf_hour, wf_minute = 17, 0
-
     jobs = [
         _make_job("K线增量 16:05",       job_kline_incremental,   "daily", 16, 5,  task_type="kline"),
         _make_job("K线缺口回补 17:30",    job_kline_gap_backfill,  "daily", 17, 30, task_type="kline"),
@@ -824,13 +737,6 @@ def start_daily_jobs() -> None:
         _make_job("策略选股 12:00",     job_strategy_pick,         "daily", 12, 0, task_type="strategy_pick"),
         _make_job("策略选股 14:30",     job_strategy_pick,         "daily", 14, 30, task_type="strategy_pick"),
     ]
-
-    # 选股工作流：仅当 DAILY_WORKFLOW_ID 已配置时才注册，否则它每次触发都只是
-    # "未设置，跳过"，是个占位空壳，徒增前端定时任务列表一行。
-    if _os.environ.get("DAILY_WORKFLOW_ID", "").strip():
-        jobs.append(
-            _make_job(f"选股工作流 {wf_time}", job_workflow_daily, "daily", wf_hour, wf_minute, task_type="workflow")
-        )
 
     # cron_trigger_lock 跨进程触发锁：建 TTL 索引，锁文档 1 天后自动过期，避免无限增长。
     try:

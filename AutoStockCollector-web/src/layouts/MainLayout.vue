@@ -180,7 +180,6 @@ const menuGroups = computed((): MenuGroup[] => [
     icon: Operation,
     children: [
       { key: '/position', label: '仓位管理',   icon: Wallet },
-      { key: '/workflow', label: '工作流管理',  icon: Operation },
     ],
   },
   {

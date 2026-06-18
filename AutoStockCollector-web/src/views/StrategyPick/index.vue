@@ -41,6 +41,7 @@
           </template>
         </el-dropdown>
         <el-button v-if="compareRunIds.length >= 2" size="small" type="warning" @click="showCompareDialog = true">对比 {{ compareRunIds.length }} 个结果</el-button>
+        <el-button size="small" :loading="rebalanceLoading" @click="loadRebalance">调仓建议</el-button>
       </div>
     </div>
 
@@ -429,6 +430,102 @@
       </div>
     </el-dialog>
 
+    <!-- 调仓建议弹窗 -->
+    <el-dialog v-model="rebalanceVisible" title="调仓建议" width="900px" top="5vh" class="sp-rebalance-dialog" destroy-on-close>
+      <div v-loading="rebalanceLoading" class="sp-rebalance-body">
+        <template v-if="rebalanceResult">
+          <div class="sp-rebalance-summary">
+            <el-descriptions :column="4" size="small" border>
+              <el-descriptions-item label="总资产">{{ rebalanceResult.total_capital?.toFixed(0) }}元</el-descriptions-item>
+              <el-descriptions-item label="可用现金">{{ rebalanceResult.available_cash?.toFixed(0) }}元</el-descriptions-item>
+              <el-descriptions-item label="持仓数">{{ rebalanceResult.position_count }}只</el-descriptions-item>
+              <el-descriptions-item label="卖出候选">{{ rebalanceResult.sell_urgent_count }}只</el-descriptions-item>
+            </el-descriptions>
+          </div>
+          <div class="sp-rebalance-section" v-if="rebalanceResult.sell_list?.length">
+            <div class="sp-rebalance-section-title">⚠️ 建议卖出（紧迫度）</div>
+            <el-table :data="rebalanceResult.sell_list" size="small" border max-height="260">
+              <el-table-column prop="code" label="代码" width="90" />
+              <el-table-column prop="name" label="名称" width="90" />
+              <el-table-column prop="sell_score" label="紧迫度" width="80" align="center">
+                <template #default="{ row }">
+                  <el-tag :type="row.sell_score >= 80 ? 'danger' : row.sell_score >= 50 ? 'warning' : 'info'" size="small">{{ row.sell_score }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="sell_reason" label="原因" min-width="180" />
+              <el-table-column label="市值" width="100" align="right">
+                <template #default="{ row }">¥{{ (row.market_value || 0).toFixed(0) }}</template>
+              </el-table-column>
+              <el-table-column label="盈亏" width="80" align="right">
+                <template #default="{ row }">
+                  <span :style="{ color: (row.pnl || 0) >= 0 ? '#f56c6c' : '#67c23a' }">{{ (row.pnl || 0).toFixed(1) }}%</span>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+          <div class="sp-rebalance-section" v-if="rebalanceResult.buy_list?.length">
+            <div class="sp-rebalance-section-title">✅ 建议买入（优先度）</div>
+            <el-table :data="rebalanceResult.buy_list" size="small" border max-height="260">
+              <el-table-column prop="code" label="代码" width="90" />
+              <el-table-column prop="name" label="名称" width="90" />
+              <el-table-column prop="buy_score" label="优先度" width="80" align="center">
+                <template #default="{ row }">
+                  <el-tag :type="row.buy_score >= 80 ? 'success' : row.buy_score >= 50 ? 'warning' : 'info'" size="small">{{ row.buy_score }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="buy_reason" label="原因" min-width="180" />
+              <el-table-column label="预期收益" width="100" align="right">
+                <template #default="{ row }">
+                  <span :style="{ color: (row.expected_return || 0) >= 0 ? '#f56c6c' : '#67c23a' }">{{ (row.expected_return || 0).toFixed(1) }}%</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="盈亏比" width="80" align="center">
+                <template #default="{ row }">{{ (row.risk_reward_ratio || 0).toFixed(1) }}</template>
+              </el-table-column>
+            </el-table>
+          </div>
+          <div class="sp-rebalance-section" v-if="rebalanceResult.orders?.length">
+            <div class="sp-rebalance-section-title">📋 调仓订单</div>
+            <el-table :data="rebalanceResult.orders" size="small" border>
+              <el-table-column label="类型" width="70" align="center">
+                <template #default="{ row }">
+                  <el-tag :type="row.action === 'sell' ? 'danger' : 'success'" size="small">{{ row.action === 'sell' ? '卖出' : '买入' }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="code" label="代码" width="90" />
+              <el-table-column prop="name" label="名称" width="90" />
+              <el-table-column label="数量" width="80" align="right">
+                <template #default="{ row }">{{ row.shares || 0 }}股</template>
+              </el-table-column>
+              <el-table-column label="价格" width="80" align="right">
+                <template #default="{ row }">¥{{ (row.price || 0).toFixed(2) }}</template>
+              </el-table-column>
+              <el-table-column label="金额" width="100" align="right">
+                <template #default="{ row }">¥{{ ((row.shares || 0) * (row.price || 0)).toFixed(0) }}</template>
+              </el-table-column>
+              <el-table-column prop="reason" label="原因" min-width="160" />
+              <el-table-column label="预期" width="80" align="right">
+                <template #default="{ row }">
+                  <span v-if="row.expected_return !== undefined" :style="{ color: (row.expected_return || 0) >= 0 ? '#f56c6c' : '#67c23a' }">{{ (row.expected_return || 0).toFixed(1) }}%</span>
+                  <span v-else>-</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="状态" width="80" align="center">
+                <template #default="{ row }">
+                  <el-tag v-if="row.skipped" type="info" size="small">跳过</el-tag>
+                  <el-tag v-else type="success" size="small">待执行</el-tag>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+          <div class="sp-rebalance-footer" v-if="rebalanceResult.summary">
+            {{ rebalanceResult.summary }}
+          </div>
+        </template>
+        <el-empty v-else description="暂无调仓数据" />
+      </div>
+    </el-dialog>
+
     <el-empty v-if="!result?.picks?.length && !loading && !running" description="选择策略后点击「开始选股」" />
   </div>
 </template>
@@ -440,6 +537,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { renderMd } from '@/utils/markdown'
 import dayjs from 'dayjs'
 import { strategyPickApi, type StrategyPickItem, type StrategyPickResult, type StrategyPickProgress, type StrategyPickHistoryItem, type PortfolioMetrics, type StrategyPickAgent, type DebateConsensus, type PortfolioSuggestionPosition } from '@/api/strategyPick'
+import { strategyApi } from '@/api/strategy'
 import { paperApi } from '@/api/paper'
 import type { StrategyRule } from '@/types'
 import VChart from 'vue-echarts'
@@ -504,6 +602,9 @@ function loadConfig(): Record<string, any> | null {
 
 const progress = ref<StrategyPickProgress>({ is_running: false, progress: 0, status: '' })
 const historyItems = ref<StrategyPickHistoryItem[]>([])
+const rebalanceVisible = ref(false)
+const rebalanceLoading = ref(false)
+const rebalanceResult = ref<any>(null)
 const compareRunIds = ref<string[]>([])
 const showCompareDialog = ref(false)
 const compareResults = ref<StrategyPickResult[]>([])
@@ -938,6 +1039,23 @@ async function buyAllPositions() {
     else ElMessage.error('批量买入失败')
   } finally {
     buyingAll.value = false
+  }
+}
+
+async function loadRebalance() {
+  rebalanceVisible.value = true
+  rebalanceLoading.value = true
+  rebalanceResult.value = null
+  try {
+    const res = await strategyApi.rebalance()
+    rebalanceResult.value = res.data
+    if (!res.data?.success) {
+      ElMessage.warning(res.data?.summary || '暂无调仓建议')
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '获取调仓建议失败')
+  } finally {
+    rebalanceLoading.value = false
   }
 }
 
@@ -1702,4 +1820,11 @@ onBeforeUnmount(() => { stopProgressSSE(); stopProgressPolling() })
 .sp-compare-body { display: flex; gap: 16px; }
 .sp-compare-col { flex: 1; min-width: 0; }
 .sp-compare-header { font-size: 13px; font-weight: 600; color: var(--text-alt-body); margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border-alt); }
+
+/* 调仓建议 */
+.sp-rebalance-dialog .el-dialog__body { padding: 16px 20px; }
+.sp-rebalance-summary { margin-bottom: 14px; }
+.sp-rebalance-section { margin-bottom: 14px; }
+.sp-rebalance-section-title { font-size: 13px; font-weight: 600; color: var(--text-alt-body); margin-bottom: 6px; }
+.sp-rebalance-footer { font-size: 12px; color: var(--text-alt-muted); padding: 10px 0 4px; border-top: 1px solid var(--border-alt); margin-top: 8px; }
 </style>

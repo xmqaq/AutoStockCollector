@@ -115,12 +115,6 @@ const router = createRouter({
           meta: { title: '盈利排行榜' },
         },
         {
-          path: 'workflow',
-          name: 'Workflow',
-          component: () => import('@/views/Workflow/index.vue'),
-          meta: { title: '工作流管理' },
-        },
-        {
           path: 'strategy-pick',
           name: 'StrategyPick',
           component: () => import('@/views/StrategyPick/index.vue'),
