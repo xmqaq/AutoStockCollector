@@ -37,21 +37,51 @@
             <label>候选池</label>
             <el-input-number v-model="candidatePool" :min="20" :max="120" :step="10" size="small" controls-position="right" />
           </div>
-          <div class="fp-field fp-field-wide">
-            <label>叠加策略（可选）</label>
-            <el-select v-model="selectedStrategyIds" multiple collapse-tags collapse-tags-tooltip
-                       placeholder="不选则纯量化初筛" size="small" filterable>
-              <el-option v-for="s in strategies" :key="s._id" :label="s.name" :value="s._id" />
-            </el-select>
-          </div>
-          <div class="fp-field fp-field-wide">
-            <label>投资哲学（可选）</label>
-            <el-select v-model="selectedPhilosophyIds" multiple collapse-tags collapse-tags-tooltip
-                       placeholder="不选则全部哲学参与辩论" size="small" filterable>
-              <el-option v-for="a in philosophies" :key="a.id" :label="a.name" :value="a.id" />
-            </el-select>
-          </div>
         </div>
+
+        <!-- 高级（默认折叠）：不动这里 = 全市场量化初筛 + 全部哲学辩论，对多数人够用 -->
+        <el-collapse v-model="advancedOpen" class="fp-advanced">
+          <el-collapse-item name="adv">
+            <template #title>
+              <span class="fp-adv-title">高级选项</span>
+              <span class="fp-adv-hint">
+                {{ advSummary }}
+              </span>
+            </template>
+
+            <div class="fp-field fp-field-wide">
+              <label>
+                叠加策略
+                <el-tooltip placement="top" content="把命中你认同风格策略的股票加「共识分」(每多1个来源+3，最多+9)。建议选 2-3 个，不是越多越好；不选=纯全市场量化。">
+                  <el-icon class="fp-help"><QuestionFilled /></el-icon>
+                </el-tooltip>
+              </label>
+              <el-select v-model="selectedStrategyIds" multiple collapse-tags collapse-tags-tooltip
+                         placeholder="不选 = 纯全市场量化初筛" size="small" filterable popper-class="fp-opt-popper">
+                <el-option v-for="s in strategies" :key="s._id" :label="s.name" :value="s._id">
+                  <span style="font-weight:500">{{ s.name }}</span>
+                  <span style="margin-left:10px;font-size:12px;color:var(--el-text-color-secondary)">{{ s.description }}</span>
+                </el-option>
+              </el-select>
+            </div>
+
+            <div class="fp-field fp-field-wide">
+              <label>
+                投资哲学
+                <el-tooltip placement="top" content="多种流派(价值/成长/趋势…)对同一只股各投票，越一致看多则加「辩论分」(±最多15)。不选=全部流派参与，分歧会互相抵消，结果更保守。">
+                  <el-icon class="fp-help"><QuestionFilled /></el-icon>
+                </el-tooltip>
+              </label>
+              <el-select v-model="selectedPhilosophyIds" multiple collapse-tags collapse-tags-tooltip
+                         placeholder="不选 = 全部流派参与辩论" size="small" filterable popper-class="fp-opt-popper">
+                <el-option v-for="a in philosophies" :key="a.id" :label="a.name" :value="a.id">
+                  <span style="font-weight:500">{{ a.name }}</span>
+                  <span style="margin-left:10px;font-size:12px;color:var(--el-text-color-secondary)">{{ a.description }}</span>
+                </el-option>
+              </el-select>
+            </div>
+          </el-collapse-item>
+        </el-collapse>
 
         <div class="fp-actions">
           <el-button v-if="!running" type="primary" :icon="MagicStick" @click="runPick" :loading="loading">
@@ -285,7 +315,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { MagicStick, DataAnalysis } from '@element-plus/icons-vue'
+import { MagicStick, DataAnalysis, QuestionFilled } from '@element-plus/icons-vue'
 import { renderMd } from '@/utils/markdown'
 import { useAuthStore } from '@/stores/authStore'
 import { fusionPickApi } from '@/api/fusionPick'
@@ -313,6 +343,17 @@ const selectedStrategyIds = ref<string[]>([])
 const selectedPhilosophyIds = ref<string[]>([])
 const strategies = ref<any[]>([])
 const philosophies = ref<any[]>([])
+const advancedOpen = ref<string[]>([])  // 高级选项默认折叠
+
+const advSummary = computed(() => {
+  const s = selectedStrategyIds.value.length
+  const p = selectedPhilosophyIds.value.length
+  if (!s && !p) return '默认：全市场量化 + 全部流派辩论'
+  const parts: string[] = []
+  if (s) parts.push(`叠加 ${s} 策略`)
+  parts.push(p ? `${p} 个指定流派` : '全部流派辩论')
+  return parts.join(' · ')
+})
 
 const running = ref(false)
 const loading = ref(false)
@@ -523,6 +564,13 @@ onUnmounted(() => { stopProgressSSE(); stopProgressPolling() })
 .fp-field { display: flex; flex-direction: column; gap: 6px; }
 .fp-field-wide { grid-column: span 2; }
 .fp-field label { font-size: 12px; color: var(--text-secondary); }
+.fp-advanced { margin-top: 12px; border: none; }
+.fp-advanced :deep(.el-collapse-item__header) { border: none; height: 36px; }
+.fp-advanced :deep(.el-collapse-item__wrap) { border: none; }
+.fp-advanced :deep(.el-collapse-item__content) { padding: 8px 2px 0; display: flex; flex-direction: column; gap: 12px; }
+.fp-adv-title { font-size: 13px; color: var(--text-primary); margin-right: 10px; }
+.fp-adv-hint { font-size: 12px; color: var(--text-secondary); }
+.fp-help { font-size: 13px; color: var(--text-secondary); vertical-align: -2px; margin-left: 2px; cursor: help; }
 .fp-actions { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
 .fp-progress { margin-top: 14px; }
 .fp-progress-status { margin-top: 6px; font-size: 12px; color: var(--text-secondary); }

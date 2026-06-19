@@ -1,7 +1,7 @@
 """融合选股引擎。整合量化选股的全市场覆盖 + 策略选股的多 Agent 辩论，四阶段流水线：
 
   Stage 1 全市场硬过滤 + 纯因子初筛（市场环境感知权重）→ 候选池 A
-  Stage 2 多策略叠加（复用 PickerEngine.preview），共识来源计数
+  Stage 2 多策略叠加（在全市场因子缓存上按各策略权重重排），共识来源计数
   Stage 3 深度评分（AnalysisEngine）+ 投资哲学辩论（复用 strategy_pick）
   Stage 4 行业分散精选 + 仓位权重建议（复用 ai_selector.advisor）+ 结果快照
 
@@ -156,7 +156,7 @@ class FusionPickerEngine:
 
         # Stage 1.4 + 1.5 硬过滤 + 初筛分（并发）
         update_progress(15, f"全市场初筛 {total_u} 只...")
-        pool_a, screen_scores = self._screen_universe(
+        pool_a, screen_scores, fi_cache = self._screen_universe(
             universe, info_map, trading_codes, filter_overrides, weights, candidate_pool)
         filtered_count = total_u - len(screen_scores)
         update_progress(42, f"初筛完成，候选池 {len(pool_a)} 只")
@@ -164,10 +164,10 @@ class FusionPickerEngine:
         # 来源登记：pool A 记 source=quant
         sources: Dict[str, List[str]] = {c: ["quant"] for c in pool_a}
 
-        # Stage 2 策略叠加
+        # Stage 2 策略叠加（复用 Stage 1 的全市场因子缓存，按各策略权重重排取 top）
         if mode != "quick" and strategy_ids:
             update_progress(46, f"叠加 {len(strategy_ids)} 个策略...")
-            self._overlay_strategies(strategy_ids, candidate_pool, sources, screen_scores)
+            self._overlay_strategies(strategy_ids, candidate_pool, sources, fi_cache)
 
         # 合并候选池：按初筛分排序，截断到 candidate_pool * 1.5
         for code in sources:
@@ -317,7 +317,12 @@ class FusionPickerEngine:
             return 0.0
 
     def _screen_universe(self, universe, info_map, trading_codes, hf, weights, candidate_pool):
+        """全市场硬过滤 + 因子初筛。返回 (pool_a, scores, fi_cache)。
+        fi_cache 缓存所有通过硬过滤的 FactorInputs，供 Stage 2 策略叠加在全市场上重排，
+        避免再次取数。
+        """
         screened: List[tuple] = []
+        fi_cache: Dict[str, Any] = {}
         ex = ThreadPoolExecutor(max_workers=_STAGE1_WORKERS)
 
         def _one(code):
@@ -327,61 +332,64 @@ class FusionPickerEngine:
                                            trading_codes, hf)
                 if reason:
                     return None
-                return (code, self._screen_score(fi, weights))
+                return (code, self._screen_score(fi, weights), fi)
             except Exception:
                 return None
 
         try:
             for res in ex.map(_one, universe):
                 if res:
-                    screened.append(res)
+                    screened.append((res[0], res[1]))
+                    fi_cache[res[0]] = res[2]
         finally:
             ex.shutdown(wait=False)
 
         screened.sort(key=lambda x: x[1], reverse=True)
         scores = {c: s for c, s in screened}
         pool_a = [c for c, _ in screened[:candidate_pool]]
-        return pool_a, scores
+        return pool_a, scores, fi_cache
 
     # ──────────────────────────────────────────────────────────────
     # Stage 2 策略叠加
     # ──────────────────────────────────────────────────────────────
 
-    def _overlay_strategies(self, strategy_ids, candidate_pool, sources, screen_scores):
-        from modules.ai.engines.picker import PickerEngine
+    def _overlay_strategies(self, strategy_ids, candidate_pool, sources, fi_cache):
+        """对每个策略，用其四维权重 + 流动性过滤，在 Stage 1 的全市场因子缓存上重排取 top，
+        命中的股票登记来源（→ source_bonus）。全市场口径，无随机采样。
+        ponytail: 策略 indicators 细配（每指标权重/阈值）在初筛打分层不生效——
+                  picker 的 _screen_score 本就只吃四维 weights，此处保持一致，差异即四维权重+过滤。
+        """
         from modules.ai.strategies.storage import StrategyStorage
-        picker = PickerEngine(dal=self.dal, analysis_engine=self.analysis_engine)
+        from bson import ObjectId
         storage = StrategyStorage()
 
-        def _preview_one(sid):
+        def _one(sid):
             try:
-                from bson import ObjectId
                 doc = storage.find_one({"_id": ObjectId(sid)})
                 if not doc or doc.get("type") != "selection":
                     return None
-                r = picker.preview(
-                    strategy=doc["name"], top_n=candidate_pool,
-                    candidate_pool=candidate_pool,
-                    weight_overrides=doc.get("weights", {}),
-                    filter_overrides=doc.get("filters", {}),
-                    indicator_config=doc.get("indicators", []))
-                return doc["name"], r.get("picks", [])
+                weights = doc.get("weights") or factors.SCREEN_WEIGHTS
+                min_amt = (doc.get("filters") or {}).get("min_avg_amount", 0) or 0
+                scored = []
+                for code, fi in fi_cache.items():
+                    if min_amt and (fi.total_amount or 0) < min_amt:
+                        continue
+                    scored.append((code, self._screen_score(fi, weights)))
+                scored.sort(key=lambda x: x[1], reverse=True)
+                return doc["name"], [c for c, _ in scored[:candidate_pool]]
             except Exception as e:
-                logger.warning(f"[fusion] 策略 preview 失败 sid={sid}: {e}")
+                logger.warning(f"[fusion] 策略叠加失败 sid={sid}: {e}")
                 return None
 
         ex = ThreadPoolExecutor(max_workers=min(4, len(strategy_ids)))
         try:
-            futs = {ex.submit(_preview_one, sid): sid for sid in strategy_ids}
+            futs = {ex.submit(_one, sid): sid for sid in strategy_ids}
             for fut in as_completed(futs):
                 out = fut.result()
                 if not out:
                     continue
-                sname, picks = out
-                for p in picks:
-                    code = p.get("code")
-                    if not code:
-                        continue
+                sname, codes = out
+                for code in codes:
                     srcs = sources.setdefault(code, [])
                     if sname not in srcs:
                         srcs.append(sname)
