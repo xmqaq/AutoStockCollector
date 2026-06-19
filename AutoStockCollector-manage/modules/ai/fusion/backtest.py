@@ -93,6 +93,7 @@ class FusionBacktest:
                     "sources": p.get("sources", []),
                     "fusion_score": float(p.get("fusion_score", p.get("composite", 0)) or 0),
                     "factor_score": float(p.get("factor_score", 0) or 0),
+                    "debate_bonus": float(p.get("debate_bonus", 0) or 0),
                     "scores": p.get("scores", {}) or {},
                     "ret5": float(ret5),
                 })
@@ -124,12 +125,10 @@ class FusionBacktest:
         fusion_corr = _pearson([r["fusion_score"] for r in records], rets)
         factor_corr = _pearson([r["factor_score"] for r in records], rets)
 
-        # debate_bonus 有效性：bonus = fusion - factor - source_bonus
+        # debate_bonus 有效性：直接读快照存的 debate_bonus（融合分已非简单相加，不能反推）
         pos, nonpos = [], []
         for r in records:
-            source_bonus = min(r["source_count"] - 1, 3) * 3
-            debate_bonus = r["fusion_score"] - r["factor_score"] - source_bonus
-            (pos if debate_bonus > 0 else nonpos).append(r["ret5"])
+            (pos if r.get("debate_bonus", 0) > 0 else nonpos).append(r["ret5"])
         wr_pos = _win_rate(pos)
         wr_nonpos = _win_rate(nonpos)
         debate_eff = round((wr_pos - wr_nonpos), 1) if (wr_pos is not None and wr_nonpos is not None) else 0.0

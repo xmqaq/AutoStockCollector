@@ -178,6 +178,13 @@
             <el-table-column prop="name" label="名称" width="110" />
             <el-table-column prop="industry" label="行业" width="120" show-overflow-tooltip />
             <el-table-column prop="fusion_score" label="融合分" width="110" sortable align="center">
+              <template #header>
+                <span class="fp-th">融合分
+                  <el-tooltip placement="top" content="在因子分基础上，把辩论/协同信号按「离满分的剩余空间」折算融入(非简单相加)——因子分越高加幅越小，故不会扎堆满分，头部仍可区分。">
+                    <el-icon class="fp-help"><QuestionFilled /></el-icon>
+                  </el-tooltip>
+                </span>
+              </template>
               <template #default="{ row }">
                 <el-tag :type="scoreType(row.fusion_score)" effect="dark" round>{{ row.fusion_score.toFixed(1) }}</el-tag>
               </template>

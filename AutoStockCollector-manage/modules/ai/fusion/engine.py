@@ -35,6 +35,9 @@ _STAGE3_WORKERS = 4
 _STAGE3_PER_STOCK_SEC = 30
 _SUBNEW_DAYS = 180
 _MIN_DEEP = 24  # full 模式 LLM 深度评分的最小覆盖数（其余候选纯因子兜底，控制耗时）
+# 加分融入融合分的「跨度」：正向 = debate(≤15)+source(≤9)=24，留 1 分余量 → 恒 <100
+_BONUS_POS_SPAN = 25.0
+_BONUS_NEG_SPAN = 16.0  # debate 最负 -15，留 1 分余量
 
 
 def _clamp(v: float, lo: float = 0.0, hi: float = 100.0) -> float:
@@ -518,6 +521,19 @@ class FusionPickerEngine:
             ex.shutdown(wait=False)
         return results
 
+    @staticmethod
+    def _fuse(factor_score: float, debate_bonus: float, source_bonus: float) -> float:
+        """加分按「离满分的剩余空间」比例融入，而非直接相加：
+        因子分越高、可加空间越小 → 头部不扎堆满分、保留区分度、保序、永不触顶。
+        分母留 1 分余量（正向理论上限 15+9=24 用 25；负向 -15 用 16）确保恒 <100、>0。
+        """
+        combined = debate_bonus + source_bonus
+        if combined >= 0:
+            fs = factor_score + (100.0 - factor_score) * (combined / _BONUS_POS_SPAN)
+        else:
+            fs = factor_score + factor_score * (combined / _BONUS_NEG_SPAN)
+        return _clamp(fs)
+
     def _assemble_picks(self, candidates, analyses, sources, debates, mode) -> List[Dict[str, Any]]:
         picks: List[Dict[str, Any]] = []
         for code in candidates:
@@ -539,7 +555,7 @@ class FusionPickerEngine:
             else:
                 consensus_level, tendency, debate_bonus = 0.0, 0.0, 0.0
 
-            fusion_score = _clamp(factor_score + debate_bonus + source_bonus)
+            fusion_score = self._fuse(factor_score, debate_bonus, source_bonus)
 
             picks.append({
                 "code": code,
@@ -623,6 +639,7 @@ class FusionPickerEngine:
                     "composite": p["fusion_score"],   # PickTracker 读 composite
                     "fusion_score": p["fusion_score"],
                     "factor_score": p["factor_score"],
+                    "debate_bonus": p.get("debate_bonus", 0),
                     "source_count": p["source_count"],
                     "sources": p.get("sources", []),
                     "scores": p.get("scores", {}),
@@ -678,5 +695,17 @@ if __name__ == "__main__":
     eng3 = FusionPickerEngine(dal=object(), analysis_engine=fake3, result_saver=lambda d: None)
     out3, deep3 = eng3._deep_score([f"c{i}" for i in range(10)], "full", True, top_n=10)
     assert len(deep3) == 10 and len(fake3.deep) == 10 and not fake3.shallow
+
+    # 融合分：永不触顶 100、保序、负辩论扣分、无加分=因子分
+    f = FusionPickerEngine._fuse
+    assert f(87.7, 9.8, 9.0) < 100 and f(87.7, 9.8, 9.0) > 87.7          # 顶配也 <100、仍加分
+    assert f(80, 15, 9) < 100                                            # 理论满额加分仍 <100
+    assert f(87.7, 8.9, 9.0) > f(82.1, 8.9, 9.0)                         # 因子分高→融合分高（保序）
+    assert f(80, 12, 9) > f(80, 4, 9)                                    # 加分多→融合分高（保序）
+    assert f(80, -15, 0) < 80 and f(80, -15, 0) > 0                      # 看空共识→扣分但不为负
+    assert f(60, 0, 0) == 60                                             # 无加分=因子分
+    # 旧加性会扎堆：87.7/83.8/82.1 + 顶配加分都=100；新公式三者各不相同
+    a, b, c = f(87.7, 9.8, 9), f(83.8, 9, 9), f(82.1, 8.9, 9)
+    assert a != b != c and a < 100 and b < 100 and c < 100
 
     print("fusion engine self-check OK")
