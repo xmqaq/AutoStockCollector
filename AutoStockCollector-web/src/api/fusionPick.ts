@@ -59,6 +59,13 @@ export const fusionPickApi = {
   cancel() {
     return client.post<{ success: boolean; message?: string }>('/api/v1/fusion-pick/cancel')
   },
+
+  /** 重置历史/回测数据（管理员）。scope: snapshots | results | all */
+  resetData(scope: 'snapshots' | 'results' | 'all' = 'all') {
+    return client.post<{ success: boolean; data: { scope: string; deleted: Record<string, number> } }>(
+      '/api/v1/fusion-pick/reset-data', { scope },
+    )
+  },
 }
 
 export type MarketStateKey = 'bull' | 'bear' | 'volatile'

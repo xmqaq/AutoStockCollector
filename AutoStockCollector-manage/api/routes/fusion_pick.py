@@ -204,3 +204,29 @@ def cancel():
     from modules.ai.fusion.progress import update_progress
     update_progress(0, "已取消", is_running=False)
     return jsonify({"success": True, "message": "AI 智选已取消"})
+
+
+@fusion_pick_bp.route("/reset-data", methods=["POST"])
+@admin_required
+def reset_data():
+    """清理 AI 智选历史/回测数据（仅管理员）。用于清掉旧口径产生的脏数据，
+    让回测从新口径重新积累。破坏性操作，前端需二次确认。
+    scope: snapshots(仅回测快照) | results(仅历史结果) | all(快照+历史+已优化权重回归默认)
+    """
+    from config.database import DatabaseConfig
+    db = DatabaseConfig.get_database()
+    scope = (request.get_json() or {}).get("scope", "all")
+    deleted: Dict[str, int] = {}
+    try:
+        if scope in ("snapshots", "all"):
+            deleted["snapshots"] = db["fusion_pick_snapshots"].delete_many({}).deleted_count
+        if scope in ("results", "all"):
+            deleted["results"] = db["fusion_pick_results"].delete_many({}).deleted_count
+        if scope == "all":
+            # 已优化权重若基于脏数据，一并清掉 → MarketStateDetector 回退静态预设
+            deleted["weight_config"] = db["fusion_weight_config"].delete_many({}).deleted_count
+        logger.info(f"[fusion] 重置数据 scope={scope} deleted={deleted}")
+        return jsonify({"success": True, "data": {"scope": scope, "deleted": deleted}})
+    except Exception as e:
+        logger.error(f"[fusion] 重置数据失败: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500

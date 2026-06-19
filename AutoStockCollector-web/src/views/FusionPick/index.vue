@@ -309,6 +309,10 @@
             <el-tag v-if="signals" :type="signals.reliable ? 'success' : 'warning'" effect="plain" size="small">
               {{ signals.reliable ? '样本充足，可优化' : '样本不足，仅供参考' }}
             </el-tag>
+            <el-button v-if="isAdmin" size="small" type="danger" plain :icon="Delete"
+                       class="fp-reset" @click="resetData" :loading="resetLoading">
+              重置回测数据
+            </el-button>
           </div>
           <template v-if="signals">
             <div v-for="st in STATES" :key="st" class="fp-opt-state">
@@ -352,8 +356,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { ElMessage } from 'element-plus'
-import { MagicStick, DataAnalysis, QuestionFilled } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { MagicStick, DataAnalysis, QuestionFilled, Delete } from '@element-plus/icons-vue'
 import { renderMd } from '@/utils/markdown'
 import { useAuthStore } from '@/stores/authStore'
 import { fusionPickApi } from '@/api/fusionPick'
@@ -433,6 +437,7 @@ const btLoading = ref(false)
 const backtest = ref<FusionBacktestResult | null>(null)
 const sigLoading = ref(false)
 const optLoading = ref(false)
+const resetLoading = ref(false)
 const signals = ref<FusionOptSignals | null>(null)
 const histLoading = ref(false)
 const history = ref<FusionHistoryItem[]>([])
@@ -523,6 +528,27 @@ async function doOptimize() {
       else { ElMessage.success(`已更新 ${(d?.states_updated || []).map(stateText).join('、') || '0'} 权重`); await loadMarketState() }
     }
   } catch { ElMessage.error('权重优化失败') } finally { optLoading.value = false }
+}
+
+async function resetData() {
+  try {
+    await ElMessageBox.confirm(
+      '将清空：回测快照 + 历史选股结果 + 已优化权重(回归市场默认)。用于清掉旧口径产生的脏数据，让回测从新口径重新积累。此操作不可恢复。',
+      '重置回测数据', { type: 'warning', confirmButtonText: '确认重置', cancelButtonText: '取消' },
+    )
+  } catch { return }  // 取消
+  resetLoading.value = true
+  try {
+    const res = await fusionPickApi.resetData('all')
+    if (res.data?.success) {
+      const d = res.data.data?.deleted || {}
+      ElMessage.success(`已重置：快照 ${d.snapshots || 0} · 历史 ${d.results || 0} · 权重 ${d.weight_config || 0}`)
+      backtest.value = null
+      signals.value = null
+      result.value = null
+      await Promise.all([loadHistory(), loadMarketState()])
+    }
+  } catch { /* client 拦截器已提示 */ } finally { resetLoading.value = false }
 }
 
 // ── 运行 + 进度（SSE，失败回退轮询） ──
@@ -670,5 +696,6 @@ onUnmounted(() => { stopProgressSSE(); stopProgressPolling() })
 .fp-bt-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 @media (max-width: 760px) { .fp-bt-cols { grid-template-columns: 1fr; } .fp-bt-stats { grid-template-columns: repeat(2, 1fr); } }
 .fp-opt-state { margin-bottom: 18px; }
+.fp-reset { margin-left: auto; }
 .fp-history-table { cursor: pointer; }
 </style>
