@@ -519,6 +519,64 @@ def job_valuation_cache():
         _persist_cron_status("valuation_cache", now.isoformat(), False, str(e)[:100])
 
 
+# ─── 指数 K 线 ────────────────────────────────────────────────────────────────
+
+def job_index_kline():
+    """采集主流指数日K(上证/深成指/创业板/沪深300)入 kline 集合，供市场状态检测读库。
+    工作日盘后 16:10 运行（早于融合选股 16:20）。数据量小，每指数仅保留最近 ~500 条。
+    走轻量执行(同估值缓存)，不经 scheduler，状态存 cron_job_status 供采集中心展示。
+    """
+    if not _is_weekday():
+        return
+    try:
+        import akshare as ak
+        from pymongo import UpdateOne
+        from config.database import DatabaseConfig
+        db = DatabaseConfig.get_database()
+        # 存库 code 用大写带前缀(与个股一致)；新浪接口 symbol 用小写
+        indices = {
+            "SH000001": "sh000001",  # 上证指数
+            "SZ399001": "sz399001",  # 深证成指
+            "SZ399006": "sz399006",  # 创业板指
+            "SH000300": "sh000300",  # 沪深300
+        }
+        total = 0
+        for store_code, sina in indices.items():
+            try:
+                df = ak.stock_zh_index_daily(symbol=sina)
+                if df is None or df.empty:
+                    continue
+                ops = []
+                for _, r in df.tail(500).iterrows():
+                    d = r.get("date")
+                    try:
+                        dt = datetime.datetime(d.year, d.month, d.day)
+                    except Exception:
+                        dt = datetime.datetime.fromisoformat(str(d)[:10])
+                    doc = {
+                        "code": store_code, "date": dt,
+                        "open": float(r.get("open") or 0),
+                        "close": float(r.get("close") or 0),
+                        "high": float(r.get("high") or 0),
+                        "low": float(r.get("low") or 0),
+                        "volume": float(r.get("volume") or 0),
+                    }
+                    ops.append(UpdateOne({"code": store_code, "date": dt},
+                                         {"$set": doc}, upsert=True))
+                if ops:
+                    db["kline"].bulk_write(ops, ordered=False)
+                    total += len(ops)
+            except Exception as e:
+                logger.warning(f"[cron] 指数采集失败 {store_code}: {e}")
+        logger.info(f"[cron] 指数K线采集完成，{total} 条")
+        _record_result("指数K线 16:10", True, f"采集{total}条")
+        _persist_cron_status("index_kline", _now().isoformat(), True, f"采集{total}条", inc_count=True)
+    except Exception as e:
+        logger.error(f"[cron] 指数K线采集失败: {e}")
+        _record_result("指数K线 16:10", False, str(e))
+        _persist_cron_status("index_kline", _now().isoformat(), False, str(e)[:100])
+
+
 # ─── AI 选股 ──────────────────────────────────────────────────────────────────
 
 import os as _os
@@ -822,6 +880,7 @@ def start_daily_jobs() -> None:
         _make_job("资金流向 16:15",       job_fund_flow,           "daily", 16, 15, task_type="fund_flow"),
         _make_job("融资融券 21:30",       job_margin,              "daily", 21, 30, task_type="margin"),
         _make_job("板块数据 16:25",       job_sector,              "daily", 16, 25, task_type="sector"),
+        _make_job("指数K线 16:10",        job_index_kline,         "daily", 16, 10, task_type="index_kline"),
         _make_job("新闻增量 整点",        job_news_incremental,    "hourly", 0,  0,  task_type="news"),
         _make_job("股票信息 周一09:00",   job_stock_info_weekly,   "daily",  9,  0,  task_type="stock_info"),
         _make_job("财务数据 季度09:30",   job_financial_quarterly, "daily",  9, 30, task_type="financial"),
