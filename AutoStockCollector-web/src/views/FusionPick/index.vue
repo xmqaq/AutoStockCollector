@@ -255,6 +255,10 @@
               计算回测（最近 {{ btLimit }} 次选股）
             </el-button>
             <el-input-number v-model="btLimit" :min="5" :max="200" :step="5" size="small" controls-position="right" />
+            <el-button v-if="isAdmin" size="small" type="danger" plain :icon="Delete"
+                       class="fp-reset" @click="resetData" :loading="resetLoading">
+              重置回测数据
+            </el-button>
           </div>
           <template v-if="backtest">
             <div class="fp-bt-stats">
@@ -309,10 +313,6 @@
             <el-tag v-if="signals" :type="signals.reliable ? 'success' : 'warning'" effect="plain" size="small">
               {{ signals.reliable ? '样本充足，可优化' : '样本不足，仅供参考' }}
             </el-tag>
-            <el-button v-if="isAdmin" size="small" type="danger" plain :icon="Delete"
-                       class="fp-reset" @click="resetData" :loading="resetLoading">
-              重置回测数据
-            </el-button>
           </div>
           <template v-if="signals">
             <div v-for="st in STATES" :key="st" class="fp-opt-state">
