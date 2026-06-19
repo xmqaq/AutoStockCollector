@@ -1,34 +1,28 @@
 <template>
   <div class="fp-page">
-    <!-- ── 市场状态 + 控制台 ── -->
-    <div class="fp-top">
-      <el-card class="fp-state-card" :class="`fp-state-${marketState?.state || 'volatile'}`" shadow="never">
-        <div class="fp-state-head">
-          <span class="fp-state-label">当前市场</span>
-          <el-tag :type="stateTagType(marketState?.state)" effect="dark" round>
-            {{ stateText(marketState?.state) }}
-          </el-tag>
-        </div>
-        <div class="fp-state-desc">{{ marketState?.description || '检测中...' }}</div>
-        <div class="fp-weights">
-          <div v-for="dim in DIMS" :key="dim.key" class="fp-weight-row">
-            <span class="fp-weight-name">{{ dim.label }}</span>
-            <el-progress
-              :percentage="weightPct(activeWeights?.[dim.key])"
-              :stroke-width="8"
-              :color="dim.color"
-              :show-text="false"
-            />
-            <span class="fp-weight-val">{{ ((activeWeights?.[dim.key] || 0) * 100).toFixed(0) }}%</span>
+    <!-- ── 顶部：市场状态 + 操作（合并为一张全宽卡，横排压扁，消除空旷） ── -->
+    <el-card class="fp-head-card" shadow="never">
+      <div class="fp-mkt">
+        <span class="fp-mkt-label">当前市场</span>
+        <el-tag :type="stateTagType(marketState?.state)" effect="dark" round size="small">
+          {{ stateText(marketState?.state) }}
+        </el-tag>
+        <div class="fp-mkt-weights">
+          <div v-for="dim in DIMS" :key="dim.key" class="fp-wchip">
+            <span class="fp-wname">{{ dim.label }}</span>
+            <span class="fp-wbar"><i :style="{ width: weightPct(activeWeights?.[dim.key]) + '%', background: dim.color }"></i></span>
+            <span class="fp-wpct">{{ ((activeWeights?.[dim.key] || 0) * 100).toFixed(0) }}</span>
           </div>
         </div>
-        <div v-if="marketState?.weights_optimized" class="fp-weight-tip">
-          权重已被回测优化 · {{ fmtTime(marketState.last_optimized_at) }}
-        </div>
-      </el-card>
+        <el-tooltip v-if="marketState?.weights_optimized" placement="top"
+                    :content="`权重已被回测优化 · ${fmtTime(marketState.last_optimized_at)}`">
+          <el-tag size="small" type="success" effect="plain" round>权重已优化</el-tag>
+        </el-tooltip>
+      </div>
 
-      <el-card class="fp-control-card" shadow="never">
-        <div class="fp-control-top">
+      <div class="fp-head-divider"></div>
+
+      <div class="fp-control-top">
           <div class="fp-field-inline">
             <label>精选数量</label>
             <el-input-number v-model="topN" :min="3" :max="30" :step="1" size="small" controls-position="right" class="fp-num" />
@@ -108,8 +102,7 @@
           />
           <div class="fp-progress-status">{{ progress.status }}</div>
         </div>
-      </el-card>
-    </div>
+    </el-card>
 
     <!-- ── 结果 Tabs ── -->
     <el-card class="fp-result-card" shadow="never">
@@ -184,7 +177,7 @@
                 </span>
               </template>
               <template #default="{ row }">
-                <el-tag :type="scoreType(row.fusion_score)" effect="dark" round>{{ row.fusion_score.toFixed(1) }}</el-tag>
+                <el-tag :type="scoreType(row.fusion_score)" effect="light" round class="fp-score">{{ row.fusion_score.toFixed(1) }}</el-tag>
               </template>
             </el-table-column>
             <el-table-column prop="factor_score" label="因子分" width="90" sortable align="center">
@@ -633,20 +626,19 @@ onUnmounted(() => { stopProgressSSE(); stopProgressPolling() })
 
 <style scoped>
 .fp-page { display: flex; flex-direction: column; gap: 16px; }
-.fp-top { display: grid; grid-template-columns: 320px 1fr; gap: 16px; }
-@media (max-width: 900px) { .fp-top { grid-template-columns: 1fr; } }
 
-.fp-state-card :deep(.el-card__body) { padding: 16px; }
-.fp-state-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-.fp-state-label { font-size: 13px; color: var(--text-secondary); }
-.fp-state-desc { font-size: 13px; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.5; }
-.fp-weights { display: flex; flex-direction: column; gap: 8px; }
-.fp-weight-row { display: grid; grid-template-columns: 48px 1fr 36px; align-items: center; gap: 8px; }
-.fp-weight-name { font-size: 12px; color: var(--text-secondary); }
-.fp-weight-val { font-size: 12px; text-align: right; color: var(--text-primary); }
-.fp-weight-tip { margin-top: 10px; font-size: 12px; color: var(--el-color-success); }
+.fp-head-card :deep(.el-card__body) { padding: 16px 18px; }
+/* 市场状态：横排压扁 */
+.fp-mkt { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; }
+.fp-mkt-label { font-size: 13px; color: var(--text-secondary); }
+.fp-mkt-weights { display: flex; align-items: center; flex-wrap: wrap; gap: 18px; margin-left: 4px; }
+.fp-wchip { display: flex; align-items: center; gap: 6px; }
+.fp-wname { font-size: 12px; color: var(--text-secondary); }
+.fp-wbar { display: inline-block; width: 54px; height: 6px; border-radius: 3px; background: var(--el-fill-color, #eef0f3); overflow: hidden; }
+.fp-wbar > i { display: block; height: 100%; border-radius: 3px; }
+.fp-wpct { font-size: 12px; font-weight: 600; color: var(--text-primary); min-width: 20px; }
+.fp-head-divider { height: 1px; background: var(--el-border-color-lighter); margin: 14px 0; }
 
-.fp-control-card :deep(.el-card__body) { padding: 16px; }
 .fp-control-top { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 14px; }
 .fp-field-inline { display: flex; flex-direction: column; gap: 6px; }
 .fp-field-inline label { font-size: 12px; color: var(--text-secondary); }
@@ -686,6 +678,7 @@ onUnmounted(() => { stopProgressSSE(); stopProgressPolling() })
 .fp-consensus { font-size: 12px; color: var(--text-secondary); }
 .fp-rec { margin-top: 8px; }
 
+.fp-score { font-weight: 700; font-size: 13px; min-width: 52px; }
 .fp-weight-cell { font-weight: 600; color: var(--el-color-primary); }
 .fp-up { color: var(--el-color-danger); }
 .fp-down { color: var(--el-color-success); }
