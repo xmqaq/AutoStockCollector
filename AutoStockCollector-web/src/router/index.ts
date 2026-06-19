@@ -121,6 +121,12 @@ const router = createRouter({
           meta: { title: '策略选股' },
         },
         {
+          path: 'fusion-pick',
+          name: 'FusionPick',
+          component: () => import('@/views/FusionPick/index.vue'),
+          meta: { title: 'AI 智选' },
+        },
+        {
           path: 'strategy-manager',
           name: 'StrategyManager',
           component: () => import('@/views/StrategyManager/index.vue'),

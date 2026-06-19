@@ -624,6 +624,95 @@ def job_strategy_pick():
         logger.error(f"[cron] 定时策略选股失败: {e}")
 
 
+# ─── 融合选股 ────────────────────────────────────────────────────────────────
+
+def job_fusion_pick_daily():
+    """每日盘后完整版融合选股，16:20 运行（K线和资金流向采集完成后）"""
+    if not _is_weekday():
+        return
+    try:
+        from modules.ai.fusion.engine import FusionPickerEngine
+        from modules.ai.fusion.progress import acquire_run_lock
+        if not acquire_run_lock():
+            logger.info("[cron] 融合选股已有任务运行中，跳过")
+            return
+        engine = FusionPickerEngine()
+        engine.run(top_n=10, candidate_pool=50, mode="full")
+        logger.info("[cron] 融合选股完成")
+        _persist_cron_status("fusion_pick", _now().isoformat(), True, "完成")
+    except Exception as e:
+        logger.error(f"[cron] 融合选股失败: {e}")
+        _persist_cron_status("fusion_pick", _now().isoformat(), False, str(e)[:80])
+
+
+def job_fusion_pick_quick():
+    """盘中快速版融合选股，检测到资金异动时触发"""
+    if not _is_weekday():
+        return
+    now = _now()
+    hour_min = now.hour * 100 + now.minute
+    # 只在交易时间内运行
+    if not (930 <= hour_min <= 1130 or 1300 <= hour_min <= 1500):
+        return
+    try:
+        from config.database import DatabaseConfig
+        import numpy as np
+        db = DatabaseConfig.get_database()
+        # 检测今日是否有大量资金异动（Z-score > 2 的股票数 > 30）
+        from datetime import datetime, timedelta
+        cutoff = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
+        pipe = [
+            {"$match": {"date": {"$gte": cutoff}}},
+            {"$sort": {"date": -1}},
+            {"$group": {
+                "_id": "$code",
+                "nets": {"$push": "$main_net_inflow"},
+                "count": {"$sum": 1},
+            }},
+            {"$match": {"count": {"$gte": 2}}},
+        ]
+        anomaly_count = 0
+        for doc in db["fund_flow"].aggregate(pipe, allowDiskUse=True):
+            nets = [float(x or 0) for x in doc["nets"] if x is not None]
+            if len(nets) < 2:
+                continue
+            avg = sum(nets) / len(nets)
+            std = (sum((x - avg)**2 for x in nets) / len(nets)) ** 0.5
+            if std > 0 and abs((nets[0] - avg) / std) > 2:
+                anomaly_count += 1
+        # 异动股票数 > 30 才触发快速选股
+        if anomaly_count < 30:
+            return
+        logger.info(f"[cron] 检测到 {anomaly_count} 只股票资金异动，触发快速融合选股")
+        from modules.ai.fusion.engine import FusionPickerEngine
+        from modules.ai.fusion.progress import acquire_run_lock
+        if not acquire_run_lock():
+            return
+        engine = FusionPickerEngine()
+        engine.run(top_n=5, candidate_pool=20, mode="quick")
+        _persist_cron_status("fusion_pick_quick", _now().isoformat(),
+                             True, f"异动触发，{anomaly_count}只异动股")
+    except Exception as e:
+        logger.error(f"[cron] 快速融合选股失败: {e}")
+
+
+def job_fusion_weight_optimize():
+    """每周一凌晨 3:00 运行一次权重优化"""
+    if _now().weekday() != 0:
+        return
+    try:
+        from modules.ai.fusion.weight_optimizer import WeightOptimizer
+        result = WeightOptimizer().run()
+        if result.get("skipped"):
+            logger.info(f"[cron] 融合选股权重优化跳过: {result.get('reason')}")
+        else:
+            logger.info(f"[cron] 融合选股权重优化完成: {result.get('states_updated')}")
+        _persist_cron_status("fusion_weight_optimize",
+                             _now().isoformat(), True, str(result.get("states_updated", [])))
+    except Exception as e:
+        logger.error(f"[cron] 融合选股权重优化失败: {e}")
+
+
 # ─── 纯 Python 调度核心 ───────────────────────────────────────────────────────
 
 def _next_daily_run(hour: int, minute: int) -> datetime.datetime:
@@ -746,6 +835,12 @@ def start_daily_jobs() -> None:
         _make_job("策略选股 08:55",     job_strategy_pick,         "daily", 8, 55, task_type="strategy_pick"),
         _make_job("策略选股 12:00",     job_strategy_pick,         "daily", 12, 0, task_type="strategy_pick"),
         _make_job("策略选股 14:30",     job_strategy_pick,         "daily", 14, 30, task_type="strategy_pick"),
+        _make_job("融合选股 16:20",      job_fusion_pick_daily,    "daily",    16, 20,
+                  task_type="fusion_pick"),
+        _make_job("融合选股 快速盘中",   job_fusion_pick_quick,    "interval",
+                  interval_minutes=15, task_type="fusion_pick_quick"),
+        _make_job("融合选股 权重优化",   job_fusion_weight_optimize, "daily",   3, 0,
+                  task_type="fusion_weight_optimize"),
     ]
 
     # cron_trigger_lock 跨进程触发锁：建 TTL 索引，锁文档 1 天后自动过期，避免无限增长。

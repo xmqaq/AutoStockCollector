@@ -1,0 +1,596 @@
+"""融合选股引擎。整合量化选股的全市场覆盖 + 策略选股的多 Agent 辩论，四阶段流水线：
+
+  Stage 1 全市场硬过滤 + 纯因子初筛（市场环境感知权重）→ 候选池 A
+  Stage 2 多策略叠加（复用 PickerEngine.preview），共识来源计数
+  Stage 3 深度评分（AnalysisEngine）+ 投资哲学辩论（复用 strategy_pick）
+  Stage 4 行业分散精选 + 仓位权重建议（复用 ai_selector.advisor）+ 结果快照
+
+quick 模式跳过 Stage 2/辩论，用于盘中资金异动快速触发。
+dal / analysis_engine / result_saver 注入便于测试。
+"""
+import math
+import uuid
+from concurrent.futures import (
+    ThreadPoolExecutor, as_completed, TimeoutError as _FutureTimeout,
+)
+from typing import Any, Callable, Dict, List, Optional
+
+from utils.helpers import beijing_now
+from utils.logger import get_logger
+
+from modules.ai.foundation import factors
+from modules.ai.fusion.market_state import MarketStateDetector
+from modules.ai.fusion.progress import (
+    update_progress, get_progress, acquire_run_lock,
+)
+
+logger = get_logger(__name__)
+
+RESULTS_COL = "fusion_pick_results"
+SNAPSHOT_COL = "fusion_pick_snapshots"
+PROGRESS_COL = "fusion_pick_progress"
+
+_STAGE1_WORKERS = 8
+_STAGE3_WORKERS = 4
+_STAGE3_PER_STOCK_SEC = 30
+_SUBNEW_DAYS = 180
+
+
+def _clamp(v: float, lo: float = 0.0, hi: float = 100.0) -> float:
+    return max(lo, min(hi, v))
+
+
+def _default_result_saver(doc: Dict[str, Any]) -> None:
+    """写入 fusion_pick_results 集合，保留最近 50 条。参考 strategy_pick._save_result。"""
+    from config.database import DatabaseConfig
+    db = DatabaseConfig.get_database()
+    db[RESULTS_COL].insert_one(doc)
+    old = list(db[RESULTS_COL].find({}, {"_id": 1})
+               .sort("created_at", -1).skip(50).limit(1000))
+    if old:
+        db[RESULTS_COL].delete_many({"_id": {"$in": [o["_id"] for o in old]}})
+
+
+def _parse_days_since(raw) -> Optional[int]:
+    """解析上市日期，返回距今自然日数。解析失败返回 None（不过滤）。"""
+    if raw is None:
+        return None
+    from datetime import datetime
+    s = str(raw).strip()
+    if not s or s in ("-", "—", "--", "N/A"):
+        return None
+    fmt_candidates = []
+    digits = s.replace("-", "").replace("/", "").replace(".", "")
+    if len(digits) == 8 and digits.isdigit():
+        s2 = f"{digits[:4]}-{digits[4:6]}-{digits[6:]}"
+    else:
+        s2 = s[:10]
+    try:
+        d = datetime.fromisoformat(s2)
+    except (ValueError, TypeError):
+        try:
+            d = datetime.strptime(s2, "%Y-%m-%d")
+        except (ValueError, TypeError):
+            return None
+    return (beijing_now().replace(tzinfo=None) - d).days
+
+
+class FusionPickerEngine:
+    def __init__(self, dal=None, analysis_engine=None,
+                 result_saver: Optional[Callable[[Dict[str, Any]], None]] = None):
+        if dal is None:
+            from modules.ai.foundation.dal import StockDAL
+            dal = StockDAL()
+        if analysis_engine is None:
+            from modules.ai.engines.analysis import AnalysisEngine
+            analysis_engine = AnalysisEngine(dal=dal)
+        self.dal = dal
+        self.analysis_engine = analysis_engine
+        self.result_saver = result_saver or _default_result_saver
+        self.market = MarketStateDetector()
+
+    # ──────────────────────────────────────────────────────────────
+    # 公开入口
+    # ──────────────────────────────────────────────────────────────
+
+    def run(self, top_n: int = 10, candidate_pool: int = 50,
+            strategy_ids: Optional[List[str]] = None,
+            philosophy_ids: Optional[List[str]] = None,
+            weight_overrides: Optional[dict] = None,
+            filter_overrides: Optional[dict] = None,
+            use_cache: bool = True, mode: str = "full") -> Dict[str, Any]:
+        try:
+            return self._run(top_n, candidate_pool, strategy_ids, philosophy_ids,
+                             weight_overrides, filter_overrides, use_cache, mode)
+        except Exception as e:
+            logger.error(f"FusionPickerEngine.run failed: {e}")
+            update_progress(0, f"融合选股失败: {e}", is_running=False)
+            raise
+
+    # ──────────────────────────────────────────────────────────────
+    # 主流程
+    # ──────────────────────────────────────────────────────────────
+
+    def _run(self, top_n, candidate_pool, strategy_ids, philosophy_ids,
+             weight_overrides, filter_overrides, use_cache, mode) -> Dict[str, Any]:
+        strategy_ids = strategy_ids or []
+        philosophy_ids = philosophy_ids or []
+        filter_overrides = dict(filter_overrides or {})
+
+        if mode == "quick":
+            candidate_pool = min(candidate_pool, 20)
+            top_n = min(top_n, 5)
+
+        # Stage 1.1 互斥锁。允许调用方（cron/路由）已 pre-acquire 后复用握手锁。
+        # ponytail: 握手窗口（progress<=5）内同进程并发直跑会漏判，实际入口是单线程路由，可接受。
+        prog = get_progress()
+        reused = bool(prog.get("is_running") and (prog.get("progress") or 0) <= 5)
+        if not reused:
+            if not acquire_run_lock():
+                logger.warning("[fusion] 已有融合选股任务运行中，本次跳过")
+                return {"skipped": True, "timestamp": beijing_now().isoformat()}
+        update_progress(8, "市场环境检测中...")
+
+        run_id = str(uuid.uuid4())[:8]
+
+        # Stage 1.2 市场状态 + 权重
+        state = self.market.detect()
+        weights = self.market.get_weights(state)
+        if weight_overrides:
+            weights = {**weights, **weight_overrides}
+        market_desc = self.market.get_description(state)
+
+        # Stage 1.3 全市场
+        universe = self.dal.list_universe()
+        total_u = len(universe)
+        if not universe:
+            return self._finish_empty(run_id, state, market_desc, weights, mode)
+        update_progress(12, f"加载 {total_u} 只股票数据...")
+        try:
+            self.dal.preload_screen_cache(universe)
+        except Exception as e:
+            logger.warning(f"[fusion] 预加载缓存失败（降级逐只查）: {e}")
+
+        info_map, trading_codes = self._preload_filter_context()
+
+        # Stage 1.4 + 1.5 硬过滤 + 初筛分（并发）
+        update_progress(15, f"全市场初筛 {total_u} 只...")
+        pool_a, screen_scores = self._screen_universe(
+            universe, info_map, trading_codes, filter_overrides, weights, candidate_pool)
+        filtered_count = total_u - len(screen_scores)
+        update_progress(42, f"初筛完成，候选池 {len(pool_a)} 只")
+
+        # 来源登记：pool A 记 source=quant
+        sources: Dict[str, List[str]] = {c: ["quant"] for c in pool_a}
+
+        # Stage 2 策略叠加
+        if mode != "quick" and strategy_ids:
+            update_progress(46, f"叠加 {len(strategy_ids)} 个策略...")
+            self._overlay_strategies(strategy_ids, candidate_pool, sources, screen_scores)
+
+        # 合并候选池：按初筛分排序，截断到 candidate_pool * 1.5
+        for code in sources:
+            if code not in screen_scores:
+                screen_scores[code] = self._safe_screen_score(code, weights)
+        merged = sorted(sources.keys(), key=lambda c: screen_scores.get(c, 0), reverse=True)
+        cutoff = int(candidate_pool * 1.5)
+        candidates = merged[:cutoff]
+        update_progress(52, f"候选池 {len(candidates)} 只，深度评分...")
+
+        # Stage 3.1 深度评分
+        analyses = self._deep_score(candidates, mode, use_cache)
+        update_progress(72, "深度评分完成")
+
+        # Stage 3.2/3.3 哲学辩论（full）
+        debates: Dict[str, tuple] = {}
+        if mode != "quick":
+            update_progress(74, "投资哲学辩论中...")
+            debates = self._run_debates(list(analyses.keys()), philosophy_ids)
+
+        # Stage 3.4 FusionScore
+        picks_all = self._assemble_picks(candidates, analyses, sources, debates, mode)
+        update_progress(88, "精选 + 仓位建议...")
+
+        # Stage 4 精选 + 行业分散 + 仓位
+        picks_all.sort(key=lambda p: p["fusion_score"], reverse=True)
+        picks = self._industry_diversify(picks_all, top_n)
+        self._fill_weights(picks)
+
+        # Stage 4.5 AI 总结（full）
+        ai_summary = ""
+        if mode != "quick" and picks:
+            update_progress(94, "AI 综合研判中...")
+            ai_summary = self._summary(picks)
+
+        timestamp = beijing_now()
+        result = {
+            "run_id": run_id,
+            "picks": picks,
+            "market_state": state,
+            "market_description": market_desc,
+            "weights_used": weights,
+            "ai_summary": ai_summary,
+            "universe_count": total_u,
+            "filtered_count": filtered_count,
+            "candidate_count": len(candidates),
+            "strategy_count": len(strategy_ids),
+            "mode": mode,
+            "timestamp": timestamp.isoformat(),
+        }
+
+        # Stage 4.6 落库 + 快照
+        try:
+            saved = dict(result)
+            saved["created_at"] = timestamp
+            self.result_saver(saved)
+        except Exception as e:
+            logger.warning(f"[fusion] 结果落库失败: {e}")
+        self._save_snapshot(run_id, state, picks, timestamp)
+
+        update_progress(100, "融合选股完成", is_running=False)
+        logger.info(f"[fusion] done run_id={run_id} state={state} picks={len(picks)}")
+        return result
+
+    def _finish_empty(self, run_id, state, market_desc, weights, mode) -> Dict[str, Any]:
+        update_progress(100, "融合选股完成（无可用股票）", is_running=False)
+        return {
+            "run_id": run_id, "picks": [], "market_state": state,
+            "market_description": market_desc, "weights_used": weights,
+            "ai_summary": "", "universe_count": 0, "filtered_count": 0,
+            "candidate_count": 0, "strategy_count": 0, "mode": mode,
+            "timestamp": beijing_now().isoformat(),
+        }
+
+    # ──────────────────────────────────────────────────────────────
+    # Stage 1 辅助
+    # ──────────────────────────────────────────────────────────────
+
+    def _preload_filter_context(self):
+        """一次性预加载 stock_info（名称/上市日期）+ 近5日有K线的股票集合（停牌判定）。"""
+        info_map: Dict[str, Dict[str, Any]] = {}
+        trading_codes: set = set()
+        try:
+            from config.database import DatabaseConfig
+            db = DatabaseConfig.get_database()
+            for rec in db["stock_info"].find(
+                    {}, {"_id": 0, "code": 1, "name": 1, "A股简称": 1,
+                         "list_date": 1, "上市日期": 1}):
+                c = rec.get("code")
+                if c:
+                    info_map[c] = rec
+            recent_dates = sorted(db["kline"].distinct("date"), reverse=True)[:5]
+            if recent_dates:
+                trading_codes = set(
+                    db["kline"].distinct("code", {"date": {"$in": recent_dates}}))
+        except Exception as e:
+            logger.warning(f"[fusion] 过滤上下文预加载失败: {e}")
+        return info_map, trading_codes
+
+    @staticmethod
+    def _hard_filter(code, fi, info, trading_codes, hf) -> Optional[str]:
+        name = (fi.name or info.get("name") or info.get("A股简称") or "").upper()
+        if "ST" in name or "退" in name:
+            return "st"
+        days = _parse_days_since(info.get("list_date") or info.get("上市日期"))
+        if days is not None and days < _SUBNEW_DAYS:
+            return "subnew"
+        # 停牌：近5个交易日无K线。trading_codes 为空（预加载失败）时不据此过滤。
+        if trading_codes and code not in trading_codes:
+            return "suspended"
+        if len(fi.closes) < hf.get("min_kline_bars", 20):
+            return "insufficient_kline"
+        if (fi.total_amount or 0) < hf.get("min_avg_amount", 3e7):
+            return "low_liquidity"
+        roe_min = hf.get("roe_min")
+        if roe_min is not None and fi.roe is not None and fi.roe < roe_min:
+            return "low_roe"
+        rg_min = hf.get("revenue_growth_min")
+        if rg_min is not None and fi.revenue_growth is not None and fi.revenue_growth < rg_min:
+            return "low_revenue_growth"
+        return None
+
+    @staticmethod
+    def _screen_score(fi, weights) -> float:
+        closes_asc = list(reversed(fi.closes))
+        amounts_asc = list(reversed(fi.volumes))
+        fund_s, fund_d = factors.fundamental_score(
+            roe=fi.roe, revenue_growth=fi.revenue_growth,
+            profit_growth=fi.profit_growth, gross_margin=fi.gross_margin,
+            debt_ratio=fi.debt_ratio, industry=fi.industry)
+        tech_s, tech_d = factors.technical_score(closes_asc, amounts_asc)
+        flow_s, flow_d = factors.fund_flow_detail_score(
+            main_net_inflow=fi.main_net_inflow, total_amount=fi.total_amount,
+            turnover_rate=fi.turnover_rate)
+        val_s, val_d = factors.valuation_detail_score(
+            pe=fi.pe, pb=fi.pb, industry=fi.industry)
+        comp, _ = factors.composite_score({
+            "fundamental": (fund_s, fund_d), "technical": (tech_s, tech_d),
+            "fund_flow": (flow_s, flow_d), "valuation": (val_s, val_d),
+        }, weights)
+        return comp
+
+    def _safe_screen_score(self, code, weights) -> float:
+        try:
+            fi = self.dal.get_factor_inputs(code, kline_limit=60)
+            return self._screen_score(fi, weights)
+        except Exception:
+            return 0.0
+
+    def _screen_universe(self, universe, info_map, trading_codes, hf, weights, candidate_pool):
+        screened: List[tuple] = []
+        ex = ThreadPoolExecutor(max_workers=_STAGE1_WORKERS)
+
+        def _one(code):
+            try:
+                fi = self.dal.get_factor_inputs(code, kline_limit=60)
+                reason = self._hard_filter(code, fi, info_map.get(code, {}),
+                                           trading_codes, hf)
+                if reason:
+                    return None
+                return (code, self._screen_score(fi, weights))
+            except Exception:
+                return None
+
+        try:
+            for res in ex.map(_one, universe):
+                if res:
+                    screened.append(res)
+        finally:
+            ex.shutdown(wait=False)
+
+        screened.sort(key=lambda x: x[1], reverse=True)
+        scores = {c: s for c, s in screened}
+        pool_a = [c for c, _ in screened[:candidate_pool]]
+        return pool_a, scores
+
+    # ──────────────────────────────────────────────────────────────
+    # Stage 2 策略叠加
+    # ──────────────────────────────────────────────────────────────
+
+    def _overlay_strategies(self, strategy_ids, candidate_pool, sources, screen_scores):
+        from modules.ai.engines.picker import PickerEngine
+        from modules.ai.strategies.storage import StrategyStorage
+        picker = PickerEngine(dal=self.dal, analysis_engine=self.analysis_engine)
+        storage = StrategyStorage()
+
+        def _preview_one(sid):
+            try:
+                from bson import ObjectId
+                doc = storage.find_one({"_id": ObjectId(sid)})
+                if not doc or doc.get("type") != "selection":
+                    return None
+                r = picker.preview(
+                    strategy=doc["name"], top_n=candidate_pool,
+                    candidate_pool=candidate_pool,
+                    weight_overrides=doc.get("weights", {}),
+                    filter_overrides=doc.get("filters", {}),
+                    indicator_config=doc.get("indicators", []))
+                return doc["name"], r.get("picks", [])
+            except Exception as e:
+                logger.warning(f"[fusion] 策略 preview 失败 sid={sid}: {e}")
+                return None
+
+        ex = ThreadPoolExecutor(max_workers=min(4, len(strategy_ids)))
+        try:
+            futs = {ex.submit(_preview_one, sid): sid for sid in strategy_ids}
+            for fut in as_completed(futs):
+                out = fut.result()
+                if not out:
+                    continue
+                sname, picks = out
+                for p in picks:
+                    code = p.get("code")
+                    if not code:
+                        continue
+                    srcs = sources.setdefault(code, [])
+                    if sname not in srcs:
+                        srcs.append(sname)
+        finally:
+            ex.shutdown(wait=False)
+
+    # ──────────────────────────────────────────────────────────────
+    # Stage 3 深度评分 + 辩论
+    # ──────────────────────────────────────────────────────────────
+
+    def _factor_only(self, code):
+        try:
+            return self.analysis_engine.analyze_factor_only(code)
+        except Exception as e:
+            logger.warning(f"[fusion] factor-only 失败 {code}: {e}")
+            return None
+
+    def _deep_score(self, codes, mode, use_cache) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        if not codes:
+            return out
+
+        if mode == "quick":
+            ex = ThreadPoolExecutor(max_workers=_STAGE3_WORKERS)
+            try:
+                futs = {ex.submit(self.analysis_engine.analyze_factor_only, c): c
+                        for c in codes}
+                for fut in as_completed(futs):
+                    c = futs[fut]
+                    try:
+                        out[c] = fut.result()
+                    except Exception as e:
+                        logger.warning(f"[fusion] quick 评分失败 {c}: {e}")
+            finally:
+                ex.shutdown(wait=False)
+            return out
+
+        ex = ThreadPoolExecutor(max_workers=_STAGE3_WORKERS)
+        try:
+            fut_map = {ex.submit(self.analysis_engine.analyze, c, use_cache=use_cache): c
+                       for c in codes}
+            budget = _STAGE3_PER_STOCK_SEC * max(1, -(-len(codes) // _STAGE3_WORKERS))
+            try:
+                for fut in as_completed(list(fut_map), timeout=budget):
+                    c = fut_map.pop(fut)
+                    try:
+                        out[c] = fut.result()
+                    except Exception as e:
+                        logger.warning(f"[fusion] 深度评分失败 {c}: {e}，降级因子")
+                        fb = self._factor_only(c)
+                        if fb:
+                            out[c] = fb
+            except _FutureTimeout:
+                logger.warning(f"[fusion] 深度评分预算 {budget}s 耗尽，剩余降级因子")
+            for fut, c in fut_map.items():
+                fut.cancel()
+                fb = self._factor_only(c)
+                if fb:
+                    out[c] = fb
+        finally:
+            ex.shutdown(wait=False)
+        return out
+
+    def _run_debates(self, codes, philosophy_ids) -> Dict[str, tuple]:
+        from api.routes.strategy_pick import (
+            _get_philosophy_signals, _build_debate_consensus,
+        )
+        results: Dict[str, tuple] = {}
+
+        def _one(code):
+            try:
+                bundle = self.dal.get_stock_bundle(code)
+                signals, _dim, _flat, _comp = _get_philosophy_signals(code, bundle)
+                if philosophy_ids:
+                    signals = [s for s in signals if s.get("agent_id") in philosophy_ids]
+                consensus = _build_debate_consensus(signals) if signals else None
+                return signals, consensus
+            except Exception as e:
+                logger.warning(f"[fusion] 辩论失败 {code}: {e}")
+                return [], None
+
+        ex = ThreadPoolExecutor(max_workers=_STAGE3_WORKERS)
+        try:
+            futs = {ex.submit(_one, c): c for c in codes}
+            for fut in as_completed(futs):
+                c = futs[fut]
+                try:
+                    results[c] = fut.result(timeout=30)
+                except Exception:
+                    results[c] = ([], None)
+        finally:
+            ex.shutdown(wait=False)
+        return results
+
+    def _assemble_picks(self, candidates, analyses, sources, debates, mode) -> List[Dict[str, Any]]:
+        picks: List[Dict[str, Any]] = []
+        for code in candidates:
+            a = analyses.get(code)
+            if not a:
+                continue
+            scores = a.get("scores", {}) or {}
+            factor_score = float(scores.get("composite", 50.0))
+
+            srcs = sources.get(code, ["quant"])
+            source_count = len(srcs)
+            source_bonus = min(source_count - 1, 3) * 3
+
+            signals, consensus = debates.get(code, ([], None))
+            if mode != "quick" and consensus:
+                consensus_level = float(consensus.get("consensus_level", 0) or 0)
+                tendency = float(consensus.get("tendency", 0) or 0)
+                debate_bonus = _clamp(consensus_level * tendency * 15, -15, 15)
+            else:
+                consensus_level, tendency, debate_bonus = 0.0, 0.0, 0.0
+
+            fusion_score = _clamp(factor_score + debate_bonus + source_bonus)
+
+            picks.append({
+                "code": code,
+                "name": a.get("name", ""),
+                "industry": a.get("industry", ""),
+                "fusion_score": round(fusion_score, 2),
+                "factor_score": round(factor_score, 2),
+                "debate_bonus": round(debate_bonus, 2),
+                "source_bonus": source_bonus,
+                "consensus_level": round(consensus_level, 3),
+                "tendency": round(tendency, 3),
+                "source_count": source_count,
+                "sources": srcs,
+                "scores": scores,
+                "score_details": a.get("score_details", {}),
+                "debate_signals": signals if mode != "quick" else [],
+                "debate_consensus": consensus if mode != "quick" else None,
+                "llm": a.get("llm"),
+                "weight": 0.0,
+            })
+        return picks
+
+    # ──────────────────────────────────────────────────────────────
+    # Stage 4 精选
+    # ──────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _industry_diversify(picks_sorted, top_n) -> List[Dict[str, Any]]:
+        max_per_industry = max(1, math.ceil(top_n * 0.4))
+        out: List[Dict[str, Any]] = []
+        counts: Dict[str, int] = {}
+        for p in picks_sorted:
+            ind = p.get("industry") or ""
+            if ind and counts.get(ind, 0) >= max_per_industry:
+                continue
+            out.append(p)
+            if ind:
+                counts[ind] = counts.get(ind, 0) + 1
+            if len(out) >= top_n:
+                break
+        return out
+
+    @staticmethod
+    def _fill_weights(picks) -> None:
+        from modules.ai_selector.advisor import build_score_weighted_targets
+        targets = build_score_weighted_targets([{
+            "code": p["code"], "name": p["name"],
+            "composite": p["fusion_score"], "industry": p.get("industry", ""),
+        } for p in picks])
+        wmap = {t["code"]: t["weight"] for t in targets}
+        for p in picks:
+            p["weight"] = wmap.get(p["code"], 0.0)
+
+    def _summary(self, picks) -> str:
+        try:
+            from api.routes.strategy_pick import _generate_debate_summary
+            debate_results = [{
+                "code": p["code"], "name": p.get("name", ""),
+                "signals": p.get("debate_signals", []),
+                "consensus": p.get("debate_consensus"),
+            } for p in picks]
+            # _generate_debate_summary 读 p["composite"]，融合分映射过去使摘要分值真实
+            summary_picks = [{**p, "composite": p["fusion_score"]} for p in picks]
+            return _generate_debate_summary(debate_results, summary_picks)
+        except Exception as e:
+            logger.warning(f"[fusion] AI 总结失败: {e}")
+            return ""
+
+    def _save_snapshot(self, run_id, state, picks, timestamp) -> None:
+        """写 fusion_pick_snapshots，仅存回测所需轻量字段（不存 LLM 全文）。"""
+        try:
+            from config.database import DatabaseConfig
+            db = DatabaseConfig.get_database()
+            db[SNAPSHOT_COL].insert_one({
+                "run_id": run_id,
+                "timestamp": timestamp.isoformat(),
+                "market_state": state,
+                "picks": [{
+                    "code": p["code"],
+                    "name": p.get("name", ""),
+                    "composite": p["fusion_score"],   # PickTracker 读 composite
+                    "fusion_score": p["fusion_score"],
+                    "factor_score": p["factor_score"],
+                    "source_count": p["source_count"],
+                    "sources": p.get("sources", []),
+                    "scores": p.get("scores", {}),
+                } for p in picks],
+                "created_at": timestamp,
+            })
+            # 控制体积：保留最近 200 条快照
+            old = list(db[SNAPSHOT_COL].find({}, {"_id": 1})
+                       .sort("created_at", -1).skip(200).limit(2000))
+            if old:
+                db[SNAPSHOT_COL].delete_many({"_id": {"$in": [o["_id"] for o in old]}})
+        except Exception as e:
+            logger.warning(f"[fusion] 快照保存失败: {e}")
