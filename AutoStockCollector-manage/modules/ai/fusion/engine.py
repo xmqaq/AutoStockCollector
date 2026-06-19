@@ -34,6 +34,7 @@ _STAGE1_WORKERS = 8
 _STAGE3_WORKERS = 4
 _STAGE3_PER_STOCK_SEC = 30
 _SUBNEW_DAYS = 180
+_MIN_DEEP = 24  # full 模式 LLM 深度评分的最小覆盖数（其余候选纯因子兜底，控制耗时）
 
 
 def _clamp(v: float, lo: float = 0.0, hi: float = 100.0) -> float:
@@ -177,15 +178,14 @@ class FusionPickerEngine:
         candidates = merged[:cutoff]
         update_progress(52, f"候选池 {len(candidates)} 只，深度评分...")
 
-        # Stage 3.1 深度评分
-        analyses = self._deep_score(candidates, mode, use_cache)
+        # Stage 3.1 深度评分（full 模式只对初筛分最高的一段调 LLM，其余纯因子兜底，控制耗时）
+        analyses, deep_codes = self._deep_score(candidates, mode, use_cache, top_n)
         update_progress(72, "深度评分完成")
 
-        # Stage 3.2/3.3 哲学辩论（full）
+        # Stage 3.2/3.3 哲学辩论（full，仅对深度评分过的股票，逐只推进度）
         debates: Dict[str, tuple] = {}
-        if mode != "quick":
-            update_progress(74, "投资哲学辩论中...")
-            debates = self._run_debates(list(analyses.keys()), philosophy_ids)
+        if mode != "quick" and deep_codes:
+            debates = self._run_debates(deep_codes, philosophy_ids)
 
         # Stage 3.4 FusionScore
         picks_all = self._assemble_picks(candidates, analyses, sources, debates, mode)
@@ -399,31 +399,58 @@ class FusionPickerEngine:
             logger.warning(f"[fusion] factor-only 失败 {code}: {e}")
             return None
 
-    def _deep_score(self, codes, mode, use_cache) -> Dict[str, Any]:
+    def _factor_pool(self, codes, out, advance):
+        """对一批股票纯因子评分（无 LLM，快），结果写入 out，每完成一只调 advance。"""
+        if not codes:
+            return
+        ex = ThreadPoolExecutor(max_workers=_STAGE3_WORKERS)
+        try:
+            futs = {ex.submit(self.analysis_engine.analyze_factor_only, c): c for c in codes}
+            for fut in as_completed(futs):
+                c = futs[fut]
+                try:
+                    out[c] = fut.result()
+                except Exception as e:
+                    logger.warning(f"[fusion] 因子评分失败 {c}: {e}")
+                advance()
+        finally:
+            ex.shutdown(wait=False)
+
+    def _deep_score(self, codes, mode, use_cache, top_n, lo=52, hi=72):
+        """返回 (analyses, deep_codes)。
+        full 模式只对初筛分最高的一段（deep_codes）调 LLM analyze，其余纯因子兜底——
+        避免对整个候选池逐只 LLM（含外部行情/估值请求）导致长时间无响应。
+        每完成一只刷新进度，既给前端反馈，也持续刷新 updated_at 防 10 分钟僵尸误判。
+        ponytail: deep 上限 max(top_n*2, _MIN_DEEP)，覆盖最终精选所需即可，其余低分股不值得 LLM。
+        """
         out: Dict[str, Any] = {}
         if not codes:
-            return out
+            return out, []
+        total = max(1, len(codes))
+        done = [0]
+
+        def advance():
+            done[0] += 1
+            update_progress(lo + int(done[0] / total * (hi - lo)),
+                            f"深度评分 {done[0]}/{total} 只...")
 
         if mode == "quick":
-            ex = ThreadPoolExecutor(max_workers=_STAGE3_WORKERS)
-            try:
-                futs = {ex.submit(self.analysis_engine.analyze_factor_only, c): c
-                        for c in codes}
-                for fut in as_completed(futs):
-                    c = futs[fut]
-                    try:
-                        out[c] = fut.result()
-                    except Exception as e:
-                        logger.warning(f"[fusion] quick 评分失败 {c}: {e}")
-            finally:
-                ex.shutdown(wait=False)
-            return out
+            self._factor_pool(codes, out, advance)
+            return out, []
 
+        deep_limit = min(len(codes), max(top_n * 2, _MIN_DEEP))
+        deep_codes = codes[:deep_limit]          # codes 已按初筛分降序
+        shallow_codes = codes[deep_limit:]
+
+        # 浅层：纯因子，快速跑完
+        self._factor_pool(shallow_codes, out, advance)
+
+        # 深层：LLM analyze + 总预算兜底 + 失败降级因子
         ex = ThreadPoolExecutor(max_workers=_STAGE3_WORKERS)
         try:
             fut_map = {ex.submit(self.analysis_engine.analyze, c, use_cache=use_cache): c
-                       for c in codes}
-            budget = _STAGE3_PER_STOCK_SEC * max(1, -(-len(codes) // _STAGE3_WORKERS))
+                       for c in deep_codes}
+            budget = _STAGE3_PER_STOCK_SEC * max(1, -(-len(deep_codes) // _STAGE3_WORKERS))
             try:
                 for fut in as_completed(list(fut_map), timeout=budget):
                     c = fut_map.pop(fut)
@@ -434,6 +461,7 @@ class FusionPickerEngine:
                         fb = self._factor_only(c)
                         if fb:
                             out[c] = fb
+                    advance()
             except _FutureTimeout:
                 logger.warning(f"[fusion] 深度评分预算 {budget}s 耗尽，剩余降级因子")
             for fut, c in fut_map.items():
@@ -441,15 +469,18 @@ class FusionPickerEngine:
                 fb = self._factor_only(c)
                 if fb:
                     out[c] = fb
+                advance()
         finally:
             ex.shutdown(wait=False)
-        return out
+        return out, deep_codes
 
-    def _run_debates(self, codes, philosophy_ids) -> Dict[str, tuple]:
+    def _run_debates(self, codes, philosophy_ids, lo=72, hi=88) -> Dict[str, tuple]:
         from api.routes.strategy_pick import (
             _get_philosophy_signals, _build_debate_consensus,
         )
         results: Dict[str, tuple] = {}
+        total = max(1, len(codes))
+        done = 0
 
         def _one(code):
             try:
@@ -472,6 +503,9 @@ class FusionPickerEngine:
                     results[c] = fut.result(timeout=30)
                 except Exception:
                     results[c] = ([], None)
+                done += 1
+                update_progress(lo + int(done / total * (hi - lo)),
+                                f"投资哲学辩论 {done}/{total} 只...")
         finally:
             ex.shutdown(wait=False)
         return results
@@ -594,3 +628,47 @@ class FusionPickerEngine:
                 db[SNAPSHOT_COL].delete_many({"_id": {"$in": [o["_id"] for o in old]}})
         except Exception as e:
             logger.warning(f"[fusion] 快照保存失败: {e}")
+
+
+if __name__ == "__main__":
+    # 冒烟自检：验证深度评分的 deep/shallow 分流（无 DB、无 LLM）
+    class _FakeAE:
+        def __init__(self):
+            self.deep, self.shallow = [], []
+
+        def analyze(self, code, use_cache=True):
+            self.deep.append(code)
+            return {"code": code, "name": code, "industry": "x",
+                    "scores": {"composite": 60}, "score_details": {},
+                    "llm": None, "source": "llm"}
+
+        def analyze_factor_only(self, code):
+            self.shallow.append(code)
+            return {"code": code, "name": code, "industry": "x",
+                    "scores": {"composite": 50}, "score_details": {},
+                    "llm": None, "source": "factor"}
+
+    fake = _FakeAE()
+    eng = FusionPickerEngine(dal=object(), analysis_engine=fake, result_saver=lambda d: None)
+
+    # full：30 候选，top_n=10 → deep=max(20,24)=24 只 LLM，6 只纯因子
+    cands = [f"c{i}" for i in range(30)]
+    out, deep = eng._deep_score(cands, "full", True, top_n=10)
+    assert len(deep) == 24, deep
+    assert len(fake.deep) == 24 and len(fake.shallow) == 6, (len(fake.deep), len(fake.shallow))
+    assert len(out) == 30 and set(out) == set(cands)
+    assert deep == cands[:24]  # 取初筛分最高的前段（codes 已降序）
+
+    # quick：全部纯因子，无 LLM，deep_codes 为空
+    fake2 = _FakeAE()
+    eng2 = FusionPickerEngine(dal=object(), analysis_engine=fake2, result_saver=lambda d: None)
+    out2, deep2 = eng2._deep_score([f"c{i}" for i in range(20)], "quick", True, top_n=5)
+    assert deep2 == [] and not fake2.deep and len(fake2.shallow) == 20
+
+    # 候选 < 上限时全部深度
+    fake3 = _FakeAE()
+    eng3 = FusionPickerEngine(dal=object(), analysis_engine=fake3, result_saver=lambda d: None)
+    out3, deep3 = eng3._deep_score([f"c{i}" for i in range(10)], "full", True, top_n=10)
+    assert len(deep3) == 10 and len(fake3.deep) == 10 and not fake3.shallow
+
+    print("fusion engine self-check OK")
