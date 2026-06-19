@@ -2,7 +2,9 @@
   <div class="fp-page">
     <!-- ── 顶部：市场状态 + 操作（合并为一张全宽卡，横排压扁，消除空旷） ── -->
     <el-card class="fp-head-card" shadow="never">
-      <div class="fp-mkt">
+      <div class="fp-head">
+        <div class="fp-head-main">
+          <div class="fp-mkt">
         <span class="fp-mkt-label">当前市场</span>
         <el-tag :type="stateTagType(marketState?.state)" effect="dark" round size="small">
           {{ stateText(marketState?.state) }}
@@ -22,7 +24,7 @@
 
       <div class="fp-head-divider"></div>
 
-      <div class="fp-control-top">
+      <div class="fp-params">
           <div class="fp-field-inline">
             <label>精选数量</label>
             <el-input-number v-model="topN" :min="3" :max="30" :step="1" size="small" controls-position="right" class="fp-num" />
@@ -31,12 +33,6 @@
             <label>候选池</label>
             <el-input-number v-model="candidatePool" :min="20" :max="120" :step="10" size="small" controls-position="right" class="fp-num" />
           </div>
-          <div class="fp-spacer"></div>
-          <el-tag v-if="showDoneTip" type="success" effect="light" round>智选完成 ✓</el-tag>
-          <el-button v-if="!running" type="primary" :icon="MagicStick" @click="runPick" :loading="loading">
-            开始智选
-          </el-button>
-          <el-button v-else type="danger" plain @click="cancelPick">取消</el-button>
         </div>
 
         <!-- 高级（默认折叠）：不动这里 = 全市场量化初筛 + 全部哲学辩论，对多数人够用 -->
@@ -92,6 +88,16 @@
             </div>
           </el-collapse-item>
         </el-collapse>
+        </div>
+
+        <div class="fp-head-side">
+          <div class="fp-side-title">融合选股引擎</div>
+          <div class="fp-side-sub">市场感知 · 多策略叠加 · 多流派辩论</div>
+          <el-button v-if="!running" type="primary" :icon="MagicStick" @click="runPick" :loading="loading" class="fp-cta">开始智选</el-button>
+          <el-button v-else type="danger" plain @click="cancelPick" class="fp-cta-cancel">取消</el-button>
+          <el-tag v-if="showDoneTip" type="success" effect="light" round size="small">智选完成 ✓</el-tag>
+        </div>
+      </div>
 
         <div v-if="running || progress.progress > 0" class="fp-progress">
           <el-progress
@@ -177,7 +183,7 @@
                 </span>
               </template>
               <template #default="{ row }">
-                <el-tag :type="scoreType(row.fusion_score)" effect="light" round class="fp-score">{{ row.fusion_score.toFixed(1) }}</el-tag>
+                <span class="fp-score" :class="'fp-score--' + scoreLevel(row.fusion_score)">{{ row.fusion_score.toFixed(1) }}</span>
               </template>
             </el-table-column>
             <el-table-column prop="factor_score" label="因子分" width="90" sortable align="center">
@@ -464,6 +470,7 @@ function stateText(s?: string) { return s === 'bull' ? '牛市' : s === 'bear' ?
 function stateTagType(s?: string) { return s === 'bull' ? 'danger' : s === 'bear' ? 'success' : 'info' }
 function weightPct(v?: number) { return Math.round((v || 0) * 100) }
 function scoreType(v: number) { return v >= 72 ? 'danger' : v >= 58 ? 'warning' : v >= 45 ? '' : 'info' }
+function scoreLevel(v: number) { return v >= 90 ? 'hot' : v >= 80 ? 'high' : v >= 70 ? 'mid' : 'low' }
 function bonusClass(v: number | null) { return v == null ? 'fp-muted' : v > 0 ? 'fp-up' : v < 0 ? 'fp-down' : 'fp-muted' }
 function fmtBonus(v: number) { return v > 0 ? `+${v.toFixed(1)}` : v.toFixed(1) }
 function fmtPct(v: number | null | undefined) { return v == null ? '—' : `${v > 0 ? '+' : ''}${Number(v).toFixed(1)}%` }
@@ -639,11 +646,21 @@ onUnmounted(() => { stopProgressSSE(); stopProgressPolling() })
 .fp-wpct { font-size: 12px; font-weight: 600; color: var(--text-primary); min-width: 20px; }
 .fp-head-divider { height: 1px; background: var(--el-border-color-lighter); margin: 14px 0; }
 
-.fp-control-top { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 14px; }
+.fp-head { display: flex; align-items: stretch; gap: 20px; }
+.fp-head-main { flex: 1 1 auto; min-width: 0; }
+.fp-head-side {
+  flex: 0 0 240px; display: flex; flex-direction: column; justify-content: center; gap: 6px;
+  padding: 18px; border-radius: 12px;
+  background: linear-gradient(160deg, var(--el-fill-color-light), var(--el-fill-color));
+}
+.fp-side-title { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.fp-side-sub { font-size: 12px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 8px; }
+.fp-params { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 16px; }
 .fp-field-inline { display: flex; flex-direction: column; gap: 6px; }
 .fp-field-inline label { font-size: 12px; color: var(--text-secondary); }
 .fp-num { width: 118px; }
-.fp-spacer { flex: 1 1 auto; }
+.fp-cta, .fp-cta-cancel { width: 100%; }
+@media (max-width: 860px) { .fp-head { flex-direction: column; } .fp-head-side { flex-basis: auto; } }
 .fp-field { display: flex; flex-direction: column; gap: 6px; }
 .fp-field-wide { grid-column: span 2; }
 .fp-field label { font-size: 12px; color: var(--text-secondary); }
@@ -693,4 +710,36 @@ onUnmounted(() => { stopProgressSSE(); stopProgressPolling() })
 .fp-opt-state { margin-bottom: 18px; }
 .fp-reset { margin-left: auto; }
 .fp-history-table { cursor: pointer; }
+
+/* ───── 精致化（清爽 SaaS 调性） ───── */
+.fp-head-card, .fp-result-card {
+  border-radius: 14px;
+  border: 1px solid var(--el-border-color-lighter);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .04);
+}
+.fp-wbar { width: 56px; height: 7px; border-radius: 4px; }
+.fp-cta {
+  height: 40px; padding: 0 22px; font-size: 14px; font-weight: 600;
+  border: none; border-radius: 10px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  box-shadow: 0 6px 16px rgba(99, 102, 241, .28);
+}
+.fp-cta:hover { background: linear-gradient(135deg, #5457e6, #7c4ddc); }
+/* 融合分：渐变焦点徽章 */
+.fp-score {
+  display: inline-block; min-width: 50px; padding: 4px 11px;
+  border-radius: 9px; font-weight: 700; font-size: 13px; color: #fff;
+  font-variant-numeric: tabular-nums; letter-spacing: .2px;
+}
+.fp-score--hot  { background: linear-gradient(135deg, #ff6b6b, #e8503a); box-shadow: 0 3px 8px rgba(238, 80, 58, .26); }
+.fp-score--high { background: linear-gradient(135deg, #ffa94d, #ff922b); box-shadow: 0 3px 8px rgba(255, 146, 43, .22); }
+.fp-score--mid  { background: linear-gradient(135deg, #5c9dff, #3b82f6); box-shadow: 0 3px 8px rgba(59, 130, 246, .2); }
+.fp-score--low  { background: var(--el-fill-color); color: var(--text-secondary); }
+/* 结果表：表头底色 + 等宽数字 + 紧凑行 */
+.fp-result-card :deep(.el-table) { font-variant-numeric: tabular-nums; }
+.fp-result-card :deep(.el-table th.el-table__cell) {
+  background: var(--el-fill-color-light);
+  font-weight: 600; color: var(--text-primary);
+}
+.fp-result-card :deep(.el-table td.el-table__cell) { padding: 9px 0; }
 </style>
