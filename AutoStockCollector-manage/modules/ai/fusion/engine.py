@@ -230,12 +230,12 @@ class FusionPickerEngine:
             logger.warning(f"[fusion] 结果落库失败: {e}")
         self._save_snapshot(run_id, state, picks, timestamp)
 
-        update_progress(100, "融合选股完成", is_running=False)
+        update_progress(100, "AI 智选完成", is_running=False)
         logger.info(f"[fusion] done run_id={run_id} state={state} picks={len(picks)}")
         return result
 
     def _finish_empty(self, run_id, state, market_desc, weights, mode) -> Dict[str, Any]:
-        update_progress(100, "融合选股完成（无可用股票）", is_running=False)
+        update_progress(100, "AI 智选完成（无可用股票）", is_running=False)
         return {
             "run_id": run_id, "picks": [], "market_state": state,
             "market_description": market_desc, "weights_used": weights,

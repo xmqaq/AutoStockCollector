@@ -28,15 +28,21 @@
       </el-card>
 
       <el-card class="fp-control-card" shadow="never">
-        <div class="fp-control-grid">
-          <div class="fp-field">
+        <div class="fp-control-top">
+          <div class="fp-field-inline">
             <label>精选数量</label>
-            <el-input-number v-model="topN" :min="3" :max="30" :step="1" size="small" controls-position="right" />
+            <el-input-number v-model="topN" :min="3" :max="30" :step="1" size="small" controls-position="right" class="fp-num" />
           </div>
-          <div class="fp-field">
+          <div class="fp-field-inline">
             <label>候选池</label>
-            <el-input-number v-model="candidatePool" :min="20" :max="120" :step="10" size="small" controls-position="right" />
+            <el-input-number v-model="candidatePool" :min="20" :max="120" :step="10" size="small" controls-position="right" class="fp-num" />
           </div>
+          <div class="fp-spacer"></div>
+          <el-tag v-if="showDoneTip" type="success" effect="light" round>智选完成 ✓</el-tag>
+          <el-button v-if="!running" type="primary" :icon="MagicStick" @click="runPick" :loading="loading">
+            开始智选
+          </el-button>
+          <el-button v-else type="danger" plain @click="cancelPick">取消</el-button>
         </div>
 
         <!-- 高级（默认折叠）：不动这里 = 全市场量化初筛 + 全部哲学辩论，对多数人够用 -->
@@ -92,14 +98,6 @@
             </div>
           </el-collapse-item>
         </el-collapse>
-
-        <div class="fp-actions">
-          <el-button v-if="!running" type="primary" :icon="MagicStick" @click="runPick" :loading="loading">
-            开始智选
-          </el-button>
-          <el-button v-else type="danger" plain @click="cancelPick">取消</el-button>
-          <el-tag v-if="showDoneTip" type="success" effect="light" round>选股完成 ✓</el-tag>
-        </div>
 
         <div v-if="running || progress.progress > 0" class="fp-progress">
           <el-progress
@@ -649,15 +647,20 @@ onUnmounted(() => { stopProgressSSE(); stopProgressPolling() })
 .fp-weight-tip { margin-top: 10px; font-size: 12px; color: var(--el-color-success); }
 
 .fp-control-card :deep(.el-card__body) { padding: 16px; }
-.fp-control-grid { display: grid; grid-template-columns: repeat(2, minmax(140px, 1fr)); gap: 12px 16px; }
+.fp-control-top { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 14px; }
+.fp-field-inline { display: flex; flex-direction: column; gap: 6px; }
+.fp-field-inline label { font-size: 12px; color: var(--text-secondary); }
+.fp-num { width: 118px; }
+.fp-spacer { flex: 1 1 auto; }
 .fp-field { display: flex; flex-direction: column; gap: 6px; }
 .fp-field-wide { grid-column: span 2; }
 .fp-field label { font-size: 12px; color: var(--text-secondary); }
-.fp-advanced { margin-top: 12px; border: none; }
-.fp-advanced :deep(.el-collapse-item__header) { border: none; height: 36px; }
+.fp-advanced { margin-top: 14px; border: none; border-top: 1px solid var(--el-border-color-lighter); }
+.fp-advanced :deep(.el-collapse-item__header) { border: none; height: 44px; }
+.fp-advanced :deep(.el-collapse-item__arrow) { margin-left: 6px; margin-right: auto; }
 .fp-advanced :deep(.el-collapse-item__wrap) { border: none; }
 .fp-advanced :deep(.el-collapse-item__content) { padding: 8px 2px 0; display: flex; flex-direction: column; gap: 12px; }
-.fp-adv-title { font-size: 13px; color: var(--text-primary); margin-right: 10px; }
+.fp-adv-title { font-size: 13px; color: var(--text-primary); font-weight: 500; margin-right: 10px; }
 .fp-adv-hint { font-size: 12px; color: var(--text-secondary); }
 .fp-help { font-size: 13px; color: var(--text-secondary); vertical-align: -2px; margin-left: 2px; cursor: help; }
 .fp-th { display: inline-flex; align-items: center; gap: 2px; }
@@ -665,7 +668,6 @@ onUnmounted(() => { stopProgressSSE(); stopProgressPolling() })
 .fp-combo-hint { font-size: 12px; color: var(--text-secondary); margin-right: 2px; }
 .fp-combo { cursor: pointer; transition: transform .1s; }
 .fp-combo:hover { transform: translateY(-1px); }
-.fp-actions { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
 .fp-progress { margin-top: 14px; }
 .fp-progress-status { margin-top: 6px; font-size: 12px; color: var(--text-secondary); }
 
