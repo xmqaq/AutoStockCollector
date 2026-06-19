@@ -230,3 +230,67 @@ def reset_data():
     except Exception as e:
         logger.error(f"[fusion] 重置数据失败: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+@fusion_pick_bp.route("/rebalance-advice", methods=["GET"])
+@login_required
+def rebalance_advice():
+    """读最近一次 AI 智选结果(picks 带 fusion_score)，结合登录用户的模拟盘持仓+现金，
+    按建议仓位生成完整再平衡买卖订单（自动整手、现金不足跳过、买不起一手剔除）。
+    与量化选股 /ai/pick/rebalance-advice 同一套 advisor，仅数据源换成 AI 智选。
+    """
+    from modules.ai_selector.advisor import build_rebalance_orders, build_score_weighted_targets
+    from modules.paper_trading.trade_engine import TradeEngine
+    from modules.paper_trading.account import PaperAccount
+    from api.routes.paper_trading import _resolve_user_id
+    from config.database import DatabaseConfig
+
+    try:
+        buffer = float(request.args.get("buffer", 0.05))
+    except (TypeError, ValueError):
+        buffer = 0.05
+    try:
+        invest_ratio = float(request.args.get("ratio", 1.0))
+    except (TypeError, ValueError):
+        invest_ratio = 1.0
+
+    db = DatabaseConfig.get_database()
+    doc = db[RESULTS_COL].find_one({}, {"_id": 0}, sort=[("created_at", -1)])
+    raw_picks = (doc or {}).get("picks") or []
+    empty = {"total_value": 0, "buffer": buffer, "cash": 0, "orders": []}
+    if not raw_picks:
+        return jsonify({"success": True, "data": {**empty, "message": "暂无 AI 智选结果，请先运行一次 AI 智选"}})
+
+    # build_score_weighted_targets 读 composite → AI 智选用 fusion_score
+    picks = [{"code": p["code"], "name": p.get("name", p["code"]),
+              "composite": p.get("fusion_score", 0), "industry": p.get("industry", "")}
+             for p in raw_picks if p.get("code")]
+
+    uid = _resolve_user_id()
+    engine = TradeEngine()
+    positions, _ = engine.get_positions(uid)
+    acc = PaperAccount().get(uid)
+    cash = acc["cash_balance"] if acc else 0.0
+
+    codes = list({p["code"] for p in picks} | {p["code"] for p in positions})
+    quotes = engine._batch_tencent_quotes(codes)
+    prices = {c: (q.get("price") or 0) for c, q in quotes.items() if q.get("price")}
+    for p in positions:
+        prices.setdefault(p["code"], p.get("current_price") or 0)
+    capital = cash + sum((p.get("market_value") or 0) for p in positions)
+
+    targets = build_score_weighted_targets(picks, prices=prices, capital=capital, invest_ratio=invest_ratio)
+    if not targets:
+        return jsonify({"success": True, "data": {**empty, "message": "暂无可执行目标（本金不足或无实时价）"}})
+
+    target_codes = {t["code"] for t in targets}
+    dropped = [{"code": p["code"], "name": p.get("name", p["code"]), "price": prices.get(p["code"])}
+               for p in picks
+               if (p.get("composite") or 0) > 0 and p["code"] not in target_codes and prices.get(p["code"])]
+
+    advice = build_rebalance_orders(target_positions=targets, current_positions=positions,
+                                    cash=cash, prices=prices, buffer=buffer, fees=engine._fees())
+    advice["cash"] = round(cash, 2)
+    advice["dropped"] = dropped
+    advice["invest_ratio"] = invest_ratio
+    return jsonify({"success": True, "data": advice})

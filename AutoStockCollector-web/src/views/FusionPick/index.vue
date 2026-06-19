@@ -132,6 +132,51 @@
             <span class="fp-meta-time">{{ fmtTime(result.timestamp) }}</span>
           </div>
 
+          <!-- 一键调仓：按建议仓位 + 模拟盘持仓/现金生成买卖清单，可一键下单 -->
+          <div v-if="result?.picks?.length" class="fp-rebal">
+            <div class="fp-rebal-head">
+              <span class="fp-rebal-title">一键调仓到 AI 组合</span>
+              <span class="fp-rebal-sub">按建议仓位对齐模拟盘：自动算整手、现金不足跳过、买不起一手剔除</span>
+              <span class="fp-rebal-ratio">目标仓位</span>
+              <el-select v-model="investRatio" size="small" style="width:90px" @change="loadRebalance">
+                <el-option v-for="r in [0.5,0.6,0.7,0.8,0.9,1.0]" :key="r" :label="Math.round(r*100)+'%'" :value="r" />
+              </el-select>
+              <el-button size="small" :loading="rebalanceLoading" @click="loadRebalance">生成清单</el-button>
+              <el-button size="small" type="primary" :disabled="!rebalance || !rebalance.orders.length"
+                         :loading="executingAll" @click="execAll">全部执行</el-button>
+            </div>
+            <div v-if="rebalance?.dropped?.length" class="fp-rebal-dropped">
+              ⚠️ {{ rebalance.dropped.length }} 只因本金不足一手已剔除：{{ rebalance.dropped.map(d => `${d.name}(${d.price}元)`).join('、') }}
+            </div>
+            <div v-if="rebalance?.message" class="fp-rebal-empty">{{ rebalance.message }}</div>
+            <el-table v-else-if="rebalance" :data="rebalance.orders" size="small" border class="fp-rebal-table">
+              <el-table-column label="动作" width="68">
+                <template #default="{ row }">
+                  <el-tag :type="row.action === 'buy' ? 'danger' : 'success'" size="small" effect="light">{{ row.action === 'buy' ? '买入' : '卖出' }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="股票">
+                <template #default="{ row }">{{ row.name }}（{{ row.code }}）</template>
+              </el-table-column>
+              <el-table-column label="股数" prop="shares" width="80" align="right" />
+              <el-table-column label="现价" width="80" align="right">
+                <template #default="{ row }">{{ row.price != null ? row.price.toFixed(2) : '-' }}</template>
+              </el-table-column>
+              <el-table-column label="目标/当前" width="116" align="right">
+                <template #default="{ row }">{{ row.target_weight }}% / {{ row.current_weight }}%</template>
+              </el-table-column>
+              <el-table-column label="说明" prop="reason" show-overflow-tooltip />
+              <el-table-column label="操作" width="88">
+                <template #default="{ row }">
+                  <el-button v-if="!row.skipped" size="small" plain :disabled="executingAll" :loading="executing[row.code]" @click="execOne(row)">执行</el-button>
+                  <el-tooltip v-else :content="row.skip_reason || ''" placement="top">
+                    <el-tag type="info" size="small">已跳过</el-tag>
+                  </el-tooltip>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+
           <el-table v-if="result?.picks?.length" :data="result.picks" row-key="code" stripe
                     :default-sort="{ prop: 'fusion_score', order: 'descending' }">
             <el-table-column type="expand">
@@ -363,6 +408,8 @@ import type {
   FusionBacktestResult, FusionOptSignals, FusionHistoryItem, MarketStateKey, DimWeights,
 } from '@/api/fusionPick'
 import { strategyPickApi } from '@/api/strategyPick'
+import type { RebalanceAdvice, RebalanceOrder } from '@/api/strategyPick'
+import { paperApi } from '@/api/paper'
 
 const DIMS = [
   { key: 'fundamental', label: '基本面', color: '#5a7af0' },
@@ -547,6 +594,53 @@ async function resetData() {
       await Promise.all([loadHistory(), loadMarketState()])
     }
   } catch { /* client 拦截器已提示 */ } finally { resetLoading.value = false }
+}
+
+// ── 一键调仓：建议清单 + 执行到模拟盘（复用量化选股 advisor + paper /trade）──
+const rebalance = ref<RebalanceAdvice | null>(null)
+const rebalanceLoading = ref(false)
+const investRatio = ref(1.0)
+const executing = ref<Record<string, boolean>>({})
+const executingAll = ref(false)
+
+async function loadRebalance() {
+  rebalanceLoading.value = true
+  try {
+    const res = await fusionPickApi.rebalanceAdvice(0.05, investRatio.value)
+    rebalance.value = res.data.data
+  } catch { ElMessage.error('生成调仓清单失败') }
+  finally { rebalanceLoading.value = false }
+}
+
+async function execOne(o: RebalanceOrder): Promise<boolean> {
+  if (o.skipped || !o.price) return false
+  executing.value[o.code] = true
+  try {
+    await paperApi.executeTrade({
+      code: o.code, action: o.action, shares: o.shares,
+      price: o.price, ai_signal: { reason: o.reason, position_advice: 'AI 智选调仓' },
+    })
+    await loadRebalance()  // 执行后刷新（现金/持仓已变）
+    return true
+  } catch (e: any) {
+    ElMessage.error(`执行失败：${e?.response?.data?.error || e?.message || e}`)
+    return false
+  } finally { executing.value[o.code] = false }
+}
+
+async function execAll() {
+  if (!rebalance.value) return
+  executingAll.value = true
+  try {
+    // 先卖后买：卖出释放现金才够买
+    const ordered = [...rebalance.value.orders].sort(
+      (a, b) => (a.action === 'sell' ? 0 : 1) - (b.action === 'sell' ? 0 : 1))
+    for (const o of ordered) {
+      if (o.skipped || !o.price) continue
+      const ok = await execOne(o)
+      if (!ok) break  // 卖出失败即中断，避免后续买入在现金未释放时执行
+    }
+  } finally { executingAll.value = false }
 }
 
 // ── 运行 + 进度（SSE，失败回退轮询） ──
@@ -742,4 +836,13 @@ onUnmounted(() => { stopProgressSSE(); stopProgressPolling() })
   font-weight: 600; color: var(--text-primary);
 }
 .fp-result-card :deep(.el-table td.el-table__cell) { padding: 9px 0; }
+/* 一键调仓卡 */
+.fp-rebal { margin: 0 0 16px; padding: 14px 16px; border-radius: 12px; background: var(--el-fill-color-light); border: 1px solid var(--el-border-color-lighter); }
+.fp-rebal-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.fp-rebal-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.fp-rebal-sub { margin-right: auto; font-size: 12px; color: var(--text-secondary); }
+.fp-rebal-ratio { font-size: 12px; color: var(--text-secondary); }
+.fp-rebal-dropped { margin-top: 10px; font-size: 12px; color: var(--el-color-warning); }
+.fp-rebal-empty { margin-top: 10px; font-size: 13px; color: var(--text-secondary); }
+.fp-rebal-table { margin-top: 12px; }
 </style>

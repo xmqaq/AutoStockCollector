@@ -1,4 +1,5 @@
 import client from './client'
+import type { RebalanceAdvice } from './strategyPick'
 
 export const fusionPickApi = {
   /** 启动 AI 智选 */
@@ -64,6 +65,13 @@ export const fusionPickApi = {
   resetData(scope: 'snapshots' | 'results' | 'all' = 'all') {
     return client.post<{ success: boolean; data: { scope: string; deleted: Record<string, number> } }>(
       '/api/v1/fusion-pick/reset-data', { scope },
+    )
+  },
+
+  /** 再平衡建议：按建议仓位 + 模拟盘持仓/现金生成买卖订单 */
+  rebalanceAdvice(buffer = 0.05, ratio = 1.0) {
+    return client.get<{ success: boolean; data: RebalanceAdvice }>(
+      '/api/v1/fusion-pick/rebalance-advice', { params: { buffer, ratio } },
     )
   },
 }
