@@ -39,34 +39,54 @@ class MarketStateDetector:
 
     def _detect_uncached(self) -> str:
         try:
-            from config.database import DatabaseConfig
-            db = DatabaseConfig.get_database()
-            klines = []
-            for code in _INDEX_CODES:
-                klines = list(db["kline"].find(
-                    {"code": code}, {"_id": 0, "date": 1, "close": 1},
-                ).sort("date", -1).limit(80))
-                if klines:
-                    break
-            # 倒序（新→旧）
-            closes = [float(k.get("close") or 0) for k in klines if k.get("close")]
-            if len(closes) < 60:
-                return "volatile"
-            cur = closes[0]
-            ma20 = sum(closes[:20]) / 20
-            ma60 = sum(closes[:60]) / 60
-            if len(closes) > 20 and closes[20] > 0:
-                ret20 = (cur - closes[20]) / closes[20] * 100
-            else:
-                ret20 = 0.0
-            if cur > ma20 > ma60 and ret20 > 5:
-                return "bull"
-            if cur < ma20 < ma60 and ret20 < -5:
-                return "bear"
-            return "volatile"
+            return self._classify(self._index_closes())
         except Exception as e:
             logger.warning(f"[fusion] 市场状态检测失败，回退 volatile: {e}")
             return "volatile"
+
+    def _index_closes(self) -> list:
+        """取上证指数最近 ~80 根收盘价（倒序：新→旧）。
+        优先读 kline 库（将来若采了指数 K 线直接用、快），库里没有则实时拉新浪上证指数。
+        """
+        # 1) 先读库
+        try:
+            from config.database import DatabaseConfig
+            db = DatabaseConfig.get_database()
+            for code in _INDEX_CODES:
+                rows = list(db["kline"].find(
+                    {"code": code}, {"_id": 0, "date": 1, "close": 1},
+                ).sort("date", -1).limit(80))
+                cs = [float(r.get("close") or 0) for r in rows if r.get("close")]
+                if len(cs) >= 60:
+                    return cs
+        except Exception:
+            pass
+        # 2) 库里没有 → 实时拉新浪上证指数（akshare，与项目其他采集同源）
+        try:
+            import akshare as ak
+            df = ak.stock_zh_index_daily(symbol="sh000001")
+            if df is not None and not df.empty and "close" in df.columns:
+                # df 按 date 升序，转成倒序（新→旧）取最近 80 根
+                cs = [float(x) for x in df["close"].tolist() if x is not None]
+                return list(reversed(cs[-80:]))
+        except Exception as e:
+            logger.warning(f"[fusion] 实时拉上证指数失败，回退 volatile: {e}")
+        return []
+
+    @staticmethod
+    def _classify(closes: list) -> str:
+        """按收盘价（倒序：新→旧）判定牛/熊/震荡。纯函数，便于测试。"""
+        if len(closes) < 60:
+            return "volatile"
+        cur = closes[0]
+        ma20 = sum(closes[:20]) / 20
+        ma60 = sum(closes[:60]) / 60
+        ret20 = (cur - closes[20]) / closes[20] * 100 if (len(closes) > 20 and closes[20] > 0) else 0.0
+        if cur > ma20 > ma60 and ret20 > 5:
+            return "bull"
+        if cur < ma20 < ma60 and ret20 < -5:
+            return "bear"
+        return "volatile"
 
     def get_weights(self, state: str) -> dict:
         """优先读被 WeightOptimizer 更新过的权重，否则用静态预设。"""
@@ -88,3 +108,16 @@ class MarketStateDetector:
             "bear": "熊市（防御为主，基本面和估值权重上调）",
             "volatile": "震荡市（均衡配置）",
         }.get(state, "震荡市（均衡配置）")
+
+
+if __name__ == "__main__":
+    # 冒烟自检：市场状态判定（纯函数，closes 倒序 新→旧）
+    M = MarketStateDetector
+    bull = [100 - i * 0.5 for i in range(80)]   # 最新最高、越旧越低 → 上涨
+    bear = [100 + i * 0.5 for i in range(80)]   # 最新最低、越旧越高 → 下跌
+    flat = [100 + (i % 2) for i in range(80)]   # 横盘
+    assert M._classify(bull) == "bull", M._classify(bull)
+    assert M._classify(bear) == "bear", M._classify(bear)
+    assert M._classify(flat) == "volatile", M._classify(flat)
+    assert M._classify([100] * 30) == "volatile"   # 数据不足
+    print("market_state self-check OK")
