@@ -52,10 +52,20 @@
             <div class="fp-field fp-field-wide">
               <label>
                 叠加策略
-                <el-tooltip placement="top" content="把命中你认同风格策略的股票加「共识分」(每多1个来源+3，最多+9)。建议选 2-3 个，不是越多越好；不选=纯全市场量化。">
+                <el-tooltip placement="top" content="把命中你认同风格策略的股票加「协同分」(每多1个来源+3，最多+9)。建议选 2-3 个，不是越多越好；不选=纯全市场量化。">
                   <el-icon class="fp-help"><QuestionFilled /></el-icon>
                 </el-tooltip>
               </label>
+              <div class="fp-combos">
+                <span class="fp-combo-hint">推荐组合</span>
+                <el-tag class="fp-combo" type="warning" effect="plain" round @click="applyCombo('market')">
+                  🎯 跟随当前{{ stateText(marketState?.state) }}
+                </el-tag>
+                <el-tag class="fp-combo" effect="plain" round @click="applyCombo('value')">🛡️ 稳健价值</el-tag>
+                <el-tag class="fp-combo" effect="plain" round @click="applyCombo('growth')">🚀 进攻成长</el-tag>
+                <el-tag class="fp-combo" effect="plain" round @click="applyCombo('short')">⚡ 短线博弈</el-tag>
+                <el-button v-if="selectedStrategyIds.length" link size="small" @click="selectedStrategyIds = []">清空</el-button>
+              </div>
               <el-select v-model="selectedStrategyIds" multiple collapse-tags collapse-tags-tooltip
                          placeholder="不选 = 纯全市场量化初筛" size="small" filterable popper-class="fp-opt-popper">
                 <el-option v-for="s in strategies" :key="s._id" :label="s.name" :value="s._id">
@@ -175,17 +185,38 @@
             <el-table-column prop="factor_score" label="因子分" width="90" sortable align="center">
               <template #default="{ row }">{{ row.factor_score.toFixed(1) }}</template>
             </el-table-column>
-            <el-table-column label="辩论±" width="90" align="center">
+            <el-table-column width="96" align="center">
+              <template #header>
+                <span class="fp-th">辩论±
+                  <el-tooltip placement="top" content="多投资流派(价值/成长/趋势…)对该股投票的一致看多程度，范围 ±15 分。与「来源」无关，不叠加策略也会有值。">
+                    <el-icon class="fp-help"><QuestionFilled /></el-icon>
+                  </el-tooltip>
+                </span>
+              </template>
               <template #default="{ row }">
                 <span :class="bonusClass(row.debate_bonus)">{{ fmtBonus(row.debate_bonus) }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="共识±" width="90" align="center">
+            <el-table-column width="96" align="center">
+              <template #header>
+                <span class="fp-th">协同±
+                  <el-tooltip placement="top" content="被多少条选股途径「共同选中」的加分：每多 1 个来源 +3，最多 +9。只被量化选中=0；在「高级」里叠加策略后才会 >0。">
+                    <el-icon class="fp-help"><QuestionFilled /></el-icon>
+                  </el-tooltip>
+                </span>
+              </template>
               <template #default="{ row }">
                 <span :class="bonusClass(row.source_bonus)">{{ fmtBonus(row.source_bonus) }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="来源" width="90" align="center">
+            <el-table-column width="90" align="center">
+              <template #header>
+                <span class="fp-th">来源
+                  <el-tooltip placement="top" content="选中该股的途径数。quant=全市场量化初筛(基础，人人有)；叠加策略后会增加策略来源。鼠标悬停看具体是哪些。">
+                    <el-icon class="fp-help"><QuestionFilled /></el-icon>
+                  </el-tooltip>
+                </span>
+              </template>
               <template #default="{ row }">
                 <el-tooltip :content="(row.sources || []).join('、')" placement="top">
                   <el-tag size="small" :type="row.source_count > 1 ? 'success' : 'info'" effect="plain">
@@ -344,6 +375,31 @@ const selectedPhilosophyIds = ref<string[]>([])
 const strategies = ref<any[]>([])
 const philosophies = ref<any[]>([])
 const advancedOpen = ref<string[]>([])  // 高级选项默认折叠
+
+// 推荐策略组合（按 preset 策略名搭配）。点击一键填入，免去从一堆策略里挑。
+const COMBOS: Record<string, { label: string; names: string[] }> = {
+  value:  { label: '稳健价值', names: ['QARP 质量价值', '红利低波防御', '五因子增强'] },
+  growth: { label: '进攻成长', names: ['GARP 成长价值', '因子动量轮动', '行业轮动先锋'] },
+  short:  { label: '短线博弈', names: ['交易型阿尔法', '行业轮动先锋'] },
+}
+function comboByMarket(): string {
+  const s = marketState.value?.state
+  if (s === 'bull') return 'growth'   // 牛市进攻
+  if (s === 'bear') return 'value'    // 熊市防御
+  return 'value'                       // 震荡偏稳健
+}
+function applyCombo(key: string) {
+  const realKey = key === 'market' ? comboByMarket() : key
+  const combo = COMBOS[realKey]
+  if (!combo) return
+  if (!strategies.value.length) { ElMessage.warning('策略列表尚未加载'); return }
+  const ids = strategies.value.filter(s => combo.names.includes(s.name)).map(s => s._id)
+  if (!ids.length) { ElMessage.warning('未匹配到对应策略'); return }
+  selectedStrategyIds.value = ids
+  if (!advancedOpen.value.includes('adv')) advancedOpen.value = ['adv']
+  const byMarket = key === 'market' ? `（按当前${stateText(marketState.value?.state)}）` : ''
+  ElMessage.success(`已应用「${combo.label}」组合${byMarket}：${combo.names.join('、')}`)
+}
 
 const advSummary = computed(() => {
   const s = selectedStrategyIds.value.length
@@ -571,6 +627,11 @@ onUnmounted(() => { stopProgressSSE(); stopProgressPolling() })
 .fp-adv-title { font-size: 13px; color: var(--text-primary); margin-right: 10px; }
 .fp-adv-hint { font-size: 12px; color: var(--text-secondary); }
 .fp-help { font-size: 13px; color: var(--text-secondary); vertical-align: -2px; margin-left: 2px; cursor: help; }
+.fp-th { display: inline-flex; align-items: center; gap: 2px; }
+.fp-combos { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 2px 0 2px; }
+.fp-combo-hint { font-size: 12px; color: var(--text-secondary); margin-right: 2px; }
+.fp-combo { cursor: pointer; transition: transform .1s; }
+.fp-combo:hover { transform: translateY(-1px); }
 .fp-actions { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
 .fp-progress { margin-top: 14px; }
 .fp-progress-status { margin-top: 6px; font-size: 12px; color: var(--text-secondary); }
