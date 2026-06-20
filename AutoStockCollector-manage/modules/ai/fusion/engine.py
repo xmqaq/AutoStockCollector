@@ -486,8 +486,9 @@ class FusionPickerEngine:
         return out, deep_codes
 
     def _run_debates(self, codes, philosophy_ids, lo=72, hi=88) -> Dict[str, tuple]:
-        from api.routes.strategy_pick import (
-            _get_philosophy_signals, _build_debate_consensus,
+        from modules.ai.fusion._legacy_helpers import (
+            fusion_get_philosophy_signals as _get_philosophy_signals,
+            fusion_build_debate_consensus as _build_debate_consensus,
         )
         results: Dict[str, tuple] = {}
         total = max(1, len(codes))
@@ -611,7 +612,9 @@ class FusionPickerEngine:
 
     def _summary(self, picks) -> str:
         try:
-            from api.routes.strategy_pick import _generate_debate_summary
+            from modules.ai.fusion._legacy_helpers import (
+                fusion_generate_debate_summary as _generate_debate_summary,
+            )
             debate_results = [{
                 "code": p["code"], "name": p.get("name", ""),
                 "signals": p.get("debate_signals", []),
