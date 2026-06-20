@@ -169,9 +169,7 @@ const menuGroups = computed((): MenuGroup[] => [
     icon: MagicStick,
     children: [
       { key: '/ai-monitor',      label: 'AI实时监控',     icon: Monitor },
-      { key: '/strategy-pick',   label: '策略选股',       icon: Operation },
       { key: '/fusion-pick',     label: 'AI 智选',        icon: MagicStick },
-      { key: '/ai-picker',       label: '量化选股',       icon: TrendCharts },
       { key: '/stock-analysis',  label: '个股深度分析',    icon: Search },
     ],
   },

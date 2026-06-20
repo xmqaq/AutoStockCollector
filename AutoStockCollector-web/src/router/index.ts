@@ -49,12 +49,6 @@ const router = createRouter({
           meta: { title: '个股深度分析' },
         },
         {
-          path: 'ai-picker',
-          name: 'AIPicker',
-          component: () => import('@/views/AIPicker/index.vue'),
-          meta: { title: '量化选股' },
-        },
-        {
           path: 'ai-keys',
           name: 'AIKeys',
           component: () => import('@/views/AIKey/index.vue'),
@@ -113,12 +107,6 @@ const router = createRouter({
           name: 'Ranking',
           component: () => import('@/views/Ranking/index.vue'),
           meta: { title: '盈利排行榜' },
-        },
-        {
-          path: 'strategy-pick',
-          name: 'StrategyPick',
-          component: () => import('@/views/StrategyPick/index.vue'),
-          meta: { title: '策略选股' },
         },
         {
           path: 'fusion-pick',
