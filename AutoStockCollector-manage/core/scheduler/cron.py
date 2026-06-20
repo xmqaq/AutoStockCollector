@@ -891,9 +891,8 @@ def start_daily_jobs() -> None:
         _make_job("AI监控 09:30", job_ai_monitor, "daily", 9,  30, task_type="ai_monitor"),
         _make_job("AI监控 12:00", job_ai_monitor, "daily", 12, 0,  task_type="ai_monitor"),
         _make_job("AI监控 15:00", job_ai_monitor, "daily", 15, 0,  task_type="ai_monitor"),
-        _make_job("策略选股 08:55",     job_strategy_pick,         "daily", 8, 55, task_type="strategy_pick"),
-        _make_job("策略选股 12:00",     job_strategy_pick,         "daily", 12, 0, task_type="strategy_pick"),
-        _make_job("策略选股 14:30",     job_strategy_pick,         "daily", 14, 30, task_type="strategy_pick"),
+        # 策略选股 08:55/12:00/14:30 已下线：前端入口与页面移除，输出仅该页面消费，停掉定时空跑。
+        # job_strategy_pick 函数体暂留，待旧选股系统整体退役时一并清理。
         _make_job("融合选股 16:20",      job_fusion_pick_daily,    "daily",    16, 20,
                   task_type="fusion_pick"),
         _make_job("融合选股 快速盘中",   job_fusion_pick_quick,    "interval",
