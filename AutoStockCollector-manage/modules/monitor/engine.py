@@ -293,224 +293,153 @@ class MonitorEngine:
         self._buy_decider = BuyDecider()
         self._hold_decider = HoldDecider()
 
-    def refresh_all(self, user_id: str = "default") -> Dict[str, Any]:
-        """长线/短线双轨道智能调仓监控：选股 → 分析 → 生成两轨调仓建议 + 异动预警。"""
-        from modules.monitor.config import MonitorConfig
+    def refresh_all(self, user_id: str = "default", sync_fusion: bool = True) -> Dict[str, Any]:
+        """对「自选股 + 持仓 + AI智选候选」统一做买卖点分析，并维护监控生命周期。
+        sync_fusion=False 时跳过智选追踪/过期清理（盘中刷新用，只更新持仓+自选买卖点）。"""
+        from modules.monitor.lifecycle import MonitorLifecycle
         from modules.paper_trading.account import PaperAccount
         from modules.paper_trading.trade_engine import TradeEngine
 
-        cfg = MonitorConfig().get(user_id)
-        long_cfg, short_cfg = cfg["long_term"], cfg["short_term"]
+        lifecycle = MonitorLifecycle()
+        positions_synced = lifecycle.sync_positions(user_id)
+        if sync_fusion:
+            fusion_synced = lifecycle.sync_fusion_pick_tracking(user_id)
+            expired_cleaned = lifecycle.cleanup_expired_fusion_picks()
+        else:
+            fusion_synced = {"skipped": True}
+            expired_cleaned = {"skipped": True}
+
+        stocks = self._collect_stocks(user_id)
+
+        analyzed = 0
+        advice: List[Dict[str, Any]] = []
+        if stocks:
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                fut_map = {pool.submit(self._analyze_one, self._to_analyze_input(s)): s
+                           for s in stocks}
+                for fut in as_completed(fut_map):
+                    s = fut_map[fut]
+                    try:
+                        result = fut.result()
+                    except Exception as e:
+                        logger.error(f"Analyze {s.get('code')} failed: {e}")
+                        continue
+                    if not result:
+                        continue
+                    self._attach_lifecycle_fields(result, s)
+                    self._storage.upsert_signal(result["code"], result)
+                    advice.append(self._advice_item(result))
+                    analyzed += 1
 
         account = PaperAccount().get(user_id) or {"cash_balance": 0}
-        cash = account.get("cash_balance", 0) or 0
         try:
             positions, _ = TradeEngine().get_positions(user_id)
         except Exception as e:
             logger.error(f"Get positions failed for {user_id}: {e}")
             positions = []
 
-        position_value = sum(p.get("market_value", 0) or 0 for p in positions)
-        capital = cash + position_value
-        long_available = capital * long_cfg["fund_ratio"]
-        short_available = capital * short_cfg["fund_ratio"]
-
-        long_picks = self._select_long_term(long_cfg, positions)
-        short_picks = self._select_short_term(short_cfg, positions)
-
-        # 对候选股 + 持仓股逐只生成深度分析，缓存供 _build_track_advice 复用
-        self._last_analyses: Dict[str, Any] = {}
-        pos_by_code = {p["code"]: p for p in positions}
-        targets, seen = [], set()
-        for pick in long_picks + short_picks:
-            code = pick.get("code")
-            if not code or code in seen:
-                continue
-            seen.add(code)
-            held = pos_by_code.get(code)
-            targets.append(self._target_stock(code, pick.get("name", ""),
-                                               pick.get("track", ""), held))
-        for code, pos in pos_by_code.items():
-            if code in seen:
-                continue
-            seen.add(code)
-            targets.append(self._target_stock(code, pos.get("name", ""), "", pos))
-
-        analyzed = 0
-        if targets:
-            with ThreadPoolExecutor(max_workers=8) as pool:
-                fut_map = {pool.submit(self._analyze_one, s): s for s in targets}
-                for fut in as_completed(fut_map):
-                    s = fut_map[fut]
-                    try:
-                        result = fut.result()
-                        if result:
-                            self._last_analyses[s["code"]] = result
-                            self._storage.upsert_signal(s["code"], result)
-                            analyzed += 1
-                    except Exception as e:
-                        logger.error(f"Analyze {s.get('code')} failed: {e}")
-
-        long_advice = self._build_track_advice(
-            long_picks, positions, long_available, long_cfg["max_positions"], "long_term")
-        short_advice = self._build_track_advice(
-            short_picks, positions, short_available, short_cfg["max_positions"], "short_term")
-        swap_out_advice = self._build_swap_out(long_picks, short_picks, positions)
-        anomaly_alerts = self._get_anomaly_alerts(account, positions)
-        portfolio_summary = self._portfolio_summary(account, positions, cfg)
+        anomaly_alerts = self._get_anomaly_alerts(account, positions, stocks)
+        portfolio_summary = self._portfolio_summary(account, positions, stocks)
 
         timestamp = datetime.now().isoformat()
-        # 复用 upsert_signal 存为一条合成"组合建议"文档，供 /portfolio 路由回读最近一次结果
+        lifecycle_summary = {
+            "positions_synced": positions_synced,
+            "fusion_tracking_synced": fusion_synced,
+            "expired_cleaned": expired_cleaned,
+        }
+        # 合成"组合建议"文档，供 /portfolio 路由回读最近一次结果
         self._storage.upsert_signal(f"__monitor_portfolio_{user_id}__", {
             "code": f"__monitor_portfolio_{user_id}__",
             "type": "portfolio_advice",
             "user_id": user_id,
-            "long_term_advice": long_advice,
-            "short_term_advice": short_advice,
-            "swap_out_advice": swap_out_advice,
+            "advice": advice,
             "portfolio_summary": portfolio_summary,
             "anomaly_alerts": anomaly_alerts,
+            "lifecycle_summary": lifecycle_summary,
             "analyzed": analyzed,
             "timestamp": timestamp,
         })
 
         logger.info(f"Monitor refresh done user={user_id}: analyzed={analyzed}, "
-                    f"long={len(long_advice)}, short={len(short_advice)}, alerts={len(anomaly_alerts)}")
+                    f"advice={len(advice)}, alerts={len(anomaly_alerts)}")
         return {
             "success": True,
-            "long_term_advice": long_advice,
-            "short_term_advice": short_advice,
-            "swap_out_advice": swap_out_advice,
+            "advice": advice,
             "portfolio_summary": portfolio_summary,
             "anomaly_alerts": anomaly_alerts,
+            "lifecycle_summary": lifecycle_summary,
             "analyzed": analyzed,
             "timestamp": timestamp,
         }
 
     @staticmethod
-    def _target_stock(code: str, name: str, track: str, held: Optional[Dict]) -> Dict[str, Any]:
-        """构建 _analyze_one 入参；持仓股标 type=持仓 并带上仓位字段。"""
-        if held:
-            return {
-                "code": code,
-                "name": held.get("name", "") or name,
-                "type": "持仓",
-                "shares": held.get("shares", 0),
-                "avg_cost": held.get("avg_cost", 0),
-                "market_value": held.get("market_value", 0),
-                "pnl": (held.get("pnl_percent", 0) or 0) / 100,  # _analyze_one 用小数口径
-            }
-        return {"code": code, "name": name, "type": track or "候选"}
-
-    def _select_long_term(self, cfg: Dict[str, Any], current_positions: List[Dict]) -> List[Dict]:
-        from modules.ai.engines.picker import PickerEngine
-        try:
-            result = PickerEngine().run(
-                strategy="long_term",
-                top_n=cfg["max_positions"],
-                candidate_pool=cfg["candidate_pool"],
-                weight_overrides=cfg["weight_overrides"],
-                filter_overrides={"roe_min": cfg["roe_min"],
-                                  "revenue_growth_min": cfg["revenue_growth_min"]},
-            )
-            picks = result.get("picks", []) or []
-        except Exception as e:
-            logger.error(f"Long-term selection failed: {e}")
-            picks = []
-        for p in picks:
-            p["track"] = "long_term"
-        return picks
-
-    def _select_short_term(self, cfg: Dict[str, Any], current_positions: List[Dict]) -> List[Dict]:
-        from modules.ai.engines.picker import PickerEngine
-        try:
-            result = PickerEngine().run(
-                strategy="short_term",
-                top_n=cfg["max_positions"],
-                candidate_pool=cfg["candidate_pool"],
-                weight_overrides=cfg["weight_overrides"],
-                filter_overrides={"main_net_inflow_min": cfg["main_net_inflow_min"],
-                                  "news_positive_min": cfg["news_positive_min"]},
-            )
-            picks = result.get("picks", []) or []
-        except Exception as e:
-            logger.error(f"Short-term selection failed: {e}")
-            picks = []
-        for p in picks:
-            p["track"] = "short_term"
-        return picks
-
-    def _build_track_advice(self, picks: List[Dict], current_positions: List[Dict],
-                            available_cash: float, max_positions: int, track: str) -> List[Dict]:
-        analyses = getattr(self, "_last_analyses", {})
-        pos_by_code = {p["code"]: p for p in current_positions}
-        suggested = round(available_cash / max_positions, 2) if max_positions else 0.0
-        advice: List[Dict] = []
-        for pick in picks[:max_positions]:
-            code = pick.get("code")
-            a = analyses.get(code, {})
-            pp = a.get("price_prediction", {}) or {}
-            ta = a.get("trading_advice", {}) or {}
-            composite = round(pick.get("composite", 0) or 0, 1)
-            if code in pos_by_code:
-                # 已有持仓：复用 _analyze_one 的交易建议（可能是 持有/加仓/减仓/卖出）
-                action = ta.get("action", "持有")
-                reason = ta.get("reason") or "维持持仓"
-            else:
-                action = "买入"
-                reason = pick.get("recommendation") or f"{track}新晋候选(综合{composite})，建议建仓"
-            advice.append(self._advice_item(code, pick.get("name", "") or a.get("name", ""),
-                                            track, action, reason, pp, suggested, composite))
-        return advice
-
-    def _build_swap_out(self, long_picks: List[Dict], short_picks: List[Dict],
-                        positions: List[Dict]) -> List[Dict]:
-        """换股建议：持仓未进入任一轨道候选 → 被更高评分标的替代，建议调出。
-        在组合层判定（而非各轨道），避免持仓在两条轨道里被重复/错误标记换股。"""
-        analyses = getattr(self, "_last_analyses", {})
-        kept = {p.get("code") for p in long_picks} | {p.get("code") for p in short_picks}
-        out: List[Dict] = []
-        for pos in positions:
-            code = pos.get("code")
-            if code in kept:
-                continue
-            a = analyses.get(code, {})
-            pp = a.get("price_prediction", {}) or {}
-            composite = round((a.get("composite", {}) or {}).get("score", 0) or 0, 1)
-            out.append(self._advice_item(
-                code, pos.get("name", ""), "swap_out", "换股",
-                "未入选长线/短线最新候选，已被更高评分标的替代，建议调出",
-                pp, 0.0, composite))
-        return out
-
-    @staticmethod
-    def _advice_item(code, name, track, action, reason, pp, suggested, composite) -> Dict:
+    def _to_analyze_input(s: Dict[str, Any]) -> Dict[str, Any]:
+        """把 _collect_stocks 条目转成 _analyze_one 入参；持仓标 type=持仓。"""
+        is_pos = "position" in (s.get("sources") or [])
         return {
-            "code": code,
-            "name": name,
-            "track": track,
-            "action": action,
-            "reason": reason,
-            "buy_price_low": round(pp.get("buy_zone_low", 0) or 0, 2),
-            "buy_price_high": round(pp.get("buy_zone_high", 0) or 0, 2),
-            "target_price": round(pp.get("target_price", 0) or 0, 2),
-            "stop_loss": round(pp.get("stop_loss", 0) or 0, 2),
-            "suggested_amount": suggested,
-            "composite_score": composite,
+            "code": s["code"],
+            "name": s.get("name", ""),
+            "type": "持仓" if is_pos else "自选",
+            "shares": s.get("shares", 0),
+            "avg_cost": s.get("avg_cost", 0),
+            "market_value": s.get("market_value", 0),
+            "pnl": s.get("pnl", 0),  # 已是小数口径（见 _collect_stocks）
         }
 
-    def _get_anomaly_alerts(self, account_info: Dict, current_positions: List[Dict]) -> List[Dict]:
-        """主力资金异动：近5日 Z-score 聚合，返回 anomaly_score>60，持仓股优先。
-        逻辑复用 /fund-flow-anomalies 聚合管道。"""
+    @staticmethod
+    def _attach_lifecycle_fields(result: Dict[str, Any], meta: Dict[str, Any]) -> None:
+        """把来源/连续入选/强化信号写入分析结果；连续≥3天插入强化信号文案。"""
+        sources = meta.get("sources", []) or []
+        consecutive = int(meta.get("consecutive_days", 0) or 0)
+        is_fusion = "fusion_pick" in sources
+        strong = is_fusion and consecutive >= 3
+        result["sources"] = sources
+        result["consecutive_days"] = consecutive if is_fusion else 0
+        result["strong_signal"] = strong
+        result["first_selected_at"] = meta.get("first_selected_at", "") or ""
+        if strong:
+            ta = result.get("trading_advice") or {}
+            reasons = list(ta.get("reasons") or [])
+            tip = f"已连续{consecutive}天入选AI智选，关注度持续走高"
+            if tip not in reasons:
+                ta["reasons"] = [tip] + reasons
+            result["trading_advice"] = ta
+
+    @staticmethod
+    def _advice_item(result: Dict[str, Any]) -> Dict[str, Any]:
+        """组合建议列表的单项：身份 + 生命周期字段 + 现有 trading_advice 全部字段。
+        前端按 sources 自行分组展示（不再分长短线两个数组）。"""
+        ta = result.get("trading_advice", {}) or {}
+        return {
+            "code": result.get("code"),
+            "name": result.get("name", ""),
+            "price": result.get("price", 0),
+            "sources": result.get("sources", []),
+            "consecutive_days": result.get("consecutive_days", 0),
+            "strong_signal": result.get("strong_signal", False),
+            "first_selected_at": result.get("first_selected_at", ""),
+            **ta,
+        }
+
+    def _get_anomaly_alerts(self, account_info: Dict, current_positions: List[Dict],
+                            monitor_stocks: Optional[List[Dict]] = None) -> List[Dict]:
+        """主力资金异动：近 N 日 Z-score 聚合，anomaly_score 超阈值才返回。
+        阈值/窗口可配（settings）。持仓股优先，其次监控对象，再其余。"""
         try:
             import numpy as np
             from datetime import timedelta
+            from config.settings import settings
+
+            threshold = getattr(settings, "MONITOR_ANOMALY_THRESHOLD", 60)
+            window_days = getattr(settings, "MONITOR_ANOMALY_WINDOW_DAYS", 5)
 
             def _bare(c: str) -> str:
                 return c[2:] if c[:2] in ("SH", "SZ") else c
 
             hold = {_bare(p.get("code", "")) for p in current_positions}
-            days = 5
+            sources_by_bare = {_bare(s.get("code", "")): (s.get("sources") or [])
+                               for s in (monitor_stocks or [])}
+            days = window_days
             cutoff = (datetime.now() - timedelta(days=days * 2)).strftime("%Y-%m-%d")
             pipe = [
                 {"$match": {"date": {"$gte": cutoff}}},
@@ -551,7 +480,7 @@ class MonitorEngine:
                 latest_amount = float(doc["latest_amount"] or 1)
                 net_ratio = latest_net / latest_amount if latest_amount > 0 else 0
                 anomaly_score = abs(z_score) * 40 + abs(consec) * 8 + (20 if reversal else 0) + abs(net_ratio) * 10
-                if anomaly_score <= 60:
+                if anomaly_score <= threshold:
                     continue
 
                 anomaly_type = "大幅流入" if latest_net > 0 and z_score > 1.5 else \
@@ -559,7 +488,8 @@ class MonitorEngine:
                                "连续流入" if consec >= 3 else \
                                "连续流出" if consec <= -3 else \
                                "趋势反转" if reversal else "关注"
-                results.append({
+                bare = _bare(code)
+                item = {
                     "code": code,
                     "name": doc.get("name", code),
                     "latest_date": doc["latest_date"],
@@ -569,29 +499,46 @@ class MonitorEngine:
                     "reversal": reversal,
                     "anomaly_score": round(anomaly_score, 1),
                     "anomaly_type": anomaly_type,
-                    "is_holding": _bare(code) in hold,
-                })
-            results.sort(key=lambda r: (not r["is_holding"], -r["anomaly_score"]))
+                    "is_holding": bare in hold,
+                }
+                if bare in sources_by_bare:
+                    item["in_monitor"] = True
+                    item["monitor_sources"] = sources_by_bare[bare]
+                results.append(item)
+            # 排序优先级：持仓 > 监控对象 > 其余异动股
+            results.sort(key=lambda r: (not r["is_holding"],
+                                        not r.get("in_monitor", False),
+                                        -r["anomaly_score"]))
             return results
         except Exception as e:
             logger.error(f"Anomaly alerts failed: {e}")
             return []
 
-    def _portfolio_summary(self, account: Dict, positions: List[Dict], cfg: Dict) -> Dict:
+    def _portfolio_summary(self, account: Dict, positions: List[Dict],
+                           stocks: List[Dict]) -> Dict:
+        """组合概览：总市值 + 三来源数量分布 + 重叠数（不再有长短线资金配比）。"""
         cash = (account or {}).get("cash_balance", 0) or 0
         position_value = sum(p.get("market_value", 0) or 0 for p in positions)
         total_value = cash + position_value
-        long_ratio = cfg["long_term"]["fund_ratio"]
-        short_ratio = cfg["short_term"]["fund_ratio"]
+
+        def codes_with(src):
+            return {s["code"] for s in stocks if src in (s.get("sources") or [])}
+
+        pos_codes = codes_with("position")
+        watch_codes = codes_with("watchlist")
+        fusion_codes = codes_with("fusion_pick")
+        overlap = ((pos_codes & watch_codes) | (pos_codes & fusion_codes)
+                   | (watch_codes & fusion_codes))
         return {
             "total_value": round(total_value, 2),
             "cash": round(cash, 2),
             "position_value": round(position_value, 2),
-            "long_available": round(total_value * long_ratio, 2),
-            "short_available": round(total_value * short_ratio, 2),
-            "long_ratio": long_ratio,
-            "short_ratio": short_ratio,
-            "position_count": len(positions),
+            "monitor_count": len(stocks),
+            "position_count": len(pos_codes),
+            "watchlist_count": len(watch_codes),
+            "fusion_pick_count": len(fusion_codes),
+            "overlap_count": len(overlap),
+            "all_three_count": len(pos_codes & watch_codes & fusion_codes),
         }
 
     def refresh_stock(self, code: str) -> Optional[Dict[str, Any]]:
@@ -607,100 +554,99 @@ class MonitorEngine:
             self._storage.save_history(code, result)
         return result
 
-    def _collect_stocks(self) -> List[Dict[str, Any]]:
-        """收集需要分析的股票: 持仓 + 自选 + 策略选股 + 量化选股"""
-        seen = set()
-        stocks = []
+    def _collect_stocks(self, user_id: str = "default") -> List[Dict[str, Any]]:
+        """汇总三个来源（持仓 + 自选股 + AI智选最新一轮），按 code 去重并合并 sources。
+        返回每项带 sources 列表 + 持仓/智选附带字段，供 refresh_all 统一分析。"""
+        merged: Dict[str, Dict[str, Any]] = {}
 
+        def _entry(code: str, name: str = "") -> Dict[str, Any]:
+            e = merged.get(code)
+            if e is None:
+                e = {"code": code, "name": name, "sources": [],
+                     "shares": 0, "avg_cost": 0, "market_value": 0, "pnl": 0,
+                     "fusion_score": 0, "consecutive_days": 0, "first_selected_at": ""}
+                merged[code] = e
+            if name and not e.get("name"):
+                e["name"] = name
+            return e
+
+        def _add_source(e: Dict[str, Any], src: str) -> None:
+            if src not in e["sources"]:
+                e["sources"].append(src)
+
+        # a) 持仓：模拟盘 TradeEngine（仓位信息以此为准）+ 兼容实盘 positions 集合
         try:
-            positions = list(self._db["positions"].find())
+            from modules.paper_trading.trade_engine import TradeEngine
+            positions, _ = TradeEngine().get_positions(user_id)
             for p in positions:
-                code = p.get("code", "")
-                if code and code not in seen:
-                    seen.add(code)
-                    stocks.append({
-                        "code": code,
-                        "name": p.get("name", ""),
-                        "type": "持仓",
-                        "shares": p.get("shares", 0),
-                        "avg_cost": p.get("avg_cost", 0),
-                        "market_value": p.get("market_value", 0),
-                        "pnl": p.get("pnl", 0),
-                    })
+                code = p.get("code")
+                if not code or (p.get("shares", 0) or 0) <= 0:
+                    continue
+                e = _entry(code, p.get("name", ""))
+                _add_source(e, "position")
+                e["shares"] = p.get("shares", 0)
+                e["avg_cost"] = p.get("avg_cost", 0)
+                e["market_value"] = p.get("market_value", 0)
+                e["pnl"] = (p.get("pnl_percent", 0) or 0) / 100  # _analyze_one 用小数口径
         except Exception as e:
-            logger.error(f"Get positions failed: {e}")
-
+            logger.error(f"_collect_stocks paper positions failed: {e}")
         try:
-            accounts = list(self._db["paper_account"].find())
-            for acct in accounts:
-                holdings = acct.get("holdings", acct.get("positions", []))
-                for h in holdings:
-                    code = h.get("code", "")
-                    if code and code not in seen:
-                        seen.add(code)
-                        stocks.append({
-                            "code": code,
-                            "name": h.get("name", ""),
-                            "type": "持仓",
-                        })
+            for p in self._db["positions"].find():
+                code = p.get("code")
+                if not code or (p.get("shares", 0) or 0) <= 0:
+                    continue
+                e = _entry(code, p.get("name", ""))
+                _add_source(e, "position")
+                if not e["shares"]:
+                    e["shares"] = p.get("shares", 0)
+                    e["avg_cost"] = p.get("avg_cost", 0)
+                    e["market_value"] = p.get("market_value", 0)
+                    e["pnl"] = p.get("pnl", 0)
         except Exception as e:
-            logger.error(f"Get paper_account failed: {e}")
+            logger.error(f"_collect_stocks legacy positions failed: {e}")
 
+        # b) 自选股
         try:
-            items = self._watchlist.find_many({"enabled": True})
-            for item in items:
-                code = item.get("code", "")
-                if code and code not in seen:
-                    seen.add(code)
-                    stocks.append({
-                        "code": code,
-                        "name": item.get("name", item.get("A股简称", "")),
-                        "type": "自选",
-                    })
+            for w in self._watchlist.get_user_watchlist(user_id):
+                code = w.get("code")
+                if not code:
+                    continue
+                _add_source(_entry(code, w.get("name", w.get("A股简称", ""))), "watchlist")
         except Exception as e:
-            logger.error(f"Get watchlist failed: {e}")
+            logger.error(f"_collect_stocks watchlist failed: {e}")
 
-        # 长线/短线候选：PickerEngine.run 已把结果按 strategy 存入 ai_pick_results，
-        # 先按 long_term/short_term 打专属标签，再走下面的通用 ai_pick_results 兜底。
+        # c) AI 智选最新一轮 picks
         try:
-            for r in self._db["ai_pick_results"].find({"strategy": {"$in": ["long_term", "short_term"]}}):
-                label = "长线候选" if r.get("strategy") == "long_term" else "短线候选"
-                for pick in (r.get("picks") or []):
-                    code = pick.get("code", "")
-                    if code and code not in seen:
-                        seen.add(code)
-                        stocks.append({"code": code, "name": pick.get("name", ""), "type": label})
+            latest = self._db["fusion_pick_results"].find_one(
+                {}, sort=[("created_at", -1)])
+            for pick in ((latest or {}).get("picks") or []):
+                code = pick.get("code")
+                if not code:
+                    continue
+                e = _entry(code, pick.get("name", ""))
+                _add_source(e, "fusion_pick")
+                e["fusion_score"] = pick.get("fusion_score", 0)
+                if pick.get("track"):
+                    e["track"] = pick["track"]
         except Exception as e:
-            logger.error(f"Get long/short candidates failed: {e}")
+            logger.error(f"_collect_stocks fusion picks failed: {e}")
 
+        # 补充智选追踪字段（consecutive_days / first_selected_at 由 lifecycle 写入 monitor_signals）
         try:
-            for r in self._db["ai_pick_results"].find({}):
-                for pick in (r.get("picks") or []):
-                    code = pick.get("code", "")
-                    if code and code not in seen:
-                        seen.add(code)
-                        stocks.append({
-                            "code": code,
-                            "name": pick.get("name", ""),
-                            "type": "策略选股",
-                        })
+            codes = list(merged.keys())
+            if codes:
+                for d in self._db["monitor_signals"].find(
+                        {"code": {"$in": codes}},
+                        {"code": 1, "consecutive_days": 1, "first_selected_at": 1}):
+                    e = merged.get(d.get("code"))
+                    if e:
+                        e["consecutive_days"] = d.get("consecutive_days", 0) or 0
+                        e["first_selected_at"] = d.get("first_selected_at", "") or ""
         except Exception as e:
-            logger.error(f"Get ai_pick_results failed: {e}")
+            logger.error(f"_collect_stocks tracking enrich failed: {e}")
 
-        try:
-            for f in self._db["factor_cache"].find({}):
-                code = f.get("code", "")
-                if code and code not in seen:
-                    seen.add(code)
-                    stocks.append({
-                        "code": code,
-                        "name": f.get("name", f.get("A股简称", "")),
-                        "type": "量化选股",
-                    })
-        except Exception as e:
-            logger.error(f"Get factor_cache failed: {e}")
-
-        logger.info(f"Collected {len(stocks)} stocks to analyze ({len(seen)} unique)")
+        stocks = list(merged.values())
+        logger.info(f"Collected {len(stocks)} stocks to monitor (user={user_id})")
         return stocks
 
     def _analyze_one(self, stock: Dict[str, Any]) -> Optional[Dict[str, Any]]:

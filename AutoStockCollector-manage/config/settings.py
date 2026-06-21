@@ -132,6 +132,10 @@ class Settings:
         "snapshot_retention_days": 90,
     }
 
+    # AI 监控资金异动检测：阈值与回看窗口可调，不必改代码
+    MONITOR_ANOMALY_THRESHOLD = float(os.getenv("MONITOR_ANOMALY_THRESHOLD", "60"))
+    MONITOR_ANOMALY_WINDOW_DAYS = int(os.getenv("MONITOR_ANOMALY_WINDOW_DAYS", "5"))
+
     @classmethod
     def get_collection_config(cls, collection_type: str) -> Dict:
         configs = {

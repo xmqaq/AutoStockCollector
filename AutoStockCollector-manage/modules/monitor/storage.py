@@ -43,6 +43,34 @@ class MonitorStorage:
         self.db[self.SIGNALS_COL].delete_many({})
         logger.info("Cleared all monitor signals")
 
+    # ── 来源（生命周期）增量更新 ──
+
+    def add_source(self, code: str, source: str) -> None:
+        """在 sources 数组追加一个来源（去重）。文档不存在则不创建
+        （占位创建由 MonitorLifecycle 负责，保持职责单一）。"""
+        self.db[self.SIGNALS_COL].update_one(
+            {"code": code}, {"$addToSet": {"sources": source}}
+        )
+
+    def remove_source(self, code: str, source: str) -> Dict[str, Any]:
+        """从 sources 数组移除一个来源；移除后 sources 为空则删除整条文档。"""
+        self.db[self.SIGNALS_COL].update_one(
+            {"code": code}, {"$pull": {"sources": source}}
+        )
+        doc = self.db[self.SIGNALS_COL].find_one({"code": code}, {"sources": 1})
+        remaining = (doc or {}).get("sources", []) or []
+        if doc is not None and not remaining:
+            self.db[self.SIGNALS_COL].delete_one({"code": code})
+            return {"removed_doc": True, "remaining_sources": []}
+        return {"removed_doc": False, "remaining_sources": remaining}
+
+    def get_signals_by_source(self, source: str) -> List[Dict[str, Any]]:
+        """sources 数组包含指定来源的所有记录。"""
+        docs = list(self.db[self.SIGNALS_COL].find({"sources": source}))
+        for d in docs:
+            d.pop("_id", None)
+        return docs
+
     # ── 信号历史 ──
 
     def save_history(self, code: str, snapshot: Dict[str, Any]):

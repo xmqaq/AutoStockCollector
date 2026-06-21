@@ -8,11 +8,10 @@
       </div>
       <div class="dt-actions">
         <el-button size="small" @click="fetchPortfolio"><el-icon><Refresh /></el-icon> 重新加载</el-button>
-        <el-button size="small" type="primary" @click="openConfig"><el-icon><Setting /></el-icon> 参数配置</el-button>
       </div>
     </div>
 
-    <el-empty v-if="!loading && !data" description="暂无双轨道调仓结果，等待下一次监控刷新（09:30/12:00/15:00）" :image-size="60" />
+    <el-empty v-if="!loading && !data" description="暂无监控结果，AI智选完成后自动刷新（盘中 10:00 / 13:30 / 14:45 增量更新买卖点）" :image-size="60" />
 
     <template v-if="data">
       <!-- portfolio summary -->
@@ -23,95 +22,49 @@
         </el-card>
       </div>
 
-      <!-- two tracks -->
-      <div class="dt-tracks">
-        <div class="dt-track">
-          <div class="dt-track-head">
-            <span class="dt-track-title">长线轨道</span>
-            <el-tag size="small" effect="plain">可用 {{ fmtMoney(data.portfolio_summary.long_available) }}</el-tag>
-          </div>
-          <el-table :data="data.long_term_advice" size="small" empty-text="无长线建议">
-            <el-table-column label="标的" min-width="120">
-              <template #default="{ row }">
-                <span class="dt-name">{{ row.name }}</span>
-                <span class="dt-code">{{ row.code }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="动作" width="76">
-              <template #default="{ row }">
-                <el-tag :type="actionType(row.action)" effect="dark" size="small">{{ row.action }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="评分" width="60" align="right">
-              <template #default="{ row }">{{ row.composite_score?.toFixed(1) }}</template>
-            </el-table-column>
-            <el-table-column label="买入区" width="110" align="center">
-              <template #default="{ row }">{{ zone(row) }}</template>
-            </el-table-column>
-            <el-table-column label="目标/止损" width="110" align="center">
-              <template #default="{ row }">
-                <span class="up">{{ row.target_price || '-' }}</span> /
-                <span class="dn">{{ row.stop_loss || '-' }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="建议金额" width="100" align="right">
-              <template #default="{ row }">{{ fmtMoney(row.suggested_amount) }}</template>
-            </el-table-column>
-            <el-table-column label="理由" min-width="160" show-overflow-tooltip prop="reason" />
-          </el-table>
+      <!-- grouped advice by source -->
+      <div class="dt-section" v-for="g in grouped" :key="g.key">
+        <div class="dt-section-head">
+          <el-tag :type="g.tag" effect="dark" size="small">{{ g.title }}</el-tag>
+          <span class="dt-count">{{ g.rows.length }}</span>
+          <span v-if="g.key === 'position'" class="dt-hint">（强制监控，持仓期间不可移除）</span>
+          <span v-else-if="g.key === 'fusion_pick'" class="dt-hint">（连续3次未入选自动移出）</span>
         </div>
-
-        <div class="dt-track">
-          <div class="dt-track-head">
-            <span class="dt-track-title">短线轨道</span>
-            <el-tag size="small" effect="plain" type="warning">可用 {{ fmtMoney(data.portfolio_summary.short_available) }}</el-tag>
-          </div>
-          <el-table :data="data.short_term_advice" size="small" empty-text="无短线建议">
-            <el-table-column label="标的" min-width="120">
-              <template #default="{ row }">
-                <span class="dt-name">{{ row.name }}</span>
-                <span class="dt-code">{{ row.code }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="动作" width="76">
-              <template #default="{ row }">
-                <el-tag :type="actionType(row.action)" effect="dark" size="small">{{ row.action }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="评分" width="60" align="right">
-              <template #default="{ row }">{{ row.composite_score?.toFixed(1) }}</template>
-            </el-table-column>
-            <el-table-column label="买入区" width="110" align="center">
-              <template #default="{ row }">{{ zone(row) }}</template>
-            </el-table-column>
-            <el-table-column label="目标/止损" width="110" align="center">
-              <template #default="{ row }">
-                <span class="up">{{ row.target_price || '-' }}</span> /
-                <span class="dn">{{ row.stop_loss || '-' }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="建议金额" width="100" align="right">
-              <template #default="{ row }">{{ fmtMoney(row.suggested_amount) }}</template>
-            </el-table-column>
-            <el-table-column label="理由" min-width="160" show-overflow-tooltip prop="reason" />
-          </el-table>
-        </div>
-      </div>
-
-      <!-- swap out -->
-      <div class="dt-section" v-if="data.swap_out_advice?.length">
-        <div class="dt-section-head">换股建议 <el-tag size="small" type="warning" effect="light">{{ data.swap_out_advice.length }}</el-tag></div>
-        <el-table :data="data.swap_out_advice" size="small">
-          <el-table-column label="标的" min-width="140">
+        <el-table :data="g.rows" size="small" :empty-text="`无${g.title}`">
+          <el-table-column label="标的" min-width="200">
             <template #default="{ row }">
               <span class="dt-name">{{ row.name }}</span>
               <span class="dt-code">{{ row.code }}</span>
+              <el-tag v-for="s in row.sources" :key="s" size="small" effect="plain"
+                      :type="srcType(s)" class="src-tag">{{ srcLabel(s) }}</el-tag>
+              <el-tag v-if="row.strong_signal" size="small" type="danger" effect="dark" class="src-tag">🔥连{{ row.consecutive_days }}天</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="评分" width="70" align="right">
-            <template #default="{ row }">{{ row.composite_score?.toFixed(1) }}</template>
+          <el-table-column label="动作" width="76">
+            <template #default="{ row }">
+              <el-tag :type="actionType(row.action)" effect="dark" size="small">{{ row.action }}</el-tag>
+            </template>
           </el-table-column>
-          <el-table-column label="理由" min-width="240" prop="reason" />
+          <el-table-column label="现价" width="72" align="right">
+            <template #default="{ row }">{{ row.price || '-' }}</template>
+          </el-table-column>
+          <el-table-column label="买入区" width="110" align="center">
+            <template #default="{ row }">{{ zone(row) }}</template>
+          </el-table-column>
+          <el-table-column label="目标/止损" width="110" align="center">
+            <template #default="{ row }">
+              <span class="up">{{ row.take_profit || '-' }}</span> /
+              <span class="dn">{{ row.stop_loss || '-' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column v-if="g.key === 'fusion_pick'" label="连续入选" width="84" align="center">
+            <template #default="{ row }">
+              <el-tag v-if="row.consecutive_days > 0" :type="row.strong_signal ? 'danger' : 'info'"
+                      size="small" effect="plain">{{ row.consecutive_days }}天</el-tag>
+              <span v-else>-</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="理由" min-width="180" show-overflow-tooltip prop="reason" />
         </el-table>
       </div>
 
@@ -119,9 +72,10 @@
       <div class="dt-section" v-if="data.anomaly_alerts?.length">
         <div class="dt-section-head">资金异动预警 <el-tag size="small" type="danger" effect="light">{{ data.anomaly_alerts.length }}</el-tag></div>
         <el-table :data="data.anomaly_alerts" size="small">
-          <el-table-column label="标的" min-width="150">
+          <el-table-column label="标的" min-width="170">
             <template #default="{ row }">
               <el-tag v-if="row.is_holding" size="small" type="danger" effect="plain" class="hold-tag">持仓</el-tag>
+              <el-tag v-else-if="row.in_monitor" size="small" type="warning" effect="plain" class="hold-tag">监控</el-tag>
               <span class="dt-name">{{ row.name }}</span>
               <span class="dt-code">{{ row.code }}</span>
             </template>
@@ -143,73 +97,36 @@
         </el-table>
       </div>
     </template>
-
-    <!-- config dialog -->
-    <el-dialog v-model="configVisible" title="双轨道监控参数" width="720px">
-      <div class="dt-cfg" v-if="cfg">
-        <div class="dt-cfg-col">
-          <div class="dt-cfg-title">长线轨道</div>
-          <el-form label-width="120px" size="small">
-            <el-form-item label="ROE 下限(%)"><el-input-number v-model="cfg.long_term.roe_min" :min="0" :step="1" /></el-form-item>
-            <el-form-item label="营收增速下限(%)"><el-input-number v-model="cfg.long_term.revenue_growth_min" :min="0" :step="1" /></el-form-item>
-            <el-form-item label="PE分位上限(%)"><el-input-number v-model="cfg.long_term.pe_percentile_max" :min="0" :max="100" :step="5" /></el-form-item>
-            <el-form-item label="最大持仓数"><el-input-number v-model="cfg.long_term.max_positions" :min="1" :step="1" /></el-form-item>
-            <el-form-item label="资金占比"><el-input-number v-model="cfg.long_term.fund_ratio" :min="0" :max="1" :step="0.05" :precision="2" /></el-form-item>
-            <el-form-item label="候选池"><el-input-number v-model="cfg.long_term.candidate_pool" :min="5" :step="5" /></el-form-item>
-            <el-form-item label="权重(基/技/资/估)">
-              <div class="dt-weights">
-                <el-input-number v-model="cfg.long_term.weight_overrides.fundamental" :min="0" :max="1" :step="0.05" :precision="2" controls-position="right" />
-                <el-input-number v-model="cfg.long_term.weight_overrides.technical" :min="0" :max="1" :step="0.05" :precision="2" controls-position="right" />
-                <el-input-number v-model="cfg.long_term.weight_overrides.fund_flow" :min="0" :max="1" :step="0.05" :precision="2" controls-position="right" />
-                <el-input-number v-model="cfg.long_term.weight_overrides.valuation" :min="0" :max="1" :step="0.05" :precision="2" controls-position="right" />
-              </div>
-            </el-form-item>
-          </el-form>
-        </div>
-        <div class="dt-cfg-col">
-          <div class="dt-cfg-title">短线轨道</div>
-          <el-form label-width="130px" size="small">
-            <el-form-item label="主力净流入下限(万)"><el-input-number v-model="shortInflowWan" :min="0" :step="500" /></el-form-item>
-            <el-form-item label="正面新闻下限(条)"><el-input-number v-model="cfg.short_term.news_positive_min" :min="0" :step="1" /></el-form-item>
-            <el-form-item label="最大持仓数"><el-input-number v-model="cfg.short_term.max_positions" :min="1" :step="1" /></el-form-item>
-            <el-form-item label="资金占比"><el-input-number v-model="cfg.short_term.fund_ratio" :min="0" :max="1" :step="0.05" :precision="2" /></el-form-item>
-            <el-form-item label="候选池"><el-input-number v-model="cfg.short_term.candidate_pool" :min="5" :step="5" /></el-form-item>
-            <el-form-item label="权重(基/技/资/估)">
-              <div class="dt-weights">
-                <el-input-number v-model="cfg.short_term.weight_overrides.fundamental" :min="0" :max="1" :step="0.05" :precision="2" controls-position="right" />
-                <el-input-number v-model="cfg.short_term.weight_overrides.technical" :min="0" :max="1" :step="0.05" :precision="2" controls-position="right" />
-                <el-input-number v-model="cfg.short_term.weight_overrides.fund_flow" :min="0" :max="1" :step="0.05" :precision="2" controls-position="right" />
-                <el-input-number v-model="cfg.short_term.weight_overrides.valuation" :min="0" :max="1" :step="0.05" :precision="2" controls-position="right" />
-              </div>
-            </el-form-item>
-          </el-form>
-        </div>
-      </div>
-      <template #footer>
-        <el-button @click="configVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="saveConfig">保存</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { Refresh, Setting } from '@element-plus/icons-vue'
+import { Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { monitorApi, type MonitorPortfolio, type MonitorTrackConfig, type TrackAdvice } from '@/api/monitor'
+import { monitorApi, type MonitorPortfolio, type MonitorAdvice, type MonitorSource } from '@/api/monitor'
 
 const loading = ref(false)
-const saving = ref(false)
 const data = ref<MonitorPortfolio | null>(null)
-const configVisible = ref(false)
-const cfg = ref<MonitorTrackConfig | null>(null)
 
-// 后端主力净流入下限单位是「元」，表单按「万」展示更直观
-const shortInflowWan = computed({
-  get: () => cfg.value ? Math.round(cfg.value.short_term.main_net_inflow_min / 1e4) : 0,
-  set: (v: number) => { if (cfg.value) cfg.value.short_term.main_net_inflow_min = (v || 0) * 1e4 },
-})
+const SOURCE_GROUPS: { key: MonitorSource; title: string; tag: string }[] = [
+  { key: 'position', title: '持仓', tag: 'danger' },
+  { key: 'watchlist', title: '自选股', tag: 'primary' },
+  { key: 'fusion_pick', title: 'AI智选候选', tag: 'success' },
+]
+
+const SRC_LABEL: Record<MonitorSource, string> = { position: '持仓', watchlist: '自选', fusion_pick: '智选' }
+const SRC_TYPE: Record<MonitorSource, string> = { position: 'danger', watchlist: 'primary', fusion_pick: 'success' }
+function srcLabel(s: MonitorSource): string { return SRC_LABEL[s] || s }
+function srcType(s: MonitorSource): string { return SRC_TYPE[s] || 'info' }
+
+// 一只股票可同时属于多个来源 → 在它所属的每个分组里都出现（持仓+智选会两处可见，符合强制监控语义）
+const grouped = computed(() =>
+  SOURCE_GROUPS.map(g => ({
+    ...g,
+    rows: (data.value?.advice || []).filter(a => a.sources?.includes(g.key)),
+  })),
+)
 
 const summaryCards = computed(() => {
   const p = data.value?.portfolio_summary
@@ -218,9 +135,9 @@ const summaryCards = computed(() => {
     { label: '总资产', value: fmtMoney(p.total_value) },
     { label: '现金', value: fmtMoney(p.cash) },
     { label: '持仓市值', value: fmtMoney(p.position_value) },
-    { label: '持仓数', value: String(p.position_count) },
-    { label: `长线可用 (${Math.round(p.long_ratio * 100)}%)`, value: fmtMoney(p.long_available) },
-    { label: `短线可用 (${Math.round(p.short_ratio * 100)}%)`, value: fmtMoney(p.short_available) },
+    { label: '监控总数', value: String(p.monitor_count) },
+    { label: '持仓 / 自选 / 智选', value: `${p.position_count} / ${p.watchlist_count} / ${p.fusion_pick_count}` },
+    { label: '重叠 / 三合一', value: `${p.overlap_count} / ${p.all_three_count}` },
   ]
 })
 
@@ -233,9 +150,11 @@ function actionType(action: string): string {
   }
 }
 
-function zone(row: TrackAdvice): string {
-  if (!row.buy_price_low && !row.buy_price_high) return '-'
-  return `${row.buy_price_low}~${row.buy_price_high}`
+function zone(row: MonitorAdvice): string {
+  const lo = row.entry_price_range?.low
+  const hi = row.entry_price_range?.high
+  if (!lo && !hi) return '-'
+  return `${lo ?? '-'}~${hi ?? '-'}`
 }
 
 function fmtMoney(v?: number): string {
@@ -255,30 +174,9 @@ function fetchPortfolio() {
   monitorApi.getPortfolio().then(resp => {
     data.value = (resp.data as any).data || null
   }).catch(() => {
-    ElMessage.error('获取双轨道结果失败')
+    ElMessage.error('获取监控调仓结果失败')
   }).finally(() => {
     loading.value = false
-  })
-}
-
-function openConfig() {
-  monitorApi.getConfig().then(resp => {
-    cfg.value = (resp.data as any).data
-    configVisible.value = true
-  }).catch(() => ElMessage.error('获取配置失败'))
-}
-
-function saveConfig() {
-  if (!cfg.value) return
-  saving.value = true
-  monitorApi.saveConfig(cfg.value).then(resp => {
-    cfg.value = (resp.data as any).data
-    ElMessage.success('配置已保存，下次刷新生效')
-    configVisible.value = false
-  }).catch(() => {
-    ElMessage.error('保存配置失败')
-  }).finally(() => {
-    saving.value = false
   })
 }
 
@@ -297,23 +195,15 @@ onMounted(fetchPortfolio)
 .dt-stat-label { font-size: 12px; color: var(--text-muted, #999); }
 .dt-stat-value { font-size: 20px; font-weight: 700; margin-top: 4px; }
 
-.dt-tracks { display: flex; gap: 12px; flex-wrap: wrap; }
-.dt-track { flex: 1; min-width: 480px; }
-.dt-track-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.dt-track-title { font-size: 14px; font-weight: 600; }
-
 .dt-section { margin-top: 4px; }
 .dt-section-head { font-size: 14px; font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+.dt-count { font-size: 13px; color: var(--text-muted, #999); }
+.dt-hint { font-size: 12px; color: var(--text-muted, #bbb); font-weight: 400; }
 
 .dt-name { font-weight: 600; }
 .dt-code { font-size: 11px; color: var(--text-muted, #999); margin-left: 6px; }
+.src-tag { margin-left: 4px; }
 .hold-tag { margin-right: 4px; }
 .up { color: #f56c6c; }
 .dn { color: #67c23a; }
-
-.dt-cfg { display: flex; gap: 24px; }
-.dt-cfg-col { flex: 1; }
-.dt-cfg-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
-.dt-weights { display: flex; gap: 4px; flex-wrap: wrap; }
-.dt-weights :deep(.el-input-number) { width: 90px; }
 </style>

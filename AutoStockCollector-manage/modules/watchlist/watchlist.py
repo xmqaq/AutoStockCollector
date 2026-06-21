@@ -31,11 +31,25 @@ class WatchlistManager:
             logger.warning(f"Invalid stock code: {code}")
             return False
 
-        return self.storage.add_stock(user_id, code, "default", priority)
+        result = self.storage.add_stock(user_id, code, "default", priority)
+        if result:
+            from modules.monitor.lifecycle import MonitorLifecycle
+            try:
+                MonitorLifecycle().on_watchlist_added(user_id, code)
+            except Exception as e:
+                logger.error(f"Sync monitor lifecycle on watchlist add failed: {e}")
+        return result
 
     def remove_stock(self, user_id: str, code: str) -> bool:
         code = normalize_stock_code(code)
-        return self.storage.remove_stock(user_id, code)
+        success = self.storage.remove_stock(user_id, code)
+        if success:
+            from modules.monitor.lifecycle import MonitorLifecycle
+            try:
+                MonitorLifecycle().on_watchlist_removed(user_id, code)
+            except Exception as e:
+                logger.error(f"Sync monitor lifecycle on watchlist remove failed: {e}")
+        return success
 
     def get_watchlist(self, user_id: str = "default") -> List[Dict[str, Any]]:
         stocks = self.storage.get_user_watchlist(user_id)

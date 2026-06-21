@@ -633,23 +633,24 @@ def job_portfolio_snapshot():
         _persist_cron_status("portfolio_snapshot", _now().isoformat(), False, str(e))
 
 
-def job_ai_monitor():
-    """AI 双轨道监控刷新：逐用户跑长线/短线选股+调仓建议，单用户失败不影响其他。"""
+def job_monitor_intraday_refresh():
+    """盘中买卖点刷新：只更新持仓 + 自选股的深度分析，跳过智选追踪/过期清理
+    （那两步每天智选完成后级联跑一次即可，盘中不必重复）。逐用户隔离失败。"""
     try:
-        from modules.monitor import MonitorEngine
+        from modules.monitor.engine import MonitorEngine
         from config.database import DatabaseConfig
         engine = MonitorEngine()
         uids = DatabaseConfig.get_database()["paper_account"].distinct("user_id") or ["default"]
         ok = 0
         for uid in uids:
             try:
-                engine.refresh_all(uid)
+                engine.refresh_all(uid, sync_fusion=False)
                 ok += 1
             except Exception as e:
-                logger.error(f"[cron] AI监控刷新失败 user={uid}: {e}")
-        logger.info(f"[cron] AI监控刷新完成 {ok}/{len(uids)} 用户")
+                logger.error(f"[cron] 监控盘中刷新失败 user={uid}: {e}")
+        logger.info(f"[cron] 监控盘中刷新完成 {ok}/{len(uids)} 用户")
     except Exception as e:
-        logger.error(f"[cron] AI监控刷新失败: {e}")
+        logger.error(f"[cron] 监控盘中刷新失败: {e}")
 
 
 def job_strategy_pick():
@@ -698,6 +699,20 @@ def job_fusion_pick_daily():
         engine.run(top_n=10, candidate_pool=50, mode="full")
         logger.info("[cron] 融合选股完成")
         _persist_cron_status("fusion_pick", _now().isoformat(), True, "完成")
+        # 智选完成后级联刷新监控：同步智选追踪 + 过期清理 + 全量买卖点
+        try:
+            from modules.monitor.engine import MonitorEngine
+            from config.database import DatabaseConfig
+            db = DatabaseConfig.get_database()
+            user_ids = db["paper_account"].distinct("user_id") or ["default"]
+            mengine = MonitorEngine()
+            for uid in user_ids:
+                try:
+                    mengine.refresh_all(uid)
+                except Exception as e:
+                    logger.error(f"[cron] 监控刷新失败 user={uid}: {e}")
+        except Exception as e:
+            logger.error(f"[cron] 智选级联监控刷新失败: {e}")
     except Exception as e:
         logger.error(f"[cron] 融合选股失败: {e}")
         _persist_cron_status("fusion_pick", _now().isoformat(), False, str(e)[:80])
@@ -888,9 +903,9 @@ def start_daily_jobs() -> None:
         _make_job("净值快照 16:30",       job_portfolio_snapshot,  "daily", 16, 30, task_type="portfolio_snapshot"),
         _make_job("估值缓存 5min",       job_valuation_cache,     "interval", interval_minutes=5, task_type="valuation_cache"),
         _make_job("任务清理 03:30",      job_task_cleanup,        "daily",  3, 30, task_type="task_cleanup"),
-        _make_job("AI监控 09:30", job_ai_monitor, "daily", 9,  30, task_type="ai_monitor"),
-        _make_job("AI监控 12:00", job_ai_monitor, "daily", 12, 0,  task_type="ai_monitor"),
-        _make_job("AI监控 15:00", job_ai_monitor, "daily", 15, 0,  task_type="ai_monitor"),
+        _make_job("监控盘中刷新 10:00", job_monitor_intraday_refresh, "daily", 10, 0,  task_type="monitor_intraday"),
+        _make_job("监控盘中刷新 13:30", job_monitor_intraday_refresh, "daily", 13, 30, task_type="monitor_intraday"),
+        _make_job("监控盘中刷新 14:45", job_monitor_intraday_refresh, "daily", 14, 45, task_type="monitor_intraday"),
         # 策略选股 08:55/12:00/14:30 已下线：前端入口与页面移除，输出仅该页面消费，停掉定时空跑。
         # job_strategy_pick 函数体暂留，待旧选股系统整体退役时一并清理。
         _make_job("融合选股 16:20",      job_fusion_pick_daily,    "daily",    16, 20,

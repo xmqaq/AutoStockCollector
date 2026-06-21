@@ -187,73 +187,39 @@ export const monitorApi = {
   getFundFlowAnomalies(days = 5, limit = 100) {
     return client.get('/api/v1/monitor/fund-flow-anomalies', { params: { days, limit } })
   },
-  getConfig() {
-    return client.get('/api/v1/monitor/config')
-  },
-  saveConfig(config: MonitorTrackConfig) {
-    return client.put('/api/v1/monitor/config', config)
-  },
   getPortfolio() {
     return client.get('/api/v1/monitor/portfolio')
   },
+  getLifecycleStatus() {
+    return client.get('/api/v1/monitor/lifecycle-status')
+  },
 }
 
-// ── 双轨道调仓监控 ──
+// ── 监控调仓（三来源：持仓 / 自选股 / AI智选候选）──
 
-export interface TrackWeights {
-  fundamental: number
-  technical: number
-  fund_flow: number
-  valuation: number
-}
+export type MonitorSource = 'position' | 'watchlist' | 'fusion_pick'
 
-export interface LongTermConfig {
-  roe_min: number
-  revenue_growth_min: number
-  pe_percentile_max: number
-  max_positions: number
-  fund_ratio: number
-  weight_overrides: TrackWeights
-  candidate_pool: number
-}
-
-export interface ShortTermConfig {
-  main_net_inflow_min: number
-  news_positive_min: number
-  max_positions: number
-  fund_ratio: number
-  weight_overrides: TrackWeights
-  candidate_pool: number
-}
-
-export interface MonitorTrackConfig {
-  long_term: LongTermConfig
-  short_term: ShortTermConfig
-}
-
-export interface TrackAdvice {
+// 组合建议单项 = 身份 + 生命周期字段 + 现有 trading_advice 全部字段
+export interface MonitorAdvice extends TradingAdvice {
   code: string
   name: string
-  track: string
-  action: string
-  reason: string
-  buy_price_low: number
-  buy_price_high: number
-  target_price: number
-  stop_loss: number
-  suggested_amount: number
-  composite_score: number
+  price: number
+  sources: MonitorSource[]
+  consecutive_days: number   // 仅 fusion_pick 来源有意义，否则为 0
+  strong_signal: boolean     // consecutive_days >= 3
+  first_selected_at: string  // 仅 fusion_pick 来源有值
 }
 
 export interface PortfolioSummary {
   total_value: number
   cash: number
   position_value: number
-  long_available: number
-  short_available: number
-  long_ratio: number
-  short_ratio: number
+  monitor_count: number
   position_count: number
+  watchlist_count: number
+  fusion_pick_count: number
+  overlap_count: number
+  all_three_count: number
 }
 
 export interface AnomalyAlert {
@@ -267,16 +233,29 @@ export interface AnomalyAlert {
   anomaly_score: number
   anomaly_type: string
   is_holding: boolean
+  in_monitor?: boolean
+  monitor_sources?: MonitorSource[]
 }
 
 export interface MonitorPortfolio {
-  long_term_advice: TrackAdvice[]
-  short_term_advice: TrackAdvice[]
-  swap_out_advice: TrackAdvice[]
+  advice: MonitorAdvice[]
   portfolio_summary: PortfolioSummary
   anomaly_alerts: AnomalyAlert[]
+  lifecycle_summary?: Record<string, any>
   analyzed: number
   timestamp: string
+}
+
+export interface LifecycleStatus {
+  total: number
+  by_source: Record<MonitorSource, number>
+  overlap: {
+    position_and_watchlist: number
+    position_and_fusion: number
+    watchlist_and_fusion: number
+    all_three: number
+  }
+  strong_signal_count: number
 }
 
 export interface FundFlowAnomaly {

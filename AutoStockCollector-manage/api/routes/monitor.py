@@ -19,53 +19,13 @@ _refresh_lock = threading.Lock()
 
 
 def _get_user_stock_codes(user_id: str) -> set:
-    """获取用户关心的股票代码（持仓 + 自选 + 策略选股/量化选股）"""
-    from config.database import DatabaseConfig
-    db = DatabaseConfig.get_database()
-    codes = set()
-    # 兼容 pre-auth 遗留数据（user_id="default"）和当前用户
-    uid_filter = {"$in": [user_id, "default"]}
+    """用户监控名单的股票代码集合（持仓 + 自选 + AI智选候选）。
+    统一走 MonitorEngine._collect_stocks，不再重复维护查询逻辑。"""
     try:
-        for p in db["positions"].find({"user_id": uid_filter}):
-            c = p.get("code", "")
-            if c: codes.add(c)
-    except Exception:
-        pass
-    try:
-        for p in db["positions"].find({"user_id": {"$exists": False}}):
-            c = p.get("code", "")
-            if c: codes.add(c)
-    except Exception:
-        pass
-    try:
-        for p in db["trade_records"].aggregate([
-            {"$match": {"user_id": uid_filter, "action": "buy"}},
-            {"$group": {"_id": None, "codes": {"$addToSet": "$code"}}},
-        ]):
-            for c in p.get("codes", []):
-                codes.add(c)
-    except Exception:
-        pass
-    try:
-        for w in db["watchlist"].find({"user_id": uid_filter, "enabled": True}):
-            c = w.get("code", "")
-            if c: codes.add(c)
-    except Exception:
-        pass
-    try:
-        for r in db["ai_pick_results"].find({}):
-            for pick in (r.get("picks") or []):
-                c = pick.get("code", "")
-                if c: codes.add(c)
-    except Exception:
-        pass
-    try:
-        for f in db["factor_cache"].find({}):
-            c = f.get("code", "")
-            if c: codes.add(c)
-    except Exception:
-        pass
-    return codes
+        return {s["code"] for s in _get_engine()._collect_stocks(user_id) if s.get("code")}
+    except Exception as e:
+        logger.error(f"Collect user stock codes failed: {e}")
+        return set()
 
 
 def _get_engine():
@@ -395,32 +355,32 @@ def get_fund_flow_anomalies():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-@monitor_bp.route("/config", methods=["GET"])
+@monitor_bp.route("/lifecycle-status", methods=["GET"])
 @login_required
-def get_monitor_config():
-    """读当前用户的双轨道监控配置（不存在返回默认值）。"""
+def get_lifecycle_status():
+    """当前监控名单的来源分布统计（持仓/自选/智选数量 + 重叠 + 强化信号数）。"""
     try:
-        from modules.monitor.config import MonitorConfig
-        config = MonitorConfig().get(g.current_user["user_id"])
-        return jsonify({"success": True, "data": config})
+        stocks = _get_engine()._collect_stocks(g.current_user["user_id"])
+        pos = {s["code"] for s in stocks if "position" in (s.get("sources") or [])}
+        watch = {s["code"] for s in stocks if "watchlist" in (s.get("sources") or [])}
+        fusion = {s["code"] for s in stocks if "fusion_pick" in (s.get("sources") or [])}
+        strong = sum(1 for s in stocks
+                     if "fusion_pick" in (s.get("sources") or [])
+                     and (s.get("consecutive_days", 0) or 0) >= 3)
+        return jsonify({"success": True, "data": {
+            "total": len(stocks),
+            "by_source": {"position": len(pos), "watchlist": len(watch),
+                          "fusion_pick": len(fusion)},
+            "overlap": {
+                "position_and_watchlist": len(pos & watch),
+                "position_and_fusion": len(pos & fusion),
+                "watchlist_and_fusion": len(watch & fusion),
+                "all_three": len(pos & watch & fusion),
+            },
+            "strong_signal_count": strong,
+        }})
     except Exception as e:
-        logger.error(f"Get monitor config failed: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
-@monitor_bp.route("/config", methods=["PUT"])
-@login_required
-def put_monitor_config():
-    """保存（部分或完整）监控配置，merge_with_default 后落库，返回合并后的完整配置。"""
-    try:
-        from modules.monitor.config import MonitorConfig
-        body = request.get_json(silent=True) or {}
-        mc = MonitorConfig()
-        merged = mc.merge_with_default(body)
-        mc.save(g.current_user["user_id"], merged)
-        return jsonify({"success": True, "data": merged})
-    except Exception as e:
-        logger.error(f"Save monitor config failed: {e}")
+        logger.error(f"Lifecycle status failed: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 
