@@ -133,7 +133,8 @@ class Settings:
     }
 
     # AI 监控资金异动检测：阈值与回看窗口可调，不必改代码
-    MONITOR_ANOMALY_THRESHOLD = float(os.getenv("MONITOR_ANOMALY_THRESHOLD", "60"))
+    # 阈值默认 110（实测全市场约 150 只）；旧默认 60 仅略高于异动分中位数(53)→保留全市场~40%(2000+只)，过低。
+    MONITOR_ANOMALY_THRESHOLD = float(os.getenv("MONITOR_ANOMALY_THRESHOLD", "110"))
     MONITOR_ANOMALY_WINDOW_DAYS = int(os.getenv("MONITOR_ANOMALY_WINDOW_DAYS", "5"))
 
     @classmethod
