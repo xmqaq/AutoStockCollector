@@ -43,8 +43,9 @@ class MonitorLifecycle:
         )
 
     def _latest_fusion_runs(self, n: int = 2):
+        # run_id 必须投影出来——sync 用它做幂等去重；漏投会让 cur_run_id 恒为 None、幂等失效。
         return list(self.db[FUSION_RESULTS_COL]
-                    .find({}, {"picks": 1, "created_at": 1})
+                    .find({}, {"picks": 1, "created_at": 1, "run_id": 1})
                     .sort("created_at", -1).limit(n))
 
     @staticmethod
@@ -91,26 +92,38 @@ class MonitorLifecycle:
     # ── 智选追踪 ──
 
     def sync_fusion_pick_tracking(self, user_id: str = "default") -> Dict[str, Any]:
-        """每轮智选完成后调用，更新 fusion_pick 来源股票的双时间戳 + 连续入选计数。"""
+        """每轮智选完成后调用，更新 fusion_pick 来源股票的双时间戳 + 连续入选计数。
+
+        幂等关键：用 fusion run 的 run_id 去重。consecutive_days 只在"遇到一个新
+        run_id"时 +1，同一轮被重复调用（多用户级联 / 手动刷新 / 数据修复）一律跳过，
+        否则会按调用次数累加（曾导致刚上线就显示"连8天"）。
+        """
         runs = self._latest_fusion_runs(2)
         if not runs:
             return {"updated": 0, "new": 0, "no_fusion_data": True}
         current, prev = runs[0], (runs[1] if len(runs) > 1 else {})
+        cur_run_id = current.get("run_id")
         cur_codes = self._pick_codes(current)
         prev_codes = self._pick_codes(prev)
         name_map = {p.get("code"): p.get("name", "")
                     for p in (current.get("picks") or [])}
         now = self._now_iso()
-        new_cnt = upd_cnt = 0
+        new_cnt = upd_cnt = skipped = 0
         for code in cur_codes:
             doc = self.db[SIGNALS_COL].find_one(
                 {"code": code},
-                {"sources": 1, "consecutive_days": 1, "first_selected_at": 1})
+                {"sources": 1, "consecutive_days": 1, "first_selected_at": 1,
+                 "last_fusion_run_id": 1})
+            # 本轮已计过这只 → 幂等跳过（防按调用次数累加）
+            if doc and cur_run_id is not None and doc.get("last_fusion_run_id") == cur_run_id:
+                skipped += 1
+                continue
             if not doc:
                 self.db[SIGNALS_COL].update_one(
                     {"code": code},
                     {"$set": {"first_selected_at": now, "last_selected_at": now,
-                              "consecutive_days": 1, "name": name_map.get(code, "")},
+                              "consecutive_days": 1, "name": name_map.get(code, ""),
+                              "last_fusion_run_id": cur_run_id},
                      "$addToSet": {"sources": "fusion_pick"},
                      "$setOnInsert": {"code": code, "placeholder": True,
                                       "created_at": now}},
@@ -119,14 +132,16 @@ class MonitorLifecycle:
             else:
                 consec = ((doc.get("consecutive_days") or 0) + 1
                           if code in prev_codes else 1)
-                set_fields = {"last_selected_at": now, "consecutive_days": consec}
+                set_fields = {"last_selected_at": now, "consecutive_days": consec,
+                              "last_fusion_run_id": cur_run_id}
                 if not doc.get("first_selected_at"):
                     set_fields["first_selected_at"] = now
                 self.db[SIGNALS_COL].update_one(
                     {"code": code},
                     {"$set": set_fields, "$addToSet": {"sources": "fusion_pick"}})
                 upd_cnt += 1
-        return {"updated": upd_cnt, "new": new_cnt, "current_picks": len(cur_codes)}
+        return {"updated": upd_cnt, "new": new_cnt, "skipped_same_run": skipped,
+                "current_picks": len(cur_codes), "run_id": cur_run_id}
 
     def cleanup_expired_fusion_picks(self) -> Dict[str, Any]:
         """清理超过 3 个交易日未再入选的纯 fusion_pick 来源股票。"""
