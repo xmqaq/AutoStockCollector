@@ -137,6 +137,11 @@ class Settings:
     MONITOR_ANOMALY_THRESHOLD = float(os.getenv("MONITOR_ANOMALY_THRESHOLD", "110"))
     MONITOR_ANOMALY_WINDOW_DAYS = int(os.getenv("MONITOR_ANOMALY_WINDOW_DAYS", "5"))
 
+    # 全市场热点发现 / 个股新闻采集
+    HOTSPOT_MIN_MENTIONS = 2           # 被多次报道阈值
+    HOTSPOT_FUND_THRESHOLD = 30000000  # 主力净流入阈值（3000万）
+    NEWS_WATCHLIST_DAYS = 30           # 个股新闻/公告查询天数窗口
+
     @classmethod
     def get_collection_config(cls, collection_type: str) -> Dict:
         configs = {

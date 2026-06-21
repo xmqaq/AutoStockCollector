@@ -786,6 +786,60 @@ def job_fusion_weight_optimize():
         logger.error(f"[cron] 融合选股权重优化失败: {e}")
 
 
+# ─── 个股新闻舆情 + 热点发现 ──────────────────────────────────────────────────
+
+def job_collect_watchlist_news():
+    """交易日 09:00 / 11:30 / 13:00 / 15:30 对监控名单做个股精确新闻/公告采集。
+    轻量执行（不经 scheduler），状态存 cron_job_status 供采集中心展示。"""
+    if not _is_weekday():
+        return
+    try:
+        from core.collector.news_collector import NewsCollector
+        collector = NewsCollector()
+        codes = collector.watchlist_codes()
+        if not codes:
+            logger.info("[cron] 个股新闻采集：监控名单为空，跳过")
+            _persist_cron_status("watchlist_news", _now().isoformat(), True, "名单为空", inc_count=True)
+            return
+        ann = collector.collect_watchlist_announcements(codes)
+        news = collector.collect_watchlist_stock_news(codes)
+        msg = f"{len(codes)}只，公告{len(ann)}条/新闻{len(news)}条"
+        logger.info(f"[cron] 个股新闻采集完成：{msg}")
+        _record_result("个股新闻采集", True, msg)
+        _persist_cron_status("watchlist_news", _now().isoformat(), True, msg, inc_count=True)
+    except Exception as e:
+        logger.error(f"[cron] 个股新闻采集失败: {e}")
+        _record_result("个股新闻采集", False, str(e))
+        _persist_cron_status("watchlist_news", _now().isoformat(), False, str(e)[:100])
+
+
+def job_detect_hotspot():
+    """交易日 10:00 / 14:00 检测全市场热点个股/板块，结果存 news_hotspot_results
+    （仅保留最近 10 条）。"""
+    if not _is_weekday():
+        return
+    try:
+        from modules.monitor.hotspot import NewsHotspotDetector
+        from config.database import DatabaseConfig
+        result = NewsHotspotDetector().detect(hours=24, top_n=20)
+        col = DatabaseConfig.get_database()["news_hotspot_results"]
+        col.insert_one(dict(result))
+        # 只保留最近 10 条
+        stale = [d["_id"] for d in
+                 col.find({}, {"_id": 1}).sort("detected_at", -1).skip(10)]
+        if stale:
+            col.delete_many({"_id": {"$in": stale}})
+        n = len(result.get("hot_stocks", []))
+        msg = f"热点个股{n}只"
+        logger.info(f"[cron] 热点检测完成：{msg}")
+        _record_result("热点检测", True, msg)
+        _persist_cron_status("hotspot_detect", _now().isoformat(), True, msg, inc_count=True)
+    except Exception as e:
+        logger.error(f"[cron] 热点检测失败: {e}")
+        _record_result("热点检测", False, str(e))
+        _persist_cron_status("hotspot_detect", _now().isoformat(), False, str(e)[:100])
+
+
 # ─── 纯 Python 调度核心 ───────────────────────────────────────────────────────
 
 def _next_daily_run(hour: int, minute: int) -> datetime.datetime:
@@ -914,6 +968,12 @@ def start_daily_jobs() -> None:
                   interval_minutes=15, task_type="fusion_pick_quick"),
         _make_job("融合选股 权重优化",   job_fusion_weight_optimize, "daily",   3, 0,
                   task_type="fusion_weight_optimize"),
+        _make_job("个股新闻采集 09:00", job_collect_watchlist_news, "daily",  9,  0, task_type="watchlist_news"),
+        _make_job("个股新闻采集 11:30", job_collect_watchlist_news, "daily", 11, 30, task_type="watchlist_news"),
+        _make_job("个股新闻采集 13:00", job_collect_watchlist_news, "daily", 13,  0, task_type="watchlist_news"),
+        _make_job("个股新闻采集 15:30", job_collect_watchlist_news, "daily", 15, 30, task_type="watchlist_news"),
+        _make_job("热点检测 10:00",     job_detect_hotspot,         "daily", 10,  0, task_type="hotspot_detect"),
+        _make_job("热点检测 14:00",     job_detect_hotspot,         "daily", 14,  0, task_type="hotspot_detect"),
     ]
 
     # cron_trigger_lock 跨进程触发锁：建 TTL 索引，锁文档 1 天后自动过期，避免无限增长。

@@ -41,28 +41,72 @@ class StockNewsSentimentAnalyzer:
             logger.error(f"News sentiment analyze {code} failed: {e}")
             return self._empty_result()
 
+    # 公司名常见后缀，去掉后得到核心名（如"贵州茅台酒股份" → 核心匹配仍按全名优先）
+    _NAME_SUFFIXES = ["股份有限公司", "有限公司", "股份", "集团", "控股",
+                      "科技", "实业", "公司", "(", ")", "（", "）"]
+
+    _PROJECTION = {"title": 1, "publish_date": 1, "source": 1,
+                   "content": 1, "summary": 1, "code": 1}
+
     def _fetch_news(self, code: str, name: str) -> List[Dict]:
-        if not name:
-            return []
-
         since = (datetime.now() - timedelta(days=self.news_days)).strftime("%Y-%m-%d")
-        name_query = name.replace("(", "").replace(")", "").strip()
-        name_parts = [p for p in name_query.split() if p]
-        name_terms = name_parts[:2] if name_parts else [name_query[:4]]
 
-        title_regex = "|".join(name_terms)
-        query = {
-            "publish_date": {"$gte": since},
-            "title": {"$regex": title_regex, "$options": "i"},
-        }
-
+        # 主路径：采集层已把 code 写实，直接按 code 精确查询（带/不带前缀都兜上）。
+        bare = code[2:] if code[:2] in ("SH", "SZ") else code
+        code_candidates = list({code, bare, f"SH{bare}", f"SZ{bare}"})
         cursor = (
             self._db["news"]
-            .find(query, {"title": 1, "publish_date": 1, "source": 1, "content": 1, "summary": 1})
+            .find({"code": {"$in": code_candidates},
+                   "publish_date": {"$gte": since}}, self._PROJECTION)
             .sort("publish_date", -1)
             .limit(self.max_news)
         )
-        return list(cursor)
+        items = list(cursor)
+        if items:
+            for it in items:
+                it["match_method"] = "code_exact"
+            return items
+
+        # 兜底路径（数据尚未采集到的过渡期）：标题/正文模糊匹配。
+        if not name:
+            return []
+        name_query = name.replace("(", "").replace(")", "").strip()
+
+        terms = set()
+        if name_query:
+            terms.add(name_query)               # 公司全名精确优先
+            core = name_query
+            for suf in self._NAME_SUFFIXES:
+                core = core.replace(suf, "")
+            core = core.strip()
+            if len(core) >= 2:
+                terms.add(core)                 # 去后缀核心名
+        # 代码纯数字部分作为补充匹配条件（OR）
+        if bare.isdigit() and len(bare) >= 4:
+            terms.add(bare)
+
+        if not terms:
+            return []
+
+        import re as _re
+        title_regex = "|".join(_re.escape(t) for t in terms)
+        query = {
+            "publish_date": {"$gte": since},
+            "$or": [
+                {"title": {"$regex": title_regex, "$options": "i"}},
+                {"content": {"$regex": title_regex, "$options": "i"}},
+            ],
+        }
+        cursor = (
+            self._db["news"]
+            .find(query, self._PROJECTION)
+            .sort("publish_date", -1)
+            .limit(self.max_news)
+        )
+        items = list(cursor)
+        for it in items:
+            it["match_method"] = "title_fallback"
+        return items
 
     def _score_news(self, news_items: List[Dict]) -> Dict[str, Any]:
         total = len(news_items)

@@ -3,7 +3,7 @@
 """
 from __future__ import annotations
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from utils.helpers import beijing_now
 import pandas as pd
 import akshare as ak
@@ -18,6 +18,32 @@ logger = get_logger(__name__)
 # akshare 接口无内置超时，外部源不响应时会无限阻塞，拖死采集任务（卡满后被看门狗强杀）。
 # 所有 akshare 拉取统一套硬超时兜底。
 _AK_TIMEOUT_SECONDS = 30
+
+
+def _bare(code: str) -> str:
+    """去掉 SH/SZ 前缀，返回纯 6 位代码。"""
+    return code[2:] if code[:2] in ("SH", "SZ") else code
+
+
+def _full(code: str) -> str:
+    """补全 SH/SZ 前缀。"""
+    code = str(code).strip().upper()
+    if code.startswith(("SH", "SZ")):
+        return code
+    if code.startswith("6") or code.startswith("9"):
+        return "SH" + code
+    if code.startswith(("0", "3")):
+        return "SZ" + code
+    return code
+
+
+def _pick(row, *candidates) -> str:
+    """从一行里按候选列名顺序取第一个非空值（列名在不同 akshare 版本会变）。"""
+    for c in candidates:
+        v = row.get(c, "")
+        if v is not None and str(v).strip():
+            return str(v)
+    return ""
 
 
 class NewsCollector(BaseCollector):
@@ -48,6 +74,146 @@ class NewsCollector(BaseCollector):
 
         if all_records:
             self.storage.save_news_batch(all_records)
+
+        # 轨道一：对当前监控名单做个股精确采集（公告 + 个股新闻），失败不影响主流程。
+        try:
+            codes = self.watchlist_codes()
+            if codes:
+                self.collect_watchlist_announcements(codes)
+                self.collect_watchlist_stock_news(codes)
+        except Exception as e:
+            logger.error(f"Failed to collect watchlist news: {e}")
+
+        return all_records
+
+    # ─── 监控名单代码 ────────────────────────────────────────────────────────
+    def watchlist_codes(self) -> List[str]:
+        """当前需要精确采集新闻的股票：自选股(watchlist) + 持仓(positions)，去重补全前缀。"""
+        from config.database import DatabaseConfig
+        db = DatabaseConfig.get_database()
+        codes = set()
+        try:
+            for c in db["watchlist"].distinct("code", {"enabled": True}):
+                if c:
+                    codes.add(_full(c))
+        except Exception as e:
+            logger.warning(f"watchlist_codes watchlist failed: {e}")
+        try:
+            for c in db["positions"].distinct("code"):
+                if c:
+                    codes.add(_full(c))
+        except Exception as e:
+            logger.warning(f"watchlist_codes positions failed: {e}")
+        return sorted(codes)
+
+    # ─── 轨道一：个股公告（按代码精确） ──────────────────────────────────────
+    def collect_watchlist_announcements(self, codes: List[str]) -> List[Dict[str, Any]]:
+        """逐只抓个股公告，每条显式写入 code（带前缀）和 news_type='announcement'。
+        单只超时/失败不影响其他股票。
+
+        说明（见排查结论）：akshare 的 stock_notice_report 的 symbol 是公告"类别"
+        （全部/重大事项/...）+ date，返回的是全市场该类公告，并非按代码精确。真正
+        按个股查的接口是 stock_zh_a_disclosure_report_cninfo(symbol=纯代码, ...)，
+        这里用它。接口缺失时优雅跳过（轨道一仍有个股新闻 + 分析层标题兜底）。
+        """
+        if not codes:
+            return []
+        from config.settings import settings
+        days = getattr(settings, "NEWS_WATCHLIST_DAYS", 30)
+        end = beijing_now().strftime("%Y%m%d")
+        start = (beijing_now() - timedelta(days=days)).strftime("%Y%m%d")
+
+        func = getattr(ak, "stock_zh_a_disclosure_report_cninfo", None)
+        if func is None:
+            logger.warning("stock_zh_a_disclosure_report_cninfo unavailable, skip announcements")
+            return []
+
+        all_records: List[Dict[str, Any]] = []
+        for code in codes:
+            bare = _bare(code)
+            full = _full(code)
+            try:
+                df = call_with_timeout(
+                    func, _AK_TIMEOUT_SECONDS,
+                    symbol=bare, market="沪深京",
+                    start_date=start, end_date=end,
+                )
+            except Exception as e:
+                logger.warning(f"announcement {code} failed: {e}")
+                continue
+            if df is None or df.empty:
+                continue
+
+            records = []
+            for _, row in df.iterrows():
+                title = _pick(row, "公告标题", "标题", "title")
+                if not title:
+                    continue
+                records.append({
+                    "code": full,
+                    "title": title,
+                    "content": _pick(row, "公告内容", "内容"),
+                    "publish_date": _pick(row, "公告时间", "时间", "公告日期", "publish_date"),
+                    "source": _pick(row, "公告来源", "来源") or "cninfo",
+                    "url": _pick(row, "公告链接", "链接", "url"),
+                    "news_type": "announcement",
+                    "_updated_at": beijing_now(),
+                })
+            if records:
+                self.storage.save_news_batch(records)
+                all_records.extend(records)
+                logger.info(f"collect_watchlist_announcements {code}: {len(records)} records")
+
+        return all_records
+
+    # ─── 轨道一：个股新闻（按代码精确） ──────────────────────────────────────
+    def collect_watchlist_stock_news(self, codes: List[str]) -> List[Dict[str, Any]]:
+        """逐只抓个股新闻并把 code 写实。
+
+        说明（见排查结论）：akshare 的 stock_news_em(symbol=股票代码) 本就是"个股
+        新闻"接口（返回该代码相关的最近约 100 条新闻）。原 collect() 里用 symbol='all'
+        是把它当全市场新闻用——那条路不带 code。这里改回按代码逐只查询，采集时就把
+        code 写实，不再靠标题模糊匹配。
+        单只超时/失败继续下一只。
+        """
+        if not codes:
+            return []
+        func = getattr(ak, "stock_news_em", None)
+        if func is None:
+            logger.warning("stock_news_em unavailable, skip watchlist stock news")
+            return []
+
+        all_records: List[Dict[str, Any]] = []
+        for code in codes:
+            bare = _bare(code)
+            full = _full(code)
+            try:
+                df = call_with_timeout(func, _AK_TIMEOUT_SECONDS, symbol=bare)
+            except Exception as e:
+                logger.warning(f"stock_news_em {code} failed: {e}")
+                continue
+            if df is None or df.empty:
+                continue
+
+            records = []
+            for _, row in df.iterrows():
+                title = _pick(row, "新闻标题", "标题", "title")
+                if not title:
+                    continue
+                records.append({
+                    "code": full,
+                    "title": title,
+                    "content": _pick(row, "新闻内容", "摘要", "content"),
+                    "publish_date": _pick(row, "发布时间", "时间", "publish_date"),
+                    "source": _pick(row, "文章来源", "来源", "source"),
+                    "url": _pick(row, "新闻链接", "链接", "url"),
+                    "news_type": "stock",
+                    "_updated_at": beijing_now(),
+                })
+            if records:
+                self.storage.save_news_batch(records)
+                all_records.extend(records)
+                logger.info(f"collect_watchlist_stock_news {code}: {len(records)} records")
 
         return all_records
 

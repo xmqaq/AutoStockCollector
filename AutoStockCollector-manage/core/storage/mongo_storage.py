@@ -499,6 +499,9 @@ class NewsStorage(MongoStorage):
         # 复合索引匹配列表查询的排序键 (publish_date, _updated_at)，
         # 使排序走 IXSCAN 而非阻塞式内存 SORT；其 publish_date 前缀同时覆盖单字段排序/过滤。
         self.create_index([("publish_date", -1), ("_updated_at", -1)])
+        # 个股精确舆情按 code + 时间查询（StockNewsSentimentAnalyzer / hotspot）的索引
+        # [("code",1),("publish_date",-1)] 已由 settings.py 的 news 配置经
+        # DatabaseConfig.ensure_indexes() 建好，这里不重复创建（重复+sparse 会 IndexKeySpecsConflict）。
 
     def get_latest_news(
         self,
@@ -570,9 +573,19 @@ class NewsStorage(MongoStorage):
         if not valid:
             return (0, 0)
 
+        # 每条都生成 _uid 做去重 upsert（含个股 code 记录）：优先 title+url，
+        # 无 url 退到 title+publish_date，仍无则用 title。避免重复抓取产生重复文档，
+        # 也避免无 url 记录因缺 _uid 导致 filter_doc={} 误命中全集合。
         for record in valid:
-            if "url" in record and "title" in record:
-                record["_uid"] = f"{record['title']}_{record['url'][:50]}"
+            title = str(record.get("title", ""))
+            url = str(record.get("url", "") or "")
+            pub = str(record.get("publish_date", "") or "")
+            if url:
+                record["_uid"] = f"{title}_{url[:50]}"
+            elif pub:
+                record["_uid"] = f"{title}_{pub}"
+            else:
+                record["_uid"] = title
 
         return self.upsert_many(valid, ["_uid"])
 
