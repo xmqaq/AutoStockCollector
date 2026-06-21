@@ -115,6 +115,18 @@ const router = createRouter({
           meta: { title: 'AI 智选' },
         },
         {
+          path: 'research-analysis',
+          name: 'ResearchAnalysis',
+          component: () => import('@/views/ResearchAnalysis/index.vue'),
+          meta: { title: '投资研报分析' },
+        },
+        {
+          path: 'price-action',
+          name: 'PriceAction',
+          component: () => import('@/views/PriceAction/index.vue'),
+          meta: { title: '价格行为学' },
+        },
+        {
           path: 'strategy-manager',
           name: 'StrategyManager',
           component: () => import('@/views/StrategyManager/index.vue'),

@@ -1,0 +1,546 @@
+{
+  "储能": {
+    "description": "电化学储能产业链 — 从上游材料到系统集成",
+    "links": [
+      { "name": "锂资源/盐湖提锂", "description": "上游矿产资源，锂盐提取" },
+      { "name": "正极材料", "description": "磷酸铁锂/三元正极，决定能量密度" },
+      { "name": "负极材料", "description": "石墨/硅基负极" },
+      { "name": "电解液", "description": "六氟磷酸锂、溶剂、添加剂" },
+      { "name": "隔膜", "description": "湿法/干法隔膜，认证壁垒高" },
+      { "name": "电芯制造", "description": "电池组装，规模效应显著" },
+      { "name": "BMS/EMS", "description": "电池管理系统、能量管理系统" },
+      { "name": "PCS/逆变器", "description": "储能变流器，IGBT核心" },
+      { "name": "温控系统", "description": "液冷/风冷热管理" },
+      { "name": "系统集成", "description": "储能电站EPC总包" }
+    ],
+    "representative_stocks": [
+      { "code": "002709", "name": "天赐材料", "link": "电解液" },
+      { "code": "300750", "name": "宁德时代", "link": "电芯制造" },
+      { "code": "002074", "name": "国轩高科", "link": "电芯制造" },
+      { "code": "300014", "name": "亿纬锂能", "link": "电芯制造" },
+      { "code": "002812", "name": "恩捷股份", "link": "隔膜" },
+      { "code": "300568", "name": "星源材质", "link": "隔膜" },
+      { "code": "002459", "name": "晶澳科技", "link": "PCS/逆变器" },
+      { "code": "300763", "name": "锦浪科技", "link": "PCS/逆变器" },
+      { "code": "688390", "name": "固德威", "link": "PCS/逆变器" },
+      { "code": "002850", "name": "科达利", "link": "电芯制造" },
+      { "code": "300457", "name": "赢合科技", "link": "电芯制造" },
+      { "code": "002497", "name": "雅化集团", "link": "锂资源/盐湖提锂" },
+      { "code": "002466", "name": "天齐锂业", "link": "锂资源/盐湖提锂" }
+    ]
+  },
+  "人形机器人": {
+    "description": "人形机器人产业链 — 从核心零部件到整机集成",
+    "links": [
+      { "name": "行星滚柱丝杠", "description": "线性关节核心传动件，工艺壁垒极高" },
+      { "name": "六维力矩传感器", "description": "力控核心、成本高昂，产能紧缺" },
+      { "name": "谐波减速器", "description": "旋转关节减速，日本HD垄断" },
+      { "name": "无框力矩电机", "description": "关节驱动电机，高功率密度" },
+      { "name": "空心杯电机", "description": "灵巧手驱动，微精密加工" },
+      { "name": "编码器", "description": "位置/速度反馈，高精度" },
+      { "name": "执行器总成", "description": "集成电机+减速器+编码器" },
+      { "name": "灵巧手", "description": "末端执行器，微型电机+腱绳" },
+      { "name": "AI芯片/算力", "description": "边缘AI芯片、NPU" },
+      { "name": "整机集成", "description": "人形机器人本体设计与总装" }
+    ],
+    "representative_stocks": [
+      { "code": "688017", "name": "绿的谐波", "link": "谐波减速器" },
+      { "code": "002472", "name": "双环传动", "link": "谐波减速器" },
+      { "code": "300124", "name": "汇川技术", "link": "无框力矩电机" },
+      { "code": "300660", "name": "江苏雷利", "link": "空心杯电机" },
+      { "code": "688698", "name": "伟创电气", "link": "空心杯电机" },
+      { "code": "002747", "name": "埃斯顿", "link": "执行器总成" },
+      { "code": "688160", "name": "步科股份", "link": "执行器总成" },
+      { "code": "603662", "name": "柯力传感", "link": "六维力矩传感器" },
+      { "code": "300007", "name": "汉威科技", "link": "六维力矩传感器" },
+      { "code": "603786", "name": "科博达", "link": "执行器总成" }
+    ]
+  },
+  "半导体": {
+    "description": "半导体产业链 — 从设计到封测的全链条",
+    "links": [
+      { "name": "EDA/IP", "description": "芯片设计工具、IP授权" },
+      { "name": "IC设计", "description": "逻辑/模拟/存储芯片设计" },
+      { "name": "光刻机", "description": "前道核心设备，产能瓶颈" },
+      { "name": "刻蚀设备", "description": "介质/硅刻蚀，国产化关键" },
+      { "name": "薄膜沉积", "description": "CVD/PVD设备" },
+      { "name": "检测设备", "description": "前道量测、后道测试" },
+      { "name": "硅片/衬底", "description": "大硅片、SiC衬底" },
+      { "name": "光刻胶", "description": "ArF/KrF光刻胶，日本垄断" },
+      { "name": "气体/化学品", "description": "电子特气、高纯试剂" },
+      { "name": "封测", "description": "先进封装、Chiplet" }
+    ],
+    "representative_stocks": [
+      { "code": "688012", "name": "中微公司", "link": "刻蚀设备" },
+      { "code": "002371", "name": "北方华创", "link": "刻蚀设备" },
+      { "code": "688072", "name": "拓荆科技", "link": "薄膜沉积" },
+      { "code": "688120", "name": "华海清科", "link": "检测设备" },
+      { "code": "688037", "name": "芯源微", "link": "光刻机" },
+      { "code": "300661", "name": "圣邦股份", "link": "IC设计" },
+      { "code": "603501", "name": "韦尔股份", "link": "IC设计" },
+      { "code": "688981", "name": "中芯国际", "link": "IC设计" },
+      { "code": "002156", "name": "通富微电", "link": "封测" },
+      { "code": "600584", "name": "长电科技", "link": "封测" },
+      { "code": "300655", "name": "晶瑞电材", "link": "光刻胶" }
+    ]
+  },
+  "新能源汽车": {
+    "description": "新能源汽车产业链 — 从三电系统到智能驾驶",
+    "links": [
+      { "name": "动力电池", "description": "锂电池/钠电池/固态电池，能量密度核心" },
+      { "name": "驱动电机", "description": "永磁同步/异步电机，高功率密度" },
+      { "name": "电控系统", "description": "MCU/IGBT/SiC模块，电机控制" },
+      { "name": "热管理系统", "description": "电池热管理、整车热泵" },
+      { "name": "车载充电", "description": "OBC/DCDC/无线充电" },
+      { "name": "智能座舱", "description": "中控大屏、HUD、语音交互" },
+      { "name": "自动驾驶", "description": "感知/决策/执行、L2+方案" },
+      { "name": "线控底盘", "description": "线控制动/转向、滑板底盘" },
+      { "name": "轻量化", "description": "一体化压铸、铝合金车身" },
+      { "name": "整车制造", "description": "新能源整车OEM" }
+    ],
+    "representative_stocks": [
+      { "code": "300750", "name": "宁德时代", "link": "动力电池" },
+      { "code": "002074", "name": "国轩高科", "link": "动力电池" },
+      { "code": "300124", "name": "汇川技术", "link": "电控系统" },
+      { "code": "600745", "name": "闻泰科技", "link": "电控系统" },
+      { "code": "002594", "name": "比亚迪", "link": "整车制造" },
+      { "code": "601238", "name": "广汽集团", "link": "整车制造" },
+      { "code": "688005", "name": "容百科技", "link": "动力电池" },
+      { "code": "300496", "name": "中科创达", "link": "智能座舱" },
+      { "code": "002920", "name": "德赛西威", "link": "自动驾驶" },
+      { "code": "603197", "name": "保隆科技", "link": "线控底盘" }
+    ]
+  },
+  "AI算力": {
+    "description": "AI算力产业链 — 从芯片到数据中心基础设施",
+    "links": [
+      { "name": "AI芯片/GPU", "description": "训练/推理芯片，高算力低功耗" },
+      { "name": "HBM/高带宽存储", "description": "HBM3/HBM4，存算一体" },
+      { "name": "光模块", "description": "800G/1.6T光模块，DSP芯片" },
+      { "name": "高速PCB/CCL", "description": "高层数PCB、M8级别覆铜板" },
+      { "name": "服务器/交换机", "description": "AI服务器、800G交换机" },
+      { "name": "液冷散热", "description": "冷板式/浸没式液冷" },
+      { "name": "AI电源/UPS", "description": "高功率密度电源、BBU" },
+      { "name": "数据中心运营", "description": "IDC机柜租赁、运维" },
+      { "name": "算力租赁", "description": "GPU云/算力调度平台" },
+      { "name": "封测(Chiplet)", "description": "CoWoS/2.5D封装，Chiplet互联" }
+    ],
+    "representative_stocks": [
+      { "code": "688041", "name": "海光信息", "link": "AI芯片/GPU" },
+      { "code": "002049", "name": "紫光国微", "link": "AI芯片/GPU" },
+      { "code": "300308", "name": "中际旭创", "link": "光模块" },
+      { "code": "688498", "name": "源杰科技", "link": "光模块" },
+      { "code": "002916", "name": "深南电路", "link": "高速PCB/CCL" },
+      { "code": "603186", "name": "华正新材", "link": "高速PCB/CCL" },
+      { "code": "000977", "name": "浪潮信息", "link": "服务器/交换机" },
+      { "code": "688475", "name": "萤石网络", "link": "服务器/交换机" },
+      { "code": "300499", "name": "高澜股份", "link": "液冷散热" },
+      { "code": "002837", "name": "英维克", "link": "液冷散热" }
+    ]
+  },
+  "创新药": {
+    "description": "创新药产业链 — 从药物发现到商业化",
+    "links": [
+      { "name": "靶点发现", "description": "新靶点验证、PROTAC/分子胶" },
+      { "name": "AI药物研发", "description": "AI辅助分子设计、虚拟筛选" },
+      { "name": "临床前CRO", "description": "药效/毒理/药代动力学外包" },
+      { "name": "临床CRO", "description": "I-III期临床试验管理" },
+      { "name": "CDMO/原料药", "description": "工艺开发、GMP生产" },
+      { "name": "抗体/ADC", "description": "单抗、双抗、ADC偶联" },
+      { "name": "细胞/基因治疗", "description": "CAR-T、AAV基因治疗" },
+      { "name": "核酸药物", "description": "mRNA、siRNA、ASO" },
+      { "name": "制剂/递送", "description": "脂质体、纳米递送系统" },
+      { "name": "商业化", "description": "市场准入、医保谈判、销售" }
+    ],
+    "representative_stocks": [
+      { "code": "600276", "name": "恒瑞医药", "link": "靶点发现" },
+      { "code": "300760", "name": "迈瑞医疗", "link": "靶点发现" },
+      { "code": "688266", "name": "泽璟制药", "link": "靶点发现" },
+      { "code": "603259", "name": "药明康德", "link": "CDMO/原料药" },
+      { "code": "300347", "name": "泰格医药", "link": "临床CRO" },
+      { "code": "002821", "name": "凯莱英", "link": "CDMO/原料药" },
+      { "code": "688185", "name": "康希诺", "link": "抗体/ADC" },
+      { "code": "300122", "name": "智飞生物", "link": "抗体/ADC" },
+      { "code": "688180", "name": "君实生物", "link": "抗体/ADC" },
+      { "code": "688520", "name": "神州细胞", "link": "细胞/基因治疗" }
+    ]
+  },
+  "光伏": {
+    "description": "光伏产业链 — 从硅料到电站运营",
+    "links": [
+      { "name": "多晶硅", "description": "改良西门子法/颗粒硅，产能结构性过剩" },
+      { "name": "硅片", "description": "拉晶/切片，大尺寸薄片化" },
+      { "name": "电池片", "description": "TOPCon/HJT/BC，转换效率竞赛" },
+      { "name": "组件", "description": "封装/层压/组框，品牌渠道" },
+      { "name": "逆变器", "description": "组串/集中/微逆，IGBT核心" },
+      { "name": "支架/跟踪", "description": "固定支架/跟踪支架" },
+      { "name": "银浆/辅材", "description": "正面银浆、焊带、背板" },
+      { "name": "光伏玻璃/胶膜", "description": "超白压延玻璃、EVA/POE胶膜" },
+      { "name": "光伏设备", "description": "拉晶炉、PECVD、丝网印刷" },
+      { "name": "电站运营", "description": "集中式/分布式电站EPC" }
+    ],
+    "representative_stocks": [
+      { "code": "600438", "name": "通威股份", "link": "多晶硅" },
+      { "code": "688599", "name": "天合光能", "link": "组件" },
+      { "code": "601012", "name": "隆基绿能", "link": "硅片" },
+      { "code": "002459", "name": "晶澳科技", "link": "组件" },
+      { "code": "688223", "name": "晶科能源", "link": "组件" },
+      { "code": "300763", "name": "锦浪科技", "link": "逆变器" },
+      { "code": "688390", "name": "固德威", "link": "逆变器" },
+      { "code": "601865", "name": "福莱特", "link": "光伏玻璃/胶膜" },
+      { "code": "603806", "name": "福斯特", "link": "光伏玻璃/胶膜" },
+      { "code": "300274", "name": "阳光电源", "link": "逆变器" }
+    ]
+  },
+  "军工": {
+    "description": "军工产业链 — 从材料到总装的国防工业体系",
+    "links": [
+      { "name": "航空发动机", "description": "涡扇/涡喷发动机，高温合金+叶片" },
+      { "name": "军机总装", "description": "战斗机/运输机/教练机总装" },
+      { "name": "导弹/弹药", "description": "精确制导、远程火箭弹" },
+      { "name": "军工电子", "description": "军用雷达/电子对抗/相控阵" },
+      { "name": "卫星/航天", "description": "卫星制造/发射、北斗应用" },
+      { "name": "船舶/舰艇", "description": "驱逐舰/护卫舰/潜艇" },
+      { "name": "装甲/兵器", "description": "坦克/步战车/火炮" },
+      { "name": "军工材料", "description": "碳纤维/钛合金/高温合金" },
+      { "name": "军工信息化", "description": "军事通信/指挥系统/加密" },
+      { "name": "民参军", "description": "民企切入军品配套" }
+    ],
+    "representative_stocks": [
+      { "code": "600760", "name": "中航沈飞", "link": "军机总装" },
+      { "code": "600893", "name": "航发动力", "link": "航空发动机" },
+      { "code": "600862", "name": "中航高科", "link": "航空发动机" },
+      { "code": "002013", "name": "中航机电", "link": "军工电子" },
+      { "code": "600118", "name": "中国卫星", "link": "卫星/航天" },
+      { "code": "600685", "name": "中船防务", "link": "船舶/舰艇" },
+      { "code": "600482", "name": "中国动力", "link": "船舶/舰艇" },
+      { "code": "000733", "name": "振华科技", "link": "军工电子" },
+      { "code": "002025", "name": "航天电器", "link": "军工电子" },
+      { "code": "600990", "name": "四创电子", "link": "军工电子" }
+    ]
+  },
+  "消费电子": {
+    "description": "消费电子产业链 — 从芯片到整机的智能终端生态",
+    "links": [
+      { "name": "手机芯片/SoC", "description": "应用处理器、基带芯片" },
+      { "name": "显示面板", "description": "OLED/LCD、折叠屏/屏下摄像" },
+      { "name": "存储芯片", "description": "NAND/DRAM、嵌入式存储" },
+      { "name": "摄像头/光学", "description": "CIS/镜头模组/潜望式" },
+      { "name": "PCB/FPC", "description": "HDI板/柔性电路板" },
+      { "name": "被动元件", "description": "MLCC/电感/电阻" },
+      { "name": "声学/马达", "description": "扬声器/线性马达/振动" },
+      { "name": "结构件/外壳", "description": "金属/玻璃/钛合金中框" },
+      { "name": "充电/连接器", "description": "快充/无线充电/Type-C" },
+      { "name": "终端品牌/ODM", "description": "手机/PC/平板品牌及代工" }
+    ],
+    "representative_stocks": [
+      { "code": "002475", "name": "立讯精密", "link": "终端品牌/ODM" },
+      { "code": "600745", "name": "闻泰科技", "link": "终端品牌/ODM" },
+      { "code": "601138", "name": "工业富联", "link": "终端品牌/ODM" },
+      { "code": "000725", "name": "京东方A", "link": "显示面板" },
+      { "code": "002456", "name": "欧菲光", "link": "摄像头/光学" },
+      { "code": "300433", "name": "蓝思科技", "link": "结构件/外壳" },
+      { "code": "002241", "name": "歌尔股份", "link": "声学/马达" },
+      { "code": "603501", "name": "韦尔股份", "link": "摄像头/光学" },
+      { "code": "002600", "name": "领益智造", "link": "结构件/外壳" },
+      { "code": "300136", "name": "信维通信", "link": "充电/连接器" }
+    ]
+  },
+  "医疗器械": {
+    "description": "医疗器械产业链 — 从高值耗材到大型影像设备",
+    "links": [
+      { "name": "医学影像", "description": "CT/MRI/超声/X光，国产替代加速" },
+      { "name": "体外诊断(IVD)", "description": "生化/免疫/分子诊断、POCT" },
+      { "name": "高值耗材", "description": "心脏支架/骨科/人工晶体" },
+      { "name": "低值耗材", "description": "输液器/注射器/手套" },
+      { "name": "手术机器人", "description": "腔镜/骨科手术机器人" },
+      { "name": "监护/生命支持", "description": "呼吸机/麻醉机/监护仪" },
+      { "name": "家用医疗", "description": "血糖仪/血压计/制氧机" },
+      { "name": "口腔医疗", "description": "种植体/隐形正畸/CBCT" },
+      { "name": "眼科器械", "description": "OK镜/ICL/眼底设备" },
+      { "name": "第三方检验", "description": "独立医学实验室/病理" }
+    ],
+    "representative_stocks": [
+      { "code": "300760", "name": "迈瑞医疗", "link": "监护/生命支持" },
+      { "code": "300003", "name": "乐普医疗", "link": "高值耗材" },
+      { "code": "688271", "name": "联影医疗", "link": "医学影像" },
+      { "code": "300529", "name": "健帆生物", "link": "高值耗材" },
+      { "code": "300832", "name": "新产业", "link": "体外诊断(IVD)" },
+      { "code": "603882", "name": "金域医学", "link": "第三方检验" },
+      { "code": "300015", "name": "爱尔眼科", "link": "眼科器械" },
+      { "code": "002223", "name": "鱼跃医疗", "link": "家用医疗" },
+      { "code": "688016", "name": "心脉医疗", "link": "高值耗材" },
+      { "code": "300244", "name": "迪安诊断", "link": "第三方检验" }
+    ]
+  },
+  "白酒": {
+    "description": "白酒产业链 — 从酿造到品牌消费的中国特色赛道",
+    "links": [
+      { "name": "高端白酒", "description": "千元+价格带，品牌壁垒极深" },
+      { "name": "次高端白酒", "description": "300-800元，区域升级+全国化" },
+      { "name": "大众白酒", "description": "100-300元，光瓶酒/口粮酒" },
+      { "name": "酿造/工艺", "description": "窖池/制曲/酿造/勾调，时间壁垒" },
+      { "name": "渠道/经销", "description": "经销商体系/直销/电商" },
+      { "name": "包装/防伪", "description": "酒瓶/酒盒/防伪技术" },
+      { "name": "老酒/收藏", "description": "年份酒/老酒交易/金融属性" },
+      { "name": "葡萄酒/果酒", "description": "国产葡萄酒/青梅酒/低度酒" },
+      { "name": "啤酒", "description": "工业啤酒/精酿啤酒/高端化" },
+      { "name": "黄酒/其他", "description": "黄酒/米酒/保健酒" }
+    ],
+    "representative_stocks": [
+      { "code": "600519", "name": "贵州茅台", "link": "高端白酒" },
+      { "code": "000858", "name": "五粮液", "link": "高端白酒" },
+      { "code": "000568", "name": "泸州老窖", "link": "高端白酒" },
+      { "code": "002304", "name": "洋河股份", "link": "次高端白酒" },
+      { "code": "000596", "name": "古井贡酒", "link": "次高端白酒" },
+      { "code": "603369", "name": "今世缘", "link": "次高端白酒" },
+      { "code": "600809", "name": "山西汾酒", "link": "次高端白酒" },
+      { "code": "603198", "name": "迎驾贡酒", "link": "大众白酒" },
+      { "code": "600600", "name": "青岛啤酒", "link": "啤酒" },
+      { "code": "000729", "name": "燕京啤酒", "link": "啤酒" }
+    ]
+  },
+  "家电": {
+    "description": "家电产业链 — 从核心部件到终端品牌的耐用消费品",
+    "links": [
+      { "name": "白电/空调", "description": "空调/冰箱/洗衣机，寡头竞争" },
+      { "name": "厨电", "description": "油烟机/燃气灶/集成灶" },
+      { "name": "小家电", "description": "扫地机/吸尘器/空气炸锅" },
+      { "name": "清洁电器", "description": "洗地机/扫地机器人/除螨仪" },
+      { "name": "智能家居", "description": "智能门锁/智能照明/全屋智能" },
+      { "name": "核心零部件", "description": "压缩机/电机/控制器" },
+      { "name": "显示/面板", "description": "电视面板/ MiniLED/MicroLED" },
+      { "name": "个护电器", "description": "电吹风/剃须刀/美容仪" },
+      { "name": "环境电器", "description": "空气净化器/加湿器/风扇" },
+      { "name": "出口/代工", "description": "ODM/OEM出海，全球供应链" }
+    ],
+    "representative_stocks": [
+      { "code": "000651", "name": "格力电器", "link": "白电/空调" },
+      { "code": "000333", "name": "美的集团", "link": "白电/空调" },
+      { "code": "600690", "name": "海尔智家", "link": "白电/空调" },
+      { "code": "002032", "name": "苏泊尔", "link": "厨电" },
+      { "code": "002242", "name": "九阳股份", "link": "小家电" },
+      { "code": "002050", "name": "三花智控", "link": "核心零部件" },
+      { "code": "688169", "name": "石头科技", "link": "清洁电器" },
+      { "code": "603486", "name": "科沃斯", "link": "清洁电器" },
+      { "code": "002242", "name": "九阳股份", "link": "小家电" },
+      { "code": "002508", "name": "老板电器", "link": "厨电" }
+    ]
+  },
+  "房地产": {
+    "description": "房地产产业链 — 从开发到运营的中国经济压舱石",
+    "links": [
+      { "name": "住宅开发", "description": "商品房开发，高杠杆/高周转" },
+      { "name": "商业地产", "description": "购物中心/写字楼/产业园" },
+      { "name": "物业管理", "description": "住宅物管/商管/增值服务" },
+      { "name": "房产经纪", "description": "二手房交易/租赁/平台" },
+      { "name": "保障房/城市更新", "description": "保障性住房/旧改/棚改" },
+      { "name": "REITs/资产证券化", "description": "公募REITs/CMBS/类REITs" },
+      { "name": "绿色建筑", "description": "装配式建筑/节能建材/BIPV" },
+      { "name": "家居/装修", "description": "精装修/家装/整装" },
+      { "name": "土地/园区", "description": "一级开发/产业园区/特色小镇" },
+      { "name": "代建/轻资产", "description": "代建/管理输出/品牌输出" }
+    ],
+    "representative_stocks": [
+      { "code": "001979", "name": "招商蛇口", "link": "住宅开发" },
+      { "code": "600048", "name": "保利发展", "link": "住宅开发" },
+      { "code": "000002", "name": "万科A", "link": "住宅开发" },
+      { "code": "600383", "name": "金地集团", "link": "住宅开发" },
+      { "code": "002244", "name": "滨江集团", "link": "住宅开发" },
+      { "code": "600606", "name": "绿地控股", "link": "住宅开发" },
+      { "code": "601155", "name": "新城控股", "link": "商业地产" },
+      { "code": "002285", "name": "世联行", "link": "房产经纪" },
+      { "code": "603506", "name": "南都物业", "link": "物业管理" },
+      { "code": "002314", "name": "南山控股", "link": "土地/园区" }
+    ]
+  },
+  "银行": {
+    "description": "银行业产业链 — 从存贷汇到财富管理的现代金融",
+    "links": [
+      { "name": "国有大型银行", "description": "工农中建交邮，系统重要性" },
+      { "name": "股份制银行", "description": "招行/兴业/浦发/民生等" },
+      { "name": "城商行/农商行", "description": "区域银行，地方经济重要支柱" },
+      { "name": "对公业务", "description": "企业贷款/供应链金融/投行" },
+      { "name": "零售业务", "description": "房贷/消费贷/信用卡/私行" },
+      { "name": "财富管理", "description": "理财代销/基金/保险/信托" },
+      { "name": "金融科技", "description": "手机银行/开放银行/数字人民币" },
+      { "name": "中间业务", "description": "结算/托管/银行卡/担保" },
+      { "name": "不良资产处置", "description": "AMC/不良ABS/债转股" },
+      { "name": "跨境金融", "description": "跨境支付/贸易融资/外汇" }
+    ],
+    "representative_stocks": [
+      { "code": "601398", "name": "工商银行", "link": "国有大型银行" },
+      { "code": "601939", "name": "建设银行", "link": "国有大型银行" },
+      { "code": "601288", "name": "农业银行", "link": "国有大型银行" },
+      { "code": "600036", "name": "招商银行", "link": "股份制银行" },
+      { "code": "601166", "name": "兴业银行", "link": "股份制银行" },
+      { "code": "600016", "name": "民生银行", "link": "股份制银行" },
+      { "code": "000001", "name": "平安银行", "link": "股份制银行" },
+      { "code": "002142", "name": "宁波银行", "link": "城商行/农商行" },
+      { "code": "600919", "name": "江苏银行", "link": "城商行/农商行" },
+      { "code": "601009", "name": "南京银行", "link": "城商行/农商行" }
+    ]
+  },
+  "证券": {
+    "description": "证券/券商产业链 — 从经纪到投行的资本市场核心中介",
+    "links": [
+      { "name": "经纪/财富管理", "description": "股票交易/基金代销/投顾" },
+      { "name": "投行业务", "description": "IPO/再融资/并购/债券承销" },
+      { "name": "资管/公募", "description": "券商资管/公募基金/专户" },
+      { "name": "自营投资", "description": "固收/权益/衍生品自营交易" },
+      { "name": "信用业务", "description": "两融/股票质押/约定购回" },
+      { "name": "研究所", "description": "卖方研究/路演/机构销售" },
+      { "name": "FICC/衍生品", "description": "做市/场外衍生品/跨境" },
+      { "name": "金融科技", "description": "量化交易/智能投顾/APP" },
+      { "name": "期货/国际业务", "description": "期货经纪/海外子公司" },
+      { "name": "交易所/基础设施", "description": "交易所/登记结算/指数" }
+    ],
+    "representative_stocks": [
+      { "code": "600030", "name": "中信证券", "link": "投行业务" },
+      { "code": "601211", "name": "国泰君安", "link": "经纪/财富管理" },
+      { "code": "600837", "name": "海通证券", "link": "投行业务" },
+      { "code": "601688", "name": "华泰证券", "link": "金融科技" },
+      { "code": "000776", "name": "广发证券", "link": "资管/公募" },
+      { "code": "601066", "name": "中信建投", "link": "投行业务" },
+      { "code": "002736", "name": "国信证券", "link": "经纪/财富管理" },
+      { "code": "601878", "name": "浙商证券", "link": "经纪/财富管理" },
+      { "code": "600958", "name": "东方证券", "link": "资管/公募" },
+      { "code": "601236", "name": "红塔证券", "link": "自营投资" }
+    ]
+  },
+  "养殖": {
+    "description": "养殖产业链 — 从饲料到肉食的周期行业",
+    "links": [
+      { "name": "生猪养殖", "description": "猪周期/能繁母猪/出栏量" },
+      { "name": "白羽肉鸡", "description": "鸡周期/祖代引种/分割品" },
+      { "name": "饲料", "description": "猪料/禽料/水产料/预混料" },
+      { "name": "动保/兽药", "description": "疫苗/化药/中兽药" },
+      { "name": "种猪/育种", "description": "核心种猪/二元回交/基因改良" },
+      { "name": "水产养殖", "description": "对虾/海参/淡水鱼" },
+      { "name": "反刍养殖", "description": "奶牛/肉牛/肉羊" },
+      { "name": "屠宰/加工", "description": "冷鲜肉/肉制品/深加工" },
+      { "name": "宠物食品", "description": "猫粮/狗粮/零食/营养品" },
+      { "name": "动物蛋白替代", "description": "植物肉/细胞培养肉" }
+    ],
+    "representative_stocks": [
+      { "code": "000735", "name": "罗牛山", "link": "生猪养殖" },
+      { "code": "002714", "name": "牧原股份", "link": "生猪养殖" },
+      { "code": "000876", "name": "新希望", "link": "饲料" },
+      { "code": "002385", "name": "大北农", "link": "饲料" },
+      { "code": "002299", "name": "圣农发展", "link": "白羽肉鸡" },
+      { "code": "300498", "name": "温氏股份", "link": "生猪养殖" },
+      { "code": "600201", "name": "生物股份", "link": "动保/兽药" },
+      { "code": "603609", "name": "禾丰股份", "link": "饲料" },
+      { "code": "002567", "name": "唐人神", "link": "生猪养殖" },
+      { "code": "300673", "name": "佩蒂股份", "link": "宠物食品" }
+    ]
+  },
+  "煤炭": {
+    "description": "煤炭产业链 — 从开采到清洁利用的基础能源",
+    "links": [
+      { "name": "动力煤", "description": "电煤/供热煤，能源压舱石" },
+      { "name": "焦煤", "description": "主焦煤/肥煤/瘦煤，焦化原料" },
+      { "name": "焦化", "description": "焦炭/煤焦油/粗苯，钢铁上游" },
+      { "name": "煤化工", "description": "煤制油/煤制气/煤制烯烃" },
+      { "name": "煤矿装备", "description": "采煤机/掘进机/液压支架" },
+      { "name": "铁路/港口", "description": "煤炭运输/港口/物流" },
+      { "name": "煤层气", "description": "煤矿瓦斯抽采/地面钻井" },
+      { "name": "煤电一体化", "description": "煤电联营/坑口电站" },
+      { "name": "煤炭贸易", "description": "国内贸易/进口/出口" },
+      { "name": "碳捕集/清洁利用", "description": "CCUS/煤基新材料" }
+    ],
+    "representative_stocks": [
+      { "code": "601088", "name": "中国神华", "link": "动力煤" },
+      { "code": "600188", "name": "兖矿能源", "link": "动力煤" },
+      { "code": "601225", "name": "陕西煤业", "link": "动力煤" },
+      { "code": "600546", "name": "山煤国际", "link": "动力煤" },
+      { "code": "600985", "name": "淮北矿业", "link": "焦煤" },
+      { "code": "601666", "name": "平煤股份", "link": "焦煤" },
+      { "code": "603619", "name": "潞安环能", "link": "焦煤" },
+      { "code": "000983", "name": "山西焦煤", "link": "焦煤" },
+      { "code": "600348", "name": "华阳股份", "link": "动力煤" },
+      { "code": "601898", "name": "中煤能源", "link": "煤化工" }
+    ]
+  },
+  "有色金属": {
+    "description": "有色金属产业链 — 从矿采到加工的工业基石",
+    "links": [
+      { "name": "铜", "description": "铜矿/电解铜/铜加工，工业血液" },
+      { "name": "铝", "description": "氧化铝/电解铝/铝加工" },
+      { "name": "黄金", "description": "金矿开采/冶炼，避险资产" },
+      { "name": "稀土/磁材", "description": "稀土氧化物/永磁材料" },
+      { "name": "锂", "description": "锂矿/碳酸锂/氢氧化锂" },
+      { "name": "镍/钴", "description": "镍矿/钴矿，动力电池关键原料" },
+      { "name": "锌/铅", "description": "铅锌矿/冶炼/加工" },
+      { "name": "锡", "description": "锡矿/精锡/焊料，半导体关键" },
+      { "name": "钨/钼", "description": "钨矿/钼矿，战略小金属" },
+      { "name": "再生金属", "description": "废铜/废铝回收循环" }
+    ],
+    "representative_stocks": [
+      { "code": "601899", "name": "紫金矿业", "link": "铜" },
+      { "code": "600362", "name": "江西铜业", "link": "铜" },
+      { "code": "000630", "name": "铜陵有色", "link": "铜" },
+      { "code": "000933", "name": "神火股份", "link": "铝" },
+      { "code": "601600", "name": "中国铝业", "link": "铝" },
+      { "code": "600489", "name": "中金黄金", "link": "黄金" },
+      { "code": "600547", "name": "山东黄金", "link": "黄金" },
+      { "code": "002460", "name": "赣锋锂业", "link": "锂" },
+      { "code": "002466", "name": "天齐锂业", "link": "锂" },
+      { "code": "600111", "name": "北方稀土", "link": "稀土/磁材" }
+    ]
+  },
+  "基础化工": {
+    "description": "基础化工产业链 — 从大宗原料到精细化学品的制造体系",
+    "links": [
+      { "name": "石油化工", "description": "炼化/乙烯/丙烯/芳烃" },
+      { "name": "化纤", "description": "涤纶/氨纶/锦纶/粘胶" },
+      { "name": "化肥/农药", "description": "氮磷钾复合肥/草甘膦" },
+      { "name": "钛白粉", "description": "硫酸法/氯化法钛白粉，涂料颜料" },
+      { "name": "纯碱/氯碱", "description": "纯碱/烧碱/PVC" },
+      { "name": "有机硅", "description": "硅橡胶/硅油/硅树脂" },
+      { "name": "氟化工", "description": "萤石/氢氟酸/含氟高分子" },
+      { "name": "聚氨酯", "description": "MDI/TDI/聚醚/海绵" },
+      { "name": "精细化工/添加剂", "description": "食品添加剂/香精/表面活性剂" },
+      { "name": "轮胎/橡胶", "description": "半钢/全钢轮胎/天然橡胶" }
+    ],
+    "representative_stocks": [
+      { "code": "600309", "name": "万华化学", "link": "聚氨酯" },
+      { "code": "601857", "name": "中国石油", "link": "石油化工" },
+      { "code": "002648", "name": "卫星化学", "link": "石油化工" },
+      { "code": "600352", "name": "浙江龙盛", "link": "精细化工/添加剂" },
+      { "code": "002601", "name": "龙佰集团", "link": "钛白粉" },
+      { "code": "000830", "name": "鲁西化工", "link": "纯碱/氯碱" },
+      { "code": "600409", "name": "三友化工", "link": "纯碱/氯碱" },
+      { "code": "002709", "name": "天赐材料", "link": "精细化工/添加剂" },
+      { "code": "600141", "name": "兴发集团", "link": "有机硅" },
+      { "code": "601678", "name": "滨化股份", "link": "纯碱/氯碱" }
+    ]
+  },
+  "电力": {
+    "description": "电力产业链 — 从发电到电网的能源基础设施",
+    "links": [
+      { "name": "火电", "description": "煤电/气电，基荷电源" },
+      { "name": "水电", "description": "大水电/小水电/抽水蓄能" },
+      { "name": "风电", "description": "陆上风电/海上风电/风机" },
+      { "name": "光伏发电", "description": "集中式光伏/分布式光伏" },
+      { "name": "核电", "description": "核电站/核燃料/运维" },
+      { "name": "电网/输配电", "description": "特高压/柔性直流/配电网" },
+      { "name": "智能电网/信息化", "description": "电力IT/调度/自动化" },
+      { "name": "储能/调峰", "description": "抽蓄/电化学储能/压缩空气" },
+      { "name": "电力交易/售电", "description": "电力市场/绿电交易/售电" },
+      { "name": "综合能源服务", "description": "能效管理/微电网/分布式" }
+    ],
+    "representative_stocks": [
+      { "code": "600900", "name": "长江电力", "link": "水电" },
+      { "code": "601985", "name": "中国核电", "link": "核电" },
+      { "code": "600886", "name": "国投电力", "link": "水电" },
+      { "code": "601727", "name": "上海电气", "link": "风电" },
+      { "code": "603568", "name": "伟明环保", "link": "火电" },
+      { "code": "300274", "name": "阳光电源", "link": "光伏发电" },
+      { "code": "600406", "name": "国电南瑞", "link": "电网/输配电" },
+      { "code": "601877", "name": "正泰电器", "link": "电网/输配电" },
+      { "code": "600025", "name": "华能水电", "link": "水电" },
+      { "code": "601669", "name": "中国电建", "link": "风电" }
+    ]
+  }
+}

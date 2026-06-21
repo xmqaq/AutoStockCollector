@@ -119,6 +119,7 @@ import {
   List,
   User,
   SwitchButton,
+  Document,
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -170,6 +171,7 @@ const menuGroups = computed((): MenuGroup[] => [
     children: [
       { key: '/ai-monitor',      label: 'AI实时监控',     icon: Monitor },
       { key: '/fusion-pick',     label: 'AI 智选',        icon: MagicStick },
+      { key: '/research-analysis', label: '投资研报分析',   icon: Document },
       { key: '/stock-analysis',  label: '个股深度分析',    icon: Search },
     ],
   },
@@ -179,6 +181,7 @@ const menuGroups = computed((): MenuGroup[] => [
     icon: Operation,
     children: [
       { key: '/position', label: '仓位管理',   icon: Wallet },
+      { key: '/price-action', label: '价格行为学', icon: TrendCharts },
     ],
   },
   {

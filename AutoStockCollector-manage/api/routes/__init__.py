@@ -155,6 +155,8 @@ def register_routes(app):
     from api.routes.fusion_pick import fusion_pick_bp
     from api.routes.monitor import monitor_bp
     from api.routes.auth import auth_bp
+    from modules.ai_research_report_analyzer.api import research_bp
+    from modules.price_action_advisor.api import pa_bp
 
     app.register_blueprint(api_bp)
     app.register_blueprint(auth_bp)
@@ -170,6 +172,8 @@ def register_routes(app):
     app.register_blueprint(strategy_pick_bp)
     app.register_blueprint(fusion_pick_bp)
     app.register_blueprint(monitor_bp)
+    app.register_blueprint(research_bp)
+    app.register_blueprint(pa_bp)
 
     @app.route("/health", methods=["GET"])
     def health_check():
