@@ -86,10 +86,14 @@ def refresh_all():
     if _refresh_lock.locked():
         return jsonify({"success": False, "error": "刷新任务正在运行中，请稍候再试"}), 429
 
+    # 必须在起线程前取 user_id：daemon 线程里没有请求上下文，g 不可用。
+    # 旧实现 refresh_all() 默认 user_id="default"，导致非 default 用户点刷新只更新了 default 的监控。
+    user_id = g.current_user["user_id"]
+
     def _run():
         with _refresh_lock:
             try:
-                _get_engine().refresh_all()
+                _get_engine().refresh_all(user_id)
             except Exception as e:
                 logger.error(f"Refresh all failed: {e}")
 
@@ -115,7 +119,7 @@ def refresh_stock(code: str):
 @login_required
 def scan_once():
     try:
-        result = _get_engine().refresh_all()
+        result = _get_engine().refresh_all(g.current_user["user_id"])
         return jsonify(result)
     except Exception as e:
         logger.error(f"Scan failed: {e}")
