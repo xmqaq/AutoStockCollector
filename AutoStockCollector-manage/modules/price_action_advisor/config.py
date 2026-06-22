@@ -54,6 +54,8 @@ class PAConfig:
     PIVOT_LEFT = int(os.getenv("PA_PIVOT_LEFT", "2"))
     PIVOT_RIGHT = int(os.getenv("PA_PIVOT_RIGHT", "2"))
     STRUCTURE_HH_THRESHOLD = float(os.getenv("PA_STRUCTURE_HH_THRESHOLD", "1.005"))
+    STRUCTURE_HL_THRESHOLD = float(os.getenv("PA_STRUCTURE_HL_THRESHOLD", "1.005"))
+    STRUCTURE_LH_THRESHOLD = float(os.getenv("PA_STRUCTURE_LH_THRESHOLD", "0.995"))
     STRUCTURE_LL_THRESHOLD = float(os.getenv("PA_STRUCTURE_LL_THRESHOLD", "0.995"))
     SMA_BULL_THRESHOLD = float(os.getenv("PA_SMA_BULL_THRESHOLD", "1.02"))
     SMA_BEAR_THRESHOLD = float(os.getenv("PA_SMA_BEAR_THRESHOLD", "0.98"))
@@ -80,6 +82,17 @@ class PAConfig:
     ZONE_PROXIMITY = float(os.getenv("PA_ZONE_PROXIMITY", "0.02"))
     FIB_PROXIMITY = float(os.getenv("PA_FIB_PROXIMITY", "0.02"))
     OB_PROXIMITY = float(os.getenv("PA_OB_PROXIMITY", "0.01"))
+
+    # 信号生成 (signal_generator.py)
+    VOLUME_CONFIRM_RATIO = float(os.getenv("PA_VOLUME_CONFIRM_RATIO", "1.5"))
+    VOLUME_MA_PERIOD = int(os.getenv("PA_VOLUME_MA_PERIOD", "20"))
+
+    # 仓位上限 (risk_manager.py)
+    MAX_POSITION_PCT = float(os.getenv("PA_MAX_POSITION_PCT", "0.25"))
+
+    # 回测参数 (backtest.py / price_action_engine.py)
+    BACKTEST_STEP = int(os.getenv("PA_BACKTEST_STEP", "5"))
+    BACKTEST_HOLD_BARS = int(os.getenv("PA_BACKTEST_HOLD_BARS", "10"))
 
     # AI 分析 (ai_analyzer.py)
     AI_TEMPERATURE = float(os.getenv("PA_AI_TEMPERATURE", "0.5"))

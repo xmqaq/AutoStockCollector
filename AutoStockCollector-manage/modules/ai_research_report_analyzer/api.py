@@ -1,5 +1,6 @@
 """投资研报分析 — Flask Blueprint（异步 + 进度轮询）。"""
 import threading
+import time
 import uuid
 from datetime import datetime
 from typing import Optional
@@ -16,6 +17,19 @@ research_bp = Blueprint("research", __name__, url_prefix="/api/v1/ai")
 _engine: Optional[AnalyzerEngine] = None
 _tasks: dict = {}
 _tasks_lock = threading.Lock()
+_TASK_TTL = 300  # 任务完成/失败后保留秒数
+
+
+def _evict_stale_tasks():
+    """清理过期任务，防止内存泄漏。"""
+    now = time.time()
+    with _tasks_lock:
+        stale = [tid for tid, t in list(_tasks.items())
+                 if t.get("completed_at", 0) and now - t["completed_at"] > _TASK_TTL]
+        for tid in stale:
+            del _tasks[tid]
+        if stale:
+            logger.info(f"[Research] Evicted {len(stale)} stale tasks")
 
 
 def _get_engine() -> AnalyzerEngine:
@@ -28,24 +42,43 @@ def _get_engine() -> AnalyzerEngine:
 def _run_analysis(task_id: str, sectors: list, top_n: int):
     """后台执行分析任务。"""
     try:
+        _evict_stale_tasks()
         with _tasks_lock:
             _tasks[task_id] = {"status": "processing", "progress": 0, "message": "正在初始化..."}
 
         eng = _get_engine()
 
+        def progress_cb(pct: int, sector: str):
+            with _tasks_lock:
+                t = _tasks.get(task_id)
+                if t and t.get("status") == "cancelled":
+                    return
+                _tasks[task_id]["progress"] = pct
+                _tasks[task_id]["message"] = f"正在分析: {sector}" if sector else f"进度 {pct}%"
+
+        def cancel_check() -> bool:
+            with _tasks_lock:
+                return _tasks.get(task_id, {}).get("status") == "cancelled"
+
         with _tasks_lock:
             _tasks[task_id]["message"] = f"正在分析板块: {', '.join(sectors)}"
             _tasks[task_id]["progress"] = 10
 
-        result = eng.analyze(sectors=sectors, top_n=top_n)
+        result = eng.analyze(
+            sectors=sectors, top_n=top_n, max_workers=min(len(sectors), 4),
+            progress_callback=progress_cb, cancel_check=cancel_check,
+        )
         result["task_id"] = task_id
 
         with _tasks_lock:
+            if _tasks.get(task_id, {}).get("status") == "cancelled":
+                return
             _tasks[task_id] = {
                 "status": "completed",
                 "progress": 100,
                 "message": "分析完成",
                 "result": result,
+                "completed_at": time.time(),
             }
 
         # 保存到 MongoDB
@@ -66,7 +99,7 @@ def _run_analysis(task_id: str, sectors: list, top_n: int):
     except Exception as e:
         logger.error(f"[ResearchAnalyzer] Task {task_id} failed: {e}")
         with _tasks_lock:
-            _tasks[task_id] = {"status": "failed", "progress": 0, "message": str(e)}
+            _tasks[task_id] = {"status": "failed", "progress": 0, "message": str(e), "completed_at": time.time()}
 
 
 @research_bp.route("/research-analysis", methods=["POST"])
@@ -75,14 +108,17 @@ def research_analysis():
     """启动投资研报分析（异步）。返回 task_id，前端轮询进度。"""
     data = request.get_json(silent=True) or {}
     sectors = data.get("sectors", [])
-    top_n = int(data.get("top_n", 10))
-
-    if not sectors:
+    if not sectors or not isinstance(sectors, list):
         return jsonify({"success": False, "error": "请至少指定一个行业板块"}), 400
-    if not isinstance(sectors, list):
-        sectors = [sectors]
     if len(sectors) > 10:
         return jsonify({"success": False, "error": "单次最多分析10个板块"}), 400
+
+    try:
+        top_n = int(data.get("top_n", 10))
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "error": "top_n 必须为整数"}), 400
+    if not (5 <= top_n <= 100):
+        return jsonify({"success": False, "error": "top_n 范围 5-100"}), 400
 
     # 缓存命中检查 — 同行业+同日期已完成的直接返回
     try:
@@ -141,6 +177,22 @@ def get_result(task_id: str):
         resp["data"] = task["result"]
 
     return jsonify(resp)
+
+
+@research_bp.route("/research-analysis/cancel/<task_id>", methods=["POST"])
+@login_required
+def cancel_analysis(task_id: str):
+    """取消正在进行的分析任务。"""
+    with _tasks_lock:
+        task = _tasks.get(task_id)
+        if not task:
+            return jsonify({"success": False, "error": "任务不存在"}), 404
+        if task["status"] in ("completed", "failed", "cancelled"):
+            return jsonify({"success": False, "error": f"任务已{task['status']}"}), 400
+        task["status"] = "cancelled"
+        task["message"] = "任务已取消"
+    logger.info(f"[ResearchAnalyzer] Task {task_id} cancelled by user")
+    return jsonify({"success": True, "message": "任务已取消"})
 
 
 @research_bp.route("/research-analysis/export/<task_id>", methods=["GET"])

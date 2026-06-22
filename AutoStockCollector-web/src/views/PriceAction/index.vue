@@ -20,6 +20,8 @@
           {{ loading ? `${taskProgress}%` : '分析' }}
         </el-button>
         <el-button text size="small" :icon="Refresh" @click="loadHistory">历史</el-button>
+        <el-button text size="small" :icon="TrendCharts" :loading="scanLoading" @click="startScan" style="margin-left:4px">扫描</el-button>
+        <el-button v-if="!scanLoading" text size="small" @click="loadLatestScan">上次结果</el-button>
       </div>
     </el-card>
 
@@ -35,8 +37,44 @@
       <p class="pa-step-msg">{{ taskMessage }}</p>
     </el-card>
 
+    <!-- 扫描进度 -->
+    <el-card v-if="scanLoading" shadow="never" class="pa-progress-card">
+      <p style="text-align:center;margin:4px 0">全市场扫描中... ({{ scanResults.length }} 个信号)</p>
+      <el-progress :percentage="scanProgress" :stroke-width="8" striped striped-flow />
+    </el-card>
+
+    <!-- 扫描结果 -->
+    <div v-if="scanResults.length > 0" class="pa-result">
+      <el-card shadow="never" class="pa-card">
+        <template #header>
+          <span>🔍 全市场扫描 — {{ scanResults.length }} 个信号</span>
+        </template>
+        <el-table :data="scanResults" stripe size="small" highlight-current-row
+          @row-click="(row: PaSignal) => { result = row; scanResults = [] }">
+          <el-table-column prop="symbol" label="代码" width="80" />
+          <el-table-column prop="name" label="名称" width="100" />
+          <el-table-column prop="current_price" label="价格" width="80" align="right">
+            <template #default="{ row }">¥{{ row.current_price?.toFixed(2) }}</template>
+          </el-table-column>
+          <el-table-column label="信号" width="90" align="center">
+            <template #default="{ row }">
+              <el-tag :type="row.signal === 'BUY_SETUP' ? 'danger' : 'success'" size="small">{{ signalLabel(row.signal) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="confidence" label="置信" width="60" align="center" />
+          <el-table-column prop="trend" label="趋势" width="70" align="center" />
+          <el-table-column label="回测胜率" width="80" align="right">
+            <template #default="{ row }">{{ row.backtest?.win_rate ? row.backtest.win_rate + '%' : '-' }}</template>
+          </el-table-column>
+          <el-table-column label="夏普" width="60" align="right">
+            <template #default="{ row }">{{ row.backtest?.sharpe_ratio ?? '-' }}</template>
+          </el-table-column>
+        </el-table>
+      </el-card>
+    </div>
+
     <!-- 结果 -->
-    <div v-if="result" class="pa-result">
+    <div v-if="result && !scanResults.length" class="pa-result">
       <!-- 信号横幅 -->
       <div class="pa-signal-banner" :class="signalBannerClass">
         <div class="pa-banner-left">
@@ -73,6 +111,12 @@
           </div>
         </div>
       </div>
+
+      <!-- K 线图 -->
+      <el-card v-if="hasKline" shadow="never" class="pa-card pa-chart-card">
+        <template #header><span>📊 K 线图</span></template>
+        <v-chart ref="klineChartRef" :option="chartOption" style="width:100%;height:450px" autoresize />
+      </el-card>
 
       <div class="pa-body-grid">
         <div class="pa-main-col">
@@ -128,6 +172,28 @@
         </div>
 
         <div class="pa-side-col">
+          <template v-if="result.backtest && result.backtest.total_trades >= 5">
+            <el-card shadow="never" class="pa-card pa-bt-card">
+              <template #header><span>📊 回测验证</span></template>
+              <div class="pa-bt-grid">
+                <div class="pa-bt-item"><span class="pa-bt-label">交易次数</span><span class="pa-bt-val">{{ result.backtest.total_trades }}</span></div>
+                <div class="pa-bt-item"><span class="pa-bt-label">胜率</span><span class="pa-bt-val" :class="result.backtest.win_rate >= 40 ? 'pa-bt-green' : 'pa-bt-red'">{{ result.backtest.win_rate }}%</span></div>
+                <div class="pa-bt-item"><span class="pa-bt-label">平均R</span><span class="pa-bt-val">{{ result.backtest.avg_r }}</span></div>
+                <div class="pa-bt-item"><span class="pa-bt-label">夏普</span><span class="pa-bt-val" :class="result.backtest.sharpe_ratio >= 1 ? 'pa-bt-green' : ''">{{ result.backtest.sharpe_ratio }}</span></div>
+                <div class="pa-bt-item"><span class="pa-bt-label">盈亏比</span><span class="pa-bt-val">{{ result.backtest.profit_factor }}</span></div>
+                <div class="pa-bt-item"><span class="pa-bt-label">最大回撤</span><span class="pa-bt-val pa-bt-red">{{ result.backtest.max_drawdown_pct }}%</span></div>
+                <div class="pa-bt-item"><span class="pa-bt-label">期望值</span><span class="pa-bt-val" :class="result.backtest.expectancy > 0 ? 'pa-bt-green' : 'pa-bt-red'">{{ result.backtest.expectancy }}</span></div>
+                <div class="pa-bt-item"><span class="pa-bt-label">连续亏损</span><span class="pa-bt-val pa-bt-red">{{ result.backtest.max_consecutive_losses }}</span></div>
+              </div>
+            </el-card>
+          </template>
+          <template v-else-if="result.backtest?.message">
+            <el-card shadow="never" class="pa-card">
+              <template #header><span>📊 回测</span></template>
+              <div class="pa-ai-na">{{ result.backtest.message }}</div>
+            </el-card>
+          </template>
+
           <div v-if="result.trade_plan" class="pa-trade-card">
             <div class="pa-trade-header" :class="result.trade_plan.direction === 'long' ? 'pa-trade-buy' : 'pa-trade-sell'">
               <span class="pa-trade-dir">{{ result.trade_plan.direction === 'long' ? '📈 做多计划' : '📉 做空计划' }}</span>
@@ -182,12 +248,17 @@
             <el-checkbox v-model="useAi" size="small" style="margin-top:8px">AI 增强分析</el-checkbox>
           </el-card>
 
-          <el-button v-if="result" text size="small" @click="result = null; taskProgress = 0">← 新查询</el-button>
+          <!-- 一键交易 -->
+          <el-button v-if="canTrade" type="primary" size="small" style="width:100%" @click="executeTrade">
+            📈 发送到模拟盘
+          </el-button>
+
+          <el-button v-if="result && !scanResults.length" text size="small" @click="result = null; taskProgress = 0">← 新查询</el-button>
         </div>
       </div>
     </div>
 
-    <el-card v-if="!result && !loading" shadow="never" class="pa-history">
+    <el-card v-if="!result && !loading && !scanResults.length" shadow="never" class="pa-history">
       <template #header><span>分析记录</span></template>
       <div v-if="history.length === 0" class="empty-state">
         <el-empty description="暂无分析记录，请输入股票代码开始分析" />
@@ -208,11 +279,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { Refresh } from '@element-plus/icons-vue'
-import { priceActionApi, type PaSignal } from '@/api/priceAction'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Refresh, TrendCharts } from '@element-plus/icons-vue'
+import { priceActionApi, type PaSignal, type PaKlineBar } from '@/api/priceAction'
+import VChart from 'vue-echarts'
+import { use } from 'echarts/core'
+import { CandlestickChart, BarChart, LineChart } from 'echarts/charts'
+import { TooltipComponent, GridComponent, DataZoomComponent, LegendComponent, MarkLineComponent, MarkAreaComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+
+use([CandlestickChart, BarChart, LineChart, TooltipComponent, GridComponent, DataZoomComponent, LegendComponent, MarkLineComponent, MarkAreaComponent, CanvasRenderer])
 
 const route = useRoute()
 
@@ -233,14 +311,126 @@ const riskPct = ref(2)
 const accountBalance = ref(100000)
 const useAi = ref(false)
 const loading = ref(false)
+const scanLoading = ref(false)
 const result = ref<PaSignal | null>(null)
+const scanResults = ref<PaSignal[]>([])
 const history = ref<any[]>([])
 const taskId = ref('')
+const scanTaskId = ref('')
 const taskProgress = ref(0)
 const taskMessage = ref('')
+const scanProgress = ref(0)
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let pollTimeoutTimer: ReturnType<typeof setTimeout> | null = null
+let scanPollTimer: ReturnType<typeof setInterval> | null = null
 const POLL_TIMEOUT_MS = 5 * 60 * 1000 // 5分钟
+const klineChartRef = ref<InstanceType<typeof VChart> | null>(null)
+
+const hasKline = computed(() => !!result.value?.kline_bars?.length)
+
+function calcMA(bars: PaKlineBar[], period: number): (number | string)[] {
+  const result: (number | string)[] = []
+  for (let i = 0; i < bars.length; i++) {
+    if (i < period - 1) { result.push('-'); continue }
+    let sum = 0
+    for (let j = 0; j < period; j++) sum += bars[i - j].close
+    result.push(+(sum / period).toFixed(2))
+  }
+  return result
+}
+
+const chartOption = computed(() => {
+  const bars = result.value?.kline_bars
+  if (!bars?.length) return {}
+  const dates = bars.map(b => b.time.slice(5, 10))
+  const ohlc = bars.map(b => [b.open, b.close, b.low, b.high])
+  const volumes = bars.map(b => b.volume)
+  const ma5 = calcMA(bars, 5)
+  const ma10 = calcMA(bars, 10)
+  const ma20 = calcMA(bars, 20)
+
+  const markLines: { yAxis: number; label: { formatter: string; color: string }; lineStyle: { color: string; type?: string } }[] = []
+  const markAreas: { yAxis: number; itemStyle: { color: string; opacity: number } }[] = []
+
+  const tp = result.value?.trade_plan
+  if (tp?.stop_loss) markLines.push({ yAxis: tp.stop_loss, label: { formatter: `止损 ${tp.stop_loss}`, color: '#f56c6c' }, lineStyle: { color: '#f56c6c', type: 'dashed' } })
+  if (tp?.take_profit) markLines.push({ yAxis: tp.take_profit, label: { formatter: `止盈 ${tp.take_profit}`, color: '#67c23a' }, lineStyle: { color: '#67c23a', type: 'dashed' } })
+  if (tp?.entry) markLines.push({ yAxis: tp.entry, label: { formatter: `入场 ${tp.entry}`, color: '#409eff' }, lineStyle: { color: '#409eff' } })
+
+  const fibs = result.value?.fib_levels
+  if (fibs) Object.entries(fibs).forEach(([k, v]) => {
+    markLines.push({ yAxis: v as number, label: { formatter: `Fib ${k} ${v}`, color: '#e6a23c' }, lineStyle: { color: '#e6a23c', type: 'dashed' } })
+  })
+
+  const zones = result.value?.zones || []
+  zones.forEach((z: any) => {
+    const hi = z.high ?? z.price_max
+    const lo = z.low ?? z.price_min
+    if (hi && lo) {
+      markLines.push({ yAxis: hi, label: { formatter: `区顶 ${hi}`, color: '#909399' }, lineStyle: { color: '#909399', type: 'dotted' } })
+      markLines.push({ yAxis: lo, label: { formatter: `区底 ${lo}`, color: '#909399' }, lineStyle: { color: '#909399', type: 'dotted' } })
+    }
+  })
+
+  return {
+    backgroundColor: 'transparent',
+    animation: false,
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross' },
+      backgroundColor: 'rgba(30,30,30,0.85)',
+      borderWidth: 0,
+      borderRadius: 8,
+      padding: 12,
+      textStyle: { color: '#e0e0e0', fontSize: 12 },
+      formatter(params: unknown[]) {
+        const arr = params as { seriesName: string; dataIndex: number }[]
+        const idx = arr?.[0]?.dataIndex
+        if (idx === undefined || !bars[idx]) return ''
+        const b = bars[idx]
+        const chg = ((b.close - b.open) / b.open * 100).toFixed(2)
+        const chgClr = b.close >= b.open ? '#ef5350' : '#26a69a'
+        const row = (k: string, v: string, c = '#e0e0e0') => `<div style="display:flex;justify-content:space-between;gap:18px;line-height:1.6"><span style="color:#909399">${k}</span><span style="color:${c};font-weight:500">${v}</span></div>`
+        return `<div style="padding:4px 6px;min-width:150px"><div style="font-weight:bold;margin-bottom:4px">${b.time}</div>${row('开盘', b.open.toFixed(2))}${row('最高', b.high.toFixed(2), '#ef5350')}${row('最低', b.low.toFixed(2), '#26a69a')}${row('收盘', b.close.toFixed(2))}${row('涨跌幅', `${chg}%`, chgClr)}${row('成交量', (b.volume / 100 / 1e4).toFixed(2) + '万手')}</div>`
+      },
+    },
+    legend: { top: 4, left: 'center', textStyle: { color: '#ccc' }, data: ['K线', 'MA5', 'MA10', 'MA20', '成交量'] },
+    grid: [
+      { left: 50, right: 20, top: 36, bottom: '28%' },
+      { left: 50, right: 20, top: '75%', bottom: 50 },
+    ],
+    xAxis: [
+      { type: 'category', data: dates, scale: true, boundaryGap: false, axisLine: { lineStyle: { color: '#444' } }, splitLine: { show: false }, axisLabel: { color: '#999', fontSize: 10 }, gridIndex: 0 },
+      { type: 'category', data: dates, scale: true, boundaryGap: false, axisLine: { lineStyle: { color: '#444' } }, splitLine: { show: false }, axisLabel: { show: false }, gridIndex: 1 },
+    ],
+    yAxis: [
+      { scale: true, splitArea: { show: false }, axisLine: { lineStyle: { color: '#444' } }, splitLine: { lineStyle: { color: '#333', type: 'dashed' } }, axisLabel: { color: '#999', fontSize: 10 }, gridIndex: 0 },
+      { scale: true, splitArea: { show: false }, axisLine: { lineStyle: { color: '#444' } }, splitLine: { show: false }, axisLabel: { color: '#999', fontSize: 10, formatter: (v: number) => (v / 100 / 1e4).toFixed(0) + '万' }, gridIndex: 1 },
+    ],
+    dataZoom: [
+      { type: 'inside', xAxisIndex: [0, 1], start: 0, end: 100 },
+      { type: 'slider', xAxisIndex: [0, 1], bottom: 8, height: 18, start: 0, end: 100, textStyle: { color: '#999' }, borderColor: 'transparent', fillerColor: 'rgba(63,127,174,0.1)', handleStyle: { color: '#888', opacity: 0.5 }, dataBackground: { lineStyle: { opacity: 0 }, areaStyle: { opacity: 0 } }, selectedDataBackground: { lineStyle: { opacity: 0 }, areaStyle: { opacity: 0 } } },
+    ],
+    series: [
+      {
+        name: 'K线', type: 'candlestick', data: ohlc,
+        itemStyle: { color: RISE_COLOR, color0: FALL_COLOR, borderColor: RISE_COLOR, borderColor0: FALL_COLOR },
+        xAxisIndex: 0, yAxisIndex: 0,
+        markLine: { silent: true, symbol: ['none', 'none'], data: markLines },
+      },
+      { name: 'MA5', type: 'line', data: ma5, smooth: true, lineStyle: { width: 1, color: '#ffc107' }, showSymbol: false, xAxisIndex: 0, yAxisIndex: 0 },
+      { name: 'MA10', type: 'line', data: ma10, smooth: true, lineStyle: { width: 1, color: '#9c27b0' }, showSymbol: false, xAxisIndex: 0, yAxisIndex: 0 },
+      { name: 'MA20', type: 'line', data: ma20, smooth: true, lineStyle: { width: 1, color: '#2196f3' }, showSymbol: false, xAxisIndex: 0, yAxisIndex: 0 },
+      {
+        name: '成交量', type: 'bar', data: volumes.map(v => ({ value: v, itemStyle: { color: '#888' } })),
+        xAxisIndex: 1, yAxisIndex: 1,
+      },
+    ],
+  }
+})
+
+const RISE_COLOR = '#ef5350'
+const FALL_COLOR = '#26a69a'
 
 const stepDefs = [
   { label: '数据获取', pct: 20 },
@@ -365,6 +555,61 @@ async function loadHistory() {
   } catch { /* ignore */ }
 }
 
+async function loadLatestScan() {
+  try {
+    const res = await priceActionApi.getLatestScan()
+    if (res.data?.success && res.data.data?.results?.length) {
+      scanResults.value = res.data.data.results as PaSignal[]
+      ElMessage.success(`已加载上次扫描结果: ${scanResults.value.length} 个信号`)
+    } else {
+      ElMessage.info('暂无扫描记录')
+    }
+  } catch {
+    ElMessage.error('获取上次扫描结果失败')
+  }
+}
+
+async function startScan() {
+  scanLoading.value = true
+  scanResults.value = []
+  scanProgress.value = 0
+  try {
+    const res = await priceActionApi.scan(undefined, timeframe.value, riskPct.value / 100, accountBalance.value)
+    if (!res.data?.success) { ElMessage.error('扫描启动失败'); scanLoading.value = false; return }
+    scanTaskId.value = res.data.task_id
+    startScanPolling()
+  } catch {
+    ElMessage.error('扫描请求失败')
+    scanLoading.value = false
+  }
+}
+
+function startScanPolling() {
+  if (scanPollTimer) clearInterval(scanPollTimer)
+  scanPollTimer = setInterval(async () => {
+    if (!scanTaskId.value) return
+    try {
+      const res = await priceActionApi.getResult(scanTaskId.value)
+      const data = res.data
+      if (!data?.success) return
+      scanProgress.value = data.progress || 0
+      if (data.status === 'completed') {
+        clearInterval(scanPollTimer!)
+        scanPollTimer = null
+        scanLoading.value = false
+        scanResults.value = (data.data || []) as PaSignal[]
+        const signals = data.data?.filter((s: PaSignal) => s.signal === 'BUY_SETUP' || s.signal === 'SELL_SETUP') || []
+        ElMessage.success(`扫描完成! 发现 ${signals.length} 个明确信号`)
+      } else if (data.status === 'failed') {
+        clearInterval(scanPollTimer!)
+        scanPollTimer = null
+        scanLoading.value = false
+        ElMessage.error(data.message || '扫描失败')
+      }
+    } catch { /* ignore */ }
+  }, 3000)
+}
+
 async function analyze() {
   if (!symbol.value) { ElMessage.warning('请输入股票代码'); return }
   loading.value = true
@@ -451,12 +696,47 @@ function viewHistory(row: any) {
   if (symbol.value) analyze()
 }
 
+const canTrade = computed(() => {
+  const r = result.value
+  return r?.trade_plan && r.trade_plan.direction === 'long' && (r.signal === 'BUY_SETUP' || r.signal === 'WEAK_BUY')
+})
+
+async function executeTrade() {
+  const r = result.value
+  if (!r?.trade_plan) return
+  const tp = r.trade_plan
+  try {
+    await ElMessageBox.confirm(
+      `确认发送模拟交易订单？\n\n股票: ${r.name || r.symbol}\n方向: 买入\n价格: ¥${tp.entry}\n数量: ${tp.position_size}股\n止损: ¥${tp.stop_loss}\n止盈: ¥${tp.take_profit}`,
+      '确认交易',
+      { confirmButtonText: '确认', cancelButtonText: '取消', type: 'info' },
+    )
+  } catch { return }
+
+  try {
+    const res = await priceActionApi.executeTrade(r.symbol, tp.position_size, tp.entry, tp.stop_loss, tp.take_profit)
+    if (res.data?.success) {
+      ElMessage.success(`模拟交易成功！${r.name || r.symbol} ${tp.position_size}股`)
+    } else {
+      ElMessage.error(res.data?.error || '交易失败')
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error || '交易请求失败')
+  }
+}
+
 onMounted(() => {
   loadHistory()
   if (symbol.value) analyze()
 })
 
 onUnmounted(() => { stopPolling() })
+
+watch(() => result.value?.kline_bars, () => {
+  nextTick(() => {
+    klineChartRef.value?.resize()
+  })
+})
 </script>
 
 <style scoped>
@@ -541,6 +821,16 @@ onUnmounted(() => { stopPolling() })
 .pa-trade-detail { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .pa-trade-detail div { display: flex; justify-content: space-between; font-size: 13px; padding: 2px 0; }
 .pa-trade-detail span { color: var(--text-secondary); }
+
+/* 回测验证卡片 */
+.pa-bt-card { border-left: 3px solid #409eff; }
+.pa-bt-card :deep(.el-card__header) { font-weight: bold; font-size: 13px; padding: 8px 12px; }
+.pa-bt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.pa-bt-item { display: flex; justify-content: space-between; padding: 3px 6px; background: var(--bg-page, #f5f7fa); border-radius: 4px; font-size: 12px; }
+.pa-bt-label { color: var(--text-secondary, #909399); }
+.pa-bt-val { font-weight: bold; font-family: monospace; }
+.pa-bt-green { color: #67c23a; }
+.pa-bt-red { color: #f56c6c; }
 
 .pa-tf-switch { display: flex; gap: 6px; }
 .pa-tf-switch .el-button { flex: 1; }

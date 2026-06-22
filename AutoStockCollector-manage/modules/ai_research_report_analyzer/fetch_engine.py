@@ -124,11 +124,28 @@ class RateLimitedFetcher:
             return None
 
     def close(self):
-        self._session.close()
+        try:
+            self._session.close()
+        except Exception:
+            pass
 
 
 _default_fetcher: Optional[RateLimitedFetcher] = None
 _fetcher_lock = threading.Lock()
+
+
+def close_fetcher():
+    """关闭全局 fetcher，释放连接。"""
+    global _default_fetcher
+    f = _default_fetcher
+    if f is not None:
+        f.close()
+        _default_fetcher = None
+        logger.info("[RateLimitedFetcher] Closed default fetcher")
+
+
+import atexit
+atexit.register(close_fetcher)
 
 
 def get_fetcher() -> RateLimitedFetcher:

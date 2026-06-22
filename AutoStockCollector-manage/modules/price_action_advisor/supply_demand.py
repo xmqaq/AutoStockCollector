@@ -166,10 +166,23 @@ def analyze_supply_demand(bars: List[Dict]) -> Dict[str, Any]:
     demand_zones = []
     supply_zones = []
     for z in zones:
-        if z["mid"] <= current_price:
+        z_low, z_high = z["low"], z["high"]
+        if z_high < current_price:
+            # 区域完全在现价下方 = 需求区
             demand_zones.append(z)
-        else:
+        elif z_low > current_price:
+            # 区域完全在现价上方 = 供应区
             supply_zones.append(z)
+        else:
+            # 区域跨越现价：按距离偏向分类
+            dist_to_high = abs(current_price - z_high)
+            dist_to_low = abs(current_price - z_low)
+            zone_width = z_high - z_low
+            if zone_width > 0 and min(dist_to_high, dist_to_low) / zone_width < 0.3:
+                if dist_to_high < dist_to_low:
+                    demand_zones.append(z)
+                else:
+                    supply_zones.append(z)
 
     demand_zones.sort(key=lambda x: x["mid"], reverse=True)
     supply_zones.sort(key=lambda x: x["mid"])

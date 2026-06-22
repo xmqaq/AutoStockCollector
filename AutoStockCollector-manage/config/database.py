@@ -139,6 +139,30 @@ class DatabaseConfig:
         cls._safe_index(db.users, [("email", 1)], sparse=True)
         cls._safe_index(db.users, [("user_id", 1)], unique=True)
 
+        # 价格行为学缓存 & 扫描结果
+        cls._dedup_collection(db.pa_quotes_cache, "cache_key")
+        cls._safe_index(db.pa_quotes_cache, [("cache_key", 1)], unique=True)
+        cls._safe_index(db.pa_quotes_cache, [("cached_at", -1)], expireAfterSeconds=86400 * 7)
+        cls._dedup_collection(db.pa_scan_results, "scan_id")
+        cls._safe_index(db.pa_scan_results, [("scan_id", 1)], unique=True)
+        cls._safe_index(db.pa_scan_results, [("created_at", -1)])
+        cls._dedup_collection(db.pa_backtest_cache, "cache_key")
+        cls._safe_index(db.pa_backtest_cache, [("cache_key", 1)], unique=True)
+        cls._safe_index(db.pa_backtest_cache, [("created_at", -1)], expireAfterSeconds=86400)
+
+        # 研报分析缓存 & 结果
+        cls._dedup_collection(db.reports_cache, "report_id")
+        cls._safe_index(db.reports_cache, [("sector", 1)])
+        cls._safe_index(db.reports_cache, [("report_id", 1)])
+        cls._safe_index(db.reports_cache, [("cached_at", -1)], expireAfterSeconds=86400 * 14)
+        cls._dedup_collection(db.research_analysis_results, "task_id")
+        cls._safe_index(db.research_analysis_results, [("task_id", 1)])
+        cls._safe_index(db.research_analysis_results, [("sectors", 1)])
+        cls._safe_index(db.research_analysis_results, [("created_at", -1)])
+        cls._dedup_collection(db.research_llm_cache, "cache_key")
+        cls._safe_index(db.research_llm_cache, [("cache_key", 1)], unique=True)
+        cls._safe_index(db.research_llm_cache, [("created_at", -1)], expireAfterSeconds=86400 * 2)
+
         logger.info("Database indexes ensured successfully")
 
 

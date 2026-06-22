@@ -840,6 +840,88 @@ def job_detect_hotspot():
         _persist_cron_status("hotspot_detect", _now().isoformat(), False, str(e)[:100])
 
 
+# ─── 价格行为学全市场扫描 ────────────────────────────────────────────────────
+
+def job_pa_intraday_scan():
+    """盘中每 30 分钟扫描 PA 信号（9:35-15:00）。"""
+    if not _is_weekday():
+        return
+    now = _now()
+    hour_min = now.hour * 100 + now.minute
+    if not (935 <= hour_min <= 1130 or 1300 <= hour_min <= 1500):
+        return
+    try:
+        from modules.price_action_advisor.api import _SCAN_UNIVERSE, _run_scan
+        import uuid
+        scan_id = uuid.uuid4().hex[:12]
+        threading.Thread(
+            target=_run_scan,
+            args=(scan_id, _SCAN_UNIVERSE, "30m", 0.02, 100000),
+            daemon=True,
+        ).start()
+        msg = "PA盘中扫描已启动（30m周期）"
+        logger.info(f"[cron] {msg}")
+        _record_result("PA盘中扫描", True, msg)
+        _persist_cron_status("pa_intraday_scan", _now().isoformat(), True, msg, inc_count=True)
+    except Exception as e:
+        logger.error(f"[cron] PA盘中扫描失败: {e}")
+        _record_result("PA盘中扫描", False, str(e))
+        _persist_cron_status("pa_intraday_scan", _now().isoformat(), False, str(e)[:100])
+
+
+def job_pa_scan():
+    """每日盘后扫描全市场 PA 信号。"""
+    if not _is_weekday():
+        return
+    try:
+        from modules.price_action_advisor.api import _SCAN_UNIVERSE, _run_scan
+        import uuid
+        scan_id = uuid.uuid4().hex[:12]
+        threading.Thread(
+            target=_run_scan,
+            args=(scan_id, _SCAN_UNIVERSE, "daily", 0.02, 100000),
+            daemon=True,
+        ).start()
+        msg = "PA全市场扫描已启动"
+        logger.info(f"[cron] {msg}")
+        _record_result("PA全市场扫描", True, msg)
+        _persist_cron_status("pa_scan", _now().isoformat(), True, msg, inc_count=True)
+    except Exception as e:
+        logger.error(f"[cron] PA扫描失败: {e}")
+        _record_result("PA全市场扫描", False, str(e))
+        _persist_cron_status("pa_scan", _now().isoformat(), False, str(e)[:100])
+
+
+# ─── 投资研报每日全板块扫描 ────────────────────────────────────────────────────
+
+def job_research_daily():
+    """每日盘后自动扫描所有板块研报，保存结果。"""
+    if not _is_weekday():
+        return
+    try:
+        from modules.ai_research_report_analyzer.supply_chain import SupplyChainAggregator
+        from modules.ai_research_report_analyzer.engine import AnalyzerEngine
+        agg = SupplyChainAggregator()
+        sectors = [s["name"] for s in agg.list_sectors()]
+        if not sectors:
+            logger.info("[cron] 研报扫描：无可用板块，跳过")
+            return
+        batch_size = 5
+        for i in range(0, len(sectors), batch_size):
+            batch = sectors[i:i + batch_size]
+            eng = AnalyzerEngine()
+            result = eng.analyze(sectors=batch, top_n=10)
+            logger.info(f"[cron] 研报扫描完成批次 {i//batch_size+1}: {', '.join(batch)}")
+        msg = f"扫描 {len(sectors)} 个板块完成"
+        logger.info(f"[cron] {msg}")
+        _record_result("研报全板块扫描", True, msg)
+        _persist_cron_status("research_daily", _now().isoformat(), True, msg, inc_count=True)
+    except Exception as e:
+        logger.error(f"[cron] 研报扫描失败: {e}")
+        _record_result("研报全板块扫描", False, str(e))
+        _persist_cron_status("research_daily", _now().isoformat(), False, str(e)[:100])
+
+
 # ─── 纯 Python 调度核心 ───────────────────────────────────────────────────────
 
 def _next_daily_run(hour: int, minute: int) -> datetime.datetime:
@@ -974,6 +1056,9 @@ def start_daily_jobs() -> None:
         _make_job("个股新闻采集 15:30", job_collect_watchlist_news, "daily", 15, 30, task_type="watchlist_news"),
         _make_job("热点检测 10:00",     job_detect_hotspot,         "daily", 10,  0, task_type="hotspot_detect"),
         _make_job("热点检测 14:00",     job_detect_hotspot,         "daily", 14,  0, task_type="hotspot_detect"),
+        _make_job("PA盘中扫描 30min",  job_pa_intraday_scan,        "interval", interval_minutes=30, task_type="pa_intraday_scan"),
+        _make_job("PA全市场扫描 17:00", job_pa_scan,                "daily", 17,  0, task_type="pa_scan"),
+        _make_job("研报全板块扫描 17:30", job_research_daily,       "daily", 17, 30, task_type="research_daily"),
     ]
 
     # cron_trigger_lock 跨进程触发锁：建 TTL 索引，锁文档 1 天后自动过期，避免无限增长。

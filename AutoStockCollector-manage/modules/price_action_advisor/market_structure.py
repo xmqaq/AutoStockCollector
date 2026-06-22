@@ -53,8 +53,8 @@ def detect_trend(bars: List[Dict]) -> str:
     last_two_lows = [bars[i]["low"] for i in lows[-2:]]
 
     hh = last_two_highs[-1] > last_two_highs[-2] * PAConfig.STRUCTURE_HH_THRESHOLD
-    hl = last_two_lows[-1] > last_two_lows[-2] * PAConfig.STRUCTURE_HH_THRESHOLD
-    lh = last_two_highs[-1] < last_two_highs[-2] * PAConfig.STRUCTURE_LL_THRESHOLD
+    hl = last_two_lows[-1] > last_two_lows[-2] * PAConfig.STRUCTURE_HL_THRESHOLD
+    lh = last_two_highs[-1] < last_two_highs[-2] * PAConfig.STRUCTURE_LH_THRESHOLD
     ll = last_two_lows[-1] < last_two_lows[-2] * PAConfig.STRUCTURE_LL_THRESHOLD
 
     if hh and hl:

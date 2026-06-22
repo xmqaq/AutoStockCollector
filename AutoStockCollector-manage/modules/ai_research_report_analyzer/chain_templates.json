@@ -542,5 +542,159 @@
       { "code": "600025", "name": "华能水电", "link": "水电" },
       { "code": "601669", "name": "中国电建", "link": "风电" }
     ]
+  },
+  "保险": {
+    "description": "保险行业 — 寿险/财险/保险资管",
+    "links": [
+      { "name": "寿险", "description": "人身保险、年金险" },
+      { "name": "财险", "description": "车险、非车财产险" },
+      { "name": "保险资管", "description": "保险资金投资管理" },
+      { "name": "健康险", "description": "医疗险、重疾险" },
+      { "name": "互联网保险", "description": "线上保险经纪平台" }
+    ],
+    "representative_stocks": [
+      { "code": "601318", "name": "中国平安", "link": "寿险" },
+      { "code": "601628", "name": "中国人寿", "link": "寿险" },
+      { "code": "601601", "name": "中国太保", "link": "寿险" },
+      { "code": "601336", "name": "新华保险", "link": "寿险" },
+      { "code": "601319", "name": "中国人保", "link": "财险" },
+      { "code": "000627", "name": "天茂集团", "link": "保险资管" },
+      { "code": "600291", "name": "西水股份", "link": "财险" },
+      { "code": "300309", "name": "吉艾科技", "link": "保险资管" },
+      { "code": "002423", "name": "中原特钢", "link": "保险资管" },
+      { "code": "600816", "name": "安信信托", "link": "保险资管" }
+    ]
+  },
+  "传媒": {
+    "description": "传媒与互联网 — 游戏/影视/广告/数字媒体",
+    "links": [
+      { "name": "游戏", "description": "手游/端游研发与发行" },
+      { "name": "影视", "description": "电影制作发行、院线" },
+      { "name": "广告营销", "description": "互联网广告、代理" },
+      { "name": "数字阅读", "description": "网络文学、知识付费" },
+      { "name": "广电/IPTV", "description": "有线电视、IPTV运营" }
+    ],
+    "representative_stocks": [
+      { "code": "002602", "name": "世纪华通", "link": "游戏" },
+      { "code": "300418", "name": "昆仑万维", "link": "游戏" },
+      { "code": "603444", "name": "吉比特", "link": "游戏" },
+      { "code": "300315", "name": "掌趣科技", "link": "游戏" },
+      { "code": "300251", "name": "光线传媒", "link": "影视" },
+      { "code": "300027", "name": "华谊兄弟", "link": "影视" },
+      { "code": "600977", "name": "中国电影", "link": "影视" },
+      { "code": "300058", "name": "蓝色光标", "link": "广告营销" },
+      { "code": "300413", "name": "芒果超媒", "link": "影视" },
+      { "code": "603000", "name": "人民网", "link": "数字媒体" }
+    ]
+  },
+  "通信": {
+    "description": "通信行业 — 运营商/设备商/光通信/卫星通信",
+    "links": [
+      { "name": "运营商", "description": "移动/电信/联通运营" },
+      { "name": "主设备商", "description": "基站与核心网设备" },
+      { "name": "光通信", "description": "光模块/光纤光缆" },
+      { "name": "卫星通信", "description": "卫星制造与应用" },
+      { "name": "通信芯片", "description": "基带/射频芯片" }
+    ],
+    "representative_stocks": [
+      { "code": "600941", "name": "中国移动", "link": "运营商" },
+      { "code": "601728", "name": "中国电信", "link": "运营商" },
+      { "code": "600050", "name": "中国联通", "link": "运营商" },
+      { "code": "000063", "name": "中兴通讯", "link": "主设备商" },
+      { "code": "300308", "name": "中际旭创", "link": "光通信" },
+      { "code": "688036", "name": "传音控股", "link": "通信终端" },
+      { "code": "300502", "name": "新易盛", "link": "光通信" },
+      { "code": "600487", "name": "亨通光电", "link": "光通信" },
+      { "code": "300394", "name": "天孚通信", "link": "光通信" },
+      { "code": "002281", "name": "光迅科技", "link": "光通信" }
+    ]
+  },
+  "计算机": {
+    "description": "计算机行业 — 软件/云计算/信息安全/IT服务",
+    "links": [
+      { "name": "基础软件", "description": "操作系统/数据库/中间件" },
+      { "name": "云计算", "description": "IaaS/PaaS/SaaS服务" },
+      { "name": "信息安全", "description": "网络安全/数据安全" },
+      { "name": "AI应用", "description": "大模型/计算机视觉/NLP应用" },
+      { "name": "IT服务", "description": "系统集成/IT咨询" }
+    ],
+    "representative_stocks": [
+      { "code": "688111", "name": "金山办公", "link": "基础软件" },
+      { "code": "600570", "name": "恒生电子", "link": "IT服务" },
+      { "code": "300033", "name": "同花顺", "link": "AI应用" },
+      { "code": "002230", "name": "科大讯飞", "link": "AI应用" },
+      { "code": "688568", "name": "中科星图", "link": "基础软件" },
+      { "code": "300454", "name": "深信服", "link": "信息安全" },
+      { "code": "002439", "name": "启明星辰", "link": "信息安全" },
+      { "code": "300188", "name": "美亚柏科", "link": "信息安全" },
+      { "code": "688041", "name": "海光信息", "link": "基础软件" },
+      { "code": "600536", "name": "中国软件", "link": "基础软件" }
+    ]
+  },
+  "交通运输": {
+    "description": "交通运输 — 航空/机场/航运/铁路/物流",
+    "links": [
+      { "name": "航空", "description": "客运航空运输" },
+      { "name": "机场", "description": "机场运营与免税" },
+      { "name": "航运", "description": "集装箱/干散货/油运" },
+      { "name": "铁路", "description": "铁路客运与货运" },
+      { "name": "快递物流", "description": "快递/零担/供应链" }
+    ],
+    "representative_stocks": [
+      { "code": "601111", "name": "中国国航", "link": "航空" },
+      { "code": "600029", "name": "南方航空", "link": "航空" },
+      { "code": "600115", "name": "中国东航", "link": "航空" },
+      { "code": "600009", "name": "上海机场", "link": "机场" },
+      { "code": "601021", "name": "春秋航空", "link": "航空" },
+      { "code": "601919", "name": "中远海控", "link": "航运" },
+      { "code": "600026", "name": "中远海能", "link": "航运" },
+      { "code": "601006", "name": "大秦铁路", "link": "铁路" },
+      { "code": "002352", "name": "顺丰控股", "link": "快递物流" },
+      { "code": "600233", "name": "圆通速递", "link": "快递物流" }
+    ]
+  },
+  "食品饮料": {
+    "description": "食品饮料 — 白酒/啤酒/乳制品/调味品/休闲食品",
+    "links": [
+      { "name": "白酒", "description": "高端/次高端/区域白酒" },
+      { "name": "啤酒", "description": "啤酒制造与销售" },
+      { "name": "乳制品", "description": "液态奶/奶粉/奶酪" },
+      { "name": "调味品", "description": "酱油/醋/复合调味料" },
+      { "name": "休闲食品", "description": "零食/卤味/烘焙" }
+    ],
+    "representative_stocks": [
+      { "code": "600519", "name": "贵州茅台", "link": "白酒" },
+      { "code": "000858", "name": "五粮液", "link": "白酒" },
+      { "code": "000568", "name": "泸州老窖", "link": "白酒" },
+      { "code": "600809", "name": "山西汾酒", "link": "白酒" },
+      { "code": "600600", "name": "青岛啤酒", "link": "啤酒" },
+      { "code": "600887", "name": "伊利股份", "link": "乳制品" },
+      { "code": "603288", "name": "海天味业", "link": "调味品" },
+      { "code": "000895", "name": "双汇发展", "link": "肉制品" },
+      { "code": "603345", "name": "安井食品", "link": "速冻食品" },
+      { "code": "002847", "name": "盐津铺子", "link": "休闲食品" }
+    ]
+  },
+  "建筑建材": {
+    "description": "建筑与建材 — 建筑施工/水泥/玻璃/装修",
+    "links": [
+      { "name": "建筑施工", "description": "房屋建筑/基建工程" },
+      { "name": "水泥", "description": "水泥制造与销售" },
+      { "name": "玻璃", "description": "浮法玻璃/光伏玻璃" },
+      { "name": "装修装饰", "description": "公装/家装" },
+      { "name": "新型建材", "description": "防水/管材/涂料" }
+    ],
+    "representative_stocks": [
+      { "code": "601668", "name": "中国建筑", "link": "建筑施工" },
+      { "code": "601390", "name": "中国中铁", "link": "建筑施工" },
+      { "code": "601618", "name": "中国中冶", "link": "建筑施工" },
+      { "code": "600585", "name": "海螺水泥", "link": "水泥" },
+      { "code": "000401", "name": "冀东水泥", "link": "水泥" },
+      { "code": "600176", "name": "中国巨石", "link": "玻璃" },
+      { "code": "600801", "name": "华新水泥", "link": "水泥" },
+      { "code": "002271", "name": "东方雨虹", "link": "新型建材" },
+      { "code": "000786", "name": "北新建材", "link": "新型建材" },
+      { "code": "603737", "name": "三棵树", "link": "新型建材" }
+    ]
   }
 }

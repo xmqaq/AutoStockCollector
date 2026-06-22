@@ -159,6 +159,8 @@ def _fetch_from_akshare_by_stocks(sector: str, days: int) -> List[Dict]:
                 stock_name = str(row_dict.get("股票简称", row_dict.get("name", row_dict.get("SECURITY_NAME_ABBR", ""))))
                 industry = str(row_dict.get("行业", row_dict.get("industry", "")))
                 rating = str(row_dict.get("东财评级", row_dict.get("rating", "")))
+                target_high = str(row_dict.get("目标价上限", row_dict.get("target_high", "")))
+                target_low = str(row_dict.get("目标价下限", row_dict.get("target_low", "")))
 
                 # 按日期过滤
                 try:
@@ -174,17 +176,30 @@ def _fetch_from_akshare_by_stocks(sector: str, days: int) -> List[Dict]:
                     continue
                 seen_titles.add(title_key)
 
+                tp_high_val = None
+                tp_low_val = None
+                try:
+                    tp_high_val = float(target_high) if target_high else None
+                except ValueError:
+                    pass
+                try:
+                    tp_low_val = float(target_low) if target_low else None
+                except ValueError:
+                    pass
+
                 report = {
                     "code": stock_code,
                     "name": stock_name,
                     "title": title,
                     "date": date_str,
                     "org": org_name,
-                    "abstract": title,  # 实际只取到标题，无全文内容
+                    "abstract": title,
                     "stock_name": name,
                     "link_name": link,
                     "industry": industry,
                     "rating": rating,
+                    "target_price_high": tp_high_val,
+                    "target_price_low": tp_low_val,
                 }
                 all_reports.append(report)
 
@@ -198,7 +213,8 @@ def _fetch_from_akshare_by_stocks(sector: str, days: int) -> List[Dict]:
             )
             continue
 
-        time.sleep(1.0)
+        # _throttle("akshare") 已在 fetch_engine.py 中处理了请求间隔
+        # 此处无需额外 sleep
 
     logger.info(
         f"[ResearchAnalyzer] L3 akshare sector={sector} "

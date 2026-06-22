@@ -1,6 +1,10 @@
+import math
 from datetime import datetime, time as dtime
 from utils.helpers import beijing_now
+from utils.logger import get_logger
 from typing import Any, Dict, List, Optional, Tuple
+
+logger = get_logger(__name__)
 
 COMMISSION_RATE = 0.0003
 COMMISSION_MIN = 5.0
@@ -187,6 +191,8 @@ class TradeEngine:
         today = beijing_now().strftime("%Y-%m-%d")
 
         book: Dict[str, Dict[str, Any]] = {}
+        stop_losses: Dict[str, float] = {}
+        take_profits: Dict[str, float] = {}
         for t in trades:
             code = t.get("code")
             if not code:
@@ -213,6 +219,12 @@ class TradeEngine:
                 b["cost"] += cost
                 if is_today:
                     b["today_buy_amt"] += amount
+                sl = t.get("stop_loss")
+                tp = t.get("take_profit")
+                if sl:
+                    stop_losses[code] = float(sl)
+                if tp:
+                    take_profits[code] = float(tp)
             elif t.get("action") == "sell":
                 if b["shares"] > 0:
                     sell_shares = min(shares, b["shares"])
@@ -264,6 +276,15 @@ class TradeEngine:
                     - prev_shares * yesterday_close
                 )
 
+            sl_price = stop_losses.get(code)
+            tp_price = take_profits.get(code)
+            sl_hit = False
+            tp_hit = False
+            if sl_price and price and price <= sl_price:
+                sl_hit = True
+            if tp_price and price and price >= tp_price:
+                tp_hit = True
+
             positions.append({
                 "code": code,
                 "name": b["name"],
@@ -278,13 +299,51 @@ class TradeEngine:
                 "yesterday_close": round(yesterday_close, 2) if yesterday_close else None,
                 "price_type": price_type,
                 "position_ratio": 0,
+                "stop_loss": round(sl_price, 2) if sl_price else None,
+                "take_profit": round(tp_price, 2) if tp_price else None,
+                "sl_hit": sl_hit,
+                "tp_hit": tp_hit,
             })
 
         total_market = sum(p["market_value"] for p in positions)
         for p in positions:
             p["position_ratio"] = round(p["market_value"] / total_market * 100, 2) if total_market > 0 else 0
 
+        exited_codes = self._auto_exit_sl_tp(user_id, positions, quotes)
+        if exited_codes:
+            return self.get_positions(user_id)
+
         return sorted(positions, key=lambda x: x["market_value"], reverse=True), trading
+
+    def _auto_exit_sl_tp(
+        self, user_id: str, positions: List[Dict], quotes: Dict[str, Dict],
+    ) -> List[str]:
+        """检查所有持仓的 SL/TP，触发则自动市价卖出。返回已平仓的 code 列表。"""
+        exited = []
+        for pos in positions:
+            if pos["shares"] <= 0:
+                continue
+            code = pos["code"]
+            price = pos["current_price"]
+            sl_hit = pos.get("sl_hit", False)
+            tp_hit = pos.get("tp_hit", False)
+            if not sl_hit and not tp_hit:
+                continue
+            reason = "止损" if sl_hit else "止盈"
+            try:
+                from modules.paper_trading.account import PaperAccount
+                acc = PaperAccount()
+                record = self.sell(
+                    user_id, code, pos["shares"],
+                    ai_signal={"source": "pa_auto_exit", "reason": reason},
+                    account=acc,
+                    price=price,
+                )
+                logger.info(f"[AutoExit] {code} {reason} 触发: {pos['shares']}股 @{price}")
+                exited.append(code)
+            except Exception as e:
+                logger.warning(f"[AutoExit] {code} {reason} 失败: {e}")
+        return exited
 
     def buy(
         self,
@@ -294,6 +353,8 @@ class TradeEngine:
         ai_signal: Dict[str, Any],
         account,
         price: Optional[float] = None,
+        stop_loss: Optional[float] = None,
+        take_profit: Optional[float] = None,
     ) -> Dict[str, Any]:
         if price is None or price <= 0:
             p, _ = self.get_current_price(code)
@@ -328,6 +389,8 @@ class TradeEngine:
             "amount": round(amount, 2),
             "commission": commission,
             "total_cost": total_cost,
+            "stop_loss": round(stop_loss, 2) if stop_loss else None,
+            "take_profit": round(take_profit, 2) if take_profit else None,
             "ai_signal": ai_signal,
             "cash_before": cash,
             "cash_after": cash_after,

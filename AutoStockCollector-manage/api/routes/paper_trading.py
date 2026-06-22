@@ -121,6 +121,20 @@ def execute_trade():
         except (TypeError, ValueError):
             pass
 
+    stop_loss = None
+    if data.get("stop_loss") is not None:
+        try:
+            stop_loss = float(data["stop_loss"])
+        except (TypeError, ValueError):
+            pass
+
+    take_profit = None
+    if data.get("take_profit") is not None:
+        try:
+            take_profit = float(data["take_profit"])
+        except (TypeError, ValueError):
+            pass
+
     from utils.helpers import normalize_stock_code_flexible
     code = normalize_stock_code_flexible(code)
 
@@ -129,7 +143,7 @@ def execute_trade():
 
     try:
         if action == "buy":
-            record = _engine.buy(user_id, code, shares, ai_signal, _account, price=price)
+            record = _engine.buy(user_id, code, shares, ai_signal, _account, price=price, stop_loss=stop_loss, take_profit=take_profit)
         elif action == "sell":
             record = _engine.sell(user_id, code, shares, ai_signal, _account, price=price)
         else:

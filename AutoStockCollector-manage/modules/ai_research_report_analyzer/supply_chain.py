@@ -58,12 +58,22 @@ class SupplyChainAggregator:
         themes = sig.themes if hasattr(sig, 'themes') else []
         hot_count = sum(1 for t in themes if t.get("hot"))
         sentiment = sig.sentiment if hasattr(sig, 'sentiment') else "neutral"
+        rating_momentum = getattr(sig, 'rating_momentum', 'neutral')
+        rating_up = getattr(sig, 'rating_up', 0)
+        rating_down = getattr(sig, 'rating_down', 0)
+        rating_hold = getattr(sig, 'rating_hold', 0)
+        avg_target = getattr(sig, 'avg_target_price', None)
 
         return {
             "sector": sector,
             "themes": themes,
             "total_signals": 1,
             "sentiment": sentiment,
+            "rating_momentum": rating_momentum,
+            "rating_up": rating_up,
+            "rating_down": rating_down,
+            "rating_hold": rating_hold,
+            "avg_target_price": avg_target,
             "hot_theme_count": hot_count,
             "summary": getattr(sig, 'summary', ''),
             "theme_summary": getattr(sig, 'theme_summary', ''),
@@ -78,6 +88,8 @@ class SupplyChainAggregator:
 
         sig = signals[0]
         stocks = getattr(sig, 'key_stocks', [])
+        rating_positive = getattr(sig, 'rating_up', 0)
+        rating_negative = getattr(sig, 'rating_down', 0)
         seen = {}
         for stock in stocks:
             code = stock.get("code", "")
@@ -91,6 +103,8 @@ class SupplyChainAggregator:
                     "mention_count": 1,
                     "confidence": getattr(sig, 'confidence', 3),
                     "sectors": [sector],
+                    "rating_up": rating_positive,
+                    "rating_down": rating_negative,
                 }
             else:
                 seen[code]["mention_count"] += 1

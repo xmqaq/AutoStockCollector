@@ -12,6 +12,27 @@ export interface PaTradePlan {
   r_r_ratio: string
 }
 
+export interface PaBacktest {
+  total_trades: number
+  win_rate: number
+  avg_r: number
+  profit_factor: number
+  max_drawdown_pct: number
+  sharpe_ratio: number
+  max_consecutive_losses: number
+  expectancy: number
+  message?: string
+}
+
+export interface PaKlineBar {
+  time: string
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+}
+
 export interface PaSignal {
   symbol: string
   name?: string
@@ -26,14 +47,16 @@ export interface PaSignal {
   atr: number
   sweeps_detected: number
   trade_plan?: PaTradePlan
+  backtest?: PaBacktest
   error?: string
   ai_commentary?: string
+  kline_bars?: PaKlineBar[]
 }
 
 export const priceActionApi = {
   getSingle(symbol: string, timeframe = 'daily', risk = 0.02, balance = 100000, useAi = false) {
-    return client.get<{ success: boolean; data: PaSignal }>('/api/v1/ai/price-action/single', {
-      params: { symbol, timeframe, risk, balance, use_ai: useAi },
+    return client.post<{ success: boolean; task_id: string }>('/api/v1/ai/price-action/single', {
+      symbol, timeframe, risk, balance, use_ai: useAi,
     })
   },
   run(symbols: string[], timeframe = 'daily', accountRisk = 0.02, accountBalance = 100000, useAi = false) {
@@ -44,5 +67,23 @@ export const priceActionApi = {
   },
   getHistory() {
     return client.get<{ success: boolean; count: number; data: any[] }>('/api/v1/ai/price-action/history')
+  },
+  getLatestScan() {
+    return client.get<{ success: boolean; data: any }>('/api/v1/ai/price-action/scan/latest')
+  },
+  scan(symbols?: string[], timeframe = 'daily', accountRisk = 0.02, accountBalance = 100000) {
+    const body: Record<string, any> = { timeframe, account_risk: accountRisk, account_balance: accountBalance }
+    if (symbols) body.symbols = symbols
+    return client.post('/api/v1/ai/price-action/scan', body)
+  },
+  async executeTrade(code: string, shares: number, price?: number, stopLoss?: number, takeProfit?: number) {
+    return client.post('/api/paper/trade', {
+      code,
+      action: 'buy',
+      shares,
+      price: price || undefined,
+      stop_loss: stopLoss,
+      take_profit: takeProfit,
+    })
   },
 }

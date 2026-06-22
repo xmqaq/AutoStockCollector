@@ -47,7 +47,10 @@
           striped-flow
           :status="taskStatus === 'failed' ? 'exception' : undefined"
         />
-        <p class="ra-progress-msg">{{ taskMessage }}</p>
+        <div class="ra-progress-row">
+          <p class="ra-progress-msg">{{ taskMessage }}</p>
+          <el-button v-if="taskId && taskStatus === 'processing'" size="small" type="danger" plain @click="cancelAnalysis">取消</el-button>
+        </div>
       </div>
     </el-card>
 
@@ -110,29 +113,29 @@
       </el-card>
 
       <el-tabs v-model="resultTab" class="ra-tabs">
-        <!-- 供应链瓶颈 -->
-        <el-tab-pane label="供应链瓶颈" name="chain">
+        <!-- 主题分析 -->
+        <el-tab-pane label="主题分析" name="chain">
           <el-card shadow="never">
-            <el-table :data="currentResult.chain_view" stripe border size="small" :default-sort="{ prop: 'bottleneck_score', order: 'descending' }">
+            <el-table :data="currentResult.chain_view" stripe border size="small" :default-sort="{ prop: 'theme_score', order: 'descending' }">
               <el-table-column prop="sector" label="板块" width="100" />
-              <el-table-column prop="link" label="环节" min-width="180" />
-              <el-table-column prop="bottleneck_score" label="瓶颈分数" width="110" sortable align="center">
+              <el-table-column prop="link" label="主题" min-width="180" />
+              <el-table-column prop="theme_score" label="热度" width="110" sortable align="center">
                 <template #default="{ row }">
                   <el-tag
-                    :type="row.bottleneck_score >= 60 ? 'danger' : row.bottleneck_score >= 40 ? 'warning' : 'info'"
+                    :type="row.theme_score >= 60 ? 'danger' : row.theme_score >= 40 ? 'warning' : 'info'"
                     effect="dark"
                   >
-                    {{ row.bottleneck_score }}
+                    {{ row.theme_score }}
                   </el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="judgment" label="供需判断" width="110" align="center">
+              <el-table-column prop="judgment" label="热度判断" width="110" align="center">
                 <template #default="{ row }">
                   <el-tag
                     :type="row.judgment === 'tight' ? 'danger' : row.judgment === 'mixed' ? 'warning' : 'success'"
                     size="small"
                   >
-                    {{ row.judgment === 'tight' ? '紧缺' : row.judgment === 'mixed' ? '混合' : '过剩' }}
+                    {{ row.judgment === 'tight' ? '热门' : row.judgment === 'mixed' ? '一般' : '冷门' }}
                   </el-tag>
                 </template>
               </el-table-column>
@@ -142,8 +145,8 @@
           </el-card>
         </el-tab-pane>
 
-        <!-- 瓶颈热力图 -->
-        <el-tab-pane label="瓶颈热力图" name="heatmap">
+        <!-- 主题热度图 -->
+        <el-tab-pane label="主题热度图" name="heatmap">
           <el-card shadow="never">
             <div ref="heatmapRef" style="width:100%;height:500px" />
           </el-card>
@@ -178,6 +181,39 @@
               </el-table-column>
               <el-table-column prop="pe" label="PE" width="80" sortable align="center" />
               <el-table-column prop="industry" label="行业" width="120" />
+              <el-table-column label="现价" width="90" align="center" sortable>
+                <template #default="{ row }">
+                  <span v-if="row.current_price">¥{{ row.current_price.toFixed(2) }}</span>
+                  <span v-else>-</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="距52周高" width="90" align="center" sortable>
+                <template #default="{ row }">
+                  <span v-if="row.pct_from_52w_high != null" :style="{ color: row.pct_from_52w_high > -10 ? '#f56c6c' : '#67c23a' }">{{ row.pct_from_52w_high > 0 ? '+' : '' }}{{ row.pct_from_52w_high }}%</span>
+                  <span v-else>-</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="距200日均" width="90" align="center" sortable>
+                <template #default="{ row }">
+                  <span v-if="row.pct_from_ma200 != null" :style="{ color: row.pct_from_ma200 > 20 ? '#f56c6c' : '#67c23a' }">{{ row.pct_from_ma200 > 0 ? '+' : '' }}{{ row.pct_from_ma200 }}%</span>
+                  <span v-else>-</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="监控信号" width="100" align="center">
+                <template #default="{ row }">
+                  <el-tag v-if="row.score_conflict" size="small" type="danger" effect="dark">⚠冲突</el-tag>
+                  <el-tag v-else-if="row.monitor_signal" size="small" :type="row.monitor_signal === 'strong_buy' || row.monitor_signal === 'buy' ? 'danger' : row.monitor_signal === 'sell' || row.monitor_signal === 'strong_sell' ? 'success' : 'info'">
+                    {{ row.monitor_signal }}
+                  </el-tag>
+                  <span v-else>-</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="PA信号" width="80" align="center">
+                <template #default="{ row }">
+                  <el-tag v-if="row.pa_signal" size="small" :type="row.pa_signal === 'BUY_SETUP' ? 'danger' : 'success'">{{ row.pa_signal === 'BUY_SETUP' ? '买入' : '卖出' }}</el-tag>
+                  <span v-else>-</span>
+                </template>
+              </el-table-column>
               <el-table-column prop="mention_count" label="提及次数" width="90" sortable align="center" />
               <el-table-column prop="sectors" label="覆盖板块" min-width="150">
                 <template #default="{ row }">
@@ -256,6 +292,7 @@ async function loadSectors() {
       '储能', '人形机器人', '半导体', '新能源汽车', 'AI算力', '创新药', '光伏',
       '军工', '消费电子', '医疗器械', '白酒', '家电', '房地产',
       '银行', '证券', '养殖', '煤炭', '有色金属', '基础化工', '电力',
+      '保险', '传媒', '通信', '计算机', '交通运输', '食品饮料', '建筑建材',
     ]
   }
 }
@@ -298,6 +335,21 @@ function startPolling() {
   pollTimer = setInterval(pollResult, 3000)
 }
 
+async function cancelAnalysis() {
+  if (!taskId.value) return
+  try {
+    const res = await researchApi.cancel(taskId.value)
+    if (res.data?.success) {
+      ElMessage.info('任务已取消')
+      stopPolling()
+      running.value = false
+      taskStatus.value = 'cancelled'
+    }
+  } catch {
+    ElMessage.error('取消失败')
+  }
+}
+
 function stopPolling() {
   if (pollTimer) {
     clearInterval(pollTimer)
@@ -329,6 +381,9 @@ async function pollResult() {
       stopPolling()
       running.value = false
       ElMessage.error(data.message || '分析失败')
+    } else if (data.status === 'cancelled') {
+      stopPolling()
+      running.value = false
     }
   } catch {
     // 网络错误等静默处理
@@ -419,7 +474,7 @@ function renderHeatmap(result: AnalysisResult) {
       groups[v.sector].push(v)
     })
     const sectorNames = Object.keys(groups).sort()
-    for (const s of sectorNames) groups[s].sort((a, b) => b.bottleneck_score - a.bottleneck_score)
+    for (const s of sectorNames) groups[s].sort((a, b) => b.theme_score - a.theme_score)
 
     if (sectorNames.length === 1) {
       // 单板块 → 水平柱状图
@@ -437,8 +492,8 @@ function renderHeatmap(result: AnalysisResult) {
         yAxis: { type: 'category', data: arr.map(v => v.link), axisLabel: { fontSize: 11 }, inverse: true },
         series: [{
           type: 'bar', data: arr.map(v => ({
-            value: v.bottleneck_score,
-            itemStyle: { color: v.bottleneck_score >= 70 ? '#c53929' : v.bottleneck_score >= 40 ? '#e69d3c' : '#7bc96f' },
+            value: v.theme_score,
+            itemStyle: { color: v.theme_score >= 70 ? '#c53929' : v.theme_score >= 40 ? '#e69d3c' : '#7bc96f' },
             judgment: v.judgment,
           })),
           barMaxWidth: 22,
@@ -481,8 +536,8 @@ function renderHeatmap(result: AnalysisResult) {
           xAxisIndex: gIdx,
           yAxisIndex: gIdx,
           data: arr.map(v => ({
-            value: v.bottleneck_score,
-            itemStyle: { color: v.bottleneck_score >= 70 ? '#c53929' : v.bottleneck_score >= 40 ? '#e69d3c' : '#7bc96f' },
+            value: v.theme_score,
+            itemStyle: { color: v.theme_score >= 70 ? '#c53929' : v.theme_score >= 40 ? '#e69d3c' : '#7bc96f' },
             judgment: v.judgment,
           })),
           barMaxWidth: 16,
@@ -579,7 +634,8 @@ onUnmounted(() => {
 .ra-actions { display: flex; align-items: center; gap: 8px; }
 
 .ra-progress { margin-top: 16px; }
-.ra-progress-msg { margin: 6px 0 0; font-size: 12px; color: var(--text-secondary, #909399); }
+.ra-progress-row { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
+.ra-progress-msg { font-size: 12px; color: var(--text-secondary, #909399); }
 
 .ra-history { margin-bottom: 16px; }
 .empty-state { padding: 40px 0; }

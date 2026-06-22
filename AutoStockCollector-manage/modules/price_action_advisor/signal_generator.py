@@ -65,6 +65,23 @@ def _detect_candlestick_patterns(bars: List[Dict]) -> List[Dict]:
     return patterns
 
 
+def _check_volume_confirmation(bars: List[Dict], lookback: Optional[int] = None) -> float:
+    """检查最后一根 bar 的成交量是否显著高于均量。
+
+    返回成交量比率（当前量 / 均量），比值 > VOLUME_CONFIRM_RATIO 为显著放量。
+    """
+    if lookback is None:
+        lookback = PAConfig.VOLUME_MA_PERIOD
+    if len(bars) < lookback + 1:
+        return 1.0
+    recent_volumes = [b.get("volume", 0) for b in bars[-(lookback + 1):-1]]
+    avg_volume = sum(recent_volumes) / max(len(recent_volumes), 1)
+    if avg_volume <= 0:
+        return 1.0
+    current_volume = bars[-1].get("volume", 0)
+    return current_volume / avg_volume
+
+
 def _calculate_fib_levels(bars: List[Dict], trend: str, recent_high: float, recent_low: float) -> Dict[str, float]:
     """计算斐波那契回撤位。"""
     if trend == "Bullish":
@@ -115,10 +132,15 @@ def generate_signal(
     zone_prox = PAConfig.ZONE_PROXIMITY
     fib_prox = PAConfig.FIB_PROXIMITY
     ob_prox = PAConfig.OB_PROXIMITY
+    volume_ratio = _check_volume_confirmation(bars)
+    volume_confirmed = volume_ratio >= PAConfig.VOLUME_CONFIRM_RATIO
 
     if trend in ("Bullish", "Strong Bullish"):
         buy_reasons.append(f"上升趋势: {trend}")
         confidence += 1
+        if volume_confirmed:
+            buy_reasons.append(f"成交量确认: {volume_ratio:.1f}倍均量")
+            confidence += 1
 
         for dz in demand_zones:
             if dz["low"] <= current_price <= dz["high"] * (1 + zone_prox):
@@ -151,6 +173,9 @@ def generate_signal(
     if trend in ("Bearish", "Strong Bearish"):
         sell_reasons.append(f"下降趋势: {trend}")
         confidence += 1
+        if volume_confirmed:
+            sell_reasons.append(f"成交量确认: {volume_ratio:.1f}倍均量")
+            confidence += 1
 
         for sz in supply_zones:
             if sz["low"] * (1 - zone_prox) <= current_price <= sz["high"]:
@@ -227,4 +252,5 @@ def generate_signal(
         "fib_levels": fibs,
         "atr": round(atr, 2) if atr else 0,
         "sweeps_detected": len(sweeps),
+        "volume_ratio": round(volume_ratio, 2),
     }

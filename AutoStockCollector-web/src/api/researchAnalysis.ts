@@ -4,7 +4,7 @@ export interface ChainViewItem {
   sector: string
   link: string
   judgment: string
-  bottleneck_score: number
+  theme_score: number
   frequency: number
   confidence: number
 }
@@ -22,6 +22,15 @@ export interface Candidate {
   mention_count: number
   sectors: string[]
   confidence: number
+  current_price?: number
+  pct_from_52w_high?: number
+  pct_from_ma200?: number
+  monitor_signal?: string
+  monitor_composite_score?: number
+  monitor_scores?: Record<string, number>
+  pa_signal?: string
+  pa_signal_overlap?: boolean
+  score_conflict?: boolean
 }
 
 export interface SectorDetail {
@@ -44,7 +53,7 @@ export interface AnalysisResult {
 
 export interface TaskStatus {
   success: boolean
-  status: 'queued' | 'processing' | 'completed' | 'failed'
+  status: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled'
   progress: number
   message: string
   data?: AnalysisResult
@@ -87,6 +96,10 @@ export const researchApi = {
     return client.get<{ success: boolean; count: number; data: HistoryItem[] }>(
       '/api/v1/ai/research-analysis/history',
     )
+  },
+  /** 取消分析任务 */
+  cancel(taskId: string) {
+    return client.post<{ success: boolean; message: string }>(`/api/v1/ai/research-analysis/cancel/${taskId}`)
   },
   /** 导出 Markdown 简报 */
   exportReport(taskId: string) {

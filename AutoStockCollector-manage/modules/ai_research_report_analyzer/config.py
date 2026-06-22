@@ -17,8 +17,8 @@ _load_dotenv()
 
 
 class ResearchConfig:
-    CACHE_TTL_DAYS = int(os.getenv("RESEARCH_CACHE_TTL_DAYS", "7"))
-    CACHE_MIN_COUNT = int(os.getenv("RESEARCH_CACHE_MIN_COUNT", "15"))
+    CACHE_TTL_DAYS = int(os.getenv("RESEARCH_CACHE_TTL_DAYS", "2"))
+    CACHE_MIN_COUNT = int(os.getenv("RESEARCH_CACHE_MIN_COUNT", "10"))
     EASTMONEY_PAGE_SIZE = int(os.getenv("RESEARCH_EASTMONEY_PAGE_SIZE", "50"))
     EASTMONEY_MAX_PAGES = int(os.getenv("RESEARCH_EASTMONEY_MAX_PAGES", "3"))
     FETCH_CONCURRENCY = int(os.getenv("RESEARCH_FETCH_CONCURRENCY", "2"))

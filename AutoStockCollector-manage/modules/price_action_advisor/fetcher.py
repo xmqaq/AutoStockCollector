@@ -12,6 +12,26 @@ from .config import PAConfig
 logger = get_logger(__name__)
 
 _CACHE_LOCK = threading.Lock()
+_LAST_FETCH_AT = 0.0
+_FETCH_LOCK = threading.Lock()
+_FETCH_INTERVAL = max(getattr(PAConfig, "FETCH_INTERVAL", 3.0), 0.5)
+
+# 内存级现货缓存 — 避免全量拉取
+_SPOT_MEM_CACHE: Dict[str, Any] = {}
+_SPOT_MEM_CACHE_AT = 0.0
+_SPOT_MEM_TTL = 60
+
+
+def _throttle_akshare():
+    """限制 akshare 调用频率，避免被封。"""
+    global _LAST_FETCH_AT
+    with _FETCH_LOCK:
+        now = time.time()
+        elapsed = now - _LAST_FETCH_AT
+        if _LAST_FETCH_AT > 0 and elapsed < _FETCH_INTERVAL:
+            sleep_time = _FETCH_INTERVAL - elapsed
+            time.sleep(sleep_time)
+        _LAST_FETCH_AT = time.time()
 
 
 def _normalize_code(code: str) -> str:
@@ -34,52 +54,78 @@ def _cache_key(code: str, dtype: str, timeframe: str = "") -> str:
 
 def _get_cached(code: str, dtype: str, timeframe: str, ttl: int) -> Optional[Dict]:
     key = _cache_key(code, dtype, timeframe)
-    try:
-        db = DatabaseConfig.get_database()
-        cutoff = datetime.now() - timedelta(seconds=ttl)
-        doc = db[PAConfig.CACHE_COLLECTION].find_one(
-            {"cache_key": key, "cached_at": {"$gte": cutoff}},
-        )
-        if doc:
-            return doc.get("data")
-    except Exception as e:
-        logger.warning(f"[PAFetcher] cache read error: {e}")
+    with _CACHE_LOCK:
+        try:
+            db = DatabaseConfig.get_database()
+            cutoff = datetime.now() - timedelta(seconds=ttl)
+            doc = db[PAConfig.CACHE_COLLECTION].find_one(
+                {"cache_key": key, "cached_at": {"$gte": cutoff}},
+            )
+            if doc:
+                return doc.get("data")
+        except Exception as e:
+            logger.warning(f"[PAFetcher] cache read error: {e}")
     return None
 
 
 def _save_to_cache(code: str, dtype: str, timeframe: str, data: Any):
     key = _cache_key(code, dtype, timeframe)
-    try:
-        db = DatabaseConfig.get_database()
-        db[PAConfig.CACHE_COLLECTION].update_one(
-            {"cache_key": key},
-            {"$set": {
-                "cache_key": key,
-                "code": _normalize_code(code),
-                "dtype": dtype,
-                "timeframe": timeframe,
-                "data": data,
-                "cached_at": datetime.now(),
-            }},
-            upsert=True,
-        )
-    except Exception as e:
-        logger.warning(f"[PAFetcher] cache save error: {e}")
+    with _CACHE_LOCK:
+        try:
+            db = DatabaseConfig.get_database()
+            db[PAConfig.CACHE_COLLECTION].update_one(
+                {"cache_key": key},
+                {"$set": {
+                    "cache_key": key,
+                    "code": _normalize_code(code),
+                    "dtype": dtype,
+                    "timeframe": timeframe,
+                    "data": data,
+                    "cached_at": datetime.now(),
+                }},
+                upsert=True,
+            )
+        except Exception as e:
+            logger.warning(f"[PAFetcher] cache save error: {e}")
 
 
 def get_spot(symbols: Optional[List[str]] = None) -> Dict[str, Dict]:
     """获取实时行情。返回 {code: {price, change, high, low, ...}}。
 
-    优先 L1 缓存（60s），L3 akshare stock_zh_a_spot_em 全量拉取。
+    三级缓存: L0(内存 60s) → L1(MongoDB 60s) → L3(akshare 全量拉取)。
     """
     result = {}
 
-    if symbols:
+    # 1. 优先走 L0 内存缓存
+    global _SPOT_MEM_CACHE, _SPOT_MEM_CACHE_AT
+    mem_valid = _SPOT_MEM_CACHE and time.time() - _SPOT_MEM_CACHE_AT < _SPOT_MEM_TTL
+    full_cache_hit = False
+    if symbols and mem_valid:
         remaining = []
         for s in symbols:
+            n = _normalize_code(s)
+            entry = _SPOT_MEM_CACHE.get(n) or _SPOT_MEM_CACHE.get(s)
+            if entry:
+                result[n] = entry
+            else:
+                remaining.append(s)
+        if not remaining:
+            return result
+        symbols_to_fetch = remaining
+    elif mem_valid:
+        result = dict(_SPOT_MEM_CACHE)
+        return result
+    else:
+        symbols_to_fetch = symbols
+
+    # 2. L1 MongoDB 缓存
+    if symbols_to_fetch:
+        remaining = []
+        for s in symbols_to_fetch:
             cached = _get_cached(s, "spot", "", PAConfig.CACHE_TTL_SPOT)
             if cached:
-                result[_normalize_code(s)] = cached
+                n = _normalize_code(s)
+                result[n] = cached
             else:
                 remaining.append(s)
         if not remaining:
@@ -88,13 +134,17 @@ def get_spot(symbols: Optional[List[str]] = None) -> Dict[str, Dict]:
     else:
         symbols_to_fetch = None
 
+    # 3. L3 akshare 全量拉取
     raw = _fetch_spot_from_akshare()
     if not raw:
         return result
 
-    now = datetime.now()
+    _SPOT_MEM_CACHE = {}
     for code, data in raw.items():
+        n = _normalize_code(code)
+        _SPOT_MEM_CACHE[n] = data
         _save_to_cache(code, "spot", "", data)
+    _SPOT_MEM_CACHE_AT = time.time()
 
     if symbols_to_fetch:
         for s in symbols_to_fetch:
@@ -109,7 +159,7 @@ def get_spot(symbols: Optional[List[str]] = None) -> Dict[str, Dict]:
                         result[n] = rv
                         break
     else:
-        result = raw
+        result = dict(_SPOT_MEM_CACHE)
 
     return result
 
@@ -126,6 +176,7 @@ def _fetch_spot_from_akshare() -> Optional[Dict[str, Dict]]:
         try:
             if attempt > 0:
                 time.sleep(3 * (attempt + 1))
+            _throttle_akshare()
             df = ak.stock_zh_a_spot_em()
             if df is None or df.empty:
                 logger.warning("[PAFetcher] spot_em returned empty")
@@ -164,6 +215,23 @@ def _fetch_spot_from_akshare() -> Optional[Dict[str, Dict]]:
     return None
 
 
+def _is_trading_time() -> bool:
+    """判断当前是否为 A 股盘中时间（工作日 9:15-15:00）。
+
+    9:15 起进入集合竞价阶段，应使用短线 TTL。
+    """
+    try:
+        from datetime import datetime
+        now = datetime.now()
+        if now.weekday() >= 5:
+            return False
+        h, m = now.hour, now.minute
+        t = h * 100 + m
+        return 915 <= t <= 1500
+    except Exception:
+        return False
+
+
 def get_kline(code: str, timeframe: str = "daily", count: int = 120) -> Optional[List[Dict]]:
     """获取个股 K 线数据。
 
@@ -173,7 +241,7 @@ def get_kline(code: str, timeframe: str = "daily", count: int = 120) -> Optional
     if timeframe in ("daily", "weekly", "monthly"):
         ttl = PAConfig.CACHE_TTL_KLINE_DAY
     else:
-        ttl = PAConfig.CACHE_TTL_KLINE_MIN
+        ttl = 60 if _is_trading_time() else PAConfig.CACHE_TTL_KLINE_MIN
 
     cached = _get_cached(code, "kline", timeframe, ttl)
     if cached:
@@ -207,6 +275,7 @@ def _fetch_kline_from_akshare(code: str, timeframe: str, count: int) -> Optional
         try:
             if attempt > 0:
                 time.sleep(3)
+            _throttle_akshare()
 
             if timeframe in ("5m", "15m", "30m", "60m"):
                 df = ak.stock_zh_a_hist_min_em(

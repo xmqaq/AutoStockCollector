@@ -2,9 +2,15 @@
 
 过滤规则：
 - 排除 ST、*ST、退市
-- ROE > 8%
-- 营收增速 > 0
-- 非极端估值（PE < 100）
+- ROE > 5%
+- 营收增速 > 0（缺失通过）
+- 非极端估值（PE < 200，缺失通过）
+
+打分（0-100）：
+- 行业相对 ROE Z-score（相对行业中位数）
+- PE 区间 + PEG
+- 分析师评级动量
+- 研报提及次数
 """
 from typing import Any, Dict, List, Optional
 
@@ -83,7 +89,23 @@ class Screener:
         return results
 
     def score(self, candidates: List[Dict]) -> List[Dict]:
-        """长线综合打分（0-100）。"""
+        """长线综合打分（0-100）- 行业相对评分。"""
+        # 收集行业 ROE 中位数
+        industry_roes = {}
+        for c in candidates:
+            industry = c.get("industry", "")
+            roe = float(c.get("roe", 0) or 0)
+            if industry and roe > 0:
+                if industry not in industry_roes:
+                    industry_roes[industry] = []
+                industry_roes[industry].append(roe)
+
+        industry_median = {}
+        for ind, roes in industry_roes.items():
+            sorted_roes = sorted(roes)
+            n = len(sorted_roes)
+            industry_median[ind] = sorted_roes[n // 2] if n > 0 else 0
+
         for c in candidates:
             score = 50
 
@@ -91,23 +113,83 @@ class Screener:
             pe = float(c.get("pe", 0) or 0)
             mention = int(c.get("mention_count", 1))
             confidence = int(c.get("confidence", 3))
+            industry = c.get("industry", "")
+            rating_up = int(c.get("rating_up", 0))
+            rating_down = int(c.get("rating_down", 0))
 
-            if roe > 15:
-                score += 20
-            elif roe > 10:
-                score += 12
-            elif roe > 5:
-                score += 5
+            # 行业相对 ROE: 相对行业中位数的百分比偏离
+            median_roe = industry_median.get(industry, 10)
+            if roe > 0 and median_roe > 0:
+                roe_ratio = roe / median_roe
+                if roe_ratio >= 2.0:
+                    score += 20
+                elif roe_ratio >= 1.5:
+                    score += 14
+                elif roe_ratio >= 1.0:
+                    score += 7
+                elif roe_ratio >= 0.5:
+                    score += 2
+                else:
+                    score -= 10
             elif roe <= 0:
                 score -= 15
 
-            if 5 < pe < 20:
-                score += 10
-            elif 20 <= pe < 40:
-                score += 5
-            elif pe > 80 or pe <= 0:
-                score -= 5
+            # PE 区间 + PEG 代理（行业感知）
+            _industry_lower = industry.lower()
+            _is_financial = any(k in _industry_lower for k in ("银行", "金融", "保险", "证券"))
+            _is_tech = any(k in _industry_lower for k in ("半导体", "软件", "计算机", "电子", "通信", "互联网", "AI", "芯片", "科创", "医药", "生物"))
+            if _is_financial:
+                if 3 < pe < 15:
+                    score += 8
+                elif 15 <= pe < 30:
+                    score += 3
+                elif pe <= 0 or pe > 50:
+                    score -= 3
+            elif _is_tech:
+                if 10 < pe < 40:
+                    score += 10
+                    if roe > 10:
+                        score += 5
+                elif 40 <= pe < 100:
+                    if roe > 10:
+                        score += 5
+                    else:
+                        score += 0
+                elif pe > 100 and roe > 15:
+                    score += 3
+                elif pe <= 0:
+                    score -= 5
+            else:
+                if 5 < pe < 20:
+                    score += 10
+                    if roe > 15:
+                        score += 5
+                elif 20 <= pe < 40:
+                    score += 5
+                    if roe > 20:
+                        score += 3
+                elif 40 <= pe < 80:
+                    if roe > 25:
+                        score += 3
+                    else:
+                        score -= 2
+                elif pe > 80 or pe <= 0:
+                    score -= 5
 
+            # 评级动量
+            total_ratings = rating_up + rating_down
+            if total_ratings >= 3:
+                net_ratio = (rating_up - rating_down) / total_ratings
+                if net_ratio > 0.3:
+                    score += 15
+                elif net_ratio > 0:
+                    score += 8
+                elif net_ratio < -0.3:
+                    score -= 10
+                else:
+                    score -= 3
+
+            # 研报热度
             score += min(mention * 5, 15)
             score += (confidence - 3) * 3
 
@@ -179,24 +261,24 @@ class Screener:
     def _pass_roe(fin: Dict, val: Dict) -> bool:
         roe = Screener._parse_pct(val.get("roe")) or Screener._parse_pct(fin.get("净资产收益率"))
         if roe is None:
-            return True
+            return False
         return roe > 5
 
     @staticmethod
     def _pass_revenue_growth(fin: Dict) -> bool:
         growth = fin.get("营业总收入同比增长率")
         if growth is None:
-            return True
+            return False
         try:
             return float(growth) > 0
         except (ValueError, TypeError):
-            return True
+            return False
 
     @staticmethod
     def _pass_valuation(val: Dict) -> bool:
         pe = val.get("pe_dynamic") or val.get("pe")
         if pe is None:
-            return True
+            return False
         try:
             pe_f = float(pe)
             if pe_f <= 0:
