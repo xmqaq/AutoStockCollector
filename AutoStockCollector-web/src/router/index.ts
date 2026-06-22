@@ -133,6 +133,12 @@ const router = createRouter({
           meta: { title: '价格行为学' },
         },
         {
+          path: 'pre-market-radar',
+          name: 'PreMarketRadar',
+          component: () => import('@/views/AuctionRadar/index.vue'),
+          meta: { title: '盘前竞价雷达' },
+        },
+        {
           path: 'strategy-manager',
           name: 'StrategyManager',
           component: () => import('@/views/StrategyManager/index.vue'),

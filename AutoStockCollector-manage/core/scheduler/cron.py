@@ -954,6 +954,24 @@ def job_research_report_summarize():
         _persist_cron_status("research_report_summarize", _now().isoformat(), False, str(e)[:100])
 
 
+def job_auction_radar():
+    """每日 9:25 盘前竞价雷达扫描。"""
+    if not _is_weekday():
+        return
+    try:
+        from modules.pre_market_call_auction.radar_service import run_auction_scan
+        import threading
+        threading.Thread(target=run_auction_scan, daemon=True).start()
+        msg = "盘前竞价雷达已启动"
+        logger.info(f"[cron] {msg}")
+        _record_result("盘前竞价雷达", True, msg)
+        _persist_cron_status("auction_radar", _now().isoformat(), True, msg, inc_count=True)
+    except Exception as e:
+        logger.error(f"[cron] 盘前竞价雷达失败: {e}")
+        _record_result("盘前竞价雷达", False, str(e))
+        _persist_cron_status("auction_radar", _now().isoformat(), False, str(e)[:100])
+
+
 # ─── 纯 Python 调度核心 ───────────────────────────────────────────────────────
 
 def _next_daily_run(hour: int, minute: int) -> datetime.datetime:
@@ -1093,6 +1111,7 @@ def start_daily_jobs() -> None:
         _make_job("研报全板块扫描 17:30", job_research_daily,       "daily", 17, 30, task_type="research_daily"),
         _make_job("研报原始数据采集 18:00", job_research_report_collect, "daily", 18, 0, task_type="research_report_collect"),
         _make_job("研报AI摘要 30min",       job_research_report_summarize, "interval", interval_minutes=30, task_type="research_report_summarize"),
+        _make_job("盘前竞价雷达 09:25",     job_auction_radar,           "daily", 9, 25, task_type="auction_radar"),
     ]
 
     # cron_trigger_lock 跨进程触发锁：建 TTL 索引，锁文档 1 天后自动过期，避免无限增长。

@@ -170,6 +170,7 @@ const menuGroups = computed((): MenuGroup[] => [
     children: [
       { key: '/position', label: '仓位管理',   icon: Wallet },
       { key: '/price-action', label: '价格行为学', icon: TrendCharts },
+      { key: '/pre-market-radar', label: '盘前竞价雷达', icon: DataAnalysis },
     ],
   },
   {
