@@ -1,27 +1,49 @@
 <template>
-  <div class="dashboard">
-    <!-- News Ticker & Collapse -->
+  <div class="dashboard-scrollable">
+    <!-- News Ticker -->
     <NewsTicker :news-list="newsList" />
 
     <!-- Metric cards -->
-    <MetricCards :data-loaded="dataLoaded" :news-count="newsCount" />
+    <MetricCards :data-loaded="dataLoaded" />
 
-    <!-- Data health card grid -->
-    <DataHealthGrid :data-loaded="dataLoaded" />
-
-    <!-- Main content: Market sentiment + Sector heatmap side by side -->
-    <el-row :gutter="16" class="main-content-row" style="align-items: stretch; margin-bottom: 0;">
-      <!-- Left column: Market sentiment -->
-      <el-col :span="15" style="display: flex; flex-direction: column">
-        <el-card shadow="never" class="section-card fill-card">
+    <!-- Row 1: Account NAV (Left) + Market Sentiment (Right) -->
+    <el-row :gutter="16" class="dashboard-row">
+      <el-col :span="16">
+        <el-card shadow="never" class="section-card fixed-height-card">
+          <AccountNavWidget />
+        </el-card>
+      </el-col>
+      <el-col :span="8">
+        <el-card shadow="never" class="section-card fixed-height-card">
           <MarketSentiment />
         </el-card>
       </el-col>
+    </el-row>
 
-      <!-- Right column: Sector heatmap only -->
-      <el-col :span="9" style="display: flex; flex-direction: column">
-        <el-card shadow="never" class="section-card fill-card">
+    <!-- Row 2: AI Picks (Left) + Sector Heatmap (Right) -->
+    <el-row :gutter="16" class="dashboard-row">
+      <el-col :span="14">
+        <el-card shadow="never" class="section-card tall-card">
+          <AIPicksWidget />
+        </el-card>
+      </el-col>
+      <el-col :span="10">
+        <el-card shadow="never" class="section-card tall-card">
           <SectorHeatmap @select="handleSectorSelect" />
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <!-- Row 3: Realtime Signals & System Tasks -->
+    <el-row :gutter="16" class="dashboard-row signals-row">
+      <el-col :span="14">
+        <el-card shadow="never" class="section-card">
+          <RealtimeSignalsWidget />
+        </el-card>
+      </el-col>
+      <el-col :span="10">
+        <el-card shadow="never" class="section-card">
+          <SystemTasksWidget />
         </el-card>
       </el-col>
     </el-row>
@@ -40,7 +62,10 @@ import MarketSentiment from '@/components/MarketSentiment/index.vue'
 import SectorHeatmap from '@/components/SectorHeatmap/index.vue'
 import NewsTicker from './components/NewsTicker.vue'
 import MetricCards from './components/MetricCards.vue'
-import DataHealthGrid from './components/DataHealthGrid.vue'
+import AIPicksWidget from './components/AIPicksWidget.vue'
+import AccountNavWidget from './components/AccountNavWidget.vue'
+import RealtimeSignalsWidget from './components/RealtimeSignalsWidget.vue'
+import SystemTasksWidget from './components/SystemTasksWidget.vue'
 
 const router = useRouter()
 const collectStore = useCollectStore()
@@ -91,41 +116,69 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.dashboard {
+.dashboard-scrollable {
   display: flex;
   flex-direction: column;
-  gap: 1.5vh;
+  gap: 16px;
   width: 98%;
   max-width: 1600px;
   margin: 0 auto;
-  height: 100%;
-  padding-bottom: 0;
+  min-height: 100%;
+  padding-bottom: 24px;
+}
+
+.dashboard-row {
+  margin-bottom: 0;
 }
 
 .section-card {
+  height: 100%;
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
   overflow: hidden;
-}
-
-.main-content-row {
-  flex: 1;
-  min-height: 0;
-}
-
-.fill-card {
-  flex: 1;
   display: flex;
   flex-direction: column;
 }
 
-.fill-card :deep(.el-card__body) {
+.fixed-height-card {
+  height: 320px;
+}
+
+.tall-card {
+  height: 420px;
+}
+
+.signals-row {
+  /* Let it be driven by the natural height of the tasks widget */
+  min-height: 200px;
+}
+
+.signals-row .el-col {
+  display: flex;
+}
+
+.signals-row .section-card {
+  width: 100%;
+  position: relative;
+}
+
+.section-card :deep(.el-card__body) {
   flex: 1;
   display: flex;
   flex-direction: column;
   padding: 16px;
   min-height: 0;
+  overflow-y: auto;
+}
+
+/* Ensure inner scrollbars look clean if they appear */
+.section-card :deep(.el-card__body)::-webkit-scrollbar {
+  width: 6px;
+}
+.section-card :deep(.el-card__body)::-webkit-scrollbar-thumb {
+  background-color: var(--border-color);
+  border-radius: 3px;
 }
 </style>

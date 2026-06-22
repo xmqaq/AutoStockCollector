@@ -1,45 +1,35 @@
 <template>
-  <el-card shadow="never" class="section-card health-section-card">
-    <div class="section-header">
-      <h2 class="section-title">数据健康状态</h2>
-      <el-button class="modern-btn" text @click="router.push('/data-monitor')">
-        → 去采集中心
+  <el-card shadow="never" class="section-card data-hub-card" v-if="dataLoaded">
+    <div class="hub-header">
+      <div class="hub-title">
+        <el-icon><DataAnalysis /></el-icon>
+        <span>底层数据覆盖雷达</span>
+      </div>
+      <el-button class="modern-btn" text size="small" @click="router.push('/data-monitor')">
+        进入数据中心 →
       </el-button>
     </div>
-
-    <!-- Skeleton: before first data load -->
-    <template v-if="!dataLoaded">
-      <div class="health-pill-grid">
-        <div v-for="i in 8" :key="i" class="health-pill sk-pill">
-          <div class="sk-line" style="height:12px;width:80%"></div>
+    
+    <div class="hub-grid">
+      <div
+        v-for="row in healthCards"
+        :key="row.value"
+        :class="['hub-item', `hub-item--${row.health}`]"
+        @click="router.push(row.route)"
+      >
+        <div class="item-header">
+          <div :class="['status-dot', row.health]"></div>
+          <span class="item-name">{{ row.label }}</span>
+        </div>
+        <div class="item-body">
+          <span class="item-count num">{{ row.record_count != null ? row.record_count.toLocaleString() : '--' }}</span>
+          <span class="item-unit">{{ row.unit }}</span>
+        </div>
+        <div class="item-footer">
+          <span class="item-date">{{ row.latest_date || '暂无数据' }}</span>
         </div>
       </div>
-    </template>
-
-    <!-- Real: after first data load -->
-    <template v-else>
-      <!-- Ultra compact pill grid -->
-      <div class="health-pill-grid">
-        <div
-          v-for="row in healthCards"
-          :key="row.value"
-          :class="['health-pill', `health-pill--${row.health}`]"
-          @click="router.push(row.route)"
-        >
-          <div :class="['pill-indicator', row.health]"></div>
-          <span class="pill-name">{{ row.label }}</span>
-          <div class="pill-divider"></div>
-          <span class="pill-date">{{ row.latest_date ?? '--' }}</span>
-          
-          <!-- Hover details -->
-          <div class="pill-hover-info">
-            <span class="hover-count num">{{ row.record_count != null ? row.record_count.toLocaleString() : '--' }}</span>
-            <span class="hover-unit">{{ row.unit }}</span>
-            <span class="hover-status">{{ row.health === 'ok' ? '最新' : row.health === 'stale' ? '需更新' : '异常' }}</span>
-          </div>
-        </div>
-      </div>
-    </template>
+    </div>
   </el-card>
 </template>
 
@@ -48,6 +38,7 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useCollectStore } from '@/stores/collectStore'
 import { TYPE_LABEL } from '@/utils/collectTypes'
+import { DataAnalysis } from '@element-plus/icons-vue'
 
 defineProps<{
   dataLoaded: boolean
@@ -89,173 +80,130 @@ const healthCards = computed(() => {
 </script>
 
 <style scoped>
-.section-card {
+.data-hub-card {
   background: var(--bg-card);
-  border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  overflow: hidden;
+  border: 1px solid var(--border-color);
+  padding: 16px 20px;
 }
 
-.health-section-card {
-  margin-bottom: 0;
+.data-hub-card :deep(.el-card__body) {
+  padding: 0;
 }
 
-.health-section-card :deep(.el-card__body) {
-  padding: 20px 24px;
-}
-
-.section-header {
+.hub-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
 }
 
-.section-title {
-  font-size: 16px;
+.hub-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--text-primary);
-  margin: 0;
-  letter-spacing: -0.01em;
 }
 
-/* --- Health Cards Grid --- */
-.health-pill-grid {
+.hub-title .el-icon {
+  color: var(--brand-500);
+}
+
+.modern-btn {
+  color: var(--brand-500);
+  font-weight: 500;
+}
+
+.hub-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(8, 1fr);
   gap: 12px;
 }
 
-.health-pill {
-  background: var(--bg-card);
-  border-radius: var(--radius-sm);
-  padding: 10px 14px;
-  border: 1px solid var(--border-color);
+.hub-item {
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  background: var(--bg-page);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
   cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  position: relative;
-  overflow: hidden;
-}
-
-.health-pill:hover {
-  background: var(--bg-hover-subtle);
-  border-color: var(--brand-300);
-}
-
-.health-pill--error {
-  background: var(--tint-danger-bg);
-  border-color: rgba(239, 68, 68, 0.2);
-}
-
-.pill-indicator {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  margin-right: 10px;
-  flex-shrink: 0;
-}
-
-.pill-indicator.ok { background-color: var(--color-success); box-shadow: 0 0 6px rgba(16, 185, 129, 0.4); }
-.pill-indicator.stale { background-color: var(--color-warning); box-shadow: 0 0 6px rgba(245, 158, 11, 0.4); }
-.pill-indicator.error { background-color: var(--color-danger); box-shadow: 0 0 6px rgba(239, 68, 68, 0.4); }
-
-.pill-name {
-  font-weight: 500;
-  color: var(--text-primary);
-  font-size: 13px;
-  white-space: nowrap;
-}
-
-.pill-divider {
-  flex: 1;
-  height: 1px;
-  border-bottom: 1px dashed var(--border-color);
-  margin: 0 10px;
-  opacity: 0.5;
-}
-
-.pill-date {
-  font-size: 12px;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  white-space: nowrap;
-}
-
-/* Hover Information Overlay */
-.pill-hover-info {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: var(--bg-elevated);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  opacity: 0;
-  transform: translateY(100%);
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.health-pill:hover .pill-hover-info {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.hover-count {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.hover-unit {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.hover-status {
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: var(--bg-soft);
-  margin-left: 8px;
-}
-
-/* --- Modern Button --- */
-.modern-btn {
-  color: var(--brand-600);
-  font-weight: 600;
   transition: all 0.2s;
 }
 
-.modern-btn:hover {
-  background: var(--bg-hover-subtle);
-  transform: translateX(2px);
+.hub-item:hover {
+  background: var(--bg-soft);
+  border-color: var(--brand-300);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
 }
 
-/* --- Skeleton --- */
-@keyframes shimmer {
-  0%   { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+.item-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
 }
 
-.sk-line {
-  background: linear-gradient(
-    90deg,
-    var(--bg-hover-subtle) 25%,
-    var(--bg-hover) 50%,
-    var(--bg-hover-subtle) 75%
-  );
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
-  border-radius: 4px;
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
 }
 
-.sk-pill {
-  height: 34px;
+.status-dot.ok { background-color: var(--el-color-success); box-shadow: 0 0 4px var(--el-color-success); }
+.status-dot.stale { background-color: var(--el-color-warning); box-shadow: 0 0 4px var(--el-color-warning); }
+.status-dot.error { background-color: var(--el-color-danger); box-shadow: 0 0 4px var(--el-color-danger); }
+
+.item-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.item-body {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.item-count {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--brand-600);
+}
+
+.item-unit {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.item-footer {
+  margin-top: auto;
+}
+
+.item-date {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: monospace;
+}
+
+.hub-item--error {
+  border-color: var(--el-color-danger-light-5);
+  background: var(--el-color-danger-light-9);
+}
+.hub-item--error .item-count { color: var(--el-color-danger); }
+
+.hub-item--stale {
+  border-color: var(--el-color-warning-light-5);
+  background: var(--el-color-warning-light-9);
+}
+.hub-item--stale .item-count { color: var(--el-color-warning); }
+
+.num {
+  font-variant-numeric: tabular-nums;
 }
 </style>

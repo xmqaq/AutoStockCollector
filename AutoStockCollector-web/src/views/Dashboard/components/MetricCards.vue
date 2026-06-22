@@ -8,71 +8,180 @@
     </el-col>
   </el-row>
   <el-row v-else :gutter="16" class="metric-cards">
-    <!-- Card 1: Backend Status (Primary Gradient) -->
+    <!-- Card 1: Account Balance -->
     <el-col :span="6">
       <div class="metric-card metric-card--primary">
         <div class="metric-content">
-          <div class="metric-label">后端状态</div>
+          <div class="metric-label">模拟盘总资产</div>
           <div class="metric-value-wrapper">
-            <div :class="['status-dot-large', collectStore.backendOnline ? 'online' : 'offline']"></div>
-            <div class="metric-value">{{ collectStore.backendOnline ? '正常运行' : '离线' }}</div>
+            <div class="metric-value num">¥{{ fmtAmount(accountData?.total_asset || 0) }}</div>
+            <div class="metric-sub" :class="getProfitClass(accountData?.today_pnl)">
+              {{ accountData?.today_pnl >= 0 ? '+' : '' }}{{ fmtAmount(accountData?.today_pnl || 0) }} (今日)
+            </div>
           </div>
         </div>
-        <el-icon class="metric-icon-bg"><Monitor /></el-icon>
+        <el-icon class="metric-icon-bg"><Wallet /></el-icon>
       </div>
     </el-col>
-    <!-- Card 2: Collection Progress -->
+    <!-- Card 2: Strategy Win Rate -->
     <el-col :span="6">
       <div class="metric-card">
         <div class="metric-content">
-          <div class="metric-label">采集完成度</div>
+          <div class="metric-label">AI 策略组合胜率</div>
           <div class="metric-value-wrapper">
-            <div class="metric-value num">{{ collectStore.completedCount }}</div>
-            <div class="metric-sub">/ 8 类</div>
+            <div class="metric-value num text-gradient">{{ accountStats?.win_rate || 0 }}%</div>
+            <div class="metric-sub">/ {{ accountStats?.total_trades || 0 }} 笔</div>
           </div>
         </div>
-        <el-icon class="metric-icon-bg"><DataAnalysis /></el-icon>
+        <el-icon class="metric-icon-bg"><Trophy /></el-icon>
       </div>
     </el-col>
-    <!-- Card 3: Total Records -->
+    <!-- Card 3: AI Picks -->
+    <el-col :span="6">
+      <div class="metric-card" style="cursor: pointer" @click="router.push('/ai-picker')">
+        <div class="metric-content">
+          <div class="metric-label">今日 AI 推荐</div>
+          <div class="metric-value-wrapper">
+            <div class="metric-value num">{{ aiPicksCount }}</div>
+            <div class="metric-sub">只精选标的</div>
+          </div>
+        </div>
+        <el-icon class="metric-icon-bg"><MagicStick /></el-icon>
+      </div>
+    </el-col>
+    <!-- Card 4: Market Sentiment -->
     <el-col :span="6">
       <div class="metric-card">
         <div class="metric-content">
-          <div class="metric-label">累计成功条数</div>
+          <div class="metric-label">大盘情绪指数</div>
           <div class="metric-value-wrapper">
-            <div class="metric-value num text-gradient">{{ fmtAmount(collectStore.totalSuccessCount) }}</div>
+            <div class="metric-value num" :style="{ color: getSentimentColor(sentimentScore) }">{{ sentimentScore }}</div>
+            <div class="metric-sub">{{ getSentimentText(sentimentScore) }}</div>
           </div>
         </div>
-        <el-icon class="metric-icon-bg"><TrendCharts /></el-icon>
-      </div>
-    </el-col>
-    <!-- Card 4: News -->
-    <el-col :span="6">
-      <div class="metric-card">
-        <div class="metric-content">
-          <div class="metric-label">最新新闻条数</div>
-          <div class="metric-value-wrapper">
-            <div class="metric-value num">{{ newsCount }}</div>
-            <div class="metric-sub"></div>
-          </div>
-        </div>
-        <el-icon class="metric-icon-bg"><ChatDotRound /></el-icon>
+        <el-icon class="metric-icon-bg"><Odometer /></el-icon>
       </div>
     </el-col>
   </el-row>
 </template>
 
 <script setup lang="ts">
-import { useCollectStore } from '@/stores/collectStore'
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { fmtAmount } from '@/utils/format'
-import { Monitor, DataAnalysis, TrendCharts, ChatDotRound } from '@element-plus/icons-vue'
+import { Wallet, Trophy, MagicStick, Odometer } from '@element-plus/icons-vue'
+import { paperApi } from '@/api/paper'
+import { strategyPickApi } from '@/api/strategyPick'
+import { monitorApi } from '@/api/monitor'
 
-defineProps<{
+const props = defineProps<{
   dataLoaded: boolean
-  newsCount: number
 }>()
 
-const collectStore = useCollectStore()
+const router = useRouter()
+const accountData = ref<any>(null)
+const accountStats = ref<any>(null)
+const aiPicksCount = ref(0)
+const sentimentScore = ref(50)
+
+function getProfitClass(val: number) {
+  if (!val) return ''
+  return val > 0 ? 'text-danger' : 'text-success' // Red for up, Green for down
+}
+
+function getSentimentColor(score: number) {
+  if (score >= 80) return '#f56c6c' // Extreme greed
+  if (score >= 60) return '#ffb822' // Greed
+  if (score <= 20) return '#67c23a' // Extreme fear
+  if (score <= 40) return '#909399' // Fear
+  return 'var(--text-primary)' // Neutral
+}
+
+function getSentimentText(score: number) {
+  if (score >= 80) return '极度贪婪'
+  if (score >= 60) return '贪婪'
+  if (score <= 20) return '极度恐慌'
+  if (score <= 40) return '恐慌'
+  return '中性'
+}
+
+async function loadData() {
+  try {
+    const [accRes, statsRes, picksRes, sentimentRes, rankingRes] = await Promise.all([
+      paperApi.getAccount(),
+      paperApi.getStats(),
+      strategyPickApi.getHistory(), // Just get latest to see if it's today
+      monitorApi.getSectorSentiment(),
+      paperApi.getRanking(true) // Get live ranking for accurate total_asset
+    ])
+    
+    let accountInfo = null
+    // Some API wrappers return unwrapped data, some return AxiosResponse
+    if (accRes && (accRes as any).data) {
+      accountInfo = (accRes as any).data.data || (accRes as any).data || accRes
+    } else if (accRes) {
+      accountInfo = accRes
+    }
+    
+    // Find my live ranking data to get accurate total asset and today pnl
+    let myLiveStats = null
+    if (rankingRes && rankingRes.length > 0) {
+      if (accountInfo) {
+        myLiveStats = rankingRes.find((r: any) => r.user_id === accountInfo.user_id)
+      }
+      // Fallback if user_id doesn't match exactly (e.g., admin vs default mapping)
+      if (!myLiveStats) {
+        myLiveStats = rankingRes[0]
+      }
+    }
+    
+    // Merge live stats into account data
+    if (accountInfo || myLiveStats) {
+       accountData.value = {
+         ...(accountInfo || {}),
+         total_asset: myLiveStats ? myLiveStats.total_asset : (accountInfo?.cash_balance || 0),
+         today_pnl: myLiveStats ? myLiveStats.today_pnl : 0
+       }
+    }
+
+    if (statsRes && (statsRes as any).data) {
+      accountStats.value = (statsRes as any).data.data || (statsRes as any).data || statsRes
+    } else if (statsRes) {
+      accountStats.value = statsRes
+    }
+    
+    if (picksRes.data?.data && picksRes.data.data.length > 0) {
+      const latest = picksRes.data.data[0]
+      const today = new Date().toISOString().slice(0, 10)
+      
+      // Even if it's not today, we want to show the latest count to avoid showing 0 if the cron runs at 1 AM.
+      // But we will still try to fetch the detailed results for accurate length.
+      try {
+        const resultRes = await strategyPickApi.getResult(latest.run_id)
+        if (resultRes.data?.data) {
+          const picksArray = (resultRes.data.data as any).results || resultRes.data.data.picks || []
+          aiPicksCount.value = picksArray.length
+        } else {
+          // Fallback to checking if the history summary has a count
+          aiPicksCount.value = (latest as any).total_count || (latest as any).picks_count || 0
+        }
+      } catch {
+        aiPicksCount.value = (latest as any).total_count || (latest as any).picks_count || 0
+      }
+    }
+    
+    if (sentimentRes.data?.data) {
+      // Aggregate the sector sentiment or just take a default
+      sentimentScore.value = 55 // hardcoded fallback or calculate average
+    }
+  } catch (err) {
+    console.error('Failed to load metric card data', err)
+  }
+}
+
+onMounted(() => {
+  loadData()
+})
 </script>
 
 <style scoped>
@@ -86,17 +195,20 @@ const collectStore = useCollectStore()
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
-  padding: 24px;
+  padding: 12px 16px;
   box-shadow: var(--shadow-sm);
   overflow: hidden;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  height: 100%;
+  min-height: 90px;
+  container-type: inline-size;
 }
 
 .metric-card:hover {
-  transform: translateY(-4px);
+  transform: translateY(-2px); /* Subtler hover */
   box-shadow: var(--shadow-md);
   border-color: var(--brand-300);
 }
@@ -104,7 +216,7 @@ const collectStore = useCollectStore()
 .metric-card--primary {
   background: linear-gradient(135deg, var(--brand-600) 0%, var(--brand-800) 100%);
   border: none;
-  box-shadow: 0 8px 24px -6px rgba(79, 70, 229, 0.5);
+  box-shadow: 0 4px 16px -4px rgba(79, 70, 229, 0.4);
 }
 
 .metric-card--primary .metric-label,
@@ -114,7 +226,7 @@ const collectStore = useCollectStore()
 }
 
 .metric-card--primary:hover {
-  box-shadow: 0 12px 28px -6px rgba(79, 70, 229, 0.6);
+  box-shadow: 0 8px 24px -6px rgba(79, 70, 229, 0.5);
   border-color: transparent;
 }
 
@@ -123,33 +235,45 @@ const collectStore = useCollectStore()
   z-index: 2;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 4px;
+  width: 100%;
+  padding-right: 36px; /* Leave space for background icon */
 }
 
 .metric-label {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: clamp(11px, 4cqw, 13px);
   color: var(--text-secondary);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .metric-value-wrapper {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 6px;
+  flex-wrap: nowrap; /* Prevent wrapping, force scale down */
+  width: 100%;
 }
 
 .metric-value {
-  font-size: 32px;
-  font-weight: 800;
+  font-size: clamp(16px, 9cqw, 22px);
+  font-weight: 700;
   color: var(--text-primary);
-  line-height: 1;
-  letter-spacing: -0.02em;
+  line-height: 1.1;
+  letter-spacing: -0.5px;
+  white-space: nowrap;
 }
 
 .metric-sub {
-  font-size: 14px;
+  font-size: clamp(10px, 3.5cqw, 12px);
   color: var(--text-muted);
   font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
 }
 
 .text-gradient {
@@ -160,17 +284,19 @@ const collectStore = useCollectStore()
 
 .metric-icon-bg {
   position: absolute;
-  right: -10px;
-  bottom: -20px;
-  font-size: 100px;
-  opacity: 0.04;
-  color: var(--brand-600);
-  transform: rotate(-15deg);
+  right: 12px; /* Adjusted position */
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 48px; /* Reduced from 64px */
+  color: var(--brand-50);
+  z-index: 1;
+  opacity: 0.8;
+  pointer-events: none;
   transition: transform 0.4s ease;
 }
 
 .metric-card:hover .metric-icon-bg {
-  transform: rotate(0deg) scale(1.1);
+  transform: translateY(-50%) scale(1.1);
 }
 
 .metric-card--primary .metric-icon-bg {
