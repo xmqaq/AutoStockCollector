@@ -2,7 +2,7 @@
 import hashlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from config.database import DatabaseConfig
 from utils.logger import get_logger
