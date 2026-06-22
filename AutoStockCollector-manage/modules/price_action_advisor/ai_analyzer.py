@@ -26,11 +26,15 @@ ATR (14): {atr}
 斐波那契回撤位:
 {fib_info}
 
+{htf_section}
+
 交易计划:
 {direction} | 入场 ¥{entry_price} | 止损 ¥{stop_loss} | 止盈 ¥{take_profit}
 盈亏比: {rr_ratio}
 仓位: {position_size} 股 ({position_value}元)
 单笔风险: ¥{total_risk}
+
+{backtest_section}
 
 请给出以下分析（控制在300字以内）：
 1. 多空逻辑判断 — 当前信号是否可靠？主要矛盾是什么？
@@ -60,6 +64,34 @@ def get_ai_commentary(signal: Dict[str, Any]) -> Optional[str]:
 
     fib_info = "\n".join([f"  {k}: ¥{v}" for k, v in (fibs or {}).items()]) or "无"
 
+    # HTF 多周期背景
+    htf = signal.get("htf_trend")
+    htf_section = ""
+    if htf:
+        htf_parts = [f"高周期趋势: {htf} ({signal.get('htf_timeframe', '?')})"]
+        if signal.get("htf_structure"):
+            htf_parts.append(f"结构: {signal['htf_structure']}")
+        if signal.get("trend_warning"):
+            htf_parts.append(f"⚠ {signal['trend_warning']}")
+        if signal.get("htf_swing_high"):
+            htf_parts.append(f"最近高点: ¥{signal['htf_swing_high']} (+{signal.get('htf_resist_pct', 0):.1f}%)")
+        if signal.get("htf_swing_low"):
+            htf_parts.append(f"最近低点: ¥{signal['htf_swing_low']} (-{signal.get('htf_support_pct', 0):.1f}%)")
+        htf_section = "多周期背景:\n  " + "\n  ".join(htf_parts)
+
+    # 回测统计
+    bt = signal.get("backtest")
+    backtest_section = ""
+    if bt and bt.get("total_trades", 0) >= 5:
+        backtest_section = (
+            f"历史回测 ({bt.get('total_trades', 0)}次交易):\n"
+            f"  胜率 {bt.get('win_rate', 0)}% | "
+            f"夏普 {bt.get('sharpe_ratio', 0)} | "
+            f"盈亏比 {bt.get('profit_factor', 0)} | "
+            f"平均R {bt.get('avg_r', 0)} | "
+            f"最大回撤 {bt.get('max_drawdown_pct', 0)}%"
+        )
+
     prompt = _AI_ANALYSIS_PROMPT.format(
         name=signal.get("name", ""),
         symbol=signal.get("symbol", ""),
@@ -72,6 +104,8 @@ def get_ai_commentary(signal: Dict[str, Any]) -> Optional[str]:
         reasons="\n".join(f"  • {r}" for r in reasons) or "无",
         zones_info=zones_info,
         fib_info=fib_info,
+        htf_section=htf_section,
+        backtest_section=backtest_section,
         direction=tp.get("direction", "-"),
         entry_price=tp.get("entry", "-"),
         stop_loss=tp.get("stop_loss", "-"),

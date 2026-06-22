@@ -1,8 +1,11 @@
-"""实时行情 & K线数据获取 — L1(MongoDB缓存) + L3(akshare) 两级架构。"""
+"""实时行情 & K线数据获取 — 三层缓存 + EastMoney 直连 + 进程级 LRU。"""
 import threading
 import time
+from collections import OrderedDict
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
+
+import requests
 
 from config.database import DatabaseConfig
 from utils.logger import get_logger
@@ -12,26 +15,49 @@ from .config import PAConfig
 logger = get_logger(__name__)
 
 _CACHE_LOCK = threading.Lock()
-_LAST_FETCH_AT = 0.0
-_FETCH_LOCK = threading.Lock()
-_FETCH_INTERVAL = max(getattr(PAConfig, "FETCH_INTERVAL", 3.0), 0.5)
+_FETCH_INTERVAL = max(getattr(PAConfig, "FETCH_INTERVAL", 0.3), 0.1)
 
-# 内存级现货缓存 — 避免全量拉取
+_THREAD_LOCAL = threading.local()
+
 _SPOT_MEM_CACHE: Dict[str, Any] = {}
 _SPOT_MEM_CACHE_AT = 0.0
 _SPOT_MEM_TTL = 60
 
+# 进程级 LRU K 线缓存 — 同一次扫描内避免重复拉取
+_KLINE_LRU: "OrderedDict[str, Any]" = OrderedDict()
+_KLINE_LRU_MAX = 500
+_KLINE_LRU_LOCK = threading.Lock()
 
-def _throttle_akshare():
-    """限制 akshare 调用频率，避免被封。"""
-    global _LAST_FETCH_AT
-    with _FETCH_LOCK:
-        now = time.time()
-        elapsed = now - _LAST_FETCH_AT
-        if _LAST_FETCH_AT > 0 and elapsed < _FETCH_INTERVAL:
-            sleep_time = _FETCH_INTERVAL - elapsed
-            time.sleep(sleep_time)
-        _LAST_FETCH_AT = time.time()
+_EASTMONEY_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+    "Referer": "https://quote.eastmoney.com/",
+}
+
+
+def _market(code: str) -> str:
+    c = code.strip()
+    if c.startswith(("6", "9")) or c.startswith("SH"):
+        return "1"
+    if c.startswith(("0", "3")) or c.startswith("SZ"):
+        return "0"
+    if c.startswith(("4", "8")) or c.startswith("BJ"):
+        return "0"
+    return "1"
+
+
+def _secid(code: str) -> str:
+    raw = code[2:] if code.startswith(("SH", "SZ", "BJ")) else code
+    return f"{_market(raw)}.{raw}"
+
+
+def _throttle():
+    """每个工作线程独立节流 — 避免全局锁串行。"""
+    last = getattr(_THREAD_LOCAL, "last_fetch_at", 0.0)
+    now = time.time()
+    elapsed = now - last
+    if last > 0 and elapsed < _FETCH_INTERVAL:
+        time.sleep(_FETCH_INTERVAL - elapsed)
+    _THREAD_LOCAL.last_fetch_at = time.time()
 
 
 def _normalize_code(code: str) -> str:
@@ -52,7 +78,7 @@ def _cache_key(code: str, dtype: str, timeframe: str = "") -> str:
     return f"{_normalize_code(code)}|{dtype}|{timeframe}"
 
 
-def _get_cached(code: str, dtype: str, timeframe: str, ttl: int) -> Optional[Dict]:
+def _get_cached(code: str, dtype: str, timeframe: str, ttl: int) -> Optional[Any]:
     key = _cache_key(code, dtype, timeframe)
     with _CACHE_LOCK:
         try:
@@ -89,6 +115,29 @@ def _save_to_cache(code: str, dtype: str, timeframe: str, data: Any):
             logger.warning(f"[PAFetcher] cache save error: {e}")
 
 
+def _kline_lru_get(key: str) -> Optional[Any]:
+    with _KLINE_LRU_LOCK:
+        if key in _KLINE_LRU:
+            _KLINE_LRU.move_to_end(key)
+            return _KLINE_LRU[key]
+    return None
+
+
+def _kline_lru_set(key: str, data: Any):
+    with _KLINE_LRU_LOCK:
+        if key in _KLINE_LRU:
+            _KLINE_LRU.move_to_end(key)
+        else:
+            if len(_KLINE_LRU) >= _KLINE_LRU_MAX:
+                _KLINE_LRU.popitem(last=False)
+        _KLINE_LRU[key] = data
+
+
+def clear_kline_lru():
+    with _KLINE_LRU_LOCK:
+        _KLINE_LRU.clear()
+
+
 def get_spot(symbols: Optional[List[str]] = None) -> Dict[str, Dict]:
     """获取实时行情。返回 {code: {price, change, high, low, ...}}。
 
@@ -96,7 +145,6 @@ def get_spot(symbols: Optional[List[str]] = None) -> Dict[str, Dict]:
     """
     result = {}
 
-    # 1. 优先走 L0 内存缓存
     global _SPOT_MEM_CACHE, _SPOT_MEM_CACHE_AT
     mem_valid = _SPOT_MEM_CACHE and time.time() - _SPOT_MEM_CACHE_AT < _SPOT_MEM_TTL
     full_cache_hit = False
@@ -118,7 +166,6 @@ def get_spot(symbols: Optional[List[str]] = None) -> Dict[str, Dict]:
     else:
         symbols_to_fetch = symbols
 
-    # 2. L1 MongoDB 缓存
     if symbols_to_fetch:
         remaining = []
         for s in symbols_to_fetch:
@@ -134,8 +181,9 @@ def get_spot(symbols: Optional[List[str]] = None) -> Dict[str, Dict]:
     else:
         symbols_to_fetch = None
 
-    # 3. L3 akshare 全量拉取
-    raw = _fetch_spot_from_akshare()
+    raw = _fetch_spot_from_eastmoney()
+    if not raw:
+        raw = _fetch_spot_from_akshare()
     if not raw:
         return result
 
@@ -164,22 +212,70 @@ def get_spot(symbols: Optional[List[str]] = None) -> Dict[str, Dict]:
     return result
 
 
+def _fetch_spot_from_eastmoney() -> Optional[Dict[str, Dict]]:
+    """EastMoney 全量实时行情 — 替代 akshare stock_zh_a_spot_em。"""
+    try:
+        url = "https://push2.eastmoney.com/api/qt/clist/get"
+        params = {
+            "pn": "1",
+            "pz": "6000",
+            "po": "1",
+            "np": "1",
+            "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+            "fltt": "2",
+            "invt": "2",
+            "fid": "f3",
+            "fs": "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048",
+            "fields": "f12,f14,f2,f3,f4,f5,f6,f7,f15,f16,f17,f18,f10,f8",
+        }
+        _throttle()
+        r = requests.get(url, params=params, headers=_EASTMONEY_HEADERS, timeout=30)
+        r.raise_for_status()
+        data = r.json()
+        items = data.get("data", {}).get("diff", [])
+        if not items:
+            return None
+
+        result = {}
+        for item in items:
+            code = str(item.get("f12", ""))
+            result[code] = {
+                "code": code,
+                "name": str(item.get("f14", "")),
+                "price": item.get("f2") or 0.0,
+                "change_pct": item.get("f3") or 0.0,
+                "change": item.get("f4") or 0.0,
+                "volume": item.get("f5") or 0.0,
+                "amount": item.get("f6") or 0.0,
+                "amplitude": item.get("f7") or 0.0,
+                "high": item.get("f15") or 0.0,
+                "low": item.get("f16") or 0.0,
+                "open": item.get("f17") or 0.0,
+                "pre_close": item.get("f18") or 0.0,
+                "volume_ratio": item.get("f10") or 0.0,
+                "turnover": item.get("f8") or 0.0,
+            }
+        logger.info(f"[PAFetcher] eastmoney spot fetched {len(result)} stocks")
+        return result
+    except Exception as e:
+        logger.warning(f"[PAFetcher] eastmoney spot error: {e}")
+        return None
+
+
 def _fetch_spot_from_akshare() -> Optional[Dict[str, Dict]]:
-    """调用 akshare 全量实时行情。"""
+    """回退: akshare 全量实时行情。"""
     try:
         import akshare as ak
     except ImportError:
-        logger.warning("[PAFetcher] akshare not installed")
         return None
 
     for attempt in range(PAConfig.FETCH_RETRY_MAX + 1):
         try:
             if attempt > 0:
                 time.sleep(3 * (attempt + 1))
-            _throttle_akshare()
+            _throttle()
             df = ak.stock_zh_a_spot_em()
             if df is None or df.empty:
-                logger.warning("[PAFetcher] spot_em returned empty")
                 return None
 
             col_map = {
@@ -208,20 +304,15 @@ def _fetch_spot_from_akshare() -> Optional[Dict[str, Dict]]:
                 if raw_code:
                     result[raw_code] = entry
 
-            logger.info(f"[PAFetcher] spot_em fetched {len(result)} stocks")
+            logger.info(f"[PAFetcher] akshare spot fetched {len(result)} stocks")
             return result
         except Exception as e:
-            logger.warning(f"[PAFetcher] spot_em attempt {attempt+1} failed: {e}")
+            logger.warning(f"[PAFetcher] akshare spot attempt {attempt+1} failed: {e}")
     return None
 
 
 def _is_trading_time() -> bool:
-    """判断当前是否为 A 股盘中时间（工作日 9:15-15:00）。
-
-    9:15 起进入集合竞价阶段，应使用短线 TTL。
-    """
     try:
-        from datetime import datetime
         now = datetime.now()
         if now.weekday() >= 5:
             return False
@@ -235,39 +326,120 @@ def _is_trading_time() -> bool:
 def get_kline(code: str, timeframe: str = "daily", count: int = 120) -> Optional[List[Dict]]:
     """获取个股 K 线数据。
 
-    timeframe: 'daily' | 'weekly' | 'monthly' | '30m' | '5m'
+    timeframe: 'daily' | 'weekly' | 'monthly' | '30m' | '5m' | '15m' | '60m'
     返回 List[{date, open, high, low, close, volume}]
+
+   缓存层次: LRU(进程) → MongoDB → EastMoney API → akshare(回退)
     """
     if timeframe in ("daily", "weekly", "monthly"):
         ttl = PAConfig.CACHE_TTL_KLINE_DAY
     else:
         ttl = 60 if _is_trading_time() else PAConfig.CACHE_TTL_KLINE_MIN
 
+    # L0: 进程级 LRU（同一次扫描内共享）
+    lru_key = _cache_key(code, "kline", timeframe)
+    lru_hit = _kline_lru_get(lru_key)
+    if lru_hit is not None:
+        return lru_hit
+
+    # L1: MongoDB
     cached = _get_cached(code, "kline", timeframe, ttl)
     if cached:
+        _kline_lru_set(lru_key, cached)
         return cached
 
+    # L2: EastMoney 直连
+    bars = _fetch_kline_from_eastmoney(code, timeframe, count)
+    if bars:
+        _save_to_cache(code, "kline", timeframe, bars)
+        _kline_lru_set(lru_key, bars)
+        return bars
+
+    # L3: akshare 回退
     bars = _fetch_kline_from_akshare(code, timeframe, count)
     if bars:
         _save_to_cache(code, "kline", timeframe, bars)
+        _kline_lru_set(lru_key, bars)
     return bars
 
 
-def _fetch_kline_from_akshare(code: str, timeframe: str, count: int) -> Optional[List[Dict]]:
-    """调用 akshare 获取 K 线。
+_KLTMAP = {
+    "daily": "101", "weekly": "102", "monthly": "103",
+    "5m": "5", "15m": "15", "30m": "30", "60m": "60",
+}
 
-   优先使用 Sina API (stock_zh_a_daily) 因其稳定性高于 Eastmoney API。
-    """
+
+def _fetch_kline_from_eastmoney(code: str, timeframe: str, count: int) -> Optional[List[Dict]]:
+    """EastMoney 直连 K 线 API — 替代 akshare。"""
+    klt = _KLTMAP.get(timeframe)
+    if not klt:
+        return None
+
+    raw_code = _strip_prefix(code)
+    sid = _secid(raw_code)
+    end = "20500101"
+
+    url = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+    params = {
+        "secid": sid,
+        "fields1": "f1,f2,f3",
+        "fields2": "f51,f52,f53,f54,f55,f56,f57",
+        "klt": klt,
+        "fqt": "1",
+        "end": end,
+        "lmt": str(count),
+    }
+
+    for attempt in range(2):
+        try:
+            if attempt > 0:
+                time.sleep(1)
+            _throttle()
+            r = requests.get(url, params=params, headers=_EASTMONEY_HEADERS, timeout=15)
+            r.raise_for_status()
+            data = r.json()
+            klines = data.get("data", {}).get("klines", [])
+            if not klines:
+                return None
+
+            bars = []
+            for line in klines:
+                parts = line.split(",")
+                if len(parts) < 6:
+                    continue
+                try:
+                    bar = {
+                        "date": parts[0],
+                        "open": float(parts[1]),
+                        "high": float(parts[2]),
+                        "low": float(parts[3]),
+                        "close": float(parts[4]),
+                        "volume": float(parts[5]),
+                    }
+                    bars.append(bar)
+                except (ValueError, IndexError):
+                    continue
+
+            bars.sort(key=lambda x: x["date"])
+            bars = bars[-count:]
+            logger.info(f"[PAFetcher] eastmoney kline {code} {timeframe} bars={len(bars)}")
+            return bars
+        except Exception as e:
+            logger.warning(f"[PAFetcher] eastmoney kline {code} attempt {attempt+1}: {e}")
+
+    return None
+
+
+def _fetch_kline_from_akshare(code: str, timeframe: str, count: int) -> Optional[List[Dict]]:
+    """回退: akshare K 线。"""
     try:
         import akshare as ak
         import pandas as pd
     except ImportError:
-        logger.warning("[PAFetcher] akshare/pandas not installed")
         return None
 
     symbol = _strip_prefix(code)
     norm = _normalize_code(code).lower()
-
     end = datetime.now()
     start = end - timedelta(days=count * 3)
 
@@ -275,32 +447,24 @@ def _fetch_kline_from_akshare(code: str, timeframe: str, count: int) -> Optional
         try:
             if attempt > 0:
                 time.sleep(3)
-            _throttle_akshare()
+            _throttle()
 
             if timeframe in ("5m", "15m", "30m", "60m"):
                 df = ak.stock_zh_a_hist_min_em(
-                    symbol=symbol,
-                    period=timeframe,
+                    symbol=symbol, period=timeframe,
                     start_date=start.strftime("%Y%m%d"),
-                    end_date=end.strftime("%Y%m%d"),
-                    adjust="qfq",
+                    end_date=end.strftime("%Y%m%d"), adjust="qfq",
                 )
             elif timeframe in ("weekly", "monthly"):
                 df = ak.stock_zh_a_hist(
-                    symbol=symbol,
-                    period=timeframe,
+                    symbol=symbol, period=timeframe,
                     start_date=start.strftime("%Y%m%d"),
-                    end_date=end.strftime("%Y%m%d"),
-                    adjust="qfq",
+                    end_date=end.strftime("%Y%m%d"), adjust="qfq",
                 )
             else:
-                df = ak.stock_zh_a_daily(
-                    symbol=norm,
-                    adjust="qfq",
-                )
+                df = ak.stock_zh_a_daily(symbol=norm, adjust="qfq")
 
             if df is None or df.empty:
-                logger.warning(f"[PAFetcher] kline empty for {code} {timeframe}")
                 return None
 
             bars = []
@@ -337,9 +501,9 @@ def _fetch_kline_from_akshare(code: str, timeframe: str, count: int) -> Optional
 
             bars.sort(key=lambda x: x["date"])
             bars = bars[-count:]
-            logger.info(f"[PAFetcher] kline {code} {timeframe} bars={len(bars)}")
+            logger.info(f"[PAFetcher] akshare kline {code} {timeframe} bars={len(bars)}")
             return bars
         except Exception as e:
-            logger.warning(f"[PAFetcher] kline {code} attempt {attempt+1} failed: {e}")
+            logger.warning(f"[PAFetcher] akshare kline {code} attempt {attempt+1}: {e}")
 
     return None

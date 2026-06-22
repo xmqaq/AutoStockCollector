@@ -47,7 +47,7 @@ def _parse_price_action_input(data: dict) -> Optional[dict]:
     if balance < 1000:
         return {"error": "account_balance 最少 1000"}
 
-    use_ai = bool(data.get("use_ai", False))
+    use_ai = bool(data.get("use_ai", True))
 
     return {
         "symbols": symbols,
@@ -255,7 +255,7 @@ def price_action_single():
     if balance < 1000:
         return jsonify({"success": False, "error": "balance 最少 1000"}), 400
 
-    use_ai = data.get("use_ai", False)
+    use_ai = data.get("use_ai", True)
 
     task_id = uuid.uuid4().hex[:12]
     with _tasks_lock:
@@ -349,7 +349,7 @@ _SCAN_TIMEOUT = 120  # 扫描超时秒数
 
 def _run_scan(scan_id: str, symbols: list, timeframe: str, risk_pct: float, balance: float):
     try:
-        concurrency = max(1, min(PAConfig.FETCH_CONCURRENCY, len(symbols) // 2, 8))
+        concurrency = max(1, min(PAConfig.FETCH_CONCURRENCY, len(symbols) // 2 or 1))
 
         # 过滤空/无效代码
         symbols = [s.strip() for s in symbols if s and s.strip()]
@@ -360,6 +360,14 @@ def _run_scan(scan_id: str, symbols: list, timeframe: str, risk_pct: float, bala
 
         with _tasks_lock:
             _tasks[scan_id] = {"status": "processing", "progress": 0, "message": f"全市场扫描中（{concurrency} 并发）..."}
+
+        # 预热：清除 LRU K 线缓存 + 预取实时行情
+        try:
+            from .fetcher import clear_kline_lru, get_spot
+            clear_kline_lru()
+            get_spot(symbols)
+        except Exception:
+            pass
 
         total = len(symbols)
         engine = _get_engine()
@@ -402,6 +410,42 @@ def _run_scan(scan_id: str, symbols: list, timeframe: str, risk_pct: float, bala
 
         results.sort(key=lambda x: x.get("confidence", 0), reverse=True)
 
+        # 保存逐股信号历史快照
+        try:
+            from .storage import PaSignalHistoryStorage
+            hist = PaSignalHistoryStorage()
+            scan_time = datetime.now()
+            for sig in results:
+                code = sig.get("symbol", "")
+                name = sig.get("name", "")
+                if code:
+                    hist.save_snapshot(code, name, sig, scan_id, scan_time)
+            logger.info(f"[Scan] saved {len(results)} signal history snapshots")
+        except Exception as e:
+            logger.warning(f"[Scan] save signal history error: {e}")
+
+        # 丰富：批量查询行业归属
+        sectors_summary = {}
+        try:
+            from config.database import DatabaseConfig
+            db = DatabaseConfig.get_database()
+            codes = [s.get("symbol", "") for s in results if s.get("symbol")]
+            if codes:
+                info_map = {}
+                for doc in db["stock_info"].find({"code": {"$in": codes}}, {"code": 1, "所属行业": 1}):
+                    c = doc.get("code", "")
+                    ind = doc.get("所属行业", "")
+                    if c and ind:
+                        info_map[c] = ind
+                for sig in results:
+                    code = sig.get("symbol", "")
+                    ind = info_map.get(code, "")
+                    sig["industry"] = ind
+                    if ind:
+                        sectors_summary[ind] = sectors_summary.get(ind, 0) + 1
+        except Exception as e:
+            logger.warning(f"[Scan] sector enrichment error: {e}")
+
         try:
             from config.database import DatabaseConfig
             from .config import PAConfig
@@ -411,6 +455,7 @@ def _run_scan(scan_id: str, symbols: list, timeframe: str, risk_pct: float, bala
                 "timeframe": timeframe,
                 "total_scanned": total,
                 "signal_count": len(results),
+                "sectors": sectors_summary,
                 "results": results,
                 "created_at": datetime.now(),
             })
@@ -521,4 +566,77 @@ def get_history():
         return jsonify({"success": True, "count": len(docs), "data": docs})
     except Exception as e:
         logger.warning(f"[PA] history error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@pa_bp.route("/price-action/scan/status", methods=["GET"])
+@login_required
+def get_scan_status():
+    """轻量级扫描状态 — 用于全局轮询通知。"""
+    latest = None
+    running = None
+    try:
+        from config.database import DatabaseConfig
+        db = DatabaseConfig.get_database()
+        doc = db["pa_scan_results"].find_one({}, sort=[("created_at", -1)], projection={"results": 0})
+        if doc:
+            doc.pop("_id", None)
+            latest = {
+                "scan_id": doc.get("scan_id"),
+                "timeframe": doc.get("timeframe"),
+                "total_scanned": doc.get("total_scanned", 0),
+                "signal_count": doc.get("signal_count", 0),
+                "sectors": doc.get("sectors", {}),
+                "created_at": doc.get("created_at"),
+            }
+    except Exception as e:
+        logger.warning(f"[PA] scan status error: {e}")
+
+    with _tasks_lock:
+        for tid, t in list(_tasks.items()):
+            if t.get("status") in ("processing", "queued"):
+                running = {"task_id": tid, "progress": t.get("progress", 0), "message": t.get("message", "")}
+                break
+
+    return jsonify({
+        "success": True,
+        "running": running,
+        "latest": latest,
+    })
+
+
+@pa_bp.route("/price-action/signal-history/codes", methods=["GET"])
+@login_required
+def get_signal_history_codes():
+    """查询近期有 PA 信号的股票列表。"""
+    try:
+        signal = request.args.get("signal")
+        days = int(request.args.get("days", 7))
+        from .storage import PaSignalHistoryStorage
+        hist = PaSignalHistoryStorage()
+        data = hist.get_codes_with_signal(signal=signal, days=days)
+        return jsonify({"success": True, "count": len(data), "data": data})
+    except Exception as e:
+        logger.warning(f"[PA] signal-history codes error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@pa_bp.route("/price-action/signal-history/<code>", methods=["GET"])
+@login_required
+def get_signal_history(code: str):
+    """获取某只股票的历史 PA 信号轨迹。"""
+    try:
+        days = int(request.args.get("days", 60))
+        from .storage import PaSignalHistoryStorage
+        hist = PaSignalHistoryStorage()
+        data = hist.get_history(code, days=days)
+        latest = hist.get_latest_by_code(code)
+        return jsonify({
+            "success": True,
+            "count": len(data),
+            "data": data,
+            "latest": latest,
+        })
+    except Exception as e:
+        logger.warning(f"[PA] signal-history {code} error: {e}")
         return jsonify({"success": False, "error": str(e)}), 500

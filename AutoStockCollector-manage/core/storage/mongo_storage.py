@@ -892,6 +892,11 @@ class ResearchReportStorage(MongoStorage):
         days: int = 90,
         page: int = 1,
         page_size: int = 50,
+        ratings: Optional[List[str]] = None,
+        industry: str = "",
+        author: str = "",
+        sort_by: str = "date",
+        sort_order: str = "desc",
     ) -> Tuple[List[Dict[str, Any]], int]:
         from datetime import datetime, timedelta
         query: Dict[str, Any] = {}
@@ -904,11 +909,18 @@ class ResearchReportStorage(MongoStorage):
             query["code"] = code
         if org:
             query["org"] = {"$regex": org, "$options": "i"}
+        if ratings:
+            query["rating"] = {"$in": ratings}
+        if industry:
+            query["industry"] = {"$regex": industry, "$options": "i"}
+        if author:
+            query["author"] = {"$regex": author, "$options": "i"}
         cutoff = datetime.now() - timedelta(days=days)
         query["date"] = {"$gte": cutoff.strftime("%Y-%m-%d")}
         total = self.collection.count_documents(query)
         skip = (page - 1) * page_size
-        results = self.find_many(query, sort=[("date", -1)], skip=skip, limit=page_size)
+        sort_dir = -1 if sort_order == "desc" else 1
+        results = self.find_many(query, sort=[(sort_by, sort_dir)], skip=skip, limit=page_size)
         for r in results:
             r.pop("_id", None)
         return results, total

@@ -22,6 +22,11 @@
         <el-button text size="small" :icon="Refresh" @click="loadHistory">历史</el-button>
         <el-button text size="small" :icon="TrendCharts" :loading="scanLoading" @click="startScan" style="margin-left:4px">扫描</el-button>
         <el-button v-if="!scanLoading" text size="small" @click="loadLatestScan">上次结果</el-button>
+        <el-tooltip v-if="scanStatusText" :content="scanStatusText" placement="bottom">
+          <el-tag :type="statusTagType" size="small" effect="plain" style="margin-left:4px;cursor:pointer" @click="loadLatestScan">
+            {{ statusTagText }}
+          </el-tag>
+        </el-tooltip>
       </div>
     </el-card>
 
@@ -49,27 +54,33 @@
         <template #header>
           <span>🔍 全市场扫描 — {{ scanResults.length }} 个信号</span>
         </template>
-        <el-table :data="scanResults" stripe size="small" highlight-current-row
-          @row-click="(row: PaSignal) => { result = row; scanResults = [] }">
-          <el-table-column prop="symbol" label="代码" width="80" />
-          <el-table-column prop="name" label="名称" width="100" />
-          <el-table-column prop="current_price" label="价格" width="80" align="right">
-            <template #default="{ row }">¥{{ row.current_price?.toFixed(2) }}</template>
-          </el-table-column>
-          <el-table-column label="信号" width="90" align="center">
-            <template #default="{ row }">
-              <el-tag :type="row.signal === 'BUY_SETUP' ? 'danger' : 'success'" size="small">{{ signalLabel(row.signal) }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="confidence" label="置信" width="60" align="center" />
-          <el-table-column prop="trend" label="趋势" width="70" align="center" />
-          <el-table-column label="回测胜率" width="80" align="right">
-            <template #default="{ row }">{{ row.backtest?.win_rate ? row.backtest.win_rate + '%' : '-' }}</template>
-          </el-table-column>
-          <el-table-column label="夏普" width="60" align="right">
-            <template #default="{ row }">{{ row.backtest?.sharpe_ratio ?? '-' }}</template>
-          </el-table-column>
-        </el-table>
+          <div class="pa-scan-toolbar">
+            <el-tag v-for="(cnt, ind) in sectorSummary" :key="ind" size="small" style="margin:2px">
+              {{ ind }} ({{ cnt }})
+            </el-tag>
+          </div>
+          <el-table :data="groupedResults" stripe size="small" highlight-current-row
+            @row-click="(row: PaSignal) => { result = row; scanResults = [] }">
+            <el-table-column prop="symbol" label="代码" width="80" />
+            <el-table-column prop="name" label="名称" width="100" />
+            <el-table-column prop="industry" label="行业" width="90" />
+            <el-table-column prop="current_price" label="价格" width="80" align="right">
+              <template #default="{ row }">¥{{ row.current_price?.toFixed(2) }}</template>
+            </el-table-column>
+            <el-table-column label="信号" width="90" align="center">
+              <template #default="{ row }">
+                <el-tag :type="row.signal === 'BUY_SETUP' ? 'danger' : 'success'" size="small">{{ signalLabel(row.signal) }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="confidence" label="置信" width="60" align="center" />
+            <el-table-column prop="trend" label="趋势" width="70" align="center" />
+            <el-table-column label="回测胜率" width="80" align="right">
+              <template #default="{ row }">{{ row.backtest?.win_rate ? row.backtest.win_rate + '%' : '-' }}</template>
+            </el-table-column>
+            <el-table-column label="夏普" width="60" align="right">
+              <template #default="{ row }">{{ row.backtest?.sharpe_ratio ?? '-' }}</template>
+            </el-table-column>
+          </el-table>
       </el-card>
     </div>
 
@@ -236,6 +247,36 @@
             </div>
           </div>
 
+          <!-- 历史信号轨迹 -->
+          <el-card v-if="signalHistory.length" shadow="never" class="pa-card pa-signal-history-card">
+            <template #header>
+              <span>📈 历史信号 ({{ signalHistory.length }})</span>
+            </template>
+            <div class="pa-sh-timeline">
+              <div v-for="(h, i) in signalHistory" :key="i" class="pa-sh-item">
+                <div class="pa-sh-dot" :class="'pa-sh-dot-' + (h.signal?.includes('BUY') ? 'buy' : 'sell')" />
+                <div v-if="i < signalHistory.length - 1" class="pa-sh-line" />
+                <div class="pa-sh-body">
+                  <div class="pa-sh-head">
+                    <el-tag :type="h.signal?.includes('BUY') ? 'danger' : 'success'" size="small" effect="dark">
+                      {{ signalLabel(h.signal) }}
+                    </el-tag>
+                    <span class="pa-sh-conf">{{ h.confidence }}/5</span>
+                    <span class="pa-sh-date">{{ formatDate(h.created_at) }}</span>
+                  </div>
+                  <div class="pa-sh-meta">
+                    <span>趋势: {{ trendLabel(h.trend) }}</span>
+                    <span>价格: ¥{{ h.current_price?.toFixed(2) }}</span>
+                  </div>
+                  <div v-if="h.trend_warning" class="pa-sh-warn">{{ h.trend_warning }}</div>
+                  <div v-if="h.backtest?.win_rate" class="pa-sh-bt">
+                    回测 {{ h.backtest.total_trades }}次 · 胜率{{ h.backtest.win_rate }}% · 夏普{{ h.backtest.sharpe_ratio }}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </el-card>
+
           <el-card shadow="never" class="pa-card">
             <template #header><span>切换周期</span></template>
             <div class="pa-tf-switch">
@@ -309,12 +350,15 @@ const symbol = ref('')
 const timeframe = ref('daily')
 const riskPct = ref(2)
 const accountBalance = ref(100000)
-const useAi = ref(false)
+const useAi = ref(true)
 const loading = ref(false)
 const scanLoading = ref(false)
 const result = ref<PaSignal | null>(null)
 const scanResults = ref<PaSignal[]>([])
 const history = ref<any[]>([])
+const signalHistory = ref<any[]>([])
+const groupBySector = ref(false)
+const scanStatus = ref<{ running: any; latest: any } | null>(null)
 const taskId = ref('')
 const scanTaskId = ref('')
 const taskProgress = ref(0)
@@ -327,6 +371,47 @@ const POLL_TIMEOUT_MS = 5 * 60 * 1000 // 5分钟
 const klineChartRef = ref<InstanceType<typeof VChart> | null>(null)
 
 const hasKline = computed(() => !!result.value?.kline_bars?.length)
+
+const sectorSummary = computed(() => {
+  const m: Record<string, number> = {}
+  for (const s of scanResults.value) {
+    const ind = s.industry || '其他'
+    m[ind] = (m[ind] || 0) + 1
+  }
+  return Object.entries(m).sort((a, b) => b[1] - a[1])
+})
+
+const groupedResults = computed(() => {
+  if (!groupBySector.value) return scanResults.value
+  const groups: Record<string, PaSignal[]> = {}
+  for (const s of scanResults.value) {
+    const ind = s.industry || '其他'
+    if (!groups[ind]) groups[ind] = []
+    groups[ind].push(s)
+  }
+  return Object.entries(groups).flatMap(([ind, items]) => [
+    { symbol: '', name: `── ${ind} (${items.length}) ──` } as PaSignal,
+    ...items,
+  ])
+})
+
+const scanStatusText = computed(() => {
+  if (scanStatus.value?.running) return scanStatus.value.running.message || '扫描中...'
+  if (scanStatus.value?.latest) {
+    const l = scanStatus.value.latest
+    const t = (l.created_at || '').replace('T', ' ').slice(0, 16)
+    return `上次扫描: ${t} | ${l.signal_count}个信号 / ${l.total_scanned}只`
+  }
+  return ''
+})
+
+const statusTagType = computed(() => scanStatus.value?.running ? 'warning' : 'info')
+
+const statusTagText = computed(() => {
+  if (scanStatus.value?.running) return `⏳ ${scanStatus.value.running.progress || 0}%`
+  if (scanStatus.value?.latest) return `✅ ${scanStatus.value.latest.signal_count}个信号`
+  return ''
+})
 
 function calcMA(bars: PaKlineBar[], period: number): (number | string)[] {
   const result: (number | string)[] = []
@@ -548,10 +633,32 @@ const ladderBgStyle = computed(() => {
   }
 })
 
+function formatDate(d: string | undefined | null) {
+  if (!d) return ''
+  const t = d.replace('T', ' ').slice(0, 19)
+  return t.slice(0, 16)
+}
+
 async function loadHistory() {
   try {
     const res = await priceActionApi.getHistory()
     if (res.data?.success) history.value = res.data.data
+  } catch { /* ignore */ }
+}
+
+async function loadSignalHistory(code: string) {
+  try {
+    const res = await priceActionApi.getSignalHistory(code, 90)
+    if (res.data?.success) signalHistory.value = res.data.data || []
+  } catch { /* ignore */ }
+}
+
+let statusPollTimer: ReturnType<typeof setInterval> | null = null
+
+async function pollScanStatus() {
+  try {
+    const res = await priceActionApi.getScanStatus()
+    if (res.data?.success) scanStatus.value = res.data
   } catch { /* ignore */ }
 }
 
@@ -665,6 +772,7 @@ async function pollResult() {
       if (data.data?.length) {
         const sig = data.data[0] as PaSignal
         result.value = sig
+        if (sig.symbol) loadSignalHistory(sig.symbol)
         if (sig.signal === 'NO_DATA' || sig.signal === 'ERROR') {
           ElMessage.warning(sig.error || '分析失败，数据不足')
         } else if (sig.signal === 'BUY_SETUP' || sig.signal === 'SELL_SETUP') {
@@ -727,10 +835,15 @@ async function executeTrade() {
 
 onMounted(() => {
   loadHistory()
+  pollScanStatus()
+  statusPollTimer = setInterval(pollScanStatus, 10000)
   if (symbol.value) analyze()
 })
 
-onUnmounted(() => { stopPolling() })
+onUnmounted(() => {
+  stopPolling()
+  if (statusPollTimer) { clearInterval(statusPollTimer); statusPollTimer = null }
+})
 
 watch(() => result.value?.kline_bars, () => {
   nextTick(() => {
@@ -834,6 +947,22 @@ watch(() => result.value?.kline_bars, () => {
 
 .pa-tf-switch { display: flex; gap: 6px; }
 .pa-tf-switch .el-button { flex: 1; }
+
+/* 历史信号轨迹 */
+.pa-signal-history-card { border-left: 3px solid #e6a23c; }
+.pa-sh-timeline { position: relative; padding-left: 20px; }
+.pa-sh-item { position: relative; padding-bottom: 14px; }
+.pa-sh-dot { position: absolute; left: -13px; top: 4px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid #fff; z-index: 1; }
+.pa-sh-dot-buy { background: #ef5350; }
+.pa-sh-dot-sell { background: #26a69a; }
+.pa-sh-line { position: absolute; left: -9px; top: 14px; bottom: 0; width: 2px; background: var(--border-color, #ebeef5); }
+.pa-sh-body { padding: 2px 0; }
+.pa-sh-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pa-sh-conf { font-size: 11px; color: #e6a23c; }
+.pa-sh-date { font-size: 11px; color: var(--text-secondary, #909399); margin-left: auto; }
+.pa-sh-meta { display: flex; gap: 10px; font-size: 11px; color: var(--text-secondary, #909399); margin-top: 2px; }
+.pa-sh-warn { font-size: 11px; color: #e6a23c; margin-top: 2px; }
+.pa-sh-bt { font-size: 11px; color: #909399; margin-top: 2px; }
 
 .pa-history { margin-bottom: 16px; }
 .empty-state { padding: 40px 0; }

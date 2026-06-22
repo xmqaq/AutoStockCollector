@@ -945,10 +945,18 @@ def list_research_reports():
     days = request.args.get("days", 90, type=int)
     page = request.args.get("page", 1, type=int)
     page_size = request.args.get("page_size", 50, type=int)
+    ratings_raw = request.args.get("ratings", "")
+    ratings = ratings_raw.split(",") if ratings_raw else None
+    industry = request.args.get("industry", "")
+    author = request.args.get("author", "")
+    sort_by = request.args.get("sort_by", "date")
+    sort_order = request.args.get("sort_order", "desc")
     storage = ResearchReportStorage()
     results, total = storage.search(
         keyword=keyword, code=code, org=org,
         days=days, page=page, page_size=page_size,
+        ratings=ratings, industry=industry, author=author,
+        sort_by=sort_by, sort_order=sort_order,
     )
     for r in results:
         info_code = r.get("info_code", "")
@@ -989,6 +997,64 @@ def list_research_report_orgs():
     results = list(storage.collection.aggregate(pipeline))
     data = [{"org": r["_id"], "count": r["count"]} for r in results]
     return jsonify({"success": True, "data": data})
+
+
+@api_bp.route("/research-reports/industries", methods=["GET"])
+def list_research_report_industries():
+    from core.storage.mongo_storage import ResearchReportStorage
+    storage = ResearchReportStorage()
+    pipeline = [
+        {"$group": {"_id": "$industry", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": 100},
+    ]
+    results = list(storage.collection.aggregate(pipeline))
+    data = [{"industry": r["_id"], "count": r["count"]} for r in results if r["_id"]]
+    return jsonify({"success": True, "data": data})
+
+
+@api_bp.route("/research-reports/stats", methods=["GET"])
+def research_report_stats():
+    from core.storage.mongo_storage import ResearchReportStorage
+    storage = ResearchReportStorage()
+    total = storage.collection.count_documents({})
+    today = datetime.now().strftime("%Y-%m-%d")
+    week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+
+    # 评级分布
+    rating_pipeline = [
+        {"$group": {"_id": "$rating", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": 20},
+    ]
+    rating_dist = list(storage.collection.aggregate(rating_pipeline))
+    ratings = [{"rating": r["_id"], "count": r["count"]} for r in rating_dist if r["_id"]]
+
+    # 近7日研报数
+    weekly_count = storage.collection.count_documents({"date": {"$gte": week_ago}})
+
+    # 机构排名
+    org_pipeline = [
+        {"$group": {"_id": "$org", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": 10},
+    ]
+    org_dist = list(storage.collection.aggregate(org_pipeline))
+    orgs = [{"org": r["_id"], "count": r["count"]} for r in org_dist if r["_id"]]
+
+    # 已摘要数
+    summarized = storage.collection.count_documents({"generated_abstract": {"$exists": True}})
+
+    return jsonify({
+        "success": True,
+        "data": {
+            "total": total,
+            "weekly": weekly_count,
+            "summarized": summarized,
+            "ratings": ratings,
+            "top_orgs": orgs,
+        },
+    })
 
 
 @api_bp.route("/research-reports/pdf", methods=["GET"])
@@ -1062,6 +1128,42 @@ def summarize_pending_research_reports():
             logger.error(f"[ResearchReports] Manual pending summarization error: {e}")
     threading.Thread(target=_run, daemon=True).start()
     return jsonify({"success": True, "message": f"后台摘要任务已启动，处理最多 {max_reports} 篇研报"})
+
+
+@api_bp.route("/research-reports/rating-signals", methods=["GET"])
+def list_rating_signals():
+    from modules.research_report_collector.rating_signals import get_recent_signals
+    days = request.args.get("days", 7, type=int)
+    limit = request.args.get("limit", 50, type=int)
+    signals = get_recent_signals(days=days, limit=limit)
+    return jsonify({"success": True, "data": signals})
+
+
+@api_bp.route("/research-reports/rating-signals/detect", methods=["POST"])
+@admin_required
+def trigger_rating_detection():
+    from modules.research_report_collector.rating_signals import run_rating_change_detection
+    import threading
+    def _run():
+        try:
+            result = run_rating_change_detection()
+            logger.info(f"[RatingSignals] Detection done: {result}")
+        except Exception as e:
+            logger.error(f"[RatingSignals] Detection error: {e}")
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"success": True, "message": "评级变动检测已启动"})
+
+
+@api_bp.route("/research-reports/stock/<code>", methods=["GET"])
+def list_stock_research_reports(code: str):
+    from modules.research_report_collector.rating_signals import get_stock_rating_timeline
+    days = request.args.get("days", 365, type=int)
+    reports = get_stock_rating_timeline(code=code, days=days)
+    for r in reports:
+        info_code = r.get("info_code", "")
+        if info_code:
+            r["pdf_url"] = f"https://pdf.dfcfw.com/pdf/H3_{info_code}_1.pdf"
+    return jsonify({"success": True, "data": reports})
 
 
 def analyze_stock():

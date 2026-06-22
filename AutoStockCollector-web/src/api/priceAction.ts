@@ -36,6 +36,7 @@ export interface PaKlineBar {
 export interface PaSignal {
   symbol: string
   name?: string
+  industry?: string
   current_price: number
   signal: 'BUY_SETUP' | 'SELL_SETUP' | 'WEAK_BUY' | 'WEAK_SELL' | 'NEUTRAL' | 'NO_TRADE' | 'NO_DATA' | 'ERROR'
   confidence: number
@@ -85,5 +86,20 @@ export const priceActionApi = {
       stop_loss: stopLoss,
       take_profit: takeProfit,
     })
+  },
+  getSignalHistory(code: string, days = 60) {
+    return client.get<{ success: boolean; count: number; data: any[]; latest: any }>(
+      `/api/v1/ai/price-action/signal-history/${encodeURIComponent(code)}`,
+      { params: { days } },
+    )
+  },
+  getSignalHistoryCodes(signal?: string, days = 7) {
+    return client.get<{ success: boolean; count: number; data: any[] }>(
+      '/api/v1/ai/price-action/signal-history/codes',
+      { params: { signal, days } },
+    )
+  },
+  getScanStatus() {
+    return client.get<{ success: boolean; running: any; latest: any }>('/api/v1/ai/price-action/scan/status')
   },
 }

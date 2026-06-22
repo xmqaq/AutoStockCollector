@@ -939,6 +939,21 @@ def job_research_report_collect():
         _persist_cron_status("research_report_collect", _now().isoformat(), False, str(e)[:100])
 
 
+def job_research_report_summarize():
+    """盘中持续摘要未处理的研报，每次处理 10 篇。"""
+    try:
+        from modules.research_report_collector.summarizer import summarize_pending_reports
+        result = summarize_pending_reports(max_reports=10, delay=12)
+        msg = f"摘要 {result.get('summarized', 0)} / {result.get('total', 0)} 篇"
+        logger.info(f"[cron] {msg}")
+        _record_result("研报AI摘要", True, msg)
+        _persist_cron_status("research_report_summarize", _now().isoformat(), True, msg, inc_count=True)
+    except Exception as e:
+        logger.error(f"[cron] 研报AI摘要失败: {e}")
+        _record_result("研报AI摘要", False, str(e))
+        _persist_cron_status("research_report_summarize", _now().isoformat(), False, str(e)[:100])
+
+
 # ─── 纯 Python 调度核心 ───────────────────────────────────────────────────────
 
 def _next_daily_run(hour: int, minute: int) -> datetime.datetime:
@@ -1077,6 +1092,7 @@ def start_daily_jobs() -> None:
         _make_job("PA全市场扫描 17:00", job_pa_scan,                "daily", 17,  0, task_type="pa_scan"),
         _make_job("研报全板块扫描 17:30", job_research_daily,       "daily", 17, 30, task_type="research_daily"),
         _make_job("研报原始数据采集 18:00", job_research_report_collect, "daily", 18, 0, task_type="research_report_collect"),
+        _make_job("研报AI摘要 30min",       job_research_report_summarize, "interval", interval_minutes=30, task_type="research_report_summarize"),
     ]
 
     # cron_trigger_lock 跨进程触发锁：建 TTL 索引，锁文档 1 天后自动过期，避免无限增长。

@@ -45,11 +45,16 @@ class Extractor:
         sector: str,
         max_workers: int = 1,
     ) -> List[ReportSignal]:
-        """对单个行业的全部研报标题做一次 LLM 分析，返回一个信号。"""
+        """对单个行业的全部研报做一次 LLM 分析，返回一个信号。
+        
+        现在会利用 research_reports 中的 generated_abstract（PDF 原文 AI 摘要）
+        来丰富 LLM 分析内容，而不仅仅是标题。
+        """
         if not reports:
             return []
 
         titles = []
+        abstracts = []
         rating_positive = 0
         rating_negative = 0
         rating_neutral = 0
@@ -61,6 +66,12 @@ class Extractor:
                 org = r.get("org", "")
                 date = str(r.get("date", ""))[:10]
                 titles.append(f"- {title}  ({org}, {date})")
+            gen_abs = r.get("generated_abstract", "").strip()
+            if gen_abs and len(gen_abs) > 100:
+                # 提取摘要的要点部分（前 500 字符）
+                code = r.get("code", "")
+                name = r.get("name", "")
+                abstracts.append(f"[{code} {name}] {gen_abs[:500]}")
             rating = str(r.get("rating", "")).strip()
             if rating in ("买入", "增持", "推荐", "强烈推荐", "买入-A"):
                 rating_positive += 1
@@ -77,6 +88,7 @@ class Extractor:
             return []
 
         report_text = "\n".join(titles[:60])
+        abstract_text = "\n\n".join(abstracts[:10]) if abstracts else ""
         total = len(reports)
         avg_target = round(target_sum / total_targets, 2) if total_targets > 0 else None
         total_ratings = rating_positive + rating_negative + rating_neutral
@@ -91,6 +103,10 @@ class Extractor:
             if avg_target:
                 rating_summary += f", 平均目标价 ¥{avg_target}"
 
+        abstract_section = ""
+        if abstract_text:
+            abstract_section = f"\n## 个股深度分析摘要（AI 提取）\n\n{abstract_text}"
+
         # 注意：akshare 返回的东财评级是静态评级水平（买入/增持/中性），
         # 非评级变化方向（上调/下调/维持）。"积极"计数表示当前评级为买入/增持的报告数量，
         # 不代表从之前评级上调。如有评级变化数据需求，需额外接入评级变化数据源。
@@ -100,6 +116,7 @@ class Extractor:
             total=total,
             report_titles=report_text,
             rating_summary=rating_summary or "无评级数据",
+            abstract_section=abstract_section,
         )
 
         signal = self._call_llm(

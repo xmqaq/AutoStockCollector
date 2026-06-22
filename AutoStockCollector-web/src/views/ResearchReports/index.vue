@@ -7,20 +7,43 @@
           <el-input v-model="query.keyword" placeholder="标题/股票名" clearable @keyup.enter="search" />
         </el-form-item>
         <el-form-item label="股票代码">
-          <el-input v-model="query.code" placeholder="如 SH600519" clearable @keyup.enter="search" style="width: 140px" />
+          <el-input v-model="query.code" placeholder="如 600519" clearable @keyup.enter="search" style="width: 120px" />
         </el-form-item>
         <el-form-item label="机构">
-          <el-select v-model="query.org" placeholder="选择机构" clearable filterable style="width: 160px">
+          <el-select v-model="query.org" placeholder="选择机构" clearable filterable style="width: 150px">
             <el-option v-for="o in orgs" :key="o.org" :label="`${o.org} (${o.count})`" :value="o.org" />
           </el-select>
         </el-form-item>
-        <el-form-item label="最近">
+        <el-form-item label="行业">
+          <el-select v-model="query.industry" placeholder="选择行业" clearable filterable style="width: 150px">
+            <el-option v-for="ind in industries" :key="ind.industry" :label="`${ind.industry} (${ind.count})`" :value="ind.industry" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="评级">
+          <el-select v-model="query.ratings" multiple placeholder="全部" collapse-tags style="width: 160px">
+            <el-option v-for="r in RATING_OPTIONS" :key="r.value" :label="r.label" :value="r.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="作者">
+          <el-input v-model="query.author" placeholder="分析师名" clearable @keyup.enter="search" style="width: 120px" />
+        </el-form-item>
+        <el-form-item label="时间">
           <el-select v-model="query.days" style="width: 100px">
             <el-option label="7天" :value="7" />
             <el-option label="30天" :value="30" />
             <el-option label="90天" :value="90" />
             <el-option label="180天" :value="180" />
             <el-option label="365天" :value="365" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="排序">
+          <el-select v-model="query.sort_by" style="width: 100px">
+            <el-option label="日期" value="date" />
+            <el-option label="目标价" value="target_price_high" />
+          </el-select>
+          <el-select v-model="query.sort_order" style="width: 80px; margin-left: 4px;">
+            <el-option label="降序" value="desc" />
+            <el-option label="升序" value="asc" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -30,18 +53,52 @@
       </el-form>
     </el-card>
 
-    <!-- 统计信息 -->
+    <!-- 视图切换 + 统计 -->
     <el-card shadow="never" class="stats-card">
       <div class="stats-row">
-        <span>共 {{ total }} 条研报</span>
-        <span class="text-muted">页 {{ page }} / {{ totalPages }}</span>
+        <div class="stats-tabs">
+          <span :class="{ active: viewMode === 'list' }" @click="switchView('list')">研报列表</span>
+          <span :class="{ active: viewMode === 'signals' }" @click="switchView('signals')">评级变动</span>
+        </div>
+        <div class="stats-info">
+          <span class="stat-item" v-if="stats">共 <b>{{ stats.total }}</b> 条</span>
+          <span class="stat-item" v-if="stats">本周 <b>{{ stats.weekly }}</b></span>
+          <span class="stat-item" v-if="stats">已摘要 <b>{{ stats.summarized }}</b></span>
+        </div>
       </div>
     </el-card>
 
-    <!-- 研报列表 -->
-    <el-card shadow="never" class="list-card" v-loading="loading">
-      <el-empty v-if="!loading && list.length === 0" description="暂无数据" />
-      <div v-else class="report-list">
+    <!-- 评级变动视图 -->
+    <el-card v-show="viewMode === 'signals'" shadow="never" class="list-card" v-loading="signalsLoading">
+      <el-empty v-if="!signalsLoading && signals.length === 0" description="暂无评级变动" />
+      <div v-else class="signal-list">
+          <div v-for="s in signals" :key="s.report_id" class="signal-item">
+            <div class="signal-header">
+              <span class="signal-stock" @click="goToStock(s.code)">{{ s.code }} {{ s.name }}</span>
+              <el-tag :type="s.direction === 'upgrade' ? 'success' : 'danger'" size="small">
+                {{ s.direction === 'upgrade' ? '上调' : '下调' }}
+              </el-tag>
+              <span class="signal-ratings">
+                <span class="rating-old">{{ s.from_rating }}</span>
+                <el-icon><ArrowRightBold /></el-icon>
+                <span class="rating-new">{{ s.to_rating }}</span>
+              </span>
+            </div>
+            <div class="signal-meta">
+              <span class="signal-org">{{ s.org }}</span>
+              <span class="signal-date">{{ s.date }}</span>
+            </div>
+            <div class="signal-title">{{ s.title }}</div>
+          </div>
+        </div>
+      </el-card>
+
+    <!-- 研报列表视图 -->
+    <el-card v-show="viewMode === 'list'" shadow="never" class="list-card" v-loading="loading">
+        <template v-if="!loading && list.length === 0">
+          <el-empty description="暂无数据" />
+        </template>
+        <div v-else class="report-list">
         <div v-for="r in list" :key="r.report_id" class="report-item" @click="showDetail(r)">
           <div class="report-header">
             <span class="report-title">{{ r.title }}</span>
@@ -120,8 +177,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { researchReportsApi, type ResearchReport } from '@/api/researchReports'
+import { researchReportsApi, RATING_OPTIONS, type ResearchReport } from '@/api/researchReports'
 import { renderMd } from '@/utils/markdown'
+import { ArrowRightBold } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const loading = ref(false)
@@ -129,12 +187,22 @@ const list = ref<ResearchReport[]>([])
 const total = ref(0)
 const page = ref(1)
 const orgs = ref<{ org: string; count: number }[]>([])
+const industries = ref<{ industry: string; count: number }[]>([])
+const viewMode = ref<'list' | 'signals'>('list')
+const signals = ref<any[]>([])
+const signalsLoading = ref(false)
+const stats = ref<{ total: number; weekly: number; summarized: number } | null>(null)
 
 const query = reactive({
   keyword: '',
   code: '',
   org: '',
+  industry: '',
+  ratings: [] as string[],
+  author: '',
   days: 90,
+  sort_by: 'date',
+  sort_order: 'desc',
   page_size: 50,
 })
 
@@ -163,7 +231,12 @@ async function reset() {
   query.keyword = ''
   query.code = ''
   query.org = ''
+  query.industry = ''
+  query.ratings = []
+  query.author = ''
   query.days = 90
+  query.sort_by = 'date'
+  query.sort_order = 'desc'
   page.value = 1
   await loadData()
 }
@@ -171,10 +244,13 @@ async function reset() {
 async function loadData() {
   loading.value = true
   try {
-    const res = await researchReportsApi.search({
-      ...query,
-      page: page.value,
-    })
+    const params: any = { ...query, page: page.value }
+    if (params.ratings && params.ratings.length > 0) {
+      params.ratings = params.ratings.join(',')
+    } else {
+      delete params.ratings
+    }
+    const res = await researchReportsApi.search(params)
     list.value = res.data?.data || []
     total.value = res.data?.total || 0
   } finally {
@@ -186,6 +262,36 @@ async function loadOrgs() {
   try {
     const res = await researchReportsApi.getOrgs()
     orgs.value = res.data?.data || []
+  } catch { /* ignore */ }
+}
+
+async function loadIndustries() {
+  try {
+    const res = await researchReportsApi.getIndustries()
+    industries.value = res.data?.data || []
+  } catch { /* ignore */ }
+}
+
+async function loadSignals() {
+  signalsLoading.value = true
+  try {
+    const res = await researchReportsApi.getRatingSignals({ days: 30, limit: 100 })
+    signals.value = res.data?.data || []
+  } catch { /* ignore */ }
+  finally { signalsLoading.value = false }
+}
+
+function switchView(mode: 'list' | 'signals') {
+  viewMode.value = mode
+  if (mode === 'signals' && signals.value.length === 0) {
+    loadSignals()
+  }
+}
+
+async function loadStats() {
+  try {
+    const res = await researchReportsApi.getStats()
+    stats.value = res.data?.data || null
   } catch { /* ignore */ }
 }
 
@@ -211,6 +317,8 @@ function proxyPdfUrl(url: string): string {
 onMounted(() => {
   loadData()
   loadOrgs()
+  loadIndustries()
+  loadStats()
 })
 </script>
 
@@ -252,4 +360,23 @@ onMounted(() => {
 .summary-text ul, .summary-text ol { padding-left: 20px; margin: 4px 0; }
 .summary-text li { margin-bottom: 2px; }
 .summary-text p { margin: 4px 0; }
+.stats-tabs { display: flex; gap: 0; }
+.stats-tabs span { padding: 4px 16px; cursor: pointer; border-radius: 4px; font-size: 13px; }
+.stats-tabs span.active { background: var(--el-color-primary-light-8); color: var(--el-color-primary); font-weight: 500; }
+.stats-tabs span:hover { background: var(--el-fill-color-light); }
+.signal-list { display: flex; flex-direction: column; gap: 1px; }
+.signal-item { padding: 10px 12px; border-bottom: 1px solid var(--border-color); }
+.signal-item:last-child { border-bottom: none; }
+.signal-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.signal-stock { color: var(--el-color-primary); cursor: pointer; font-weight: 500; font-size: 13px; }
+.signal-stock:hover { color: #79bbff; }
+.signal-ratings { display: flex; align-items: center; gap: 4px; font-size: 13px; }
+.signal-ratings .el-icon { font-size: 12px; }
+.rating-old { color: var(--text-faint); text-decoration: line-through; }
+.rating-new { color: var(--el-color-danger); font-weight: 500; }
+.signal-item .el-tag--success + .signal-ratings .rating-new { color: var(--el-color-success); }
+.signal-meta { display: flex; gap: 16px; font-size: 12px; color: var(--text-secondary); margin-bottom: 2px; }
+.signal-title { font-size: 12px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stats-info { display: flex; gap: 16px; }
+.stat-item { font-size: 12px; color: var(--text-secondary); }
 </style>

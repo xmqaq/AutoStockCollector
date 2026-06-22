@@ -113,6 +113,78 @@ def _save_to_cache(sector: str, reports: List[Dict]):
         logger.warning(f"[ResearchAnalyzer] Cache save error: {e}")
 
 
+def _fetch_from_research_reports(sector: str, days: int) -> List[Dict]:
+    """L2: 从 research_reports 集合（全量采集）按代表股拉取研报。
+    
+    数据来自 research_report_collector 模块的全量采集，包含 info_code 和 generated_abstract。
+    优先于 L3 akshare，在后端已采集的情况下可完全替代 akshare。
+    """
+    sector_stocks = _load_sector_stocks()
+    stock_codes = sector_stocks.get(sector, [])[:5]
+
+    if not stock_codes:
+        return []
+
+    try:
+        from core.storage.mongo_storage import ResearchReportStorage
+    except ImportError:
+        return []
+
+    from datetime import datetime as dt
+    cutoff = dt.now() - timedelta(days=days)
+    cutoff_str = cutoff.strftime("%Y-%m-%d")
+
+    all_reports = []
+    seen_ids = set()
+    storage = ResearchReportStorage()
+
+    for stock in stock_codes:
+        code = stock.get("code", "")
+        name = stock.get("name", "")
+        link = stock.get("link", "")
+        if not code:
+            continue
+
+        try:
+            reports = storage.find_by_code(code, limit=100)
+        except Exception:
+            continue
+
+        for r in reports:
+            date_str = str(r.get("date", ""))[:10]
+            if date_str < cutoff_str:
+                continue
+
+            rid = r.get("report_id", "") or _make_report_id(r)
+            if rid in seen_ids:
+                continue
+            seen_ids.add(rid)
+
+            report = {
+                "code": r.get("code", code),
+                "name": r.get("name", name),
+                "stock_name": name,
+                "link_name": link,
+                "title": r.get("title", ""),
+                "date": date_str,
+                "org": r.get("org", ""),
+                "industry": r.get("industry", ""),
+                "rating": r.get("rating", ""),
+                "target_price_high": r.get("target_price_high"),
+                "target_price_low": r.get("target_price_low"),
+                "abstract": r.get("abstract", ""),
+                "generated_abstract": r.get("generated_abstract", ""),
+                "author": r.get("author", ""),
+            }
+            all_reports.append(report)
+
+    logger.info(
+        f"[ResearchAnalyzer] L2 research_reports sector={sector} "
+        f"stocks={len(stock_codes)} reports={len(all_reports)}"
+    )
+    return all_reports
+
+
 def _fetch_from_akshare_by_stocks(sector: str, days: int) -> List[Dict]:
     """L3: 通过 akshare stock_research_report_em 按代表股批量拉取研报。"""
     sector_stocks = _load_sector_stocks()
@@ -226,19 +298,32 @@ def _fetch_from_akshare_by_stocks(sector: str, days: int) -> List[Dict]:
 def get_reports(
     sector: str, days: int = 90, min_count: int = 15,
 ) -> Tuple[List[Dict], str]:
-    """获取指定板块的研报。按 L1 → L3 链尝试。
+    """获取指定板块的研报。按 L1 → L2 → L3 链尝试。
+
+    - L1: MongoDB reports_cache（旧缓存）
+    - L2: research_reports 集合（全量采集，含 AI 摘要）
+    - L3: akshare stock_research_report_em（兜底）
 
     Returns:
         (reports_list, source_label)
     """
+    # L1: cache hit 且达标直接返回
     cached, source = _get_cached(sector, min_count)
     if cached:
         return cached, source
 
-    l3_reports = _fetch_from_akshare_by_stocks(sector, days)
+    # L2: 从 research_reports 获取
+    l2_reports = _fetch_from_research_reports(sector, days)
+    if len(l2_reports) >= min_count:
+        _save_to_cache(sector, l2_reports)
+        return l2_reports, "L2_RESEARCH_REPORTS"
 
-    if l3_reports:
-        _save_to_cache(sector, l3_reports)
-        return l3_reports, "L3_AKSHARE"
+    # L2 达标但数据不够？用 L3 补充
+    l3_reports = _fetch_from_akshare_by_stocks(sector, days)
+    combined = l2_reports + l3_reports
+    if combined:
+        _save_to_cache(sector, combined)
+        source = "L2_L3" if l2_reports else "L3_AKSHARE"
+        return combined, source
 
     return [], "NONE"

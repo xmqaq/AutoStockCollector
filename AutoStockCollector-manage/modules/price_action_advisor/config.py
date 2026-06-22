@@ -23,10 +23,11 @@ class PAConfig:
     CACHE_TTL_KLINE_MIN = int(os.getenv("PA_CACHE_TTL_KLINE_MIN", "1800"))
     CACHE_COLLECTION = "pa_quotes_cache"
     RESULTS_COLLECTION = "pa_signals"
+    SIGNAL_HISTORY_COLLECTION = "pa_signal_history"
 
-    # Fetch concurrency & rate limit
-    FETCH_CONCURRENCY = int(os.getenv("PA_FETCH_CONCURRENCY", "4"))
-    FETCH_INTERVAL = float(os.getenv("PA_FETCH_INTERVAL", "3.0"))
+    # Fetch concurrency & rate limit (per-worker throttle after EastMoney rewrite)
+    FETCH_CONCURRENCY = int(os.getenv("PA_FETCH_CONCURRENCY", "8"))
+    FETCH_INTERVAL = float(os.getenv("PA_FETCH_INTERVAL", "0.3"))
     FETCH_RETRY_MAX = int(os.getenv("PA_FETCH_RETRY_MAX", "2"))
     FETCH_TIMEOUT = int(os.getenv("PA_FETCH_TIMEOUT", "30"))
 

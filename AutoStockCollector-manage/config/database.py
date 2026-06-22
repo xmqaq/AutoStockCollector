@@ -168,6 +168,11 @@ class DatabaseConfig:
         cls._safe_index(db.research_llm_cache, [("cache_key", 1)], unique=True)
         cls._safe_index(db.research_llm_cache, [("created_at", -1)], expireAfterSeconds=86400 * 2)
 
+        # 价格行为学 — 逐股信号历史
+        cls._safe_index(db.pa_signal_history, [("code", 1), ("created_at", -1)])
+        cls._safe_index(db.pa_signal_history, [("created_at", -1)])
+        cls._safe_index(db.pa_signal_history, [("signal", 1), ("created_at", -1)])
+
         logger.info("Database indexes ensured successfully")
 
 
