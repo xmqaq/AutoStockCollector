@@ -2,6 +2,7 @@
 from typing import Any, Dict, Optional
 
 from utils.logger import get_logger
+from .config import PAConfig
 
 logger = get_logger(__name__)
 
@@ -83,7 +84,7 @@ def get_ai_commentary(signal: Dict[str, Any]) -> Optional[str]:
 
     try:
         router = LLMRouter()
-        result = router(prompt, temperature=0.5, max_tokens=500)
+        result = router(prompt, temperature=PAConfig.AI_TEMPERATURE, max_tokens=PAConfig.AI_MAX_TOKENS)
         if result:
             return result.strip()
     except Exception as e:

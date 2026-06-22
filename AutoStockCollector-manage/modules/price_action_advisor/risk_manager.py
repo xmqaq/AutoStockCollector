@@ -4,6 +4,8 @@
 """
 from typing import Any, Dict
 
+from .config import PAConfig
+
 
 def calculate_trade_plan(
     entry_price: float,
@@ -14,42 +16,30 @@ def calculate_trade_plan(
     account_balance: float = 100000.0,
     risk_pct: float = 0.02,
 ) -> Dict[str, Any]:
-    """计算交易计划。
-
-    Args:
-        entry_price: 入场价
-        signal_type: BUY_SETUP / SELL_SETUP
-        atr: ATR 值
-        demand_zones: 需求区列表 [{low, high}]
-        supply_zones: 供应区列表 [{low, high}]
-        account_balance: 账户总资金
-        risk_pct: 单笔风险百分比
-    Returns:
-        dict {entry, stop_loss, take_profit, position_size, r_r_ratio}
-    """
+    """计算交易计划。"""
     is_buy = signal_type in ("BUY_SETUP", "WEAK_BUY")
-    sl_distance = max(atr * 1.5, entry_price * 0.015)
+    sl_distance = max(atr * PAConfig.ATR_STOP_MULTIPLIER, entry_price * PAConfig.PCT_STOP_MIN)
 
     if is_buy:
         if demand_zones:
             zone_low = min(z["low"] for z in demand_zones)
-            sl_candidate = zone_low * 0.99
+            sl_candidate = zone_low * (1 - PAConfig.ZONE_MERGE_THRESHOLD)
             sl = min(sl_candidate, entry_price - sl_distance)
         else:
             sl = entry_price - sl_distance
-        tp = entry_price + sl_distance * 2
+        tp = entry_price + sl_distance * PAConfig.REWARD_MULTIPLIER
     else:
         if supply_zones:
             zone_high = max(z["high"] for z in supply_zones)
-            sl_candidate = zone_high * 1.01
+            sl_candidate = zone_high * (1 + PAConfig.ZONE_MERGE_THRESHOLD)
             sl = max(sl_candidate, entry_price + sl_distance)
         else:
             sl = entry_price + sl_distance
-        tp = entry_price - sl_distance * 2
+        tp = entry_price - sl_distance * PAConfig.REWARD_MULTIPLIER
 
     risk_per_share = abs(entry_price - sl)
     if risk_per_share <= 0:
-        risk_per_share = entry_price * 0.02
+        risk_per_share = entry_price * PAConfig.RISK_FALLBACK_PCT
 
     max_risk = account_balance * risk_pct
     position_size = int(max_risk / risk_per_share)

@@ -1,9 +1,5 @@
-"""产业链图谱定义 & 瓶颈聚合。
-
-核心算法：Bottleneck Score = Σ(提及频次 * 机构置信度 * 供需系数)
-"""
+"""行业主题聚合 — 从研报标题中提取热点主题和关注标的。"""
 import json
-import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from collections import Counter
@@ -13,12 +9,9 @@ from .extractor import ReportSignal
 
 logger = get_logger(__name__)
 
-# 供需系数
-_SUPPLY_COEFF = {"tight": 1.5, "mixed": 1.0, "loose": 0.5}
-
 
 def _load_chain_templates() -> Dict[str, Any]:
-    """加载预置产业链模板。"""
+    """加载预置行业板块模板。"""
     path = Path(__file__).parent / "chain_templates.json"
     if path.exists():
         try:
@@ -29,94 +22,79 @@ def _load_chain_templates() -> Dict[str, Any]:
     return {}
 
 
-def _get_sector_links(sector: str) -> List[str]:
-    """获取某个行业的预置产业链环节列表。"""
-    templates = _load_chain_templates()
-    sector_data = templates.get(sector, {})
-    links = sector_data.get("links", [])
-    return [link.get("name", "") for link in links if link.get("name")]
-
-
 class SupplyChainAggregator:
-    """供应链信号聚合器 — 计算瓶颈分数并提取候选标的。"""
+    """行业信号聚合器 — 整理 LLM 分析出的热点主题和关注标的。"""
 
     def __init__(self):
-        self._templates = _load_chain_templates()
+        self._sectors_cache = None
+
+    def list_sectors(self) -> List[Dict[str, Any]]:
+        """返回支持分析的行业列表及其描述。"""
+        if self._sectors_cache is not None:
+            return self._sectors_cache
+        templates = _load_chain_templates()
+        result = []
+        for name, info in templates.items():
+            desc = info.get("description", "")
+            stock_count = len(info.get("representative_stocks", []))
+            link_count = len(info.get("links", []))
+            result.append({
+                "name": name,
+                "description": desc,
+                "stock_count": stock_count,
+                "link_count": link_count,
+            })
+        self._sectors_cache = result
+        return result
 
     def aggregate(
         self, sector: str, signals: List[ReportSignal],
     ) -> Dict[str, Any]:
-        """聚合多份研报的供应链信号。"""
-        link_freq = Counter()
-        link_judgments: Dict[str, List[str]] = {}
-        link_confidences: Dict[str, List[int]] = {}
-        link_findings: Dict[str, List[str]] = {}
+        """聚合一个行业的 LLM 分析结果。"""
+        if not signals:
+            return {"sector": sector, "themes": [], "total_signals": 0, "sentiment": "neutral"}
 
-        for sig in signals:
-            for link in sig.mentioned_links:
-                link_freq[link] += 1
-                if link not in link_judgments:
-                    link_judgments[link] = []
-                    link_confidences[link] = []
-                    link_findings[link] = []
-                judgment = sig.link_judgments.get(link, "mixed")
-                link_judgments[link].append(judgment)
-                link_confidences[link].append(sig.confidence)
-                link_findings[link].extend(sig.key_findings[:2])
-
-        links_result = {}
-        for link, freq in link_freq.most_common():
-            judgments = link_judgments.get(link, ["mixed"])
-            confidences = link_confidences.get(link, [3])
-            avg_confidence = sum(confidences) / max(len(confidences), 1)
-
-            # 多数决
-            judgment_counts = Counter(judgments)
-            dominant = judgment_counts.most_common(1)[0][0]
-
-            # Bottleneck Score
-            coeff = _SUPPLY_COEFF.get(dominant, 1.0)
-            score = min(100, int(freq * avg_confidence * coeff * 5))
-
-            findings = link_findings.get(link, [])
-            links_result[link] = {
-                "judgment": dominant,
-                "frequency": freq,
-                "confidence": round(avg_confidence, 1),
-                "score": score,
-                "findings": findings[:3],
-            }
+        sig = signals[0]
+        themes = sig.themes if hasattr(sig, 'themes') else []
+        hot_count = sum(1 for t in themes if t.get("hot"))
+        sentiment = sig.sentiment if hasattr(sig, 'sentiment') else "neutral"
 
         return {
             "sector": sector,
-            "links": links_result,
-            "total_signals": len(signals),
+            "themes": themes,
+            "total_signals": 1,
+            "sentiment": sentiment,
+            "hot_theme_count": hot_count,
+            "summary": getattr(sig, 'summary', ''),
+            "theme_summary": getattr(sig, 'theme_summary', ''),
         }
 
     def extract_candidates(
         self, sector: str, signals: List[ReportSignal],
     ) -> List[Dict[str, Any]]:
-        """从所有信号中提取去重候选标的。"""
+        """从分析结果中提取候选标的。"""
+        if not signals:
+            return []
+
+        sig = signals[0]
+        stocks = getattr(sig, 'key_stocks', [])
         seen = {}
-        for sig in signals:
-            for stock in sig.key_stocks:
-                code = stock.get("code", "")
-                if not code:
-                    continue
-                if code not in seen:
-                    seen[code] = {
-                        "code": code,
-                        "name": stock.get("name", ""),
-                        "reason": stock.get("reason", ""),
-                        "confidence": sig.confidence,
-                        "links": sig.mentioned_links.copy(),
-                        "mention_count": 1,
-                    }
-                else:
-                    seen[code]["mention_count"] += 1
-                    seen[code]["links"].extend(sig.mentioned_links)
+        for stock in stocks:
+            code = stock.get("code", "")
+            if not code:
+                continue
+            if code not in seen:
+                seen[code] = {
+                    "code": code,
+                    "name": stock.get("name", ""),
+                    "reason": stock.get("reason", ""),
+                    "mention_count": 1,
+                    "confidence": getattr(sig, 'confidence', 3),
+                    "sectors": [sector],
+                }
+            else:
+                seen[code]["mention_count"] += 1
 
         candidates = list(seen.values())
-        # 按提及次数排序
         candidates.sort(key=lambda x: x.get("mention_count", 0), reverse=True)
         return candidates

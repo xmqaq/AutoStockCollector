@@ -9,11 +9,14 @@
         <el-radio-group v-model="timeframe" size="small">
           <el-radio-button value="daily">日线</el-radio-button>
           <el-radio-button value="weekly">周线</el-radio-button>
+          <el-radio-button value="30m">30分</el-radio-button>
         </el-radio-group>
         <el-input-number v-model="riskPct" :min="0.5" :max="5" :step="0.5" size="small" style="width:80px" />
         <span class="hint">%</span>
+        <el-input-number v-model="accountBalance" :min="10000" :max="10000000" :step="50000" size="small" style="width:110px" />
+        <span class="hint">资金</span>
         <el-checkbox v-model="useAi" size="small" style="margin-left:4px">AI增强</el-checkbox>
-        <el-button type="primary" :loading="loading" :disabled="!symbol" @click="analyze">
+        <el-button type="primary" :loading="loading" :disabled="loading || !symbol" @click="analyze">
           {{ loading ? `${taskProgress}%` : '分析' }}
         </el-button>
         <el-button text size="small" :icon="Refresh" @click="loadHistory">历史</el-button>
@@ -236,6 +239,8 @@ const taskId = ref('')
 const taskProgress = ref(0)
 const taskMessage = ref('')
 let pollTimer: ReturnType<typeof setInterval> | null = null
+let pollTimeoutTimer: ReturnType<typeof setTimeout> | null = null
+const POLL_TIMEOUT_MS = 5 * 60 * 1000 // 5分钟
 
 const stepDefs = [
   { label: '数据获取', pct: 20 },
@@ -386,10 +391,18 @@ async function analyze() {
 function startPolling() {
   stopPolling()
   pollTimer = setInterval(pollResult, 1500)
+  pollTimeoutTimer = setTimeout(() => {
+    stopPolling()
+    loading.value = false
+    taskProgress.value = 0
+    taskMessage.value = ''
+    ElMessage.warning('分析超时（5分钟），请重试')
+  }, POLL_TIMEOUT_MS)
 }
 
 function stopPolling() {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+  if (pollTimeoutTimer) { clearTimeout(pollTimeoutTimer); pollTimeoutTimer = null }
 }
 
 async function pollResult() {

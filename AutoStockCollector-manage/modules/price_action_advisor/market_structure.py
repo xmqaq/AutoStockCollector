@@ -2,15 +2,15 @@
 
 纯价格行为逻辑，不依赖任何技术指标。
 """
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
+
+from .config import PAConfig
 
 
-def _find_pivots(bars: List[Dict], left: int = 2, right: int = 2) -> Dict[str, List[int]]:
-    """寻找波段高点和低点（Pivot High / Pivot Low）。
-
-    left/right: 左右各需要多少根 K 线确认。
-    返回: {"highs": [idx...], "lows": [idx...]}
-    """
+def _find_pivots(bars: List[Dict], left: int = None, right: int = None) -> Dict[str, List[int]]:
+    """寻找波段高点和低点（Pivot High / Pivot Low）。"""
+    left = left if left is not None else PAConfig.PIVOT_LEFT
+    right = right if right is not None else PAConfig.PIVOT_RIGHT
     highs = []
     lows = []
     n = len(bars)
@@ -36,26 +36,26 @@ def detect_trend(bars: List[Dict]) -> str:
     if len(bars) < 10:
         return "Ranging"
 
-    pivots = _find_pivots(bars, left=2, right=2)
+    pivots = _find_pivots(bars)
     highs = pivots["highs"]
     lows = pivots["lows"]
 
     if len(highs) < 2 or len(lows) < 2:
-        ema_short = sum(b["close"] for b in bars[-5:]) / 5
-        ema_long = sum(b["close"] for b in bars[-20:]) / 20 if len(bars) >= 20 else ema_short
-        if ema_short > ema_long * 1.02:
+        sma_short = sum(b["close"] for b in bars[-5:]) / 5
+        sma_long = sum(b["close"] for b in bars[-20:]) / 20 if len(bars) >= 20 else sma_short
+        if sma_short > sma_long * PAConfig.SMA_BULL_THRESHOLD:
             return "Bullish"
-        elif ema_short < ema_long * 0.98:
+        elif sma_short < sma_long * PAConfig.SMA_BEAR_THRESHOLD:
             return "Bearish"
         return "Ranging"
 
     last_two_highs = [bars[i]["high"] for i in highs[-2:]]
     last_two_lows = [bars[i]["low"] for i in lows[-2:]]
 
-    hh = last_two_highs[-1] > last_two_highs[-2] * 1.005
-    hl = last_two_lows[-1] > last_two_lows[-2] * 1.005
-    lh = last_two_highs[-1] < last_two_highs[-2] * 0.995
-    ll = last_two_lows[-1] < last_two_lows[-2] * 0.995
+    hh = last_two_highs[-1] > last_two_highs[-2] * PAConfig.STRUCTURE_HH_THRESHOLD
+    hl = last_two_lows[-1] > last_two_lows[-2] * PAConfig.STRUCTURE_HH_THRESHOLD
+    lh = last_two_highs[-1] < last_two_highs[-2] * PAConfig.STRUCTURE_LL_THRESHOLD
+    ll = last_two_lows[-1] < last_two_lows[-2] * PAConfig.STRUCTURE_LL_THRESHOLD
 
     if hh and hl:
         return "Bullish"
@@ -67,26 +67,21 @@ def detect_trend(bars: List[Dict]) -> str:
 
 
 def detect_market_structure(bars: List[Dict]) -> Dict[str, Any]:
-    """完整的市场结构分析。
-
-    Args:
-        bars: List[{date, open, high, low, close, volume}]
-    Returns:
-        dict with trend, swing levels, breakout info
-    """
+    """完整的市场结构分析。"""
     if not bars or len(bars) < 10:
         return {"trend": "Ranging", "error": "数据不足"}
 
     trend = detect_trend(bars)
-    pivots = _find_pivots(bars, left=2, right=2)
+    pivots = _find_pivots(bars)
     highs_idx = pivots["highs"]
     lows_idx = pivots["lows"]
 
     high_prices = [bars[i]["high"] for i in highs_idx] if highs_idx else []
     low_prices = [bars[i]["low"] for i in lows_idx] if lows_idx else []
 
-    last_swing_high = max(high_prices[-3:]) if len(high_prices) >= 3 else (high_prices[-1] if high_prices else bars[-1]["high"])
-    last_swing_low = min(low_prices[-3:]) if len(low_prices) >= 3 else (low_prices[-1] if low_prices else bars[-1]["low"])
+    w = PAConfig.LAST_SWING_WINDOW
+    last_swing_high = max(high_prices[-w:]) if len(high_prices) >= w else (high_prices[-1] if high_prices else bars[-1]["high"])
+    last_swing_low = min(low_prices[-w:]) if len(low_prices) >= w else (low_prices[-1] if low_prices else bars[-1]["low"])
 
     recent = bars[-5:]
     recent_high = max(b["high"] for b in recent)

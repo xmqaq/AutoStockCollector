@@ -108,7 +108,7 @@ class PriceActionEngine:
                     demand_zones=demand_zones,
                     supply_zones=supply_zones,
                     account_balance=account_balance,
-                    risk_pct=risk_pct * 0.5,
+                    risk_pct=risk_pct * PAConfig.WEAK_SIGNAL_RISK_FACTOR,
                 )
                 signal["trade_plan"] = trade_plan
 

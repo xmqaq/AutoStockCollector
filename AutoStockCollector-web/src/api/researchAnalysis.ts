@@ -58,7 +58,20 @@ export interface HistoryItem {
   result?: AnalysisResult
 }
 
+export interface SectorInfo {
+  name: string
+  description: string
+  stock_count: number
+  link_count: number
+}
+
 export const researchApi = {
+  /** 获取行业列表（动态加载） */
+  listSectors() {
+    return client.get<{ success: boolean; count: number; data: SectorInfo[] }>(
+      '/api/v1/ai/research-analysis/sectors',
+    )
+  },
   /** 启动研报分析（异步） */
   run(sectors: string[], topN = 10) {
     return client.post<{ success: boolean; task_id: string; message: string }>(

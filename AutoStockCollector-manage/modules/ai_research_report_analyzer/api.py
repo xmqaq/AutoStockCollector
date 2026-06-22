@@ -84,6 +84,29 @@ def research_analysis():
     if len(sectors) > 10:
         return jsonify({"success": False, "error": "单次最多分析10个板块"}), 400
 
+    # 缓存命中检查 — 同行业+同日期已完成的直接返回
+    try:
+        from datetime import date
+        from config.database import DatabaseConfig
+        from .config import ResearchConfig
+        db = DatabaseConfig.get_database()
+        today = date.today().isoformat()[:10]
+        existing = db[ResearchConfig.RESULTS_COLLECTION].find_one(
+            {"sectors": sorted(sectors), "created_at": {"$gte": today}},
+            sort=[("created_at", -1)],
+        )
+        if existing and existing.get("result"):
+            existing.pop("_id", None)
+            return jsonify({
+                "success": True,
+                "task_id": existing.get("task_id", ""),
+                "message": "命中缓存，直接返回",
+                "data": existing["result"],
+                "cached": True,
+            })
+    except Exception:
+        pass
+
     task_id = uuid.uuid4().hex[:12]
     with _tasks_lock:
         _tasks[task_id] = {"status": "queued", "progress": 0, "message": "任务已提交"}
@@ -145,6 +168,20 @@ def export_report(task_id: str):
         return resp
     except Exception as e:
         logger.warning(f"[ResearchAnalyzer] export error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@research_bp.route("/research-analysis/sectors", methods=["GET"])
+@login_required
+def list_sectors():
+    """返回支持分析的行业板块列表（从 chain_templates.json 动态加载）。"""
+    try:
+        from .supply_chain import SupplyChainAggregator
+        agg = SupplyChainAggregator()
+        sectors = agg.list_sectors()
+        return jsonify({"success": True, "count": len(sectors), "data": sectors})
+    except Exception as e:
+        logger.warning(f"[ResearchAnalyzer] list sectors error: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 

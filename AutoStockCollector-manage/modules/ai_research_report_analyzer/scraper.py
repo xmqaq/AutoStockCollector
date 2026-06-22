@@ -4,8 +4,7 @@
 1. L1 Cache: MongoDB reports_cache → 命中且数量达标直接返回
 2. L3 API: akshare stock_research_report_em 按代表股批量拉取
 """
-import json
-import re
+import hashlib
 import threading
 import time
 from datetime import datetime, timedelta
@@ -20,9 +19,6 @@ from .fetch_engine import get_fetcher
 logger = get_logger(__name__)
 
 _CACHE_LOCK = threading.Lock()
-
-# 东方财富数据中心 - 研究报告接口
-_EASTMONEY_REPORT_URL = "https://reportapi.eastmoney.com/report/list"
 
 
 def _load_sector_stocks() -> Dict[str, List[Dict]]:
@@ -51,7 +47,6 @@ def _make_report_id(report: Dict) -> str:
     title = report.get("title", "")
     org = report.get("org", "")
     raw = f"{code}|{date}|{title}|{org}"
-    import hashlib
     return hashlib.md5(raw.encode("utf-8")).hexdigest()
 
 
@@ -185,7 +180,7 @@ def _fetch_from_akshare_by_stocks(sector: str, days: int) -> List[Dict]:
                     "title": title,
                     "date": date_str,
                     "org": org_name,
-                    "abstract": title,
+                    "abstract": title,  # 实际只取到标题，无全文内容
                     "stock_name": name,
                     "link_name": link,
                     "industry": industry,
@@ -210,55 +205,6 @@ def _fetch_from_akshare_by_stocks(sector: str, days: int) -> List[Dict]:
         f"reports={len(all_reports)}"
     )
     return all_reports
-
-
-def _matches_sector_keyword(report: Dict, sector: str) -> bool:
-    """检查研报标题/摘要是否匹配板块关键词。"""
-    title = report.get("title", "")
-    abstract = report.get("abstract", "")
-    text = f"{title} {abstract}"
-    keywords = [sector]
-    if sector == "人形机器人":
-        keywords.extend(["人形", "机器人", "仿生", "具身智能"])
-    elif sector == "储能":
-        keywords.extend(["储能", "电池", "逆变器", "BMS", "EMS", "电芯"])
-    elif sector == "半导体":
-        keywords.extend(["半导体", "芯片", "晶圆", "封测", "EDA", "光刻", "刻蚀"])
-    elif sector == "新能源汽车":
-        keywords.extend(["新能源汽车", "电动车", "锂电池", "电控", "自动驾驶", "智能座舱"])
-    elif sector == "AI算力":
-        keywords.extend(["AI算力", "GPU", "光模块", "液冷", "服务器", "算力"])
-    elif sector == "创新药":
-        keywords.extend(["创新药", "临床", "CRO", "CDMO", "抗体", "ADC", "靶点"])
-    elif sector == "光伏":
-        keywords.extend(["光伏", "太阳能", "组件", "逆变器", "硅片", "电池片"])
-    elif sector == "军工":
-        keywords.extend(["军工", "国防", "航空航天", "导弹", "雷达", "军机", "发动机"])
-    elif sector == "消费电子":
-        keywords.extend(["消费电子", "手机", "PC", "平板", "可穿戴", "OLED", "VR"])
-    elif sector == "医疗器械":
-        keywords.extend(["医疗器械", "IVD", "影像", "耗材", "手术机器人", "POCT"])
-    elif sector == "白酒":
-        keywords.extend(["白酒", "茅台", "五粮液", "高端酒", "次高端", "啤酒"])
-    elif sector == "家电":
-        keywords.extend(["家电", "空调", "冰箱", "洗衣机", "小家电", "扫地机"])
-    elif sector == "房地产":
-        keywords.extend(["房地产", "地产", "商品房", "物业", "REITs", "保障房"])
-    elif sector == "银行":
-        keywords.extend(["银行", "商业", "贷款", "存款", "净息差", "财富管理"])
-    elif sector == "证券":
-        keywords.extend(["证券", "券商", "投行", "经纪", "资管", "财富管理"])
-    elif sector == "养殖":
-        keywords.extend(["养殖", "猪周期", "生猪", "饲料", "动保", "鸡周期"])
-    elif sector == "煤炭":
-        keywords.extend(["煤炭", "动力煤", "焦煤", "煤化工", "焦化", "煤层气"])
-    elif sector == "有色金属":
-        keywords.extend(["有色金属", "铜", "铝", "黄金", "稀土", "锂", "镍"])
-    elif sector == "基础化工":
-        keywords.extend(["化工", "化纤", "化肥", "农药", "钛白粉", "聚氨酯", "有机硅"])
-    elif sector == "电力":
-        keywords.extend(["电力", "火电", "水电", "风电", "核电", "电网", "特高压"])
-    return any(kw in text for kw in keywords)
 
 
 def get_reports(

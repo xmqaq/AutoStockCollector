@@ -1,7 +1,8 @@
 """信号生成器 — 融合市场结构 + 供需区 + 形态确认，生成交易信号。"""
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from utils.logger import get_logger
+from .config import PAConfig
 
 logger = get_logger(__name__)
 
@@ -92,28 +93,14 @@ def generate_signal(
     market_struct: Dict[str, Any],
     sd_result: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """综合判断，生成买卖信号。
-
-    Args:
-        code: 股票代码
-        name: 股票名称
-        bars: OHLCV bars
-        market_struct: detect_market_structure() 的结果
-        sd_result: analyze_supply_demand() 的结果
-    Returns:
-        signal dict
-    """
+    """综合判断，生成买卖信号。"""
     if not bars or len(bars) < 20:
         return {"symbol": code, "signal": "NO_DATA", "message": "数据不足"}
 
     current_price = bars[-1]["close"]
     trend = market_struct.get("trend", "Ranging")
     patterns = _detect_candlestick_patterns(bars)
-    fibs = _calculate_fib_levels(
-        bars, trend,
-        market_struct.get("recent_high", current_price),
-        market_struct.get("recent_low", current_price),
-    )
+    fibs = _calculate_fib_levels(bars, trend, market_struct.get("recent_high", current_price), market_struct.get("recent_low", current_price))
 
     demand_zones = sd_result.get("demand_zones", [])
     supply_zones = sd_result.get("supply_zones", [])
@@ -125,55 +112,53 @@ def generate_signal(
     sell_reasons = []
     confidence = 1
 
-    # === 买入逻辑 ===
+    zone_prox = PAConfig.ZONE_PROXIMITY
+    fib_prox = PAConfig.FIB_PROXIMITY
+    ob_prox = PAConfig.OB_PROXIMITY
+
     if trend in ("Bullish", "Strong Bullish"):
         buy_reasons.append(f"上升趋势: {trend}")
         confidence += 1
 
-        # 回踩需求区
         for dz in demand_zones:
-            if dz["low"] <= current_price <= dz["high"] * 1.02:
+            if dz["low"] <= current_price <= dz["high"] * (1 + zone_prox):
                 buy_reasons.append(f"回踩需求区 ({dz['low']}-{dz['high']})")
                 confidence += 1
                 break
-        # 回踩斐波那契 0.618
-        if "0.618" in fibs and abs(current_price - fibs["0.618"]) / current_price < 0.02:
+
+        if "0.618" in fibs and abs(current_price - fibs["0.618"]) / current_price < fib_prox:
             buy_reasons.append(f"回撤至 Fib 0.618 ({fibs['0.618']})")
             confidence += 1
 
-        # 看涨形态确认
         for p in patterns:
             if p["type"] == "bullish":
                 buy_reasons.append(f"看涨形态: {p['name']}")
                 confidence += 1
                 break
 
-        # 看涨订单块
         for ob in order_blocks:
-            if ob["type"] == "bullish" and ob["price_min"] <= current_price <= ob["price_max"] * 1.01:
+            if ob["type"] == "bullish" and ob["price_min"] <= current_price <= ob["price_max"] * (1 + ob_prox):
                 buy_reasons.append(f"看涨订单块 ({ob['price_min']}-{ob['price_max']})")
                 confidence += 1
                 break
 
-        # 流动性抓取后反弹
         for sw in sweeps:
             if sw["type"] == "bullish_sweep" and current_price > sw["level"]:
                 buy_reasons.append(f"流动性抓取后反弹 (突破{sw['level']})")
                 confidence += 1
                 break
 
-    # === 卖出逻辑 ===
     if trend in ("Bearish", "Strong Bearish"):
         sell_reasons.append(f"下降趋势: {trend}")
         confidence += 1
 
         for sz in supply_zones:
-            if sz["low"] * 0.98 <= current_price <= sz["high"]:
+            if sz["low"] * (1 - zone_prox) <= current_price <= sz["high"]:
                 sell_reasons.append(f"反弹至供应区 ({sz['low']}-{sz['high']})")
                 confidence += 1
                 break
 
-        if "0.618" in fibs and abs(current_price - fibs["0.618"]) / current_price < 0.02:
+        if "0.618" in fibs and abs(current_price - fibs["0.618"]) / current_price < fib_prox:
             sell_reasons.append(f"反弹至 Fib 0.618 ({fibs['0.618']})")
             confidence += 1
 
@@ -184,7 +169,7 @@ def generate_signal(
                 break
 
         for ob in order_blocks:
-            if ob["type"] == "bearish" and ob["price_min"] * 0.99 <= current_price <= ob["price_max"]:
+            if ob["type"] == "bearish" and ob["price_min"] * (1 - ob_prox) <= current_price <= ob["price_max"]:
                 sell_reasons.append(f"看跌订单块 ({ob['price_min']}-{ob['price_max']})")
                 confidence += 1
                 break
@@ -195,7 +180,6 @@ def generate_signal(
                 confidence += 1
                 break
 
-    # === 综合判定 ===
     buy_score = len(buy_reasons)
     sell_score = len(sell_reasons)
     signal = "NEUTRAL"

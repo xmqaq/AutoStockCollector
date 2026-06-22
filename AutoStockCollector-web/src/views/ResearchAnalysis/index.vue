@@ -231,12 +231,8 @@ import { watchlistApi } from '@/api/watchlist'
 import { renderMd } from '@/utils/markdown'
 import * as echarts from 'echarts'
 
-const presetSectors = [
-  '储能', '人形机器人', '半导体', '新能源汽车', 'AI算力', '创新药', '光伏',
-  '军工', '消费电子', '医疗器械', '白酒', '家电', '房地产',
-  '银行', '证券', '养殖', '煤炭', '有色金属', '基础化工', '电力',
-]
 const selectedSectors = ref<string[]>([])
+const presetSectors = ref<string[]>([])
 const topN = ref(10)
 const running = ref(false)
 const taskId = ref('')
@@ -250,6 +246,19 @@ const currentResult = ref<AnalysisResult | null>(null)
 const heatmapRef = ref<HTMLDivElement | null>(null)
 let chartInstance: echarts.ECharts | null = null
 let pollTimer: ReturnType<typeof setInterval> | null = null
+
+async function loadSectors() {
+  try {
+    const res = await researchApi.listSectors()
+    if (res.data?.success) presetSectors.value = res.data.data.map((s: any) => s.name)
+  } catch {
+    presetSectors.value = [
+      '储能', '人形机器人', '半导体', '新能源汽车', 'AI算力', '创新药', '光伏',
+      '军工', '消费电子', '医疗器械', '白酒', '家电', '房地产',
+      '银行', '证券', '养殖', '煤炭', '有色金属', '基础化工', '电力',
+    ]
+  }
+}
 
 async function loadHistory() {
   try {
@@ -541,6 +550,7 @@ watch(() => resultTab.value, (val) => {
 // 窗口缩放时自适应
 let resizeObs: ResizeObserver | null = null
 onMounted(() => {
+  loadSectors()
   loadHistory()
   if (heatmapRef.value) {
     resizeObs = new ResizeObserver(() => { chartInstance?.resize() })
