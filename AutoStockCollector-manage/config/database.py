@@ -173,6 +173,12 @@ class DatabaseConfig:
         cls._safe_index(db.pa_signal_history, [("created_at", -1)])
         cls._safe_index(db.pa_signal_history, [("signal", 1), ("created_at", -1)])
 
+        # 盘前竞价雷达
+        cls._safe_index(db.auction_snapshots, [("date", 1), ("code", 1)])
+        cls._safe_index(db.auction_results, [("date", 1)], unique=True)
+        cls._safe_index(db.auction_performance, [("date", -1), ("strength_score", -1)])
+        cls._safe_index(db.auction_performance, [("code", 1), ("date", 1)])
+
         logger.info("Database indexes ensured successfully")
 
 

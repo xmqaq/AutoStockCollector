@@ -972,6 +972,23 @@ def job_auction_radar():
         _persist_cron_status("auction_radar", _now().isoformat(), False, str(e)[:100])
 
 
+def job_auction_auto_close():
+    """14:50 自动平仓今日竞价雷达买入的仓位。"""
+    if not _is_weekday():
+        return
+    try:
+        from modules.pre_market_call_auction.intraday_tracker import auto_close_positions
+        closed = auto_close_positions()
+        msg = f"竞价雷达自动平仓{closed}笔"
+        logger.info(f"[cron] {msg}")
+        _record_result("竞价雷达自动平仓", True, msg)
+        _persist_cron_status("auction_auto_close", _now().isoformat(), True, msg, inc_count=True)
+    except Exception as e:
+        logger.error(f"[cron] 竞价雷达自动平仓失败: {e}")
+        _record_result("竞价雷达自动平仓", False, str(e))
+        _persist_cron_status("auction_auto_close", _now().isoformat(), False, str(e)[:100])
+
+
 # ─── 纯 Python 调度核心 ───────────────────────────────────────────────────────
 
 def _next_daily_run(hour: int, minute: int) -> datetime.datetime:
@@ -1112,6 +1129,7 @@ def start_daily_jobs() -> None:
         _make_job("研报原始数据采集 18:00", job_research_report_collect, "daily", 18, 0, task_type="research_report_collect"),
         _make_job("研报AI摘要 30min",       job_research_report_summarize, "interval", interval_minutes=30, task_type="research_report_summarize"),
         _make_job("盘前竞价雷达 09:25",     job_auction_radar,           "daily", 9, 25, task_type="auction_radar"),
+        _make_job("竞价自动平仓 14:50",     job_auction_auto_close,      "daily", 14, 50, task_type="auction_auto_close"),
     ]
 
     # cron_trigger_lock 跨进程触发锁：建 TTL 索引，锁文档 1 天后自动过期，避免无限增长。

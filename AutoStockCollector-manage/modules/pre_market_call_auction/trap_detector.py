@@ -1,6 +1,5 @@
-"""诱多/诱空识别 — 竞价轨迹分析。"""
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+"""诱多/诱空识别 — 纯 9:25 竞价快照分析，不依赖盘中价格。"""
+from typing import Any, Dict, Optional
 
 from utils.logger import get_logger
 from .config import AuctionConfig
@@ -9,52 +8,77 @@ from .schemas import TrapWarning
 logger = get_logger(__name__)
 
 
-def detect_trap(snapshot: Dict[str, Any]) -> TrapWarning:
+def detect_trap(
+    snapshot: Dict[str, Any],
+    sorted_amounts: list,
+    thresholds: Optional[Dict[str, float]] = None,
+) -> TrapWarning:
     """识别单只股票的诱多/诱空信号。
 
-    诱多 (Bull Trap):
-      - 高开 > 3% 但竞价量极小（后 20% 分位）
-      - 昨日涨停今日高开但竞价量不足
-
-    诱空 (Bear Trap):
-      - 低开 < -2% 但已经止跌回升（开盘价 > 最低价）
+    参数:
+        snapshot: 单个股票的快照
+        sorted_amounts: 全市场竞价金额降序列表（由调用者预排序）
+        thresholds: 预计算的分位阈值（median/bottom20_pct/top20_pct/vol_min_threshold）
     """
     gap_pct = snapshot.get("gap_pct", 0.0)
     amount = snapshot.get("amount", 0.0)
-    open_p = snapshot.get("open_price", 0.0)
-    low_p = snapshot.get("low", 0.0)
     pre_close = snapshot.get("pre_close", 0.0)
 
     if pre_close <= 0:
         return TrapWarning()
 
-    # 诱多：高开但竞价量不足
-    if gap_pct > 3.0 and amount < 1_000_000:
+    n = len(sorted_amounts)
+    if not thresholds or n == 0:
+        return TrapWarning()
+
+    # ---- 诱多 ----
+    if gap_pct > 8.0:
         return TrapWarning(
             is_trap=True,
             trap_type="bull_trap",
-            reason=f"高开{gap_pct:.1f}%但竞价金额仅{_fmt_amount(amount)}，无量空拉",
+            reason=f"极端高开{gap_pct:.1f}%，大概率回补缺口",
         )
 
-    # 诱多：高开 > 5% 且回落明显（开盘价 - 最低价 > 3%）
-    if gap_pct > 5.0 and low_p > 0 and open_p > low_p:
-        fall_pct = (open_p - low_p) / pre_close * 100
-        if fall_pct > 3.0:
-            return TrapWarning(
-                is_trap=True,
-                trap_type="bull_trap",
-                reason=f"高开{gap_pct:.1f}%后最低回落{fall_pct:.1f}%，疑似诱多",
-            )
+    # 高开 > 5% 且金额低于市场中位数 → 无量高开
+    if gap_pct > 5.0 and amount < thresholds["median"]:
+        return TrapWarning(
+            is_trap=True,
+            trap_type="bull_trap",
+            reason=f"高开{gap_pct:.1f}%但竞价金额仅{_fmt_amount(amount)}，低于市场中位值",
+        )
 
-    # 诱空：低开但开盘价 > 最低价（下方有承接）
-    if gap_pct < -2.0 and low_p > 0 and open_p > low_p:
-        rebound = (open_p - low_p) / pre_close * 100
-        if rebound > 1.5:
-            return TrapWarning(
-                is_trap=True,
-                trap_type="bear_trap",
-                reason=f"低开{gap_pct:.1f}%但开盘后回升{rebound:.1f}%，下方承接明显",
-            )
+    # 高开 > 3% 且金额位于末尾 20%
+    if gap_pct > 3.0 and amount <= thresholds["bottom20_pct"]:
+        return TrapWarning(
+            is_trap=True,
+            trap_type="bull_trap",
+            reason=f"高开{gap_pct:.1f}%但竞价金额仅{_fmt_amount(amount)}，位于末尾20%",
+        )
+
+    # 通用：高开超过 TRAP_FALLBACK 且量低于阈值分位
+    if gap_pct > AuctionConfig.TRAP_FALLBACK_THRESHOLD * 100 and amount < thresholds["vol_min_threshold"]:
+        return TrapWarning(
+            is_trap=True,
+            trap_type="bull_trap",
+            reason=f"高开{gap_pct:.1f}%但量不足（低于{AuctionConfig.TRAP_VOLUME_RATIO_MIN:.0%}分位）",
+        )
+
+    # ---- 诱空 ----
+    # 低开 < -3% 且金额位于顶部 20%
+    if gap_pct < -3.0 and n > 100 and amount >= thresholds["top20_pct"]:
+        return TrapWarning(
+            is_trap=True,
+            trap_type="bear_trap",
+            reason=f"低开{gap_pct:.1f}%但竞价金额{_fmt_amount(amount)}位于顶部20%，有大资金承接",
+        )
+
+    # 极端低开 < -8% → 即使量小也可能是恐慌过度
+    if gap_pct < -8.0 and n > 100 and amount >= thresholds["median"]:
+        return TrapWarning(
+            is_trap=True,
+            trap_type="bear_trap",
+            reason=f"极端低开{gap_pct:.1f}%但竞价量高于中位值，疑似恐慌诱空",
+        )
 
     return TrapWarning()
 

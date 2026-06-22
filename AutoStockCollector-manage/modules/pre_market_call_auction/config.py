@@ -1,11 +1,10 @@
 """盘前竞价雷达 — 配置。"""
 import os
-from pathlib import Path
 
 
 def _load_dotenv():
-    dotenv_path = Path(__file__).parent.parent.parent / ".env"
-    if dotenv_path.exists():
+    dotenv_path = os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, ".env")
+    if os.path.exists(dotenv_path):
         with open(dotenv_path) as f:
             for line in f:
                 line = line.strip()
@@ -38,3 +37,8 @@ class AuctionConfig:
 
     TRAP_FALLBACK_THRESHOLD = float(os.getenv("AUCTION_TRAP_FALLBACK", "0.03"))
     TRAP_VOLUME_RATIO_MIN = float(os.getenv("AUCTION_TRAP_VOL_MIN", "0.3"))
+
+    # ── Risk controls ──
+    MAX_POSITIONS_PER_DAY = int(os.getenv("AUCTION_MAX_POSITIONS", "5"))       # 单日最多自动建仓数
+    MAX_TOTAL_EXPOSURE_PCT = float(os.getenv("AUCTION_MAX_EXPOSURE", "0.80")) # 总仓位上限（占现金%）
+    MAX_SECTOR_EXPOSURE_PCT = float(os.getenv("AUCTION_MAX_SECTOR", "0.30"))  # 单板块上限（占现金%）

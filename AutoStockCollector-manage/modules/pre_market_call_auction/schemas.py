@@ -1,23 +1,7 @@
 """盘前竞价雷达 — Pydantic 模型。"""
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
-
-
-class AuctionSnapshot(BaseModel):
-    """单只股票的竞价时刻快照（9:25）。"""
-    code: str
-    name: str
-    date: str
-    open_price: float = 0.0
-    pre_close: float = 0.0
-    high: float = 0.0
-    low: float = 0.0
-    volume: float = 0.0
-    amount: float = 0.0
-    gap_pct: float = 0.0
-    collected_at: str = ""
+from pydantic import BaseModel
 
 
 class StrengthScore(BaseModel):
@@ -43,7 +27,6 @@ class RadarStock(BaseModel):
     strength_score: int = 0
     strength_detail: Optional[StrengthScore] = None
     trap_warning: Optional[TrapWarning] = None
-    sector_rank: int = 0
     industry: str = ""
     highlight: bool = False
     highlight_reason: str = ""
