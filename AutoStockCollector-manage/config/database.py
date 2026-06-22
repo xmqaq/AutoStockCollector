@@ -122,6 +122,7 @@ class DatabaseConfig:
 
         cls._safe_index(db.watchlist, [("user_id", 1), ("group_id", 1)])
         cls._safe_index(db.watchlist, [("code", 1)])
+        cls._safe_index(db.watchlist_groups, [("user_id", 1)])
 
         cls._safe_index(db.ai_result, [("code", 1), ("strategy", 1), ("date", -1)], unique=True)
         cls._safe_index(db.ai_result, [("created_at", -1)])

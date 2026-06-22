@@ -53,6 +53,9 @@
               <Moon v-else />
             </el-icon>
           </el-tooltip>
+          <span class="api-docs-btn" @click="openApiDocs">
+            <span class="api-docs-text">API文档</span>
+          </span>
           <div class="status-indicator">
             <span :class="['status-dot', collectStore.backendOnline ? 'online' : 'offline']"></span>
             <span class="status-text">{{ collectStore.backendOnline ? '后端在线' : '后端离线' }}</span>
@@ -266,6 +269,10 @@ function handleUserCommand(cmd: string) {
   } else if (cmd === 'user-management') {
     router.push('/user-management')
   }
+}
+
+function openApiDocs() {
+  window.open('/api-docs', '_blank')
 }
 
 onMounted(() => {

@@ -773,9 +773,10 @@ def get_watchlist():
     from modules.watchlist.watchlist import WatchlistManager
 
     user_id = g.current_user["user_id"]
+    group_id = request.args.get("group_id")
 
     manager = WatchlistManager()
-    stocks = manager.get_watchlist(user_id)
+    stocks = manager.get_watchlist(user_id, group_id=group_id)
 
     for stock in stocks:
         if "add_time" in stock and hasattr(stock["add_time"], "isoformat"):
@@ -800,12 +801,13 @@ def add_to_watchlist():
     user_id = g.current_user["user_id"]
     code = data.get("code")
     priority = data.get("priority", 0)
+    group_id = data.get("group_id", "default")
 
     if not code:
         return jsonify({"error": "code is required"}), 400
 
     manager = WatchlistManager()
-    success = manager.add_stock(user_id, code, priority)
+    success = manager.add_stock(user_id, code, priority, group_id=group_id)
 
     return jsonify({
         "success": success,
@@ -830,7 +832,108 @@ def remove_from_watchlist(code):
     })
 
 
-@api_bp.route("/ai/analyze", methods=["POST"])
+@api_bp.route("/watchlist/groups", methods=["GET"])
+@login_required
+def list_watchlist_groups():
+    from modules.watchlist.watchlist import WatchlistManager
+    user_id = g.current_user["user_id"]
+    manager = WatchlistManager()
+    groups = manager.get_groups(user_id)
+    for grp in groups:
+        grp.pop("_id", None)
+        grp.pop("user_id", None)
+    return jsonify({"success": True, "data": groups})
+
+
+@api_bp.route("/watchlist/groups", methods=["POST"])
+@login_required
+def create_watchlist_group():
+    from modules.watchlist.watchlist import WatchlistManager
+    data = request.get_json() or {}
+    user_id = g.current_user["user_id"]
+    group_id = data.get("group_id")
+    if not group_id:
+        return jsonify({"success": False, "error": "group_id is required"}), 400
+    success = WatchlistManager().create_group(user_id, group_id, data.get("name", ""), data.get("description", ""))
+    return jsonify({"success": success})
+
+
+@api_bp.route("/watchlist/groups/<group_id>", methods=["DELETE"])
+@login_required
+def delete_watchlist_group(group_id):
+    from modules.watchlist.watchlist import WatchlistManager
+    user_id = g.current_user["user_id"]
+    success = WatchlistManager().delete_group(user_id, group_id)
+    return jsonify({"success": success})
+
+
+@api_bp.route("/watchlist/move", methods=["PATCH"])
+@login_required
+def move_watchlist_stock():
+    from modules.watchlist.watchlist import WatchlistManager
+    data = request.get_json() or {}
+    user_id = g.current_user["user_id"]
+    code = data.get("code")
+    group_id = data.get("group_id")
+    if not code or group_id is None:
+        return jsonify({"success": False, "error": "code and group_id are required"}), 400
+    success = WatchlistManager().move_stock_to_group(user_id, code, group_id)
+    return jsonify({"success": success})
+
+
+@api_bp.route("/watchlist/priority", methods=["PATCH"])
+@login_required
+def update_watchlist_priority():
+    from modules.watchlist.watchlist import WatchlistManager
+    data = request.get_json() or {}
+    user_id = g.current_user["user_id"]
+    code = data.get("code")
+    priority = data.get("priority", 0)
+    if not code:
+        return jsonify({"success": False, "error": "code is required"}), 400
+    success = WatchlistManager().update_priority(user_id, code, int(priority))
+    return jsonify({"success": success})
+
+
+@api_bp.route("/watchlist/batch", methods=["POST"])
+@login_required
+def batch_add_watchlist():
+    from modules.watchlist.watchlist import WatchlistManager
+    data = request.get_json() or {}
+    user_id = g.current_user["user_id"]
+    codes = data.get("codes", [])
+    group_id = data.get("group_id", "default")
+    if not codes or not isinstance(codes, list):
+        return jsonify({"success": False, "error": "codes list is required"}), 400
+    result = WatchlistManager().batch_add_stocks(user_id, codes, group_id)
+    return jsonify({"success": True, **result})
+
+
+@api_bp.route("/watchlist/batch-remove", methods=["POST"])
+@login_required
+def batch_remove_watchlist():
+    from modules.watchlist.watchlist import WatchlistManager
+    data = request.get_json() or {}
+    user_id = g.current_user["user_id"]
+    codes = data.get("codes", [])
+    if not codes or not isinstance(codes, list):
+        return jsonify({"success": False, "error": "codes list is required"}), 400
+    manager = WatchlistManager()
+    success_count = 0
+    for code in codes:
+        if manager.remove_stock(user_id, code):
+            success_count += 1
+    return jsonify({"success": True, "removed": success_count})
+
+
+@api_bp.route("/watchlist/alerts", methods=["GET"])
+@login_required
+def watchlist_alerts():
+    from modules.watchlist.watchlist import WatchlistManager
+    user_id = g.current_user["user_id"]
+    threshold = request.args.get("threshold", 5.0, type=float)
+    alerts = WatchlistManager().monitor_alerts(user_id, price_change_threshold=threshold)
+    return jsonify({"success": True, "count": len(alerts), "data": alerts})
 def analyze_stock():
     from modules.ai.ai_analyzer import AIAnalyzer
 

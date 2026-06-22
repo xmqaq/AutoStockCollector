@@ -131,6 +131,9 @@ export interface WatchlistItem {
   volume: number | null
   turnover: number | null
   turnover_rate: number | null
+  priority?: number
+  group_id?: string
+  group_name?: string
 }
 
 export interface WatchlistGroup {

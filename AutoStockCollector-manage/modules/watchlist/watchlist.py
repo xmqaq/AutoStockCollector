@@ -23,7 +23,8 @@ class WatchlistManager:
         self,
         user_id: str,
         code: str,
-        priority: int = 0
+        priority: int = 0,
+        group_id: str = "default",
     ) -> bool:
         code = normalize_stock_code(code)
 
@@ -31,7 +32,7 @@ class WatchlistManager:
             logger.warning(f"Invalid stock code: {code}")
             return False
 
-        result = self.storage.add_stock(user_id, code, "default", priority)
+        result = self.storage.add_stock(user_id, code, group_id, priority)
         if result:
             from modules.monitor.lifecycle import MonitorLifecycle
             try:
@@ -51,8 +52,8 @@ class WatchlistManager:
                 logger.error(f"Sync monitor lifecycle on watchlist remove failed: {e}")
         return success
 
-    def get_watchlist(self, user_id: str = "default") -> List[Dict[str, Any]]:
-        stocks = self.storage.get_user_watchlist(user_id)
+    def get_watchlist(self, user_id: str = "default", group_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        stocks = self.storage.get_user_watchlist(user_id, group_id=group_id)
 
         name_cache: Dict[str, str] = {}
 
@@ -113,8 +114,7 @@ class WatchlistManager:
             stock.pop("_updated_at", None)
             stock.pop("enabled", None)
             stock.pop("user_id", None)
-            stock.pop("group_id", None)
-            stock.pop("priority", None)
+            # Keep group_id for group management UI
 
             enriched_stocks.append(stock)
 
@@ -169,7 +169,7 @@ class WatchlistManager:
             groups_collection.delete_one({"user_id": user_id, "group_id": group_id})
             watchlist_collection.update_many(
                 {"user_id": user_id, "group_id": group_id},
-                {"$set": {"enabled": False}}
+                {"$set": {"group_id": "default"}}
             )
             return True
         except Exception as e:
@@ -294,14 +294,12 @@ class WatchlistManager:
         return alerts
 
     def _check_limit_up(self, kline: Dict[str, Any]) -> bool:
-        if "pct_chg" in kline and kline["pct_chg"] >= 9.9:
-            return True
-        return False
+        pct = kline.get("change_rate") or kline.get("pct_chg") or kline.get("涨跌幅") or 0
+        return pct >= 9.9
 
     def _check_limit_down(self, kline: Dict[str, Any]) -> bool:
-        if "pct_chg" in kline and kline["pct_chg"] <= -9.9:
-            return True
-        return False
+        pct = kline.get("change_rate") or kline.get("pct_chg") or kline.get("涨跌幅") or 0
+        return pct <= -9.9
 
     def _validate_stock(self, code: str) -> bool:
         if not code:
@@ -329,7 +327,7 @@ class WatchlistManager:
         failed_count = 0
 
         for code in codes:
-            if self.add_stock(user_id, code, group_id):
+            if self.add_stock(user_id, code, group_id=group_id):
                 success_count += 1
             else:
                 failed_count += 1
