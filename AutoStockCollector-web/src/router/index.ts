@@ -91,6 +91,12 @@ const router = createRouter({
           meta: { title: '新闻舆情' },
         },
         {
+          path: 'research-reports',
+          name: 'ResearchReports',
+          component: () => import('@/views/ResearchReports/index.vue'),
+          meta: { title: '投资研报' },
+        },
+        {
           path: 'watchlist',
           name: 'Watchlist',
           component: () => import('@/views/Watchlist/index.vue'),

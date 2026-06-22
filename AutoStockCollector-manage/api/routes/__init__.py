@@ -1,7 +1,7 @@
 """
 API路由定义
 """
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, request, jsonify, g, Response
 from datetime import datetime, timedelta
 import os
 from typing import Any, Dict, Optional
@@ -934,6 +934,136 @@ def watchlist_alerts():
     threshold = request.args.get("threshold", 5.0, type=float)
     alerts = WatchlistManager().monitor_alerts(user_id, price_change_threshold=threshold)
     return jsonify({"success": True, "count": len(alerts), "data": alerts})
+
+
+@api_bp.route("/research-reports", methods=["GET"])
+def list_research_reports():
+    from core.storage.mongo_storage import ResearchReportStorage
+    keyword = request.args.get("keyword", "")
+    code = request.args.get("code", "")
+    org = request.args.get("org", "")
+    days = request.args.get("days", 90, type=int)
+    page = request.args.get("page", 1, type=int)
+    page_size = request.args.get("page_size", 50, type=int)
+    storage = ResearchReportStorage()
+    results, total = storage.search(
+        keyword=keyword, code=code, org=org,
+        days=days, page=page, page_size=page_size,
+    )
+    for r in results:
+        info_code = r.get("info_code", "")
+        if info_code:
+            r["pdf_url"] = f"https://pdf.dfcfw.com/pdf/H3_{info_code}_1.pdf"
+    return jsonify({
+        "success": True,
+        "data": results,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    })
+
+
+@api_bp.route("/research-reports/codes", methods=["GET"])
+def list_research_report_codes():
+    from core.storage.mongo_storage import ResearchReportStorage
+    storage = ResearchReportStorage()
+    pipeline = [
+        {"$group": {"_id": "$code", "name": {"$first": "$name"}, "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": 100},
+    ]
+    results = list(storage.collection.aggregate(pipeline))
+    data = [{"code": r["_id"], "name": r["name"], "count": r["count"]} for r in results]
+    return jsonify({"success": True, "data": data})
+
+
+@api_bp.route("/research-reports/orgs", methods=["GET"])
+def list_research_report_orgs():
+    from core.storage.mongo_storage import ResearchReportStorage
+    storage = ResearchReportStorage()
+    pipeline = [
+        {"$group": {"_id": "$org", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": 100},
+    ]
+    results = list(storage.collection.aggregate(pipeline))
+    data = [{"org": r["_id"], "count": r["count"]} for r in results]
+    return jsonify({"success": True, "data": data})
+
+
+@api_bp.route("/research-reports/pdf", methods=["GET"])
+def proxy_research_report_pdf():
+    url = request.args.get("url", "")
+    if not url or not url.startswith("https://pdf.dfcfw.com/"):
+        return jsonify({"error": "invalid url"}), 400
+    try:
+        import requests as req
+        headers = {"User-Agent": "Mozilla/5.0"}
+        r = req.get(url, headers=headers, timeout=30)
+        r.raise_for_status()
+        response = Response(r.content, content_type=r.headers.get("content-type", "application/pdf"))
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        return response
+    except Exception as e:
+        logger.error(f"[ResearchReports] PDF proxy error: {e}")
+        return jsonify({"error": str(e)}), 502
+
+
+@api_bp.route("/research-reports/collect", methods=["POST"])
+@admin_required
+def trigger_research_report_collect():
+    from modules.research_report_collector import collect_all_reports
+    import threading
+    def _run():
+        try:
+            result = collect_all_reports()
+            logger.info(f"[ResearchCollector] Manual collection done: {result}")
+        except Exception as e:
+            logger.error(f"[ResearchCollector] Manual collection failed: {e}")
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"success": True, "message": "研报采集任务已启动"})
+
+
+@api_bp.route("/research-reports/summarize", methods=["POST"])
+def summarize_research_report():
+    from modules.research_report_collector.summarizer import summarize_report
+    data = request.get_json() or {}
+    report_id = data.get("report_id", "")
+    if not report_id:
+        return jsonify({"error": "report_id required"}), 400
+    from core.storage.mongo_storage import ResearchReportStorage
+    storage = ResearchReportStorage()
+    report = storage.collection.find_one({"report_id": report_id})
+    if not report:
+        return jsonify({"error": "report not found"}), 404
+    if report.get("generated_abstract"):
+        return jsonify({"success": True, "data": {"abstract": report["generated_abstract"], "cached": True}})
+    info_code = report.get("info_code", "")
+    if not info_code:
+        return jsonify({"error": "report has no info_code"}), 400
+    pdf_url = f"https://pdf.dfcfw.com/pdf/H3_{info_code}_1.pdf"
+    abstract = summarize_report(report_id, pdf_url, report.get("title", ""))
+    if abstract:
+        return jsonify({"success": True, "data": {"abstract": abstract, "cached": False}})
+    return jsonify({"error": "summarization failed"}), 500
+
+
+@api_bp.route("/research-reports/summarize-pending", methods=["POST"])
+@admin_required
+def summarize_pending_research_reports():
+    from modules.research_report_collector.summarizer import summarize_pending_reports
+    max_reports = request.args.get("max", 50, type=int)
+    import threading
+    def _run():
+        try:
+            result = summarize_pending_reports(max_reports=max_reports)
+            logger.info(f"[ResearchReports] Manual pending summarization done: {result}")
+        except Exception as e:
+            logger.error(f"[ResearchReports] Manual pending summarization error: {e}")
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"success": True, "message": f"后台摘要任务已启动，处理最多 {max_reports} 篇研报"})
+
+
 def analyze_stock():
     from modules.ai.ai_analyzer import AIAnalyzer
 

@@ -922,6 +922,23 @@ def job_research_daily():
         _persist_cron_status("research_daily", _now().isoformat(), False, str(e)[:100])
 
 
+def job_research_report_collect():
+    """每日盘后采集全量研报并存入 research_reports 集合。"""
+    if not _is_weekday():
+        return
+    try:
+        from modules.research_report_collector import collect_all_reports
+        result = collect_all_reports()
+        msg = f"采集 {result.get('total_fetched', 0)} 条研报，新保存 {result.get('total_saved', 0)} 条"
+        logger.info(f"[cron] {msg}")
+        _record_result("研报数据采集", True, msg)
+        _persist_cron_status("research_report_collect", _now().isoformat(), True, msg, inc_count=True)
+    except Exception as e:
+        logger.error(f"[cron] 研报数据采集失败: {e}")
+        _record_result("研报数据采集", False, str(e))
+        _persist_cron_status("research_report_collect", _now().isoformat(), False, str(e)[:100])
+
+
 # ─── 纯 Python 调度核心 ───────────────────────────────────────────────────────
 
 def _next_daily_run(hour: int, minute: int) -> datetime.datetime:
@@ -1059,6 +1076,7 @@ def start_daily_jobs() -> None:
         _make_job("PA盘中扫描 30min",  job_pa_intraday_scan,        "interval", interval_minutes=30, task_type="pa_intraday_scan"),
         _make_job("PA全市场扫描 17:00", job_pa_scan,                "daily", 17,  0, task_type="pa_scan"),
         _make_job("研报全板块扫描 17:30", job_research_daily,       "daily", 17, 30, task_type="research_daily"),
+        _make_job("研报原始数据采集 18:00", job_research_report_collect, "daily", 18, 0, task_type="research_report_collect"),
     ]
 
     # cron_trigger_lock 跨进程触发锁：建 TTL 索引，锁文档 1 天后自动过期，避免无限增长。

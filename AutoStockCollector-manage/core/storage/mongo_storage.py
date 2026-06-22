@@ -854,3 +854,61 @@ class ValuationStorage(MongoStorage):
         if not records:
             return (0, 0)
         return self.upsert_many(records, ["code"])
+
+
+class ResearchReportStorage(MongoStorage):
+    def __init__(self):
+        super().__init__("research_reports")
+        self.create_index([("date", -1)])
+        self.create_index([("code", 1), ("date", -1)])
+        self.create_index([("cached_at", -1)])
+
+    def save_report(self, report: Dict[str, Any]) -> str:
+        report_id = report.get("report_id", "")
+        if report_id:
+            return self.upsert_one({"report_id": report_id}, report)
+        return self.insert_one(report)
+
+    def save_batch(self, records: List[Dict[str, Any]]) -> Tuple[int, int]:
+        if not records:
+            return (0, 0)
+        keys = [k for k in ["report_id"] if k in records[0]]
+        if keys:
+            return self.upsert_many(records, keys)
+        return self.upsert_many(records, ["code", "date", "title"])
+
+    def find_by_code(self, code: str, limit: int = 50) -> List[Dict[str, Any]]:
+        return self.find_many(
+            {"code": code},
+            sort=[("date", -1)],
+            limit=limit,
+        )
+
+    def search(
+        self,
+        keyword: str = "",
+        code: str = "",
+        org: str = "",
+        days: int = 90,
+        page: int = 1,
+        page_size: int = 50,
+    ) -> Tuple[List[Dict[str, Any]], int]:
+        from datetime import datetime, timedelta
+        query: Dict[str, Any] = {}
+        if keyword:
+            query["$or"] = [
+                {"title": {"$regex": keyword, "$options": "i"}},
+                {"name": {"$regex": keyword, "$options": "i"}},
+            ]
+        if code:
+            query["code"] = code
+        if org:
+            query["org"] = {"$regex": org, "$options": "i"}
+        cutoff = datetime.now() - timedelta(days=days)
+        query["date"] = {"$gte": cutoff.strftime("%Y-%m-%d")}
+        total = self.collection.count_documents(query)
+        skip = (page - 1) * page_size
+        results = self.find_many(query, sort=[("date", -1)], skip=skip, limit=page_size)
+        for r in results:
+            r.pop("_id", None)
+        return results, total
