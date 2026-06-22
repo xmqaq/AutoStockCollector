@@ -239,7 +239,8 @@ def get_nav():
 
 def _live_profit(uid):
     """按实时净值（现金 + 实时持仓市值）计算某用户的收益。
-    返回 (profit_pct, profit_amount, initial_capital)；账户未初始化返回 None。
+    返回 (profit_pct, profit_amount, initial_capital, account_doc, positions)；
+    账户未初始化返回 None。
     """
     account_info = _account.get(uid)
     if not account_info:
@@ -250,7 +251,7 @@ def _live_profit(uid):
     market_value = sum(p["market_value"] for p in positions)
     profit_amount = cash + market_value - initial_capital
     profit_pct = (profit_amount / initial_capital * 100) if initial_capital > 0 else 0
-    return profit_pct, profit_amount, initial_capital
+    return profit_pct, profit_amount, initial_capital, account_info, positions
 
 
 def _resolve_ranking_uid(uid: str) -> tuple:
@@ -267,11 +268,14 @@ def get_ranking():
     默认（无 live 参数）：用每日 16:30 净值快照 `portfolio_snapshots`（无快照才退化为实时）。
     传 ?live=1：所有用户都按实时净值计算（盘中可反映当日浮盈浮亏），结果缓存
     _RANKING_LIVE_TTL 秒，避免高频轮询打爆行情接口。
+    支持 ?limit=N&offset=M 分页。
     """
     from config.database import DatabaseConfig
     from modules.paper_trading.trade_engine import is_trading_time
 
     live = request.args.get("live") in ("1", "true", "True", "yes")
+    limit = request.args.get("limit", type=int)
+    offset = request.args.get("offset", type=int, default=0)
 
     if live:
         with _ranking_live_lock:
@@ -280,9 +284,15 @@ def get_ranking():
                 return jsonify({**cache["payload"], "cached": True})
 
     db = DatabaseConfig.get_database()
-    users = list(db.users.find({}, {"username": 1, "nickname": 1, "user_id": 1, "_id": 0}))
 
-    # 各用户累计手续费（佣金 + 印花税），一次聚合取齐，供前端解释「今日盈亏 vs 累计收益」的差额
+    # 只查有 paper_account 的用户，跳过从未开户者
+    account_uids = set(db["paper_account"].distinct("user_id"))
+    users = list(db.users.find(
+        {"user_id": {"$in": list(account_uids)}},
+        {"username": 1, "nickname": 1, "user_id": 1, "_id": 0},
+    ))
+
+    # 各用户累计手续费（佣金 + 印花税），一次聚合取齐
     fee_map = {}
     try:
         for r in db["trade_records"].aggregate([
@@ -298,66 +308,71 @@ def get_ranking():
 
     result = []
     for user in users:
-        uid = user["user_id"]
-        display_uid, query_uid = _resolve_ranking_uid(uid)
+        try:
+            uid = user["user_id"]
+            display_uid, query_uid = _resolve_ranking_uid(uid)
 
-        if live:
-            computed = _live_profit(query_uid)
-            if computed is None:
-                continue
-            profit_pct, profit_amount, initial_capital = computed
-            account_doc = _account.get(query_uid) if _account else None
-            cash = account_doc.get("cash_balance", 0) if account_doc else 0
-            positions, _ = _engine.get_positions(query_uid) if _engine else ([], None)
-            market_value = sum(p["market_value"] for p in positions)
-            today_pnl = sum(p.get("today_pnl_amount", 0.0) for p in positions)
-        else:
-            snap = db["portfolio_snapshots"].find_one(
-                {"user_id": query_uid}, sort=[("date", -1)]
-            )
-            if snap and snap.get("profit_pct") is not None:
-                profit_pct = snap["profit_pct"]
-                profit_amount = snap.get("profit_amount", 0)
-                initial_capital = snap.get("initial_capital", 0)
-                cash = snap.get("cash", 0)
-                market_value = snap.get("market_value", 0)
-                today_pnl = snap.get("today_pnl", 0)
-            else:
+            if live:
                 computed = _live_profit(query_uid)
                 if computed is None:
                     continue
-                profit_pct, profit_amount, initial_capital = computed
-                account_doc = _account.get(query_uid) if _account else None
-                cash = account_doc.get("cash_balance", 0) if account_doc else 0
-                positions, _ = _engine.get_positions(query_uid) if _engine else ([], None)
+                profit_pct, profit_amount, initial_capital, account_doc, positions = computed
+                cash = account_doc.get("cash_balance", 0)
                 market_value = sum(p["market_value"] for p in positions)
                 today_pnl = sum(p.get("today_pnl_amount", 0.0) for p in positions)
+            else:
+                snap = db["portfolio_snapshots"].find_one(
+                    {"user_id": query_uid}, sort=[("date", -1)]
+                )
+                if snap and snap.get("profit_pct") is not None:
+                    profit_pct = snap["profit_pct"]
+                    profit_amount = snap.get("profit_amount", 0)
+                    initial_capital = snap.get("initial_capital", 0)
+                    cash = snap.get("cash", 0)
+                    market_value = snap.get("market_value", 0)
+                    today_pnl = snap.get("today_pnl", 0)
+                else:
+                    computed = _live_profit(query_uid)
+                    if computed is None:
+                        continue
+                    profit_pct, profit_amount, initial_capital, account_doc, positions = computed
+                    cash = account_doc.get("cash_balance", 0)
+                    market_value = sum(p["market_value"] for p in positions)
+                    today_pnl = sum(p.get("today_pnl_amount", 0.0) for p in positions)
 
-        account_doc = _account.get(query_uid) if _account else None
-        stats = _stats.get_stats(query_uid) if account_doc else {"win_rate": 0.0, "total_trades": 0}
-        result.append({
-            "user_id": uid,
-            "username": user.get("nickname", user.get("username", uid)),
-            "raw_username": user.get("username", uid),
-            "initial_capital": round(initial_capital, 2),
-            "cash_balance": round(cash, 2),
-            "market_value": round(market_value, 2),
-            "total_asset": round(cash + market_value, 2),
-            "profit_pct": round(profit_pct, 2),
-            "profit_amount": round(profit_amount, 2),
-            "today_pnl": round(today_pnl, 2),
-            "total_fee": round(fee_map.get(query_uid, 0), 2),
-            "win_rate": round(stats.get("win_rate", 0.0), 2),
-            "total_trades": stats.get("total_trades", 0),
-        })
+            account_doc = _account.get(query_uid) if _account else None
+            stats = _stats.get_stats(query_uid) if account_doc else {"win_rate": 0.0, "total_trades": 0}
+            result.append({
+                "user_id": uid,
+                "username": user.get("nickname", user.get("username", uid)),
+                "raw_username": user.get("username", uid),
+                "initial_capital": round(initial_capital, 2),
+                "cash_balance": round(cash, 2),
+                "market_value": round(market_value, 2),
+                "total_asset": round(cash + market_value, 2),
+                "profit_pct": round(profit_pct, 2),
+                "profit_amount": round(profit_amount, 2),
+                "today_pnl": round(today_pnl, 2),
+                "total_fee": round(fee_map.get(query_uid, 0), 2),
+                "win_rate": round(stats.get("win_rate", 0.0), 2),
+                "total_trades": stats.get("total_trades", 0),
+            })
+        except Exception as e:
+            logger.warning(f"[Ranking] user={user.get('user_id','?')} skipped: {e}")
+            continue
 
     result.sort(key=lambda x: x["profit_pct"], reverse=True)
     for i, r in enumerate(result, 1):
         r["rank"] = i
 
+    total = len(result)
+    if limit:
+        result = result[offset:offset + limit]
+
     payload = {
         "success": True,
         "count": len(result),
+        "total": total,
         "data": result,
         "live": live,
         "is_trading": is_trading_time(),

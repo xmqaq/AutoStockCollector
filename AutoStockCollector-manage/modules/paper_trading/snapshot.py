@@ -24,6 +24,7 @@ class PortfolioSnapshot:
         profit_pct = (profit_amount / initial * 100) if initial > 0 else 0
 
         today = beijing_now().strftime("%Y-%m-%d")
+        today_pnl = sum(p.get("today_pnl_amount", 0.0) for p in positions)
         doc = {
             "user_id": user_id,
             "date": today,
@@ -33,6 +34,7 @@ class PortfolioSnapshot:
             "profit_amount": round(profit_amount, 2),
             "profit_pct": round(profit_pct, 2),
             "initial_capital": initial,
+            "today_pnl": round(today_pnl, 2),
             "positions_detail": [
                 {"code": p["code"], "name": p["name"], "shares": p["shares"],
                  "price": p["current_price"], "market_value": p["market_value"]}

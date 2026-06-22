@@ -139,6 +139,10 @@ class DatabaseConfig:
         cls._safe_index(db.users, [("email", 1)], sparse=True)
         cls._safe_index(db.users, [("user_id", 1)], unique=True)
 
+        # 模拟交易
+        cls._safe_index(db.trade_records, [("user_id", 1), ("traded_at", -1)])
+        cls._safe_index(db.paper_account, [("user_id", 1)], unique=True)
+
         # 价格行为学缓存 & 扫描结果
         cls._dedup_collection(db.pa_quotes_cache, "cache_key")
         cls._safe_index(db.pa_quotes_cache, [("cache_key", 1)], unique=True)
