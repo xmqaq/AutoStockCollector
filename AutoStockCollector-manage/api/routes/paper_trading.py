@@ -44,11 +44,9 @@ def _uid():
 
 
 def _resolve_user_id():
-    """统一用户ID解析: admin 用户映射到 'default' 兼容旧数据；其他用户用自己的ID；未认证回退到 'default'"""
+    """统一用户ID解析：已认证返回用户自己的ID，未认证回退到 'default'。"""
     _lazy_init()
     uid = _uid()
-    if uid == "admin" and _account.get("default"):
-        return "default"
     if uid:
         return uid
     return "default"
@@ -256,13 +254,6 @@ def _live_profit(uid):
     return profit_pct, profit_amount, initial_capital, account_info, positions
 
 
-def _resolve_ranking_uid(uid: str) -> tuple:
-    """解析排行榜用 user_id 和查询 uid，处理 admin→default 映射。"""
-    if uid == "admin" and _account.get("default"):
-        return "admin", "default"
-    return uid, uid
-
-
 @paper_bp.route("/ranking", methods=["GET"])
 def get_ranking():
     """用户盈利排行榜：按总收益率降序，含收益率/收益额/胜率/交易次数。
@@ -287,12 +278,21 @@ def get_ranking():
 
     db = DatabaseConfig.get_database()
 
-    # 只查有 paper_account 的用户，跳过从未开户者
+    # 查所有 paper_account 用户（含无 users 记录的头像账户如 "default"）
     account_uids = set(db["paper_account"].distinct("user_id"))
-    users = list(db.users.find(
-        {"user_id": {"$in": list(account_uids)}},
-        {"username": 1, "nickname": 1, "user_id": 1, "_id": 0},
-    ))
+    registered = {
+        u["user_id"]: u
+        for u in db.users.find(
+            {"user_id": {"$in": list(account_uids)}},
+            {"username": 1, "nickname": 1, "user_id": 1, "_id": 0},
+        )
+    }
+    users = []
+    for uid in account_uids:
+        if uid in registered:
+            users.append(registered[uid])
+        else:
+            users.append({"user_id": uid, "username": uid, "nickname": uid})
 
     # 各用户累计手续费（佣金 + 印花税），一次聚合取齐
     fee_map = {}
@@ -312,7 +312,7 @@ def get_ranking():
     for user in users:
         try:
             uid = user["user_id"]
-            display_uid, query_uid = _resolve_ranking_uid(uid)
+            query_uid = uid
 
             if live:
                 computed = _live_profit(query_uid)
