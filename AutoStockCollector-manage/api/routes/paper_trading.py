@@ -160,7 +160,8 @@ def execute_trade():
 @paper_bp.route("/positions", methods=["GET"])
 def get_positions():
     _lazy_init()
-    user_id = request.args.get("user_id") or _resolve_user_id()
+    # admin 旧数据存于 'default'：显式传入的 user_id 也需同样映射，否则排行榜明细查 'admin' 为空
+    _, user_id = _resolve_ranking_uid(request.args.get("user_id") or _resolve_user_id())
     positions, trading = _engine.get_positions(user_id)
     return jsonify({
         "success": True,
@@ -197,7 +198,8 @@ def get_price():
 def get_trades():
     from config.database import DatabaseConfig
     _lazy_init()
-    user_id = request.args.get("user_id") or _resolve_user_id()
+    # 同 /positions：admin→default 映射，保证排行榜明细能查到旧数据
+    _, user_id = _resolve_ranking_uid(request.args.get("user_id") or _resolve_user_id())
     try:
         limit = int(request.args.get("limit", 50))
     except (TypeError, ValueError):
