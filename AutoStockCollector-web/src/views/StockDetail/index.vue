@@ -205,8 +205,10 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  height: 100%;
-  overflow: hidden;
+  height: calc(100vh - 60px); /* Fill the viewport minus header */
+  min-height: 800px; /* Prevent it from squishing too small */
+  padding: 16px;
+  box-sizing: border-box;
 }
 
 .empty-hint {

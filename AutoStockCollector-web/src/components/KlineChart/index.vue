@@ -22,12 +22,14 @@
         <span class="legend-item alert"><span class="dot"></span> 告警</span>
       </div>
     </div>
-    <v-chart
-      ref="chartRef"
-      :option="chartOption"
-      :style="{ height: chartHeight }"
-      autoresize
-    />
+    <div class="chart-container">
+      <v-chart
+        ref="chartRef"
+        :option="chartOption"
+        autoresize
+        class="chart-instance"
+      />
+    </div>
   </div>
 </template>
 
@@ -75,7 +77,7 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  chartHeight: '500px',
+  chartHeight: '100%',
   annotations: () => [],
   supportLevels: () => [],
   resistanceLevels: () => [],
@@ -246,8 +248,8 @@ const chartOption = computed(() => {
 
   const grids = showVolume.value
     ? [
-        { left: 60, right: 20, top: 40, bottom: showVolume.value ? '28%' : 60 },
-        { left: 60, right: 20, top: showVolume.value ? '75%' : 40, bottom: 60 },
+        { left: 60, right: 20, top: 40, height: '55%' },
+        { left: 60, right: 20, top: '75%', height: '18%' },
       ]
     : [
         { left: 60, right: 20, top: 40, bottom: 60 },
@@ -417,6 +419,9 @@ watch(() => props.data, () => {
 <style scoped>
 .kline-chart-wrapper {
   width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .chart-toolbar-container {
@@ -424,6 +429,24 @@ watch(() => props.data, () => {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex-shrink: 0;
+}
+
+.chart-container {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  position: relative;
+}
+
+.chart-instance {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100% !important;
+  height: 100% !important;
 }
 
 .chart-toolbar {

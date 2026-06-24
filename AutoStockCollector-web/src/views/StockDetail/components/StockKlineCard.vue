@@ -82,7 +82,8 @@ function toggleFullscreen() {
   flex: 1;
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  min-height: 400px; /* Provide a reasonable minimum height */
+  height: 100%; /* Ensure it tries to fill the parent */
 }
 
 .kline-card :deep(.el-card__body) {
@@ -91,6 +92,7 @@ function toggleFullscreen() {
   flex-direction: column;
   min-height: 0;
   padding: 12px 20px;
+  height: 100%;
 }
 
 .kline-card :deep(.el-card__header) {
@@ -165,17 +167,20 @@ function toggleFullscreen() {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  position: relative; /* important for echarts inside */
+  height: 100%;
 }
 
 .kline-container :deep(.kline-chart-wrapper) {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
 }
 
 .kline-container :deep(.vue-echarts) {
-  flex: 1;
-  min-height: 0;
+  width: 100% !important;
+  height: 100% !important;
 }
 </style>
