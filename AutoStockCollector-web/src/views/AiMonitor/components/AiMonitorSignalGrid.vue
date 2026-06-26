@@ -146,10 +146,10 @@ function signalTagType(sig: string): string {
 }
 
 function scoreColor(score: number): string {
-  if (score >= 75) return '#f56c6c'
-  if (score >= 60) return '#e6a23c'
-  if (score >= 40) return '#909399'
-  return '#67c23a'
+  if (score >= 75) return 'var(--el-color-danger)'
+  if (score >= 60) return 'var(--el-color-warning)'
+  if (score >= 40) return 'var(--text-muted)'
+  return 'var(--el-color-success)'
 }
 
 function adviceTagType(signal?: string): string {
@@ -232,8 +232,8 @@ function riskLevelClass(level: string): string {
 }
 
 .change { font-size: 13px; font-weight: 600; }
-.change.up { color: #f56c6c; }
-.change.down { color: #67c23a; }
+.change.up { color: var(--el-color-danger); }
+.change.down { color: var(--el-color-success); }
 
 .composite-row {
   display: flex;
@@ -250,7 +250,7 @@ function riskLevelClass(level: string): string {
   padding: 1px 5px;
   border-radius: 3px;
   background: var(--el-color-success-light-7, #e1f3d8);
-  color: #67c23a;
+  color: var(--el-color-success);
 }
 
 .signal-bars {
@@ -288,7 +288,7 @@ function riskLevelClass(level: string): string {
   text-overflow: ellipsis;
 }
 
-.short-reason { color: #e6a23c; }
+.short-reason { color: var(--el-color-warning); }
 .long-reason { color: #409eff; }
 
 .ns-card-badge {
@@ -318,7 +318,7 @@ function riskLevelClass(level: string): string {
   background: var(--el-color-warning-light-9, #fdf6ec);
   border-radius: 4px;
   font-size: 11px;
-  color: #e6a23c;
+  color: var(--el-color-warning);
 }
 
 /* Price Prediction Row */
@@ -342,8 +342,8 @@ function riskLevelClass(level: string): string {
   font-size: 10px;
   font-weight: 600;
 }
-.pp-row-risk.risk-low { background: #e1f3d8; color: #67c23a; }
-.pp-row-risk.risk-mid { background: #faecd8; color: #e6a23c; }
-.pp-row-risk.risk-high { background: #fde2e2; color: #f56c6c; }
+.pp-row-risk.risk-low { background: #e1f3d8; color: var(--el-color-success); }
+.pp-row-risk.risk-mid { background: #faecd8; color: var(--el-color-warning); }
+.pp-row-risk.risk-high { background: #fde2e2; color: var(--el-color-danger); }
 
 </style>

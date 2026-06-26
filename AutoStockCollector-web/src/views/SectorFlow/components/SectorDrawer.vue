@@ -194,7 +194,7 @@ function handleGoToStock(code: string) {
   font-size: 14px;
 }
 
-.money-text.is-rise { color: #ef5350; }
-.money-text.is-fall { color: #26a69a; }
+.money-text.is-rise { color: var(--el-color-danger); }
+.money-text.is-fall { color: var(--el-color-success); }
 .text-muted { color: var(--text-muted); font-weight: normal; }
 </style>

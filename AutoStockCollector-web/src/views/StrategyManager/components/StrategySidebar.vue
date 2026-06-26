@@ -287,7 +287,7 @@ const tradingList = computed(() => {
 .strategy-list-item.is-active {
   background: var(--bg-card);
   border-color: var(--border-color-light);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 2px 8px var(--bg-hover-subtle);
 }
 
 .strategy-list-item.is-active::before {

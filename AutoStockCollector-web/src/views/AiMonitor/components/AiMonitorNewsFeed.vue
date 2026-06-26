@@ -129,30 +129,30 @@ const filteredNegativeNews = computed(() => {
   align-items: center;
   gap: 6px;
 }
-.sg-header small { font-size: 12px; font-weight: 400; color: #999; }
-.sg-bullish { background: #fef0f0; color: #f56c6c; }
-.sg-bearish { background: #f0f9eb; color: #67c23a; }
+.sg-header small { font-size: 12px; font-weight: 400; color: var(--text-muted); }
+.sg-bullish { background: #fef0f0; color: var(--el-color-danger); }
+.sg-bearish { background: #f0f9eb; color: var(--el-color-success); }
 
 .news-feed-card {
   padding: 10px 12px;
   margin-bottom: 8px;
-  background: #fff;
-  border-left: 3px solid #f56c6c;
+  background: var(--bg-card);
+  border-left: 3px solid var(--el-color-danger);
   border-radius: 6px;
   cursor: pointer;
   transition: all .15s;
   box-shadow: 0 1px 2px rgba(0,0,0,.06);
 }
 .news-feed-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,.1); transform: translateY(-1px); }
-.news-feed-card.card-bearish { border-left-color: #67c23a; }
+.news-feed-card.card-bearish { border-left-color: var(--el-color-success); }
 
 .nfc-header { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
 .nfc-stock { cursor: pointer; font-size: 13px; }
 .nfc-stock:hover { color: #409eff; }
-.nfc-name { font-size: 12px; color: #999; margin-left: 4px; }
+.nfc-name { font-size: 12px; color: var(--text-muted); margin-left: 4px; }
 .nfc-tag { margin-left: auto; font-size: 10px; height: 20px; line-height: 20px; }
-.nfc-title { font-size: 13px; font-weight: 500; margin-bottom: 6px; line-height: 1.4; color: #333; }
-.nfc-meta { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #999; flex-wrap: wrap; }
+.nfc-title { font-size: 13px; font-weight: 500; margin-bottom: 6px; line-height: 1.4; color: var(--text-primary); }
+.nfc-meta { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted); flex-wrap: wrap; }
 .nfc-date { white-space: nowrap; }
 .nfc-source { white-space: nowrap; }
 .nfc-kws { display: flex; gap: 2px; flex-wrap: wrap; }
@@ -166,8 +166,8 @@ const filteredNegativeNews = computed(() => {
 .stat-card { flex: 1; min-width: 100px; }
 .stat-label { font-size: 12px; color: var(--text-muted, #999); }
 .stat-value { font-size: 22px; font-weight: 700; margin-top: 4px; }
-.stat-bullish .stat-value { color: #f56c6c; }
-.stat-bearish .stat-value { color: #67c23a; }
+.stat-bullish .stat-value { color: var(--el-color-danger); }
+.stat-bearish .stat-value { color: var(--el-color-success); }
 
 .filter-bar {
   display: flex;

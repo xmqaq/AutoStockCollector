@@ -89,7 +89,7 @@ watch(() => props.data, () => {
   border-radius: 12px;
   background: var(--bg-card);
   border: 1px solid var(--border-color);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+  box-shadow: 0 2px 8px var(--bg-hover-subtle);
   flex: 1.2;
   display: flex;
   flex-direction: column;

@@ -423,13 +423,13 @@ onMounted(loadKeys)
 <style scoped>
 .split-layout {
   display: flex;
-  height: calc(100vh - 120px); /* 根据外层容器调整 */
+  height: 100%; /* 根据外层容器调整 */
   min-height: 600px;
   background: var(--bg-card);
   border-radius: 12px;
   border: 1px solid var(--border-color-light);
   overflow: hidden;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.02);
+  box-shadow: 0 4px 24px var(--bg-hover-subtle);
 }
 
 /* 左侧边栏 */
@@ -482,7 +482,7 @@ onMounted(loadKeys)
 .nav-item.active {
   background: var(--bg-card);
   border-color: var(--border-color-light);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 2px 8px var(--bg-hover-subtle);
 }
 
 .nav-item.is-creating {

@@ -339,5 +339,5 @@ async function doConfirmBuy() {
 .cash-warning-hint { font-size: 12px; color: var(--text-muted); margin-left: 18px; }
 .max-buy-link { color: var(--el-color-primary); cursor: pointer; text-decoration: underline; font-weight: 500; }
 .max-buy-link:hover { opacity: 0.8; }
-.text-fall { color: #26a69a; }
+.text-fall { color: var(--el-color-success); }
 </style>

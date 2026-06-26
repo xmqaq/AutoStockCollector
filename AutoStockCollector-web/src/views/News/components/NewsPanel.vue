@@ -147,7 +147,7 @@ onMounted(() => {
   flex-direction: column;
   background: var(--bg-card, #ffffff);
   border-radius: 8px;
-  border: 1px solid var(--border-color-light, #ebeef5);
+  border: 1px solid var(--border-color-light, var(--border-color));
   height: 100%;
   overflow: hidden;
 }
@@ -164,7 +164,7 @@ onMounted(() => {
 .header-title {
   font-size: 15px;
   font-weight: 600;
-  color: var(--text-primary, #303133);
+  color: var(--text-primary, var(--text-primary));
   display: flex;
   align-items: center;
   gap: 8px;
@@ -183,7 +183,7 @@ onMounted(() => {
 
 .total-badge {
   font-size: 12px;
-  color: var(--text-muted, #909399);
+  color: var(--text-muted, var(--text-muted));
 }
 
 .panel-body {
@@ -218,7 +218,7 @@ onMounted(() => {
 
 .item-time {
   font-size: 13px;
-  color: var(--text-muted, #909399);
+  color: var(--text-muted, var(--text-muted));
   font-family: var(--font-mono, monospace);
   flex-shrink: 0;
   width: 42px;
@@ -232,7 +232,7 @@ onMounted(() => {
 
 .item-title {
   font-size: 14px;
-  color: var(--text-primary, #303133);
+  color: var(--text-primary, var(--text-primary));
   line-height: 1.5;
   cursor: pointer;
   display: -webkit-box;
@@ -247,7 +247,7 @@ onMounted(() => {
 
 .breaking-badge {
   display: inline-block;
-  background: var(--el-color-danger, #f56c6c);
+  background: var(--el-color-danger, var(--el-color-danger));
   color: #fff;
   font-size: 10px;
   padding: 0 4px;
@@ -267,7 +267,7 @@ onMounted(() => {
   background: var(--bg-soft, #f4f4f5);
   border-radius: 6px;
   font-size: 12px;
-  color: var(--text-regular, #606266);
+  color: var(--text-regular, var(--text-secondary));
   line-height: 1.6;
 }
 
@@ -279,7 +279,7 @@ onMounted(() => {
   text-align: center;
   padding: 12px 0;
   font-size: 12px;
-  color: var(--text-muted, #909399);
+  color: var(--text-muted, var(--text-muted));
 }
 
 .is-loading {

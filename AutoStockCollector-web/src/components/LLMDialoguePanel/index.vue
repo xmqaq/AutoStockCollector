@@ -213,7 +213,7 @@ function copyFullContent() {
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--border-color);
   border-bottom: 1px solid var(--border-color);
 }
 
@@ -255,7 +255,7 @@ function copyFullContent() {
   display: flex;
   gap: 16px;
   padding: 8px 12px;
-  background: rgba(0, 0, 0, 0.1);
+  background: var(--bg-hover);
   border-top: 1px solid var(--border-color);
 }
 

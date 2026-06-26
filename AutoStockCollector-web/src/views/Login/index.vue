@@ -218,7 +218,7 @@ async function handleRegister() {
 
 <style scoped>
 .login-page {
-  min-height: 100vh;
+  height: 100%;
   display: flex;
   background: var(--bg-page);
   background-image: radial-gradient(var(--brand-100) 1px, transparent 1px),
@@ -566,7 +566,7 @@ async function handleRegister() {
   left: -100%;
   width: 100%;
   height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  background: linear-gradient(90deg, transparent, var(--bg-hover), transparent);
   transition: left 0.5s ease;
 }
 

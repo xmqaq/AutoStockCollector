@@ -43,7 +43,7 @@ const barOption = computed(() => {
       },
       formatter: (p: any[]) => {
         const item = p[0]
-        const color = item.value >= 0 ? '#ef5350' : '#26a69a'
+        const color = item.value >= 0 ? 'var(--el-color-danger)' : 'var(--el-color-success)'
         return `
           <div style="font-weight: 600; font-size: 15px; margin-bottom: 8px;">${item.name}</div>
           <div style="display: flex; justify-content: space-between; gap: 24px;">
@@ -71,7 +71,7 @@ const barOption = computed(() => {
       itemStyle: {
         borderRadius: [4, 4, 0, 0],
         color: (params: any) => {
-          return params.value >= 0 ? '#ef5350' : '#26a69a'
+          return params.value >= 0 ? 'var(--el-color-danger)' : 'var(--el-color-success)'
         }
       },
       data: values
@@ -89,7 +89,7 @@ const barOption = computed(() => {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+  box-shadow: 0 2px 8px var(--bg-hover-subtle);
 }
 .chart-card :deep(.el-card__header) {
   border-bottom: 1px solid var(--border-color);

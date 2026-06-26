@@ -113,8 +113,8 @@ function fmtAmount(v?: number | null): string {
   color: var(--text-faint);
 }
 
-.rise-text, .rise { color: #ef5350; }
-.fall-text, .fall { color: #26a69a; }
+.rise-text, .rise { color: var(--el-color-danger); }
+.fall-text, .fall { color: var(--el-color-success); }
 .flat-text, .flat { color: var(--text-muted); }
 
 @media (max-width: 768px) {

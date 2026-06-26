@@ -104,11 +104,11 @@ onMounted(fetchUsers)
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: linear-gradient(135deg, #ffffff 0%, #fcfcfd 100%);
-  border: 1px solid var(--border-color, #ebeef5);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color, var(--border-color));
   border-radius: 12px;
   padding: 24px 32px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.02);
+  box-shadow: 0 4px 20px var(--bg-hover-subtle);
 }
 
 .header-content {

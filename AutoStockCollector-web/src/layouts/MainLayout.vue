@@ -153,6 +153,22 @@ const menuGroups = computed((): MenuGroup[] => [
     icon: DataAnalysis,
   },
   {
+    key: 'data-center',
+    label: '数据中心',
+    icon: Monitor,
+    children: [
+      { key: '/data-monitor', label: '采集中心', icon: Monitor },
+      { key: '/stock-detail', label: '股票详情', icon: TrendCharts },
+      { key: '/market', label: '实时行情', icon: Odometer },
+      { key: '/dragon-tiger', label: '龙虎榜', icon: Lightning },
+      { key: '/margin-trading', label: '融资融券', icon: Connection },
+      { key: '/sector-flow', label: '板块流向', icon: Promotion },
+      { key: '/fund-flow', label: '资金流向排行', icon: TrendCharts },
+      { key: '/news', label: '新闻舆情', icon: ChatDotRound },
+      { key: '/research-reports', label: '投资研报', icon: Document },
+    ],
+  },
+  {
     key: 'ai',
     label: 'AI智能',
     icon: MagicStick,
@@ -202,22 +218,6 @@ const menuGroups = computed((): MenuGroup[] => [
       { key: '/ai-call-history',  label: 'AI调用记录',    icon: Monitor },
       ...(authStore.isAdmin ? [{ key: '/platform-config', label: '平台配置', icon: Setting }] : []),
       ...(authStore.isAdmin ? [{ key: '/user-management', label: '用户管理', icon: User }] : []),
-    ],
-  },
-  {
-    key: 'data-center',
-    label: '数据中心',
-    icon: Monitor,
-    children: [
-      { key: '/data-monitor', label: '采集中心', icon: Monitor },
-      { key: '/stock-detail', label: '股票详情', icon: TrendCharts },
-      { key: '/market', label: '实时行情', icon: Odometer },
-      { key: '/dragon-tiger', label: '龙虎榜', icon: Lightning },
-      { key: '/margin-trading', label: '融资融券', icon: Connection },
-      { key: '/sector-flow', label: '板块流向', icon: Promotion },
-      { key: '/fund-flow', label: '资金流向排行', icon: TrendCharts },
-      { key: '/news', label: '新闻舆情', icon: ChatDotRound },
-      { key: '/research-reports', label: '投资研报', icon: Document },
     ],
   },
 ])
@@ -294,7 +294,7 @@ onUnmounted(() => {
 
 <style scoped>
 .main-layout {
-  height: 100vh;
+  height: 100%;
   background: var(--bg-page);
 }
 

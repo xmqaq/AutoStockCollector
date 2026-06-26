@@ -89,7 +89,7 @@ watch(() => props.sectors.length, () => {
   border-radius: 12px;
   background: var(--bg-card);
   border: 1px solid var(--border-color);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+  box-shadow: 0 2px 8px var(--bg-hover-subtle);
   flex: 1.2;
   display: flex;
   flex-direction: column;
@@ -159,8 +159,8 @@ watch(() => props.sectors.length, () => {
   position: relative;
   z-index: 1;
 }
-.money-text.is-rise { color: #ef5350; }
-.money-text.is-fall { color: #26a69a; }
+.money-text.is-rise { color: var(--el-color-danger); }
+.money-text.is-fall { color: var(--el-color-success); }
 
 .table-pagination-wrapper {
   padding: 12px 16px;

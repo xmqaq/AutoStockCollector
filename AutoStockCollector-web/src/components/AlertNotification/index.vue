@@ -31,7 +31,7 @@
           <el-icon v-if="alert.type === 'price'" color="#c9943a"><TrendCharts /></el-icon>
           <el-icon v-else-if="alert.type === 'volume'" color="#3f7fae"><Histogram /></el-icon>
           <el-icon v-else-if="alert.type === 'flow'" color="#3f9d70"><Money /></el-icon>
-          <el-icon v-else color="#909399"><Bell /></el-icon>
+          <el-icon v-else color="var(--text-muted)"><Bell /></el-icon>
         </div>
         <div class="alert-content">
           <div class="alert-title-row">

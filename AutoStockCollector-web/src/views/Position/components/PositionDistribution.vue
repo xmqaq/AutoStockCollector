@@ -35,9 +35,9 @@ const sortedPositions = computed(() => {
 <style scoped>
 .pro-card {
   background: var(--bg-card, #ffffff);
-  border: 1px solid var(--border-color, #ebeef5);
+  border: 1px solid var(--border-color, var(--border-color));
   border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.02);
+  box-shadow: 0 2px 12px var(--bg-hover-subtle);
   display: flex;
   flex-direction: column;
   max-height: 440px;
@@ -46,7 +46,7 @@ const sortedPositions = computed(() => {
 .pro-card :deep(.el-card__header) {
   border-bottom: 1px solid var(--border-color, #ebeef5);
   padding: 16px 20px;
-  background-color: rgba(0,0,0,0.01);
+  background-color: var(--bg-hover-subtle);
 }
 
 .pro-card :deep(.el-card__body) {
@@ -109,12 +109,12 @@ const sortedPositions = computed(() => {
 
 .dist-label { 
   font-weight: 600; 
-  color: var(--text-primary, #303133); 
+  color: var(--text-primary, var(--text-primary)); 
 }
 
 .text-muted {
   font-weight: 400;
-  color: var(--text-muted, #909399);
+  color: var(--text-muted, var(--text-muted));
   margin-left: 4px;
 }
 
@@ -123,7 +123,7 @@ const sortedPositions = computed(() => {
 }
 
 .dist-percent { 
-  color: var(--text-primary, #303133); 
+  color: var(--text-primary, var(--text-primary)); 
   font-weight: 600;
 }
 

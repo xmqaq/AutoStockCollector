@@ -444,11 +444,11 @@ onMounted(() => {
 }
 
 .rise {
-  color: #ef5350;
+  color: var(--el-color-danger);
 }
 
 .fall {
-  color: #26a69a;
+  color: var(--el-color-success);
 }
 
 .price-range {

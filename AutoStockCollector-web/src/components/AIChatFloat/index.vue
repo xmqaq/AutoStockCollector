@@ -550,7 +550,7 @@ onMounted(() => {
   display: flex;
   gap: 12px;
   padding: 16px 20px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--bg-hover-subtle);
   border-bottom: 1px solid var(--border-color);
   backdrop-filter: blur(10px);
   z-index: 2;
@@ -698,7 +698,7 @@ onMounted(() => {
 }
 
 .message.user .message-text :deep(code) {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--bg-hover);
   color: #fff;
 }
 
@@ -779,7 +779,7 @@ onMounted(() => {
   display: flex;
   gap: 8px;
   padding: 10px 20px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--bg-hover-subtle);
   border-top: 1px solid var(--border-color);
 }
 
@@ -797,7 +797,7 @@ onMounted(() => {
   padding: 16px 20px 24px;
   background: var(--bg-elevated);
   border-top: 1px solid var(--border-color);
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.02);
+  box-shadow: 0 -4px 20px var(--bg-hover-subtle);
 }
 
 .input-area :deep(.el-textarea__inner) {

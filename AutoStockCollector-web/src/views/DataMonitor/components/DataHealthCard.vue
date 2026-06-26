@@ -406,12 +406,12 @@ async function handleClearSingle(row: { value: string; label: string; record_cou
   color: var(--text-muted);
 }
 .icon-news { color: #409EFF; }
-.icon-sector { color: #67C23A; }
-.icon-stock_info { color: #E6A23C; }
-.icon-fund_flow { color: #F56C6C; }
-.icon-daily { color: #909399; }
+.icon-sector { color: var(--el-color-success); }
+.icon-stock_info { color: var(--el-color-warning); }
+.icon-fund_flow { color: var(--el-color-danger); }
+.icon-daily { color: var(--text-muted); }
 .icon-financial { color: #8A2BE2; }
-.icon-minute { color: #E6A23C; }
+.icon-minute { color: var(--el-color-warning); }
 .type-label {
   font-weight: 500;
   color: var(--text-primary);

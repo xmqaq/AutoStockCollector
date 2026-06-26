@@ -5,7 +5,7 @@
         <span class="pc-name">{{ p.name }}</span>
         <el-tag size="small" :type="p.fail === 0 ? 'success' : 'danger'" effect="light">{{ p.count }}</el-tag>
       </div>
-      <el-progress :percentage="p.rate" :stroke-width="6" :color="p.rate >= 80 ? '#67c23a' : p.rate >= 50 ? '#e6a23c' : '#f56c6c'" />
+      <el-progress :percentage="p.rate" :stroke-width="6" :color="p.rate >= 80 ? 'var(--el-color-success)' : p.rate >= 50 ? 'var(--el-color-warning)' : 'var(--el-color-danger)'" />
       <div class="pc-detail">{{ p.success }}/{{ p.count }} 成功</div>
     </el-card>
   </div>
@@ -29,10 +29,10 @@ function colorIdx(name: string) {
 .provider-card { flex: 1; min-width: 130px; padding: 4px; }
 .pc-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
 .pc-name { font-weight: 600; font-size: 13px; }
-.pc-detail { font-size: 10px; color: #999; margin-top: 2px; }
+.pc-detail { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
 .pc-blue .pc-name { color: #409eff; }
-.pc-green .pc-name { color: #67c23a; }
-.pc-orange .pc-name { color: #e6a23c; }
+.pc-green .pc-name { color: var(--el-color-success); }
+.pc-orange .pc-name { color: var(--el-color-warning); }
 .pc-purple .pc-name { color: #9b59b6; }
 .pc-cyan .pc-name { color: #00bcd4; }
 .pc-pink .pc-name { color: #e91e63; }

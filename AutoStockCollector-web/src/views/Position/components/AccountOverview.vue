@@ -90,10 +90,10 @@ defineEmits<{
 
 <style scoped>
 .premium-account-panel {
-  background: linear-gradient(135deg, #ffffff 0%, #f8fafd 100%);
-  border: 1px solid var(--border-color, #ebeef5);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color, var(--border-color));
   border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+  box-shadow: 0 4px 20px var(--bg-hover-subtle);
   padding: 24px 32px;
   position: relative;
   overflow: hidden;
@@ -134,7 +134,7 @@ defineEmits<{
 
 .balance-header .label {
   font-size: 14px;
-  color: var(--text-muted, #909399);
+  color: var(--text-muted, var(--text-muted));
   font-weight: 500;
 }
 
@@ -142,7 +142,7 @@ defineEmits<{
   display: flex;
   align-items: center;
   gap: 6px;
-  background: rgba(0,0,0,0.04);
+  background: var(--bg-hover-subtle);
   padding: 2px 8px;
   border-radius: 12px;
 }
@@ -150,9 +150,9 @@ defineEmits<{
 .indicator-dot {
   width: 6px; height: 6px; border-radius: 50%;
 }
-.indicator-live { background: #67c23a; box-shadow: 0 0 4px #67c23a; }
+.indicator-live { background: var(--el-color-success); box-shadow: 0 0 4px var(--el-color-success); }
 .indicator-close { background: #c0c4cc; }
-.indicator-text { font-size: 12px; color: var(--text-regular, #606266); font-weight: 500; }
+.indicator-text { font-size: 12px; color: var(--text-regular, var(--text-secondary)); font-weight: 500; }
 
 .balance-amount {
   display: flex;
@@ -164,7 +164,7 @@ defineEmits<{
 .currency {
   font-size: 24px;
   font-weight: 600;
-  color: var(--text-primary, #303133);
+  color: var(--text-primary, var(--text-primary));
 }
 
 .amount-value {
@@ -189,8 +189,8 @@ defineEmits<{
   font-size: 12px;
   font-weight: bold;
 }
-.badge-rise { background: rgba(239, 83, 80, 0.12); color: #ef5350; }
-.badge-fall { background: rgba(38, 166, 154, 0.12); color: #26a69a; }
+.badge-rise { background: rgba(239, 83, 80, 0.12); color: var(--el-color-danger); }
+.badge-fall { background: rgba(38, 166, 154, 0.12); color: var(--el-color-success); }
 
 /* 分割线 */
 .divider {
@@ -221,14 +221,14 @@ defineEmits<{
 
 .stat-label {
   font-size: 13px;
-  color: var(--text-muted, #909399);
+  color: var(--text-muted, var(--text-muted));
 }
 
 .stat-val {
   font-size: 20px;
   font-weight: 600;
   font-family: var(--font-mono, "DIN Alternate", "Helvetica Neue", sans-serif);
-  color: var(--text-primary, #303133);
+  color: var(--text-primary, var(--text-primary));
 }
 
 .text-primary { color: var(--el-color-primary, #409eff); }
@@ -266,7 +266,7 @@ defineEmits<{
   justify-content: center;
 }
 
-.text-rise { color: #ef5350; }
-.text-fall { color: #26a69a; }
+.text-rise { color: var(--el-color-danger); }
+.text-fall { color: var(--el-color-success); }
 .text-neutral { color: var(--text-primary); }
 </style>

@@ -27,6 +27,7 @@
       :data="list" 
       stripe 
       v-loading="loading"
+      height="100%"
       @selection-change="onSelectionChange" 
       row-key="code" 
       :row-class-name="rowClassName"
@@ -198,12 +199,24 @@ function onRowDrop(e: DragEvent) {
 .section-card { 
   border-radius: 16px;
   border: none;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
-  background: #fff;
+  box-shadow: 0 4px 16px var(--bg-hover-subtle);
+  background: var(--bg-card);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
 }
 .section-card :deep(.el-card__header) { 
   border-bottom: 1px solid var(--el-border-color-lighter); 
   padding: 16px 24px; 
+  flex-shrink: 0;
+}
+.section-card :deep(.el-card__body) {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
 }
 .card-header { 
   display: flex; 
@@ -226,6 +239,10 @@ function onRowDrop(e: DragEvent) {
 }
 .empty-state {
   padding: 60px 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .custom-table :deep(td.el-table__cell) {
   padding: 12px 0;

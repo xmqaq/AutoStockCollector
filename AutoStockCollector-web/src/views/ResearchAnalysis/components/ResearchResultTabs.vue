@@ -22,10 +22,10 @@
     </el-card>
 
     <div class="ra-tabs-container">
-      <el-tabs v-model="localResultTab" class="ra-tabs">
+      <el-collapse v-model="activeNames" class="ra-collapse">
         <!-- 主题分析 -->
-        <el-tab-pane name="chain">
-          <template #label>
+        <el-collapse-item name="chain">
+          <template #title>
             <span class="tab-label"><el-icon><Connection /></el-icon> 供应链主题分析</span>
           </template>
           <div class="tab-content-wrapper">
@@ -50,7 +50,7 @@
                 <template #default="{ row }">
                   <el-progress 
                     :percentage="row.theme_score" 
-                    :color="row.theme_score >= 60 ? '#f56c6c' : row.theme_score >= 40 ? '#e6a23c' : '#909399'"
+                    :color="row.theme_score >= 60 ? 'var(--el-color-danger)' : row.theme_score >= 40 ? 'var(--el-color-warning)' : 'var(--text-muted)'"
                     :stroke-width="8"
                     :show-text="false"
                     style="width: 60px; display: inline-block; vertical-align: middle; margin-right: 8px"
@@ -81,21 +81,21 @@
               </el-table-column>
             </el-table>
           </div>
-        </el-tab-pane>
+        </el-collapse-item>
 
         <!-- 主题热度图 -->
-        <el-tab-pane name="heatmap">
-          <template #label>
+        <el-collapse-item name="heatmap">
+          <template #title>
             <span class="tab-label"><el-icon><DataAnalysis /></el-icon> 瓶颈热度矩阵图</span>
           </template>
           <div class="tab-content-wrapper">
             <div ref="heatmapRef" style="width:100%;height:550px" />
           </div>
-        </el-tab-pane>
+        </el-collapse-item>
 
         <!-- 候选标的 -->
-        <el-tab-pane name="candidates">
-          <template #label>
+        <el-collapse-item name="candidates">
+          <template #title>
             <span class="tab-label"><el-icon><DataLine /></el-icon> 精选标的池 ({{ result.candidates?.length || 0 }})</span>
           </template>
           <div class="tab-content-wrapper">
@@ -184,22 +184,22 @@
               </el-table-column>
             </el-table>
           </div>
-        </el-tab-pane>
+        </el-collapse-item>
 
         <!-- 研报简报 -->
-        <el-tab-pane name="report">
-          <template #label>
+        <el-collapse-item name="report">
+          <template #title>
             <span class="tab-label"><el-icon><Document /></el-icon> AI研报摘要</span>
           </template>
           <div class="tab-content-wrapper report-wrapper">
             <div v-if="result.report_md" class="md-content" v-html="renderMd(result.report_md)" />
             <el-empty v-else description="暂无研报摘要内容" :image-size="100" />
           </div>
-        </el-tab-pane>
+        </el-collapse-item>
 
         <!-- 板块详情 -->
-        <el-tab-pane name="details">
-          <template #label>
+        <el-collapse-item name="details">
+          <template #title>
             <span class="tab-label"><el-icon><Warning /></el-icon> 抓取日志</span>
           </template>
           <div class="tab-content-wrapper details-wrapper">
@@ -222,8 +222,8 @@
               </el-descriptions-item>
             </el-descriptions>
           </div>
-        </el-tab-pane>
-      </el-tabs>
+        </el-collapse-item>
+      </el-collapse>
     </div>
   </div>
 </template>
@@ -248,10 +248,7 @@ const emit = defineEmits<{
   (e: 'price-action-jump', row: any): void
 }>()
 
-const localResultTab = computed({
-  get: () => props.activeTab,
-  set: (val) => emit('update:activeTab', val)
-})
+const activeNames = ref(['chain', 'heatmap', 'candidates', 'report', 'details'])
 
 const heatmapRef = ref<HTMLDivElement | null>(null)
 let chartInstance: echarts.ECharts | null = null
@@ -382,13 +379,13 @@ function renderHeatmap() {
 }
 
 watch(() => props.result, (val) => {
-  if (val && val.chain_view?.length && localResultTab.value === 'heatmap') {
+  if (val && val.chain_view?.length && activeNames.value.includes('heatmap')) {
     renderHeatmap()
   }
 }, { deep: true })
 
-watch(() => localResultTab.value, (val) => {
-  if (val === 'heatmap') {
+watch(() => activeNames.value, (val) => {
+  if (val.includes('heatmap')) {
     setTimeout(() => { renderHeatmap() }, 100)
   }
 })
@@ -398,7 +395,7 @@ onMounted(() => {
     resizeObs = new ResizeObserver(() => { chartInstance?.resize() })
     resizeObs.observe(heatmapRef.value)
   }
-  if (localResultTab.value === 'heatmap') {
+  if (activeNames.value.includes('heatmap')) {
     renderHeatmap()
   }
 })
@@ -425,8 +422,8 @@ onUnmounted(() => {
 .ra-result-header {
   border-radius: 16px;
   border: none;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
-  background: linear-gradient(145deg, #ffffff 0%, #fcfcfd 100%);
+  box-shadow: 0 4px 16px var(--bg-hover-subtle);
+  background: var(--bg-card);
   overflow: hidden;
 }
 .ra-result-header :deep(.el-card__body) {
@@ -474,25 +471,28 @@ onUnmounted(() => {
 }
 
 .ra-tabs-container {
-  background: #ffffff;
+  background: var(--bg-card);
   border-radius: 16px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 4px 16px var(--bg-hover-subtle);
   overflow: hidden;
 }
 
-.ra-tabs :deep(.el-tabs__header) {
-  margin-bottom: 0;
+.ra-collapse {
+  border: none;
+}
+
+.ra-collapse :deep(.el-collapse-item__header) {
   background: var(--el-fill-color-light);
   padding: 0 16px;
-}
-.ra-tabs :deep(.el-tabs__nav-wrap::after) {
-  height: 1px;
-}
-.ra-tabs :deep(.el-tabs__item) {
   font-size: 15px;
-  height: 50px;
-  line-height: 50px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-color);
 }
+
+.ra-collapse :deep(.el-collapse-item__wrap) {
+  border-bottom: none;
+}
+
 .tab-label {
   display: flex;
   align-items: center;
@@ -501,8 +501,7 @@ onUnmounted(() => {
 
 .tab-content-wrapper {
   padding: 20px;
-  background: #fff;
-  min-height: 400px;
+  background: var(--bg-card);
 }
 
 .sector-text {
@@ -588,7 +587,7 @@ onUnmounted(() => {
   gap: 20px;
 }
 .detail-desc {
-  box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+  box-shadow: 0 2px 8px var(--bg-hover-subtle);
   border-radius: 8px;
   overflow: hidden;
 }

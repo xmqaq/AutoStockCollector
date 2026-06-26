@@ -152,7 +152,7 @@ function getProfitBgClass(val: number) {
 .modern-ranking-card {
   border-radius: 16px;
   border: 1px solid var(--border-color-light);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.02);
+  box-shadow: 0 4px 24px var(--bg-hover-subtle);
   overflow: hidden;
   background: var(--bg-card);
 }

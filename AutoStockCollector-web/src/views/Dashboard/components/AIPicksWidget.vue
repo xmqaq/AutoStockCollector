@@ -37,7 +37,7 @@
         <div class="pick-stats">
           <div class="stat-item">
             <span class="stat-label">AI 评分</span>
-            <span class="stat-value score">{{ pick.score }}</span>
+            <span class="stat-value score">{{ pick.composite }}</span>
           </div>
           <div class="stat-item">
             <span class="stat-label">胜率预测</span>

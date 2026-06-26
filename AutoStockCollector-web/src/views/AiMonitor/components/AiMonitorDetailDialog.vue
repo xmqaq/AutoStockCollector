@@ -427,10 +427,10 @@ function dimLabel(k: string): string {
 }
 
 function scoreColor(score: number): string {
-  if (score >= 75) return '#f56c6c'
-  if (score >= 60) return '#e6a23c'
-  if (score >= 40) return '#909399'
-  return '#67c23a'
+  if (score >= 75) return 'var(--el-color-danger)'
+  if (score >= 60) return 'var(--el-color-warning)'
+  if (score >= 40) return 'var(--text-muted)'
+  return 'var(--el-color-success)'
 }
 
 function signalTagType(sig: string): string {
@@ -455,8 +455,8 @@ function trendLabel(t?: string): string {
 
 <style scoped>
 .change { font-size: 13px; font-weight: 600; }
-.change.up { color: #f56c6c; }
-.change.down { color: #67c23a; }
+.change.up { color: var(--el-color-danger); }
+.change.down { color: var(--el-color-success); }
 
 /* Detail Dialog */
 .detail-header {
@@ -485,14 +485,14 @@ function trendLabel(t?: string): string {
 /* AI Trading Advice */
 .dl-advice {
   margin-bottom: 16px;
-  border-left: 4px solid #909399;
+  border-left: 4px solid var(--text-muted);
 }
-.dl-advice.advice-buy { border-left-color: #f56c6c; }
-.dl-advice.advice-add { border-left-color: #e6a23c; }
-.dl-advice.advice-reduce { border-left-color: #909399; }
-.dl-advice.advice-sell { border-left-color: #67c23a; }
-.dl-advice.advice-watch { border-left-color: #909399; }
-.dl-advice.advice-hold { border-left-color: #e6a23c; }
+.dl-advice.advice-buy { border-left-color: var(--el-color-danger); }
+.dl-advice.advice-add { border-left-color: var(--el-color-warning); }
+.dl-advice.advice-reduce { border-left-color: var(--text-muted); }
+.dl-advice.advice-sell { border-left-color: var(--el-color-success); }
+.dl-advice.advice-watch { border-left-color: var(--text-muted); }
+.dl-advice.advice-hold { border-left-color: var(--el-color-warning); }
 .advice-header {
   display: flex;
   align-items: center;
@@ -509,9 +509,9 @@ function trendLabel(t?: string): string {
 .advice-summary {
   font-size: 14px;
   font-weight: 600;
-  color: #303133;
+  color: var(--text-primary);
   padding: 8px 12px;
-  background: #f5f7fa;
+  background: var(--bg-soft);
   border-radius: 6px;
   margin-bottom: 10px;
   line-height: 1.5;
@@ -535,10 +535,10 @@ function trendLabel(t?: string): string {
   gap: 4px 12px;
   padding: 6px 12px;
   margin-top: 6px;
-  background: #fff7e6;
+  background: var(--el-color-warning-light-9);
   border-radius: 4px;
   font-size: 12px;
-  color: #d48806;
+  color: var(--el-color-warning);
 }
 .advice-divergence .div-icon { font-size: 14px; }
 .advice-divergence .div-item { line-height: 1.4; }
@@ -551,7 +551,7 @@ function trendLabel(t?: string): string {
 .adv-price-item {
   flex: 1;
   min-width: 120px;
-  background: #fafafa;
+  background: var(--bg-soft);
   border-radius: 4px;
   padding: 6px 10px;
   text-align: center;
@@ -559,20 +559,20 @@ function trendLabel(t?: string): string {
 .adv-price-item .ap-label {
   display: block;
   font-size: 11px;
-  color: #909399;
+  color: var(--text-muted);
   margin-bottom: 2px;
 }
 .adv-price-item .ap-value {
   font-size: 15px;
   font-weight: 700;
-  color: #303133;
+  color: var(--text-primary);
 }
 .adv-price-item .ap-value small {
   font-size: 11px;
   font-weight: 400;
 }
-.adv-price-item .ap-value.up { color: #f56c6c; }
-.adv-price-item .ap-value.down { color: #67c23a; }
+.adv-price-item .ap-value.up { color: var(--el-color-danger); }
+.adv-price-item .ap-value.down { color: var(--el-color-success); }
 .advice-metrics {
   display: flex;
   gap: 12px;
@@ -584,7 +584,7 @@ function trendLabel(t?: string): string {
   align-items: center;
   min-width: 60px;
 }
-.adv-m-label { font-size: 10px; color: #999; }
+.adv-m-label { font-size: 10px; color: var(--text-muted); }
 .adv-m-val { font-size: 13px; font-weight: 600; }
 .advice-dims {
   margin-top: 10px;
@@ -597,7 +597,7 @@ function trendLabel(t?: string): string {
   align-items: center;
   gap: 6px;
 }
-.dim-label { font-size: 11px; color: #999; width: 56px; flex-shrink: 0; }
+.dim-label { font-size: 11px; color: var(--text-muted); width: 56px; flex-shrink: 0; }
 .dim-bar-bg {
   flex: 1;
   height: 6px;
@@ -613,10 +613,10 @@ function trendLabel(t?: string): string {
 .dl-signal-box {
   padding: 12px;
   border-radius: 8px;
-  border: 1px solid var(--border-color, #eee);
+  border: 1px solid var(--border-color, var(--border-color));
 }
 
-.short-box { border-left: 3px solid #e6a23c; }
+.short-box { border-left: 3px solid var(--el-color-warning); }
 .long-box { border-left: 3px solid #409eff; }
 
 .dl-signal-header {
@@ -675,7 +675,7 @@ function trendLabel(t?: string): string {
 .comp-label { font-size: 12px; color: var(--text-muted, #999); }
 .comp-score { font-size: 28px; font-weight: 700; }
 .comp-conf { font-size: 12px; color: var(--text-muted, #999); }
-.comp-div { font-size: 11px; color: #e6a23c; }
+.comp-div { font-size: 11px; color: var(--el-color-warning); }
 
 .pp-summary {
   display: flex;
@@ -684,14 +684,14 @@ function trendLabel(t?: string): string {
   flex-wrap: wrap;
 }
 .pp-sum-item { display: flex; flex-direction: column; align-items: center; min-width: 50px; }
-.pp-sum-label { font-size: 10px; color: #999; }
+.pp-sum-label { font-size: 10px; color: var(--text-muted); }
 .pp-sum-val { font-size: 14px; font-weight: 700; font-family: 'IBM Plex Mono', monospace; }
-.pp-sum-val.up { color: #f56c6c; }
-.pp-sum-val.down { color: #67c23a; }
+.pp-sum-val.up { color: var(--el-color-danger); }
+.pp-sum-val.down { color: var(--el-color-success); }
 .pp-risk-tag { font-size: 11px; padding: 1px 4px; border-radius: 3px; }
-.pp-risk-tag.risk-low { background: #e1f3d8; color: #67c23a; }
-.pp-risk-tag.risk-mid { background: #faecd8; color: #e6a23c; }
-.pp-risk-tag.risk-high { background: #fde2e2; color: #f56c6c; }
+.pp-risk-tag.risk-low { background: #e1f3d8; color: var(--el-color-success); }
+.pp-risk-tag.risk-mid { background: #faecd8; color: var(--el-color-warning); }
+.pp-risk-tag.risk-high { background: #fde2e2; color: var(--el-color-danger); }
 
 .dl-tabs { margin-top: 8px; }
 
@@ -742,10 +742,10 @@ function trendLabel(t?: string): string {
   background: var(--el-fill-color, #f5f5f5);
   border-radius: 4px;
 }
-.pp-dl-label { font-size: 11px; color: #999; }
+.pp-dl-label { font-size: 11px; color: var(--text-muted); }
 .pp-dl-val { font-size: 14px; font-weight: 600; font-family: 'IBM Plex Mono', monospace; }
-.pp-dl-val.down { color: #67c23a; }
+.pp-dl-val.down { color: var(--el-color-success); }
 .concept-chip { font-size: 11px; padding: 0 4px; height: 20px; line-height: 20px; color: #F23645; border-color: #F23645; }
-.tab-content .di-value.up { color: #f56c6c; }
-.tab-content .di-value.down { color: #67c23a; }
+.tab-content .di-value.up { color: var(--el-color-danger); }
+.tab-content .di-value.down { color: var(--el-color-success); }
 </style>

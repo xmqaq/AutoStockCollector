@@ -309,7 +309,7 @@ function saveStrategy() {
   padding: 30px;
   border-radius: 12px;
   border: 1px solid var(--border-color);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+  box-shadow: 0 4px 12px var(--bg-hover-subtle);
 }
 
 .pane-body.p-0 {
@@ -462,7 +462,7 @@ function saveStrategy() {
 
 .indicator-card.is-active {
   border-color: var(--el-color-primary-light-5);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  box-shadow: 0 2px 8px var(--bg-hover-subtle);
 }
 
 .ind-header {

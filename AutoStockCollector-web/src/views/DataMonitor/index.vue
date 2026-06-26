@@ -1161,7 +1161,7 @@ onUnmounted(() => {
   border: 1px solid var(--border-color);
   border-radius: 10px;
   padding: 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 2px 8px var(--bg-hover-subtle);
   transition: all 0.2s ease;
   display: flex;
   flex-direction: column;

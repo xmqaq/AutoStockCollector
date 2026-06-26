@@ -26,7 +26,7 @@
             :percentage="donePercent" 
             :show-text="false" 
             :stroke-width="4" 
-            color="#67c23a" 
+            color="var(--el-color-success)" 
           />
         </div>
       </div>
@@ -72,8 +72,8 @@ const donePercent = computed(() =>
   align-items: center;
   padding: 24px;
   border-radius: 16px;
-  background: #fff;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+  background: var(--bg-card);
+  box-shadow: 0 4px 16px var(--bg-hover-subtle);
   transition: transform 0.3s ease, box-shadow 0.3s ease;
   overflow: hidden;
   border: 1px solid #f0f2f5;
@@ -102,12 +102,12 @@ const donePercent = computed(() =>
 
 .done-card .stat-icon {
   background: #f0f9eb;
-  color: #67c23a;
+  color: var(--el-color-success);
 }
 
 .pending-card .stat-icon {
   background: #fdf6ec;
-  color: #e6a23c;
+  color: var(--el-color-warning);
 }
 
 .stat-info {
@@ -117,14 +117,14 @@ const donePercent = computed(() =>
 .stat-value {
   font-size: 28px;
   font-weight: 700;
-  color: #303133;
+  color: var(--text-primary);
   line-height: 1.2;
   font-family: "DIN Alternate", "SF Pro Display", sans-serif;
 }
 
 .stat-label {
   font-size: 14px;
-  color: #909399;
+  color: var(--text-muted);
   margin-top: 4px;
   font-weight: 500;
 }

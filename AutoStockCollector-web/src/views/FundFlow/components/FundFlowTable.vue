@@ -87,7 +87,7 @@ function goToStock(row: Record<string, unknown>) {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+  box-shadow: 0 2px 8px var(--bg-hover-subtle);
 }
 .table-card :deep(.el-card__header) {
   border-bottom: 1px solid var(--border-color);
@@ -140,6 +140,6 @@ function goToStock(row: Record<string, unknown>) {
   font-size: 14px;
   font-weight: 600;
 }
-.money-text.is-rise { color: #ef5350; }
-.money-text.is-fall { color: #26a69a; }
+.money-text.is-rise { color: var(--el-color-danger); }
+.money-text.is-fall { color: var(--el-color-success); }
 </style>

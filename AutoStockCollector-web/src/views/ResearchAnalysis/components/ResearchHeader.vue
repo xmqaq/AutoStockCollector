@@ -10,12 +10,22 @@
       </div>
       <div class="ra-head-right">
         <el-button :icon="Refresh" @click="$emit('load-history')" round class="hover-btn">刷新历史</el-button>
+        <el-button 
+          :icon="isCollapsed ? ArrowDown : ArrowUp" 
+          @click="isCollapsed = !isCollapsed" 
+          round 
+          class="hover-btn"
+        >
+          {{ isCollapsed ? '展开' : '收起' }}
+        </el-button>
       </div>
     </div>
 
-    <div class="ra-controls-wrapper">
-      <div class="ra-controls">
-        <div class="ra-sector-select">
+    <el-collapse-transition>
+      <div v-show="!isCollapsed">
+        <div class="ra-controls-wrapper">
+          <div class="ra-controls">
+            <div class="ra-sector-select">
           <span class="label">
             <el-icon class="label-icon"><Filter /></el-icon>
             行业板块
@@ -45,6 +55,8 @@
         </div>
       </div>
     </div>
+      </div>
+    </el-collapse-transition>
 
     <!-- 进度条 -->
     <div v-if="running" class="ra-progress">
@@ -73,8 +85,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { MagicStick, Refresh, Filter, Loading } from '@element-plus/icons-vue'
+import { computed, ref } from 'vue'
+import { MagicStick, Refresh, Filter, Loading, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
+
+const isCollapsed = ref(false)
 
 const props = defineProps<{
   selectedSectors: string[]
@@ -110,8 +124,8 @@ const localTopN = computed({
 .ra-head {
   border-radius: 16px;
   border: none;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
-  background: linear-gradient(145deg, #ffffff 0%, #fcfcfd 100%);
+  box-shadow: 0 4px 16px var(--bg-hover-subtle);
+  background: var(--bg-card);
   overflow: hidden;
 }
 .ra-head :deep(.el-card__body) {
@@ -206,7 +220,7 @@ const localTopN = computed({
   padding: 8px 16px;
   font-size: 13px;
   box-shadow: none !important;
-  background: #fff;
+  background: var(--bg-card);
   transition: all 0.2s;
 }
 .sector-group :deep(.el-checkbox-button.is-checked .el-checkbox-button__inner) {
@@ -259,10 +273,10 @@ const localTopN = computed({
 .ra-progress { 
   margin-top: 24px; 
   padding: 20px; 
-  background: #fff; 
+  background: var(--bg-card); 
   border-radius: 12px; 
   border: 1px solid var(--el-border-color-lighter);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.02);
+  box-shadow: 0 2px 12px var(--bg-hover-subtle);
 }
 .progress-header {
   display: flex;

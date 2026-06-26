@@ -180,9 +180,9 @@ function clearTerminal() {
 
 function getScoreColor(score: number | undefined) {
   if (!score) return 'inherit'
-  if (score >= 80) return '#f56c6c'
-  if (score >= 60) return '#e6a23c'
-  if (score >= 40) return '#67c23a'
+  if (score >= 80) return 'var(--el-color-danger)'
+  if (score >= 60) return 'var(--el-color-warning)'
+  if (score >= 40) return 'var(--el-color-success)'
   return 'inherit'
 }
 
@@ -227,7 +227,7 @@ function renderChart(picks: StrategyTestPick[]) {
       indicator: [ { name: '基本面', max: 100 }, { name: '技术面', max: 100 }, { name: '资金面', max: 100 }, { name: '估值面', max: 100 } ],
       radius: '60%',
       center: ['50%', '50%'],
-      axisName: { color: '#909399', fontSize: 10 },
+      axisName: { color: 'var(--text-muted)', fontSize: 10 },
       splitArea: { areaStyle: { color: ['transparent'] } }
     },
     series: [{
@@ -334,7 +334,7 @@ function renderChart(picks: StrategyTestPick[]) {
   display: flex;
   min-height: 0;
   overflow: hidden;
-  background: #1e1e1e; /* 经典终端底色 */
+  background: var(--bg-deep); /* 经典终端底色 */
 }
 
 /* 日志区 */
@@ -355,7 +355,7 @@ function renderChart(picks: StrategyTestPick[]) {
   width: 6px;
 }
 .terminal-log-pane::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--bg-hover);
   border-radius: 3px;
 }
 
@@ -389,7 +389,7 @@ function renderChart(picks: StrategyTestPick[]) {
   background-color: #569CD6;
 }
 .progress-wrapper :deep(.el-progress-bar__outer) {
-  background-color: #333;
+  background-color: var(--text-primary);
 }
 
 /* 结果区 */
@@ -466,6 +466,6 @@ function renderChart(picks: StrategyTestPick[]) {
   color: var(--text-faint);
   font-size: 14px;
   font-style: italic;
-  background: #1e1e1e;
+  background: var(--bg-deep);
 }
 </style>

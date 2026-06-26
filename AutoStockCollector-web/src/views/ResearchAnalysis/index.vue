@@ -250,7 +250,7 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 24px;
   background-color: var(--el-bg-color-page);
-  min-height: calc(100vh - 60px);
+  min-height: 100%;
   max-width: 1600px;
   margin: 0 auto;
 }

@@ -171,8 +171,8 @@ function signalSourceLabel(src: string) {
 
 function scoreColor(v: number) {
   if (v >= 65) return '#F23645'
-  if (v >= 50) return '#e6a23c'
-  if (v >= 35) return '#909399'
+  if (v >= 50) return 'var(--el-color-warning)'
+  if (v >= 35) return 'var(--text-muted)'
   return '#11C27E'
 }
 </script>
@@ -185,18 +185,18 @@ function scoreColor(v: number) {
 .pa-stat-value { font-size: 20px; font-weight: 700; }
 .sc-total .pa-stat-value { color: var(--text-primary); }
 .sc-buy .pa-stat-value { color: #F23645; }
-.sc-add .pa-stat-value { color: #e6a23c; }
+.sc-add .pa-stat-value { color: var(--el-color-warning); }
 .sc-hold .pa-stat-value { color: #409eff; }
-.sc-reduce .pa-stat-value { color: #909399; }
+.sc-reduce .pa-stat-value { color: var(--text-muted); }
 .sc-sell .pa-stat-value { color: #11C27E; }
 
 .pa-filter { display: flex; gap: 8px; }
 .pa-list { display: flex; flex-direction: column; gap: 10px; }
 .pa-card { border-left: 4px solid #dcdfe6; border-radius: 8px; }
 .pa-buy { border-left-color: #F23645; }
-.pa-add { border-left-color: #e6a23c; }
+.pa-add { border-left-color: var(--el-color-warning); }
 .pa-hold { border-left-color: #409eff; }
-.pa-reduce { border-left-color: #909399; }
+.pa-reduce { border-left-color: var(--text-muted); }
 .pa-sell { border-left-color: #11C27E; }
 
 .pa-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }

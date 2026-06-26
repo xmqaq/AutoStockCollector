@@ -156,8 +156,8 @@ function getAvatarColor(username: string) {
 
 <style scoped>
 .pro-card {
-  background: #ffffff;
-  border: 1px solid #ebeef5;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
   border-radius: 12px;
   box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
 }
@@ -165,7 +165,7 @@ function getAvatarColor(username: string) {
 .pro-card :deep(.el-card__header) {
   border-bottom: 1px solid #ebeef5;
   padding: 18px 24px;
-  background-color: #ffffff;
+  background-color: var(--bg-card);
   border-radius: 12px 12px 0 0;
 }
 
@@ -180,7 +180,7 @@ function getAvatarColor(username: string) {
 }
 
 .card-title {
-  color: #303133;
+  color: var(--text-primary);
   font-size: 16px;
   font-weight: 600;
   display: flex;
@@ -198,7 +198,7 @@ function getAvatarColor(username: string) {
 }
 
 .pro-table {
-  --el-table-border-color: #ebeef5;
+  --el-table-border-color: var(--border-color);
   --el-table-row-hover-bg-color: #f5f7fa;
 }
 
@@ -236,10 +236,10 @@ function getAvatarColor(username: string) {
 }
 
 .bg-blue { background: linear-gradient(135deg, #36a3f7, #2080e6); }
-.bg-green { background: linear-gradient(135deg, #67c23a, #5daf34); }
-.bg-orange { background: linear-gradient(135deg, #e6a23c, #cf9236); }
+.bg-green { background: linear-gradient(135deg, var(--el-color-success), #5daf34); }
+.bg-orange { background: linear-gradient(135deg, var(--el-color-warning), #cf9236); }
 .bg-purple { background: linear-gradient(135deg, #b37feb, #9961db); }
-.bg-pink { background: linear-gradient(135deg, #f56c6c, #dd6161); }
+.bg-pink { background: linear-gradient(135deg, var(--el-color-danger), #dd6161); }
 
 .user-info {
   display: flex;
@@ -266,23 +266,23 @@ function getAvatarColor(username: string) {
 .user-name {
   font-weight: 600;
   font-size: 15px;
-  color: #303133;
+  color: var(--text-primary);
 }
 
 .user-id {
   font-size: 13px;
-  color: #909399;
+  color: var(--text-muted);
   font-family: "SF Pro Display", "Roboto", "Helvetica Neue", sans-serif;
 }
 
 /* Email & Time */
 .email-text {
-  color: #606266;
+  color: var(--text-secondary);
   font-size: 14px;
 }
 
 .time-text {
-  color: #606266;
+  color: var(--text-secondary);
   font-family: "SF Pro Display", "Roboto", "Helvetica Neue", sans-serif;
   font-size: 14px;
 }
@@ -301,13 +301,13 @@ function getAvatarColor(username: string) {
 
 .role-admin {
   background: #fef0f0;
-  color: #f56c6c;
+  color: var(--el-color-danger);
   border: 1px solid #fde2e2;
 }
 
 .role-user {
   background: #f4f4f5;
-  color: #909399;
+  color: var(--text-muted);
   border: 1px solid #e9e9eb;
 }
 

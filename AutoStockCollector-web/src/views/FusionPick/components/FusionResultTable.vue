@@ -38,7 +38,13 @@
     <el-table-column label="#" width="50" align="center">
       <template #default="{ $index }">{{ $index + 1 }}</template>
     </el-table-column>
-    <el-table-column prop="code" label="代码" width="100" />
+    <el-table-column prop="code" label="代码" width="100">
+      <template #default="{ row }">
+        <el-link type="primary" :underline="false" @click="goToStockAnalysis(row.code)">
+          {{ row.code }}
+        </el-link>
+      </template>
+    </el-table-column>
     <el-table-column prop="name" label="名称" min-width="110" />
     <el-table-column prop="industry" label="行业" min-width="120" show-overflow-tooltip />
     <el-table-column prop="fusion_score" label="融合分" width="110" sortable align="center">
@@ -108,6 +114,9 @@
 <script setup lang="ts">
 import { QuestionFilled } from '@element-plus/icons-vue'
 import { renderMd } from '@/utils/markdown'
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
 
 const props = defineProps<{
   picks: any[]
@@ -115,14 +124,18 @@ const props = defineProps<{
 
 const DIMS = [
   { key: 'fundamental', label: '基本面', color: '#5a7af0' },
-  { key: 'technical', label: '技术面', color: '#e6a23c' },
-  { key: 'fund_flow', label: '资金面', color: '#67c23a' },
-  { key: 'valuation', label: '估值面', color: '#909399' },
+  { key: 'technical', label: '技术面', color: 'var(--el-color-warning)' },
+  { key: 'fund_flow', label: '资金面', color: 'var(--el-color-success)' },
+  { key: 'valuation', label: '估值面', color: 'var(--text-muted)' },
 ] as const
 
 function scoreLevel(v: number) { return v >= 90 ? 'hot' : v >= 80 ? 'high' : v >= 70 ? 'mid' : 'low' }
 function bonusClass(v: number | null) { return v == null ? 'fp-muted' : v > 0 ? 'fp-up' : v < 0 ? 'fp-down' : 'fp-muted' }
 function fmtBonus(v: number) { return v > 0 ? `+${v.toFixed(1)}` : v.toFixed(1) }
+
+function goToStockAnalysis(code: string) {
+  router.push({ path: '/stock-analysis', query: { code } })
+}
 </script>
 
 <style scoped>

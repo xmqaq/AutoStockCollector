@@ -85,7 +85,7 @@ function fmtLatency(ms?: number) {
 
 <style scoped>
 .table-card { margin-bottom: 16px; }
-.err-text { font-size: 11px; color: #f56c6c; word-break: break-all; }
+.err-text { font-size: 11px; color: var(--el-color-danger); word-break: break-all; }
 .no-err { color: #ccc; }
 .pagination-bar { display: flex; justify-content: flex-end; margin-top: 12px; }
 </style>

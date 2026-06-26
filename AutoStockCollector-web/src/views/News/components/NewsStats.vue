@@ -77,7 +77,7 @@ function typeLabel(t: string): string {
   background: var(--bg-card, #ffffff);
   border-radius: 12px;
   padding: 12px 20px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 4px 16px var(--bg-hover-subtle);
   position: relative;
 }
 
@@ -134,7 +134,7 @@ function typeLabel(t: string): string {
 
 .breaking-card .stat-icon {
   background: rgba(245, 108, 108, 0.1);
-  color: #f56c6c;
+  color: var(--el-color-danger);
 }
 
 .stat-content {
@@ -144,19 +144,19 @@ function typeLabel(t: string): string {
 
 .stat-label {
   font-size: 12px;
-  color: var(--text-muted, #909399);
+  color: var(--text-muted, var(--text-muted));
   margin-bottom: 2px;
 }
 
 .stat-value {
   font-size: 18px;
   font-weight: bold;
-  color: var(--text-primary, #303133);
+  color: var(--text-primary, var(--text-primary));
   line-height: 1;
 }
 
 .stat-value.highlight {
-  color: #f56c6c;
+  color: var(--el-color-danger);
 }
 
 .stat-divider {
@@ -211,7 +211,7 @@ function typeLabel(t: string): string {
 }
 
 .type-name {
-  color: var(--text-regular, #606266);
+  color: var(--text-regular, var(--text-secondary));
   margin-right: 8px;
 }
 

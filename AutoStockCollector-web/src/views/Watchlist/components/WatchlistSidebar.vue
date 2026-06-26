@@ -43,12 +43,15 @@ defineEmits<{
 <style scoped>
 .wl-sidebar { 
   width: 240px; 
+  height: 100%;
   flex-shrink: 0; 
   background: var(--el-bg-color); 
   border-radius: 12px; 
   border: none;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 4px 16px var(--bg-hover-subtle);
   overflow: hidden; 
+  display: flex;
+  flex-direction: column;
 }
 .wl-sidebar-header { 
   display: flex; 
@@ -59,9 +62,16 @@ defineEmits<{
   font-weight: 600; 
   font-size: 15px; 
   color: var(--el-text-color-primary);
+  flex-shrink: 0;
 }
 .wl-group-menu { 
   border-right: none; 
+  flex: 1;
+  overflow: auto;
+}
+.wl-group-menu :deep(.el-menu-item) {
+  white-space: nowrap;
+  min-width: max-content;
 }
 .wl-del-group { 
   margin-left: auto; 

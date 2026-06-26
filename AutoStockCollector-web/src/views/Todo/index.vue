@@ -159,8 +159,8 @@ onMounted(load)
 <style scoped>
 .todo-page {
   padding: 24px;
-  background-color: #f5f7fa;
-  min-height: calc(100vh - 84px); /* 根据实际头部高度调整 */
+  background-color: var(--bg-soft);
+  height: 100%; /* 根据实际头部高度调整 */
 }
 
 .page-header {
@@ -171,20 +171,20 @@ onMounted(load)
   margin: 0 0 8px;
   font-size: 24px;
   font-weight: 600;
-  color: #303133;
+  color: var(--text-primary);
 }
 
 .page-desc {
   margin: 0;
   font-size: 14px;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .pro-card {
   border: none;
   border-radius: 12px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
-  background: #ffffff;
+  box-shadow: 0 4px 16px var(--bg-hover-subtle);
+  background: var(--bg-card);
 }
 
 .pro-card :deep(.el-card__header) {
@@ -201,7 +201,7 @@ onMounted(load)
 .card-title {
   font-size: 16px;
   font-weight: 600;
-  color: #303133;
+  color: var(--text-primary);
   display: flex;
   align-items: center;
 }
@@ -231,7 +231,7 @@ onMounted(load)
 
 .filter-stats {
   font-size: 14px;
-  color: #606266;
+  color: var(--text-secondary);
 }
 
 .filter-stats .highlight {

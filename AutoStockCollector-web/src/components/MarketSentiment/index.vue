@@ -334,7 +334,7 @@ onMounted(() => {
 .loading-mask {
   position: absolute;
   inset: 0;
-  background: rgba(255, 255, 255, 0.8);
+  background: var(--bg-overlay);
   display: flex;
   align-items: center;
   justify-content: center;

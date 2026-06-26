@@ -48,9 +48,9 @@ const emit = defineEmits<{
 const STATES: MarketStateKey[] = ['bull', 'bear', 'volatile']
 const DIMS = [
   { key: 'fundamental', label: '基本面', color: '#5a7af0' },
-  { key: 'technical', label: '技术面', color: '#e6a23c' },
-  { key: 'fund_flow', label: '资金面', color: '#67c23a' },
-  { key: 'valuation', label: '估值面', color: '#909399' },
+  { key: 'technical', label: '技术面', color: 'var(--el-color-warning)' },
+  { key: 'fund_flow', label: '资金面', color: 'var(--el-color-success)' },
+  { key: 'valuation', label: '估值面', color: 'var(--text-muted)' },
 ] as const
 
 function optRows(st: MarketStateKey) {

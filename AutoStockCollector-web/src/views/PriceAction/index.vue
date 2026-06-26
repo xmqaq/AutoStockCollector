@@ -229,7 +229,7 @@
               <div class="pa-trade-detail">
                 <div><span>仓位</span><b>{{ result.trade_plan.position_size }} 股</b></div>
                 <div><span>价值</span><b>¥{{ result.trade_plan.position_value?.toFixed(0) }}</b></div>
-                <div><span>风险</span><b style="color:#e6a23c">¥{{ result.trade_plan.total_risk?.toFixed(0) }}</b></div>
+                <div><span>风险</span><b style="color:var(--el-color-warning)">¥{{ result.trade_plan.total_risk?.toFixed(0) }}</b></div>
                 <div><span>每股风险</span><b>¥{{ result.trade_plan.risk_per_share?.toFixed(2) }}</b></div>
               </div>
             </div>
@@ -438,13 +438,13 @@ const chartOption = computed(() => {
   const markAreas: { yAxis: number; itemStyle: { color: string; opacity: number } }[] = []
 
   const tp = result.value?.trade_plan
-  if (tp?.stop_loss) markLines.push({ yAxis: tp.stop_loss, label: { formatter: `止损 ${tp.stop_loss}`, color: '#f56c6c' }, lineStyle: { color: '#f56c6c', type: 'dashed' } })
-  if (tp?.take_profit) markLines.push({ yAxis: tp.take_profit, label: { formatter: `止盈 ${tp.take_profit}`, color: '#67c23a' }, lineStyle: { color: '#67c23a', type: 'dashed' } })
+  if (tp?.stop_loss) markLines.push({ yAxis: tp.stop_loss, label: { formatter: `止损 ${tp.stop_loss}`, color: 'var(--el-color-danger)' }, lineStyle: { color: 'var(--el-color-danger)', type: 'dashed' } })
+  if (tp?.take_profit) markLines.push({ yAxis: tp.take_profit, label: { formatter: `止盈 ${tp.take_profit}`, color: 'var(--el-color-success)' }, lineStyle: { color: 'var(--el-color-success)', type: 'dashed' } })
   if (tp?.entry) markLines.push({ yAxis: tp.entry, label: { formatter: `入场 ${tp.entry}`, color: '#409eff' }, lineStyle: { color: '#409eff' } })
 
   const fibs = result.value?.fib_levels
   if (fibs) Object.entries(fibs).forEach(([k, v]) => {
-    markLines.push({ yAxis: v as number, label: { formatter: `Fib ${k} ${v}`, color: '#e6a23c' }, lineStyle: { color: '#e6a23c', type: 'dashed' } })
+    markLines.push({ yAxis: v as number, label: { formatter: `Fib ${k} ${v}`, color: 'var(--el-color-warning)' }, lineStyle: { color: 'var(--el-color-warning)', type: 'dashed' } })
   })
 
   const zones = result.value?.zones || []
@@ -452,8 +452,8 @@ const chartOption = computed(() => {
     const hi = z.high ?? z.price_max
     const lo = z.low ?? z.price_min
     if (hi && lo) {
-      markLines.push({ yAxis: hi, label: { formatter: `区顶 ${hi}`, color: '#909399' }, lineStyle: { color: '#909399', type: 'dotted' } })
-      markLines.push({ yAxis: lo, label: { formatter: `区底 ${lo}`, color: '#909399' }, lineStyle: { color: '#909399', type: 'dotted' } })
+      markLines.push({ yAxis: hi, label: { formatter: `区顶 ${hi}`, color: 'var(--text-muted)' }, lineStyle: { color: 'var(--text-muted)', type: 'dotted' } })
+      markLines.push({ yAxis: lo, label: { formatter: `区底 ${lo}`, color: 'var(--text-muted)' }, lineStyle: { color: 'var(--text-muted)', type: 'dotted' } })
     }
   })
 
@@ -467,16 +467,16 @@ const chartOption = computed(() => {
       borderWidth: 0,
       borderRadius: 8,
       padding: 12,
-      textStyle: { color: '#e0e0e0', fontSize: 12 },
+      textStyle: { color: 'var(--text-secondary)', fontSize: 12 },
       formatter(params: unknown[]) {
         const arr = params as { seriesName: string; dataIndex: number }[]
         const idx = arr?.[0]?.dataIndex
         if (idx === undefined || !bars[idx]) return ''
         const b = bars[idx]
         const chg = ((b.close - b.open) / b.open * 100).toFixed(2)
-        const chgClr = b.close >= b.open ? '#ef5350' : '#26a69a'
-        const row = (k: string, v: string, c = '#e0e0e0') => `<div style="display:flex;justify-content:space-between;gap:18px;line-height:1.6"><span style="color:#909399">${k}</span><span style="color:${c};font-weight:500">${v}</span></div>`
-        return `<div style="padding:4px 6px;min-width:150px"><div style="font-weight:bold;margin-bottom:4px">${b.time}</div>${row('开盘', b.open.toFixed(2))}${row('最高', b.high.toFixed(2), '#ef5350')}${row('最低', b.low.toFixed(2), '#26a69a')}${row('收盘', b.close.toFixed(2))}${row('涨跌幅', `${chg}%`, chgClr)}${row('成交量', (b.volume / 100 / 1e4).toFixed(2) + '万手')}</div>`
+        const chgClr = b.close >= b.open ? 'var(--el-color-danger)' : 'var(--el-color-success)'
+        const row = (k: string, v: string, c = 'var(--text-secondary)') => `<div style="display:flex;justify-content:space-between;gap:18px;line-height:1.6"><span style="color:var(--text-muted)">${k}</span><span style="color:${c};font-weight:500">${v}</span></div>`
+        return `<div style="padding:4px 6px;min-width:150px"><div style="font-weight:bold;margin-bottom:4px">${b.time}</div>${row('开盘', b.open.toFixed(2))}${row('最高', b.high.toFixed(2), 'var(--el-color-danger)')}${row('最低', b.low.toFixed(2), 'var(--el-color-success)')}${row('收盘', b.close.toFixed(2))}${row('涨跌幅', `${chg}%`, chgClr)}${row('成交量', (b.volume / 100 / 1e4).toFixed(2) + '万手')}</div>`
       },
     },
     legend: { top: 4, left: 'center', textStyle: { color: '#ccc' }, data: ['K线', 'MA5', 'MA10', 'MA20', '成交量'] },
@@ -514,8 +514,8 @@ const chartOption = computed(() => {
   }
 })
 
-const RISE_COLOR = '#ef5350'
-const FALL_COLOR = '#26a69a'
+const RISE_COLOR = 'var(--el-color-danger)'
+const FALL_COLOR = 'var(--el-color-success)'
 
 const stepDefs = [
   { label: '数据获取', pct: 20 },
@@ -612,12 +612,12 @@ const ladderLevels = computed(() => {
   const range = maxP - minP || 1
   const pad = range * 0.08
   return all.map(lv => {
-    let color = '#909399'
-    if (lv.role === 'sl') color = '#f56c6c'
-    else if (lv.role === 'tp') color = '#67c23a'
+    let color = 'var(--text-muted)'
+    if (lv.role === 'sl') color = 'var(--el-color-danger)'
+    else if (lv.role === 'tp') color = 'var(--el-color-success)'
     else if (lv.role === 'entry') color = '#409eff'
-    else if (lv.role === 'current') color = '#303133'
-    else if (lv.role === 'fib') color = '#e6a23c'
+    else if (lv.role === 'current') color = 'var(--text-primary)'
+    else if (lv.role === 'fib') color = 'var(--el-color-warning)'
     return { label: lv.label, price: lv.price, pct: ((lv.price - minP + pad) / (range + 2 * pad)) * 100, color, role: lv.role }
   })
 })
@@ -628,7 +628,7 @@ const ladderBgStyle = computed(() => {
   const cp = lv.find(l => l.role === 'current')
   if (!cp) return {}
   return {
-    background: `linear-gradient(to right, ${lv.find(l => l.role === 'sl')?.color || '#f56c6c'} 0%, transparent ${Math.max(0, cp.pct - 5)}%, transparent ${Math.min(100, cp.pct + 5)}%, ${lv.find(l => l.role === 'tp')?.color || '#67c23a'} 100%)`,
+    background: `linear-gradient(to right, ${lv.find(l => l.role === 'sl')?.color || 'var(--el-color-danger)'} 0%, transparent ${Math.max(0, cp.pct - 5)}%, transparent ${Math.min(100, cp.pct + 5)}%, ${lv.find(l => l.role === 'tp')?.color || 'var(--el-color-success)'} 100%)`,
     opacity: 0.08,
   }
 })
@@ -856,16 +856,16 @@ watch(() => result.value?.kline_bars, () => {
 .pa-page { padding: 16px; max-width: 1200px; margin: 0 auto; }
 .pa-head { margin-bottom: 12px; }
 .pa-head-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.hint { font-size: 12px; color: var(--text-secondary, #909399); white-space: nowrap; }
+.hint { font-size: 12px; color: var(--text-secondary, var(--text-muted)); white-space: nowrap; }
 
 /* 进度展示 */
 .pa-progress-card { margin-bottom: 12px; }
 .pa-steps { display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; }
 .pa-step { display: flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 12px; font-size: 12px; background: var(--bg-page, #f5f7fa); color: var(--text-secondary); }
-.pa-step-done { background: #67c23a; color: #fff; }
-.pa-step-active { background: #e6a23c; color: #fff; }
+.pa-step-done { background: var(--el-color-success); color: #fff; }
+.pa-step-active { background: var(--el-color-warning); color: #fff; }
 .pa-step-icon { font-size: 10px; }
-.pa-step-msg { margin: 6px 0 0; font-size: 12px; color: var(--text-secondary, #909399); text-align: center; }
+.pa-step-msg { margin: 6px 0 0; font-size: 12px; color: var(--text-secondary, var(--text-muted)); text-align: center; }
 
 /* 信号横幅 */
 .pa-signal-banner { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-radius: 8px; margin-bottom: 12px; color: #fff; }
@@ -877,15 +877,15 @@ watch(() => result.value?.kline_bars, () => {
 .pa-stock-price { font-size: 32px; font-weight: bold; margin-top: 2px; }
 .pa-banner-center { text-align: center; }
 .pa-signal-badge { font-size: 22px; font-weight: bold; letter-spacing: 2px; }
-.pa-confidence span { font-size: 22px; color: rgba(255,255,255,0.4); }
-.pa-confidence span.active { color: #ffd700; }
-.pa-cfl { font-size: 12px; margin-left: 6px; color: rgba(255,255,255,0.8); }
+.pa-confidence span { font-size: 22px; color: var(--text-muted); }
+.pa-confidence span.active { color: var(--el-color-warning); }
+.pa-cfl { font-size: 12px; margin-left: 6px; color: var(--bg-overlay); }
 .pa-banner-right { display: flex; gap: 16px; }
 .pa-meta-item { text-align: center; }
 .pa-meta-item span { display: block; font-size: 11px; opacity: 0.7; }
 .pa-meta-item b { font-size: 14px; }
 
-.pa-ladder-card { background: var(--bg-card, #fff); border-radius: 8px; padding: 16px 20px; margin-bottom: 12px; border: 1px solid var(--border-color, #ebeef5); }
+.pa-ladder-card { background: var(--bg-card, #fff); border-radius: 8px; padding: 16px 20px; margin-bottom: 12px; border: 1px solid var(--border-color, var(--border-color)); }
 .pa-ladder-track { position: relative; height: 36px; background: var(--border-color, #eee); border-radius: 18px; margin: 0 4px; }
 .pa-ladder-bg { position: absolute; inset: 0; border-radius: 18px; }
 .pa-lv-marker { position: absolute; top: 50%; transform: translate(-50%, -50%); }
@@ -913,11 +913,11 @@ watch(() => result.value?.kline_bars, () => {
 .pa-fib-val { font-family: monospace; font-weight: bold; }
 
 /* AI 解读 */
-.pa-ai-card { border-left: 3px solid #e6a23c; }
+.pa-ai-card { border-left: 3px solid var(--el-color-warning); }
 .pa-ai-content { font-size: 13px; line-height: 1.7; white-space: pre-wrap; color: var(--text-primary); }
 .pa-ai-na { font-size: 12px; color: var(--text-secondary); text-align: center; padding: 10px; }
 
-.pa-trade-card { background: var(--bg-card, #fff); border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color, #ebeef5); }
+.pa-trade-card { background: var(--bg-card, #fff); border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color, var(--border-color)); }
 .pa-trade-na { border: 1px dashed var(--border-color, #d9d9d9); }
 .pa-trade-header { padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; color: #fff; }
 .pa-trade-buy { background: linear-gradient(135deg, #c53929, #e67e22); }
@@ -929,8 +929,8 @@ watch(() => result.value?.kline_bars, () => {
 .pa-trade-item { flex: 1; text-align: center; padding: 8px 4px; border-radius: 6px; background: var(--bg-page, #f5f7fa); }
 .pa-ti-label { display: block; font-size: 11px; color: var(--text-secondary); }
 .pa-ti-val { display: block; font-size: 16px; font-weight: bold; margin-top: 2px; }
-.pa-ti-sl .pa-ti-val { color: #f56c6c; }
-.pa-ti-tp .pa-ti-val { color: #67c23a; }
+.pa-ti-sl .pa-ti-val { color: var(--el-color-danger); }
+.pa-ti-tp .pa-ti-val { color: var(--el-color-success); }
 .pa-trade-detail { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .pa-trade-detail div { display: flex; justify-content: space-between; font-size: 13px; padding: 2px 0; }
 .pa-trade-detail span { color: var(--text-secondary); }
@@ -940,29 +940,29 @@ watch(() => result.value?.kline_bars, () => {
 .pa-bt-card :deep(.el-card__header) { font-weight: bold; font-size: 13px; padding: 8px 12px; }
 .pa-bt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
 .pa-bt-item { display: flex; justify-content: space-between; padding: 3px 6px; background: var(--bg-page, #f5f7fa); border-radius: 4px; font-size: 12px; }
-.pa-bt-label { color: var(--text-secondary, #909399); }
+.pa-bt-label { color: var(--text-secondary, var(--text-muted)); }
 .pa-bt-val { font-weight: bold; font-family: monospace; }
-.pa-bt-green { color: #67c23a; }
-.pa-bt-red { color: #f56c6c; }
+.pa-bt-green { color: var(--el-color-success); }
+.pa-bt-red { color: var(--el-color-danger); }
 
 .pa-tf-switch { display: flex; gap: 6px; }
 .pa-tf-switch .el-button { flex: 1; }
 
 /* 历史信号轨迹 */
-.pa-signal-history-card { border-left: 3px solid #e6a23c; }
+.pa-signal-history-card { border-left: 3px solid var(--el-color-warning); }
 .pa-sh-timeline { position: relative; padding-left: 20px; }
 .pa-sh-item { position: relative; padding-bottom: 14px; }
 .pa-sh-dot { position: absolute; left: -13px; top: 4px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid #fff; z-index: 1; }
-.pa-sh-dot-buy { background: #ef5350; }
-.pa-sh-dot-sell { background: #26a69a; }
+.pa-sh-dot-buy { background: var(--el-color-danger); }
+.pa-sh-dot-sell { background: var(--el-color-success); }
 .pa-sh-line { position: absolute; left: -9px; top: 14px; bottom: 0; width: 2px; background: var(--border-color, #ebeef5); }
 .pa-sh-body { padding: 2px 0; }
 .pa-sh-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.pa-sh-conf { font-size: 11px; color: #e6a23c; }
-.pa-sh-date { font-size: 11px; color: var(--text-secondary, #909399); margin-left: auto; }
-.pa-sh-meta { display: flex; gap: 10px; font-size: 11px; color: var(--text-secondary, #909399); margin-top: 2px; }
-.pa-sh-warn { font-size: 11px; color: #e6a23c; margin-top: 2px; }
-.pa-sh-bt { font-size: 11px; color: #909399; margin-top: 2px; }
+.pa-sh-conf { font-size: 11px; color: var(--el-color-warning); }
+.pa-sh-date { font-size: 11px; color: var(--text-secondary, var(--text-muted)); margin-left: auto; }
+.pa-sh-meta { display: flex; gap: 10px; font-size: 11px; color: var(--text-secondary, var(--text-muted)); margin-top: 2px; }
+.pa-sh-warn { font-size: 11px; color: var(--el-color-warning); margin-top: 2px; }
+.pa-sh-bt { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 
 .pa-history { margin-bottom: 16px; }
 .empty-state { padding: 40px 0; }

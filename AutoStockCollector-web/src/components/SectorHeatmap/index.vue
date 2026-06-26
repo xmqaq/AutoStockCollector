@@ -264,7 +264,7 @@ onMounted(() => {
   height: 6px;
   border-radius: 3px;
   overflow: hidden;
-  box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+  box-shadow: inset 0 1px 2px var(--bg-hover);
 }
 
 .legend-gradient {

@@ -165,11 +165,11 @@ function renderRadarChart(agent: PhilosophyAgentDetail) {
       indicator,
       radius: '65%',
       splitNumber: 4,
-      axisName: { color: '#606266', fontSize: 12 },
+      axisName: { color: 'var(--text-secondary)', fontSize: 12 },
       splitArea: {
         areaStyle: {
           color: ['rgba(21, 89, 140, 0.02)', 'rgba(21, 89, 140, 0.05)', 'rgba(21, 89, 140, 0.08)', 'rgba(21, 89, 140, 0.11)'],
-          shadowColor: 'rgba(0, 0, 0, 0.2)',
+          shadowColor: 'var(--border-color)',
           shadowBlur: 10
         }
       },
@@ -215,7 +215,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .philosophy-tab {
-  height: calc(100vh - 200px);
+  height: 100%;
   min-height: 500px;
 }
 

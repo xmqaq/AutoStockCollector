@@ -240,7 +240,7 @@ function renderChart(picks: StrategyTestPick[]) {
       data: ['当前策略 Top', '沪深300基准'],
       itemWidth: 10,
       itemHeight: 10,
-      textStyle: { fontSize: 11, color: '#909399' }
+      textStyle: { fontSize: 11, color: 'var(--text-muted)' }
     },
     radar: {
       indicator: [
@@ -252,7 +252,7 @@ function renderChart(picks: StrategyTestPick[]) {
       radius: '65%',
       center: ['50%', '45%'],
       splitNumber: 4,
-      axisName: { color: '#606266', fontSize: 11 },
+      axisName: { color: 'var(--text-secondary)', fontSize: 11 },
       splitArea: {
         areaStyle: {
           color: ['rgba(250,250,250,0.3)', 'rgba(200,200,200,0.1)']
@@ -276,7 +276,7 @@ function renderChart(picks: StrategyTestPick[]) {
           {
             value: benchmarkScores,
             name: '沪深300基准',
-            itemStyle: { color: '#E6A23C' },
+            itemStyle: { color: 'var(--el-color-warning)' },
             areaStyle: { color: 'rgba(230,162,60,0.1)' },
             lineStyle: { width: 2, type: 'dashed' }
           }
@@ -289,10 +289,10 @@ function renderChart(picks: StrategyTestPick[]) {
 
 function getScoreColor(score: number | undefined) {
   if (!score) return 'var(--text-muted)'
-  if (score >= 80) return '#f56c6c' // 红色 (优秀)
-  if (score >= 60) return '#e6a23c' // 橙色 (良好)
-  if (score >= 40) return '#67c23a' // 绿色 (一般)
-  return '#909399' // 灰色 (较差)
+  if (score >= 80) return 'var(--el-color-danger)' // 红色 (优秀)
+  if (score >= 60) return 'var(--el-color-warning)' // 橙色 (良好)
+  if (score >= 40) return 'var(--el-color-success)' // 绿色 (一般)
+  return 'var(--text-muted)' // 灰色 (较差)
 }
 </script>
 
@@ -444,7 +444,7 @@ function getScoreColor(score: number | undefined) {
   font-size: 12px;
 }
 
-.rank-1 { background: #ffd700; color: #fff; }
+.rank-1 { background: var(--el-color-warning); color: #fff; }
 .rank-2 { background: #c0c0c0; color: #fff; }
 .rank-3 { background: #cd7f32; color: #fff; }
 

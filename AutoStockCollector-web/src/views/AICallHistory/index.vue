@@ -128,6 +128,6 @@ onMounted(fetchData)
   margin-bottom: 16px;
 }
 .dashboard-header h2 { margin: 0; font-size: 20px; }
-.header-sub { font-size: 12px; color: #999; margin-left: 8px; }
+.header-sub { font-size: 12px; color: var(--text-muted); margin-left: 8px; }
 .header-right { display: flex; gap: 8px; align-items: center; }
 </style>

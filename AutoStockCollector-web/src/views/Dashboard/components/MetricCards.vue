@@ -90,10 +90,10 @@ function getProfitClass(val: number) {
 }
 
 function getSentimentColor(score: number) {
-  if (score >= 80) return '#f56c6c' // Extreme greed
+  if (score >= 80) return 'var(--el-color-danger)' // Extreme greed
   if (score >= 60) return '#ffb822' // Greed
-  if (score <= 20) return '#67c23a' // Extreme fear
-  if (score <= 40) return '#909399' // Fear
+  if (score <= 20) return 'var(--el-color-success)' // Extreme fear
+  if (score <= 40) return 'var(--text-muted)' // Fear
   return 'var(--text-primary)' // Neutral
 }
 

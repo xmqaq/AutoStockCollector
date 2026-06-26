@@ -39,9 +39,9 @@ defineProps<{
 <style scoped>
 .pro-card {
   background: var(--bg-card, #ffffff);
-  border: 1px solid var(--border-color, #ebeef5);
+  border: 1px solid var(--border-color, var(--border-color));
   border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.02);
+  box-shadow: 0 2px 12px var(--bg-hover-subtle);
   display: flex;
   flex-direction: column;
   max-height: 700px;
@@ -50,7 +50,7 @@ defineProps<{
 .pro-card :deep(.el-card__header) {
   border-bottom: 1px solid var(--border-color, #ebeef5);
   padding: 16px 20px;
-  background-color: rgba(0,0,0,0.01);
+  background-color: var(--bg-hover-subtle);
 }
 
 .pro-card :deep(.el-card__body) {
@@ -112,8 +112,8 @@ defineProps<{
 
 .trade-item:hover {
   transform: translateX(2px);
-  border-color: var(--border-color, #ebeef5);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  border-color: var(--border-color, var(--border-color));
+  box-shadow: 0 2px 8px var(--bg-hover-subtle);
 }
 
 .trade-icon {
@@ -129,8 +129,8 @@ defineProps<{
   flex-shrink: 0;
 }
 
-.bg-buy { background: linear-gradient(135deg, #ef5350, #e53935); box-shadow: 0 2px 6px rgba(239, 83, 80, 0.3); }
-.bg-sell { background: linear-gradient(135deg, #26a69a, #00897b); box-shadow: 0 2px 6px rgba(38, 166, 154, 0.3); }
+.bg-buy { background: linear-gradient(135deg, var(--el-color-danger), #e53935); box-shadow: 0 2px 6px rgba(239, 83, 80, 0.3); }
+.bg-sell { background: linear-gradient(135deg, var(--el-color-success), #00897b); box-shadow: 0 2px 6px rgba(38, 166, 154, 0.3); }
 
 .trade-info {
   flex: 1;
@@ -148,13 +148,13 @@ defineProps<{
 .trade-name { 
   font-size: 14px; 
   font-weight: 600; 
-  color: var(--text-primary, #303133); 
+  color: var(--text-primary, var(--text-primary)); 
 }
 
 .trade-code {
   font-size: 12px;
-  color: var(--text-muted, #909399);
-  background: rgba(0,0,0,0.04);
+  color: var(--text-muted, var(--text-muted));
+  background: var(--bg-hover-subtle);
   padding: 1px 6px;
   border-radius: 4px;
   font-family: var(--font-mono, "DIN Alternate", "Helvetica Neue", sans-serif);
@@ -162,7 +162,7 @@ defineProps<{
 
 .trade-detail { 
   font-size: 13px; 
-  color: var(--text-regular, #606266); 
+  color: var(--text-regular, var(--text-secondary)); 
   display: flex; 
   justify-content: space-between; 
   align-items: center;
@@ -175,7 +175,7 @@ defineProps<{
 
 .trade-time { 
   font-size: 12px;
-  color: var(--text-muted, #909399);
+  color: var(--text-muted, var(--text-muted));
   font-family: var(--font-mono, "DIN Alternate", "Helvetica Neue", sans-serif); 
 }
 

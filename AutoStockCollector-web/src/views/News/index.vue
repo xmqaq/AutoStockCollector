@@ -166,7 +166,7 @@ onMounted(() => {
   flex-direction: column;
   background: var(--bg-card, #ffffff);
   border-radius: 12px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 4px 16px var(--bg-hover-subtle);
   overflow: hidden;
   min-height: 0;
 }
@@ -195,7 +195,7 @@ onMounted(() => {
   margin: 0;
   font-size: 20px;
   font-weight: 600;
-  color: var(--text-primary, #303133);
+  color: var(--text-primary, var(--text-primary));
   position: relative;
   padding-left: 12px;
 }

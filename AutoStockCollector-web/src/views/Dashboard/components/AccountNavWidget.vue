@@ -56,7 +56,7 @@ function initChart(data: any[]) {
       formatter: function (params: any) {
         let res = `${params[0].name}<br/>`
         params.forEach((p: any) => {
-          const color = p.seriesName === '我的策略' ? '#4f46e5' : '#909399'
+          const color = p.seriesName === '我的策略' ? '#4f46e5' : 'var(--text-muted)'
           const val = p.value.toFixed(2)
           const sign = p.value >= 0 ? '+' : ''
           res += `<span style="display:inline-block;margin-right:4px;border-radius:10px;width:10px;height:10px;background-color:${color};"></span>`

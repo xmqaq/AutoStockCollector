@@ -135,29 +135,29 @@
 /* 特异性需高于上方 :root:root(0,2,0),否则暗色下浅色 token 反杀 */
 :root:root.dark {
   --bg-page: #0b0f19;
-  --bg-card: #0b0f19;
-  --bg-card-rgb: 11, 15, 25;
-  --bg-elevated: #111827;
-  --bg-soft: #232b3a;
+  --bg-card: #151b28;
+  --bg-card-rgb: 21, 27, 40;
+  --bg-elevated: #1f2937;
+  --bg-soft: #1f2937;
   --bg-hover: rgba(99, 102, 241, 0.15);
   --bg-hover-subtle: rgba(99, 102, 241, 0.08);
-  --border-color: #2a3441;
-  --border-strong: #3b4758;
-  --border-heavy: #4d5b6e;
-  --text-primary: #f8fafc;
-  --text-secondary: #cbd5e1;
-  --text-muted: #94a3b8;
-  --text-faint: #64748b;
+  --border-color: #374151;
+  --border-strong: #4b5563;
+  --border-heavy: #6b7280;
+  --text-primary: #f3f4f6;
+  --text-secondary: #d1d5db;
+  --text-muted: #9ca3af;
+  --text-faint: #6b7280;
 
   --bg-deep: #080c14;
   --bg-deep-soft: #111622;
-  --bg-card-alt: #151b28;
-  --border-alt: #2a3441;
-  --border-alt-hover: #3b4758;
-  --text-alt-muted: #94a3b8;
-  --text-alt-secondary: #cbd5e1;
-  --text-alt-body: #cbd5e1;
-  --text-alt-primary: #f8fafc;
+  --bg-card-alt: #1f2937;
+  --border-alt: #374151;
+  --border-alt-hover: #4b5563;
+  --text-alt-muted: #9ca3af;
+  --text-alt-secondary: #d1d5db;
+  --text-alt-body: #d1d5db;
+  --text-alt-primary: #f3f4f6;
   --text-alt-strong: #ffffff;
 
   --color-success: #10b981;

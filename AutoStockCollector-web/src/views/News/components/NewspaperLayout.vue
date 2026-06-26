@@ -212,7 +212,7 @@ function sourceLabel(s: string): string {
 <style scoped>
 .newspaper-layout {
   flex: 1;
-  background-color: #fdfbf7; /* 经典的报纸米黄色底 */
+  background-color: var(--bg-card); /* 经典的报纸米黄色底 */
   color: #1a1a1a;
   min-height: 0;
   padding: 16px 24px;
@@ -271,7 +271,7 @@ function sourceLabel(s: string): string {
   width: 6px;
 }
 .main-column::-webkit-scrollbar-thumb {
-  background-color: rgba(0,0,0,0.1);
+  background-color: var(--bg-hover);
   border-radius: 3px;
 }
 
@@ -297,7 +297,7 @@ function sourceLabel(s: string): string {
 .article-meta {
   font-family: var(--font-mono, monospace);
   font-size: 11px;
-  color: #666;
+  color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 8px;
@@ -334,7 +334,7 @@ function sourceLabel(s: string): string {
 .headline-summary {
   font-size: 14px;
   line-height: 1.6;
-  color: #333;
+  color: var(--text-primary);
   margin: 0;
   text-align: justify;
 }
@@ -440,7 +440,7 @@ function sourceLabel(s: string): string {
   display: flex;
   gap: 8px;
   padding: 8px 0;
-  border-bottom: 1px solid #e0e0e0;
+  border-bottom: 1px solid var(--text-secondary);
 }
 
 .brief-item:last-child {

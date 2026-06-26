@@ -329,7 +329,7 @@ onMounted(() => {
   flex-direction: column;
   height: 100%;
   transition: all 0.3s ease;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+  box-shadow: 0 2px 8px var(--bg-hover-subtle);
 }
 
 .agent-card:hover {
@@ -475,7 +475,7 @@ onMounted(() => {
 }
 
 .code-badge {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--bg-hover);
   display: inline-block;
   padding: 2px 6px;
   border-radius: 4px;

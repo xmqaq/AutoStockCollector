@@ -550,7 +550,7 @@ const klineOption = computed(() => {
         if (idx == null || !kdata![idx]) return ''
         const r = kdata![idx]
         const row = (k: string, v: string, c = ct().tooltipText) =>
-          `<div style="display:flex;justify-content:space-between;gap:16px"><span style="color:#909399">${k}</span><span style="color:${c}">${v}</span></div>`
+          `<div style="display:flex;justify-content:space-between;gap:16px"><span style="color:var(--text-muted)">${k}</span><span style="color:${c}">${v}</span></div>`
         return `<div style="padding:4px 8px;min-width:150px">
           <div style="font-weight:600;margin-bottom:4px">${r.date}</div>
           ${row('开', fmtNum(r.open))}

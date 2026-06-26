@@ -150,9 +150,9 @@ function cancelEdit() {
   display: flex;
   align-items: flex-start;
   padding: 16px 20px;
-  background: #ffffff;
+  background: var(--bg-card);
   border-radius: 12px;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--border-color);
   margin-bottom: 12px;
   transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
   position: relative;
@@ -161,7 +161,7 @@ function cancelEdit() {
 
 .todo-item-card:hover {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-  border-color: #dcdfe6;
+  border-color: var(--border-strong);
   transform: translateY(-1px);
 }
 
@@ -181,7 +181,7 @@ function cancelEdit() {
 }
 
 .todo-item-card.is-done {
-  background-color: #fafafa;
+  background-color: var(--bg-soft);
   border-color: #f0f2f5;
   opacity: 0.8;
 }
@@ -235,7 +235,7 @@ function cancelEdit() {
 
 .todo-time {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-muted);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -248,7 +248,7 @@ function cancelEdit() {
 
 .todo-text {
   font-size: 15px;
-  color: #303133;
+  color: var(--text-primary);
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
@@ -257,15 +257,15 @@ function cancelEdit() {
 
 .todo-text.line-through {
   text-decoration: line-through;
-  color: #a8abb2;
+  color: var(--text-muted);
 }
 
 .todo-edit-area {
   margin-top: 4px;
-  background: #f5f7fa;
+  background: var(--bg-soft);
   padding: 12px;
   border-radius: 8px;
-  border: 1px solid #e4e7ed;
+  border: 1px solid var(--border-color);
   cursor: default;
 }
 

@@ -94,7 +94,7 @@ const chartOption = computed(() => {
         const record = data[idx]
         let html = `<div style="padding:8px"><div style="font-weight:bold;color:${ct().tooltipText}">${ps[0].axisValue}</div>`
         if (record?.profit_amount !== undefined) {
-          const pnlColor = record.profit_amount >= 0 ? '#ef5350' : '#26a69a'
+          const pnlColor = record.profit_amount >= 0 ? 'var(--el-color-danger)' : 'var(--el-color-success)'
           html += `<div style="color:${ct().tooltipText}">净值: ${record.value.toFixed(2)}</div>`
           html += `<div style="color:${pnlColor}">盈亏: ${record.profit_amount >= 0 ? '+' : ''}${record.profit_amount.toFixed(2)}</div>`
           html += `<div style="color:${pnlColor}">收益率: ${record.profit_pct !== undefined ? (record.profit_pct >= 0 ? '+' : '') + record.profit_pct.toFixed(2) + '%' : ''}</div>`

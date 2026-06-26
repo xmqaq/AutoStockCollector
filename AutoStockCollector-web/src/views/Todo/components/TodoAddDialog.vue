@@ -96,7 +96,7 @@ function handleAdd() {
 .pro-dialog :deep(.el-dialog__title) {
   font-weight: 600;
   font-size: 18px;
-  color: #303133;
+  color: var(--text-primary);
 }
 
 .pro-dialog :deep(.el-dialog__body) {
@@ -110,20 +110,20 @@ function handleAdd() {
 
 .dialog-content :deep(.el-form-item__label) {
   font-weight: 500;
-  color: #303133;
+  color: var(--text-primary);
   padding-bottom: 8px;
 }
 
 .custom-textarea :deep(.el-textarea__inner) {
   border-radius: 8px;
   padding: 12px;
-  background-color: #f5f7fa;
+  background-color: var(--bg-soft);
   border: 1px solid transparent;
   transition: all 0.3s;
 }
 
 .custom-textarea :deep(.el-textarea__inner:focus) {
-  background-color: #ffffff;
+  background-color: var(--bg-card);
   border-color: var(--el-color-primary);
   box-shadow: 0 0 0 1px var(--el-color-primary-light-5);
 }

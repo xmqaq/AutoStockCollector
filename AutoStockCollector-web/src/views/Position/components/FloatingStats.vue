@@ -63,15 +63,15 @@ defineProps<{
 <style scoped>
 .pro-card {
   background: var(--bg-card, #ffffff);
-  border: 1px solid var(--border-color, #ebeef5);
+  border: 1px solid var(--border-color, var(--border-color));
   border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.02);
+  box-shadow: 0 2px 12px var(--bg-hover-subtle);
 }
 
 .pro-card :deep(.el-card__header) {
   border-bottom: 1px solid var(--border-color, #ebeef5);
   padding: 16px 20px;
-  background-color: rgba(0,0,0,0.01);
+  background-color: var(--bg-hover-subtle);
 }
 
 .card-header-inner {
@@ -129,13 +129,13 @@ defineProps<{
 
 .stat-label {
   font-size: 13px;
-  color: var(--text-muted, #909399);
+  color: var(--text-muted, var(--text-muted));
 }
 
 .stat-value {
   font-size: 18px;
   font-weight: 600;
-  color: var(--text-primary, #303133);
+  color: var(--text-primary, var(--text-primary));
   font-family: var(--font-mono, "DIN Alternate", "Helvetica Neue", sans-serif);
   display: flex;
   align-items: center;
@@ -159,10 +159,10 @@ defineProps<{
   font-weight: bold;
 }
 
-.badge-rise { background: rgba(239, 83, 80, 0.12); color: #ef5350; }
-.badge-fall { background: rgba(38, 166, 154, 0.12); color: #26a69a; }
+.badge-rise { background: rgba(239, 83, 80, 0.12); color: var(--el-color-danger); }
+.badge-fall { background: rgba(38, 166, 154, 0.12); color: var(--el-color-success); }
 
-.text-rise { color: #ef5350; }
-.text-fall { color: #26a69a; }
+.text-rise { color: var(--el-color-danger); }
+.text-fall { color: var(--el-color-success); }
 .text-muted { color: var(--text-muted); }
 </style>

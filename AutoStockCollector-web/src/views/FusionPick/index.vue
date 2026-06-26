@@ -414,7 +414,7 @@ onUnmounted(() => { stopProgressSSE(); stopProgressPolling() })
   border-radius: 12px;
   overflow: hidden;
   margin-bottom: 0;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 2px 8px var(--bg-hover-subtle);
   background-color: var(--el-bg-color);
   transition: all 0.3s ease;
 }
@@ -514,7 +514,7 @@ onUnmounted(() => { stopProgressSSE(); stopProgressPolling() })
   border: 1px solid var(--el-border-color-light);
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 2px 8px var(--bg-hover-subtle);
   background-color: var(--el-bg-color);
   transition: all 0.3s ease;
 }

@@ -181,8 +181,8 @@ onMounted(fetchData)
 .stat-value { font-size: 20px; font-weight: 700; }
 .sc-inflow .stat-value { color: #F23645; }
 .sc-outflow .stat-value { color: #11C27E; }
-.sc-consec-in .stat-value { color: #e6a23c; }
-.sc-consec-out .stat-value { color: #909399; }
+.sc-consec-in .stat-value { color: var(--el-color-warning); }
+.sc-consec-out .stat-value { color: var(--text-muted); }
 .sc-reversal .stat-value { color: #409eff; }
 .ff-filter { display: flex; gap: 8px; }
 .ff-table-card { flex: 1; }

@@ -213,7 +213,7 @@ onMounted(() => {
 .skill-card:hover {
   border-color: var(--el-color-primary-light-5);
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 6px 16px var(--bg-hover-subtle);
 }
 
 .card-top {
@@ -298,7 +298,7 @@ onMounted(() => {
 }
 
 .code-block-wrapper {
-  background: #1e1e1e;
+  background: var(--bg-deep);
   border-radius: 8px;
   display: flex;
   flex-direction: column;

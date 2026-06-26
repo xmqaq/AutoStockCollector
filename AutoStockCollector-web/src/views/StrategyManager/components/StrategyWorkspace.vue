@@ -259,7 +259,7 @@ function saveChanges() {
   align-items: center;
   justify-content: space-between;
   flex-shrink: 0;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+  box-shadow: 0 1px 2px var(--bg-hover-subtle);
   z-index: 10;
 }
 
@@ -343,13 +343,13 @@ function saveChanges() {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
+  box-shadow: 0 4px 12px var(--bg-hover-subtle);
   margin-bottom: 24px;
   transition: box-shadow 0.3s ease;
 }
 
 .panel-card:hover {
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 6px 16px var(--bg-hover-subtle);
 }
 
 .panel-header {
@@ -397,7 +397,7 @@ function saveChanges() {
   height: 12px;
   border-radius: 4px;
   margin-right: 10px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 4px var(--bg-hover);
 }
 
 .dim-name {

@@ -142,26 +142,26 @@ onMounted(() => {
 }
 .stat-title {
   font-size: 13px;
-  color: var(--text-muted, #909399);
+  color: var(--text-muted, var(--text-muted));
   margin-bottom: 8px;
 }
 .stat-value {
   font-size: 20px;
   font-weight: bold;
-  color: var(--text-primary, #303133);
+  color: var(--text-primary, var(--text-primary));
   display: flex;
   align-items: baseline;
   gap: 8px;
 }
 .stat-value.danger {
-  color: var(--el-color-danger, #f56c6c);
+  color: var(--el-color-danger, var(--el-color-danger));
 }
 .stat-value.success {
-  color: var(--el-color-success, #67c23a);
+  color: var(--el-color-success, var(--el-color-success));
 }
 .sub-value {
   font-size: 14px;
   font-weight: normal;
-  color: var(--text-regular, #606266);
+  color: var(--text-regular, var(--text-secondary));
 }
 </style>

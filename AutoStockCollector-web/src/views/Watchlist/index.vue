@@ -43,7 +43,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { watchlistApi, type WatchlistGroup } from '@/api/watchlist'
 import { marketApi } from '@/api/market'
@@ -204,27 +204,39 @@ async function handleUpdatePriority(items: WatchlistItem[]) {
 }
 
 onMounted(() => loadData())
+
+watch(activeGroup, () => {
+  loadData()
+})
 </script>
 
 <style scoped>
 .watchlist-page {
-  padding: 24px 32px;
   background-color: var(--el-bg-color-page);
-  min-height: calc(100vh - 60px);
+  height: 100%;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .wl-layout { 
   display: flex; 
   gap: 24px; 
-  align-items: flex-start; 
+  align-items: stretch; 
   max-width: 1600px;
   margin: 0 auto;
+  width: 100%;
+  flex: 1;
+  overflow: hidden;
 }
 
 .wl-main { 
   flex: 1; 
   min-width: 0; 
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 @media (max-width: 900px) {

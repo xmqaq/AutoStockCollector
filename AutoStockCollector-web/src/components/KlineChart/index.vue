@@ -179,9 +179,9 @@ const chartOption = computed(() => {
         yAxis: level.price,
         label: {
           formatter: `支撑 ${level.price.toFixed(2)}`,
-          color: '#26a69a',
+          color: 'var(--el-color-success)',
         },
-        lineStyle: { color: '#26a69a' },
+        lineStyle: { color: 'var(--el-color-success)' },
       })
     })
     props.resistanceLevels.forEach(level => {
@@ -189,9 +189,9 @@ const chartOption = computed(() => {
         yAxis: level.price,
         label: {
           formatter: `压力 ${level.price.toFixed(2)}`,
-          color: '#ef5350',
+          color: 'var(--el-color-danger)',
         },
-        lineStyle: { color: '#ef5350' },
+        lineStyle: { color: 'var(--el-color-danger)' },
       })
     })
   }
@@ -296,7 +296,7 @@ const chartOption = computed(() => {
       borderWidth: 0,
       borderRadius: 8,
       padding: 12,
-      textStyle: { color: '#e0e0e0', fontSize: 12 },
+      textStyle: { color: 'var(--text-secondary)', fontSize: 12 },
       formatter(params: unknown[]) {
         const arr = params as Array<{ seriesName: string; dataIndex: number }>
         if (!arr || !arr.length) return ''
@@ -318,25 +318,25 @@ const chartOption = computed(() => {
         const amtStr = Number.isFinite(amt) && amt > 0
           ? (amt >= 1e8 ? `${(amt / 1e8).toFixed(2)} 亿` : `${(amt / 1e4).toFixed(2)} 万`)
           : '--'
-        const chgColor = Number.isFinite(chg) ? (chg >= 0 ? '#ef5350' : '#26a69a') : ct().tooltipText
+        const chgColor = Number.isFinite(chg) ? (chg >= 0 ? 'var(--el-color-danger)' : 'var(--el-color-success)') : ct().tooltipText
         const chgStr = Number.isFinite(chg) ? `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%` : '--'
         const row = (k: string, v: string, color = ct().tooltipText) =>
-          `<div style="display:flex;justify-content:space-between;gap:18px;line-height:1.6"><span style="color:#909399">${k}</span><span style="color:${color};font-weight:500">${v}</span></div>`
+          `<div style="display:flex;justify-content:space-between;gap:18px;line-height:1.6"><span style="color:var(--text-muted)">${k}</span><span style="color:${color};font-weight:500">${v}</span></div>`
         const annotInfo = props.annotations.find(a => findDateIndex(dates, a.date) === idx)
         let annotHtml = ''
         if (annotInfo) {
           const annotColor = getAnnotationColor(annotInfo.type)
           annotHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #444;color:${annotColor}">AI信号: ${annotInfo.type === 'buy' ? '买入' : annotInfo.type === 'sell' ? '卖出' : annotInfo.type === 'hold' ? '持有' : '告警'}</div>`
           if (annotInfo.label) {
-            annotHtml += `<div style="color:#909399;font-size:11px">${annotInfo.label}</div>`
+            annotHtml += `<div style="color:var(--text-muted);font-size:11px">${annotInfo.label}</div>`
           }
         }
         return `
           <div style="padding:6px 10px;min-width:170px">
             <div style="font-weight:bold;margin-bottom:6px;color:${ct().tooltipText}">${date}</div>
             ${row('开盘', fmt(o))}
-            ${row('最高', fmt(h), '#ef5350')}
-            ${row('最低', fmt(l), '#26a69a')}
+            ${row('最高', fmt(h), 'var(--el-color-danger)')}
+            ${row('最低', fmt(l), 'var(--el-color-success)')}
             ${row('收盘', fmt(c))}
             ${row('涨跌幅', chgStr, chgColor)}
             ${row('成交量', volStr)}

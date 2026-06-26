@@ -208,14 +208,14 @@ function sourceLabel(s: string): string {
 .time-hhmm {
   font-size: 16px;
   font-weight: 600;
-  color: var(--text-primary, #303133);
+  color: var(--text-primary, var(--text-primary));
   font-family: var(--font-mono, monospace);
   line-height: 1.2;
 }
 
 .time-mmdd {
   font-size: 12px;
-  color: var(--text-muted, #909399);
+  color: var(--text-muted, var(--text-muted));
   margin-top: 2px;
 }
 
@@ -256,7 +256,7 @@ function sourceLabel(s: string): string {
 
 /* 突发新闻特效 */
 .news-item.is-breaking .timeline-dot {
-  background-color: var(--el-color-danger, #f56c6c);
+  background-color: var(--el-color-danger, var(--el-color-danger));
 }
 
 .timeline-dot-ping {
@@ -265,7 +265,7 @@ function sourceLabel(s: string): string {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background-color: var(--el-color-danger, #f56c6c);
+  background-color: var(--el-color-danger, var(--el-color-danger));
   opacity: 0.6;
   animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
   z-index: 0;
@@ -291,7 +291,7 @@ function sourceLabel(s: string): string {
 .news-item:hover .news-content-card {
   background: var(--bg-card, #ffffff);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-  border-color: var(--border-color-light, #ebeef5);
+  border-color: var(--border-color-light, var(--border-color));
 }
 
 .news-item.is-breaking .news-content-card {
@@ -319,7 +319,7 @@ function sourceLabel(s: string): string {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  color: var(--text-primary, #303133);
+  color: var(--text-primary, var(--text-primary));
   line-height: 1.5;
 }
 
@@ -331,7 +331,7 @@ function sourceLabel(s: string): string {
 .news-summary {
   margin: 0;
   font-size: 14px;
-  color: var(--text-regular, #606266);
+  color: var(--text-regular, var(--text-secondary));
   line-height: 1.6;
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -374,7 +374,7 @@ function sourceLabel(s: string): string {
 .meta-tag {
   border: none;
   background: rgba(144, 147, 153, 0.1);
-  color: var(--text-muted, #909399);
+  color: var(--text-muted, var(--text-muted));
 }
 
 .meta-tag.clickable {

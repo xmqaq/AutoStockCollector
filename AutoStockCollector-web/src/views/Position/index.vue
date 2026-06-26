@@ -283,20 +283,20 @@ onUnmounted(() => {
   display: flex; 
   flex-direction: column; 
   background-color: var(--bg-body, #f5f7fa);
-  min-height: 100vh;
+  min-height: 100%;
 }
 
 .pro-card {
   background: var(--bg-card, #ffffff);
-  border: 1px solid var(--border-color, #ebeef5);
+  border: 1px solid var(--border-color, var(--border-color));
   border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.02);
+  box-shadow: 0 2px 12px var(--bg-hover-subtle);
 }
 
 .pro-card :deep(.el-card__header) {
   border-bottom: 1px solid var(--border-color, #ebeef5);
   padding: 16px 20px;
-  background-color: rgba(0,0,0,0.01);
+  background-color: var(--bg-hover-subtle);
 }
 
 .card-title {
@@ -349,5 +349,5 @@ onUnmounted(() => {
 .cash-warning-hint { font-size: 12px; color: var(--text-muted); margin-left: 18px; }
 .max-buy-link { color: var(--el-color-primary); cursor: pointer; text-decoration: underline; font-weight: 500; }
 .max-buy-link:hover { opacity: 0.8; }
-.text-fall { color: #26a69a; }
+.text-fall { color: var(--el-color-success); }
 </style>

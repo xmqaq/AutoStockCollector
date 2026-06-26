@@ -14,7 +14,7 @@
     </div>
     <el-table
       v-else
-      :data="history"
+      :data="paginatedHistory"
       stripe
       size="default"
       highlight-current-row
@@ -90,14 +90,26 @@
         </template>
       </el-table-column>
     </el-table>
+
+    <div v-if="history.length > 0" class="pagination-container">
+      <el-pagination
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        :page-sizes="[10, 20, 50]"
+        :background="true"
+        layout="total, sizes, prev, pager, next, jumper"
+        :total="history.length"
+      />
+    </div>
   </el-card>
 </template>
 
 <script setup lang="ts">
+import { ref, computed } from 'vue'
 import { Download, Clock } from '@element-plus/icons-vue'
 import type { HistoryItem } from '@/api/researchAnalysis'
 
-defineProps<{
+const props = defineProps<{
   history: HistoryItem[]
 }>()
 
@@ -105,13 +117,22 @@ defineEmits<{
   (e: 'view-history', row: HistoryItem): void
   (e: 'export-history', taskId: string, sectors: string[]): void
 }>()
+
+const currentPage = ref(1)
+const pageSize = ref(10)
+
+const paginatedHistory = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  const end = start + pageSize.value
+  return props.history.slice(start, end)
+})
 </script>
 
 <style scoped>
 .ra-history {
   border-radius: 16px;
   border: none;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 4px 16px var(--bg-hover-subtle);
   overflow: hidden;
 }
 .ra-history :deep(.el-card__header) {
@@ -200,8 +221,15 @@ defineEmits<{
 .source-count {
   color: var(--el-color-primary);
   font-weight: 600;
-  background: #fff;
+  background: var(--bg-card);
   padding: 0 4px;
   border-radius: 2px;
+}
+
+.pagination-container {
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px 24px;
+  border-top: 1px solid var(--el-border-color-lighter);
 }
 </style>

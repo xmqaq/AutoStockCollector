@@ -608,46 +608,46 @@ onUnmounted(() => {
 .ar-head { margin-bottom: 12px; }
 .ar-head-row { display: flex; align-items: center; gap: 10px; }
 .ar-title { font-size: 18px; font-weight: bold; }
-.ar-error { color: #ef5350; font-size: 13px; margin-top: 6px; }
+.ar-error { color: var(--el-color-danger); font-size: 13px; margin-top: 6px; }
 .ar-tabs { margin-bottom: 12px; }
 .ar-summary-card { margin-bottom: 12px; background: linear-gradient(135deg, #667eea33, #764ba233); }
 .ar-summary { font-size: 14px; line-height: 1.6; padding: 4px 0; }
 .ar-card { margin-bottom: 12px; }
 .ar-card :deep(.el-card__header) { display: flex; align-items: center; justify-content: space-between; font-weight: bold; font-size: 14px; padding: 10px 16px; }
-.ar-scan-info { font-size: 12px; font-weight: normal; color: var(--text-secondary, #909399); }
+.ar-scan-info { font-size: 12px; font-weight: normal; color: var(--text-secondary, var(--text-muted)); }
 .ar-sector-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 .ar-sector-item { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--bg-page, #f5f7fa); border-radius: 6px; font-size: 13px; }
 .ar-si-name { font-weight: bold; min-width: 60px; }
-.ar-si-leader { color: var(--text-secondary, #909399); }
-.ar-si-score { color: #e6a23c; font-weight: bold; margin-left: auto; }
-.ar-trap-card { border-left: 3px solid #e6a23c; }
+.ar-si-leader { color: var(--text-secondary, var(--text-muted)); }
+.ar-si-score { color: var(--el-color-warning); font-weight: bold; margin-left: auto; }
+.ar-trap-card { border-left: 3px solid var(--el-color-warning); }
 .ar-trap-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border-color, #ebeef5); font-size: 13px; }
 .ar-trap-item:last-child { border-bottom: none; }
 .ar-trap-code { font-weight: bold; min-width: 100px; }
-.ar-trap-reason { color: var(--text-secondary, #909399); }
-.ar-gap-up { color: #ef5350; font-weight: bold; }
-.ar-gap-down { color: #26a69a; font-weight: bold; }
-.ar-text-muted { color: var(--text-secondary, #909399); }
+.ar-trap-reason { color: var(--text-secondary, var(--text-muted)); }
+.ar-gap-up { color: var(--el-color-danger); font-weight: bold; }
+.ar-gap-down { color: var(--el-color-success); font-weight: bold; }
+.ar-text-muted { color: var(--text-secondary, var(--text-muted)); }
 
 /* Performance cards */
 .ar-perf-grid { display: flex; gap: 12px; flex-wrap: wrap; }
 .ar-perf-card { flex: 1; min-width: 160px; padding: 16px; border-radius: 8px; text-align: center; }
-.ar-perf-good { background: #e8f5e9; border: 1px solid #a5d6a7; }
-.ar-perf-mid { background: #fff8e1; border: 1px solid #ffe082; }
-.ar-perf-bad { background: #ffebee; border: 1px solid #ef9a9a; }
+.ar-perf-good { background: var(--el-color-success-light-9); border: 1px solid var(--el-color-success-light-5); }
+.ar-perf-mid { background: var(--el-color-warning-light-9); border: 1px solid var(--el-color-warning-light-5); }
+.ar-perf-bad { background: var(--el-color-danger-light-9); border: 1px solid var(--el-color-danger-light-5); }
 .ar-perf-bracket { font-size: 14px; font-weight: bold; margin-bottom: 8px; }
 .ar-perf-stat { font-size: 12px; margin: 4px 0; color: var(--text-secondary, #555); }
 
 /* Risk dashboard */
-.ar-loading { text-align: center; padding: 40px; color: #909399; }
+.ar-loading { text-align: center; padding: 40px; color: var(--text-muted); }
 .ar-risk-grid { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
-.ar-risk-card { flex: 1; min-width: 140px; padding: 16px; border-radius: 8px; text-align: center; background: #f5f7fa; border: 1px solid #e4e7ed; }
-.ar-risk-card-green { background: #e8f5e9; border-color: #a5d6a7; }
-.ar-risk-card-orange { background: #fff3e0; border-color: #ffcc80; }
-.ar-risk-card-blue { background: #e3f2fd; border-color: #90caf9; }
-.ar-risk-label { font-size: 12px; color: var(--text-secondary, #909399); margin-bottom: 4px; }
+.ar-risk-card { flex: 1; min-width: 140px; padding: 16px; border-radius: 8px; text-align: center; background: var(--bg-soft); border: 1px solid var(--border-color); }
+.ar-risk-card-green { background: var(--el-color-success-light-9); border-color: var(--el-color-success-light-5); }
+.ar-risk-card-orange { background: var(--el-color-warning-light-9); border-color: var(--el-color-warning-light-5); }
+.ar-risk-card-blue { background: var(--el-color-primary-light-9); border-color: var(--el-color-primary-light-5); }
+.ar-risk-label { font-size: 12px; color: var(--text-secondary, var(--text-muted)); margin-bottom: 4px; }
 .ar-risk-value { font-size: 20px; font-weight: bold; }
-.ar-risk-sub { font-size: 11px; font-weight: normal; color: var(--text-secondary, #909399); }
+.ar-risk-sub { font-size: 11px; font-weight: normal; color: var(--text-secondary, var(--text-muted)); }
 .ar-sector-exposure { display: flex; flex-direction: column; gap: 8px; }
 .ar-sector-bar-item { display: flex; align-items: center; gap: 12px; }
 .ar-se-label { min-width: 60px; font-weight: bold; font-size: 13px; }

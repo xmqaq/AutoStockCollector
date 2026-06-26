@@ -338,13 +338,13 @@ async function startTest(item: StrategyRule) {
   margin: 0;
   font-size: 24px;
   font-weight: 600;
-  color: var(--text-primary, #303133);
+  color: var(--text-primary, var(--text-primary));
 }
 
 .header-content .subtitle {
   margin: 8px 0 0;
   font-size: 14px;
-  color: var(--text-secondary, #909399);
+  color: var(--text-secondary, var(--text-muted));
 }
 
 .header-actions {
@@ -356,7 +356,7 @@ async function startTest(item: StrategyRule) {
   background: var(--bg-card, #ffffff);
   border-radius: 12px;
   padding: 20px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 4px 16px var(--bg-hover-subtle);
   flex: 1;
   display: flex;
   flex-direction: column;

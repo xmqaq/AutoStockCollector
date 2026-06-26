@@ -14,7 +14,7 @@
       size="default" 
       v-loading="loading" 
       class="pro-table"
-      :header-cell-style="{ background: 'var(--bg-soft, #f8f9fa)', color: 'var(--text-muted, #909399)', fontWeight: 500, borderBottom: '1px solid var(--border-color, #ebeef5)' }"
+      :header-cell-style="{ background: 'var(--bg-soft, #f8f9fa)', color: 'var(--text-muted, var(--text-muted))', fontWeight: 500, borderBottom: '1px solid var(--border-color, #ebeef5)' }"
       :row-style="{ height: '56px' }"
       max-height="340px"
     >
@@ -107,15 +107,15 @@ defineEmits<{
 <style scoped>
 .pro-card {
   background: var(--bg-card, #ffffff);
-  border: 1px solid var(--border-color, #ebeef5);
+  border: 1px solid var(--border-color, var(--border-color));
   border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.02);
+  box-shadow: 0 2px 12px var(--bg-hover-subtle);
 }
 
 .pro-card :deep(.el-card__header) {
   border-bottom: 1px solid var(--border-color, #ebeef5);
   padding: 16px 20px;
-  background-color: rgba(0,0,0,0.01);
+  background-color: var(--bg-hover-subtle);
 }
 
 .card-header {
@@ -168,7 +168,7 @@ defineEmits<{
 
 .stock-name {
   font-weight: 500;
-  color: var(--text-primary, #303133);
+  color: var(--text-primary, var(--text-primary));
 }
 
 .number-font {
@@ -176,12 +176,12 @@ defineEmits<{
 }
 
 .text-muted {
-  color: var(--text-muted, #909399);
+  color: var(--text-muted, var(--text-muted));
 }
 
-.text-rise { color: #ef5350; }
-.text-fall { color: #26a69a; }
-.text-neutral { color: var(--text-primary, #303133); }
+.text-rise { color: var(--el-color-danger); }
+.text-fall { color: var(--el-color-success); }
+.text-neutral { color: var(--text-primary, var(--text-primary)); }
 
 .badge-tag {
   display: inline-block;
@@ -192,6 +192,6 @@ defineEmits<{
   font-family: var(--font-mono, "DIN Alternate", "Helvetica Neue", sans-serif);
 }
 
-.badge-rise { background: rgba(239, 83, 80, 0.12); color: #ef5350; }
-.badge-fall { background: rgba(38, 166, 154, 0.12); color: #26a69a; }
+.badge-rise { background: rgba(239, 83, 80, 0.12); color: var(--el-color-danger); }
+.badge-fall { background: rgba(38, 166, 154, 0.12); color: var(--el-color-success); }
 </style>

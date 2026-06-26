@@ -48,6 +48,6 @@ defineProps<{
 .stat-card { flex: 1; min-width: 100px; }
 .stat-label { font-size: 12px; color: var(--text-muted, #999); }
 .stat-value { font-size: 22px; font-weight: 700; margin-top: 4px; }
-.text-success { color: #67c23a; }
-.text-danger { color: #f56c6c; }
+.text-success { color: var(--el-color-success); }
+.text-danger { color: var(--el-color-danger); }
 </style>

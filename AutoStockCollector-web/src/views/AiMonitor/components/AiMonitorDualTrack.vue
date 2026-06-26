@@ -204,6 +204,6 @@ onMounted(fetchPortfolio)
 .dt-code { font-size: 11px; color: var(--text-muted, #999); margin-left: 6px; }
 .src-tag { margin-left: 4px; }
 .hold-tag { margin-right: 4px; }
-.up { color: #f56c6c; }
-.dn { color: #67c23a; }
+.up { color: var(--el-color-danger); }
+.dn { color: var(--el-color-success); }
 </style>
