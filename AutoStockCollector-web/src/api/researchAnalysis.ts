@@ -105,7 +105,12 @@ export const researchApi = {
   },
   /** 获取今日 cron 自动汇总结果（全市场研报精选） */
   getToday() {
-    return client.get<{ success: boolean; data: AnalysisResult | null; message?: string }>(
+    return client.get<{
+      success: boolean
+      data: AnalysisResult | null
+      message?: string
+      status?: 'ready' | 'pending' | 'running'
+    }>(
       '/api/v1/ai/research-analysis/today',
     )
   },

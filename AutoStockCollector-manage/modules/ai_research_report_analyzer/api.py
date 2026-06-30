@@ -261,34 +261,75 @@ def get_history():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+# 今日汇总进程级缓存：cron 一天只生成 1 条，前端高频刷新时避免每次都查 Mongo+sort。
+_today_cache: dict = {"payload": None, "at": 0.0, "date": ""}
+_TODAY_CACHE_TTL = 60.0
+
+
 @research_bp.route("/research-analysis/today", methods=["GET"])
 @login_required
 def get_today_summary():
-    """获取今日 cron 自动汇总的研报分析结果（全市场）。"""
+    """获取今日 cron 自动汇总的研报分析结果（全市场）。
+
+    时区统一用北京时间（与 cron 落库一致），避免非北京服务器查不到今日结果。
+    带 60s 进程级缓存；无数据时区分"尚未生成"与"生成中"（查 cron_job_status）。
+    """
     try:
-        from datetime import date
         from config.database import DatabaseConfig
+        from utils.helpers import beijing_now
         from .config import ResearchConfig
 
+        today = beijing_now().strftime("%Y-%m-%d")
+
+        # 缓存命中（同一天且未过期）直接返回
+        now_ts = time.time()
+        if (_today_cache["date"] == today
+                and _today_cache["payload"] is not None
+                and now_ts - _today_cache["at"] < _TODAY_CACHE_TTL):
+            return jsonify(_today_cache["payload"])
+
         db = DatabaseConfig.get_database()
-        today = date.today().isoformat()[:10]
         doc = db[ResearchConfig.RESULTS_COLLECTION].find_one(
             {"source": "cron_daily", "created_at": {"$gte": today}},
             sort=[("created_at", -1)],
         )
         if doc and doc.get("result"):
             doc.pop("_id", None)
-            return jsonify({
+            payload = {
                 "success": True,
                 "data": doc["result"],
                 "task_id": doc.get("task_id", ""),
                 "created_at": doc.get("created_at"),
-            })
-        return jsonify({
-            "success": True,
-            "data": None,
-            "message": "今日汇总尚未生成，盘后 17:30 自动运行，请稍后刷新",
-        })
+                "status": "ready",
+            }
+            _today_cache["payload"] = payload
+            _today_cache["at"] = now_ts
+            _today_cache["date"] = today
+            return jsonify(payload)
+
+        # 无结果：查 cron_job_status 判断是"还没到点/未生成"还是"正在生成中"
+        status = "pending"
+        message = "今日汇总尚未生成，盘后 17:30 自动运行，请稍后刷新"
+        try:
+            js = db["cron_job_status"].find_one({"task_type": "research_daily"})
+            if js and js.get("last_run"):
+                # 今日触发过但尚无结果 → 生成中
+                if str(js.get("last_run", ""))[:10] == today and js.get("last_ok") in (True, None):
+                    status = "running"
+                    message = "今日研报分析正在生成中，请稍候刷新"
+        except Exception:
+            pass
+
+        payload = {"success": True, "data": None, "status": status, "message": message}
+        # pending/running 状态缓存更短，便于前端及时拿到生成完成的结果
+        if status == "running":
+            _today_cache["payload"] = payload
+            _today_cache["at"] = now_ts
+            _today_cache["date"] = today
+        else:
+            # pending 不缓存，下次请求重新查（避免错过刚生成的结果）
+            _today_cache["payload"] = None
+        return jsonify(payload)
     except Exception as e:
         logger.warning(f"[ResearchAnalyzer] today summary error: {e}")
         return jsonify({"success": False, "error": str(e)}), 500

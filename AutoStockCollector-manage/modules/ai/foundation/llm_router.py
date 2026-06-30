@@ -290,7 +290,18 @@ class LLMRouter:
                     self._log_history(provider, task_type, False, str(e))
                     if attempt == 1:
                         import time
-                        time.sleep(self._RETRY_BACKOFF_SECONDS)
+                        # 429/限流/超时类错误用指数退避（2s→4s），防并发触发 provider 限流；
+                        # 其他瞬时错误用固定 1s 退避。
+                        err_msg = str(e).lower()
+                        is_rate_limited = any(k in err_msg for k in (
+                            "429", "rate limit", "rate_limit", "quota", "too many",
+                            "timeout", "timed out", "connection", "temporarily",
+                        ))
+                        backoff = (self._RETRY_BACKOFF_SECONDS * (2 ** (attempt - 1))
+                                   if is_rate_limited else self._RETRY_BACKOFF_SECONDS)
+                        if is_rate_limited:
+                            backoff = max(backoff, 2.0)
+                        time.sleep(backoff)
             if not got_response:
                 continue
             if schema:

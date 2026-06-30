@@ -35,8 +35,14 @@ class AnalyzerEngine:
         max_workers: int = 1,
         progress_callback: Optional[Callable[[int, str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
+        synthesize: bool = True,
     ) -> Dict[str, Any]:
-        """对多个板块执行研报分析。"""
+        """对多个板块执行研报分析。
+
+        synthesize=False 时跳过批内 _synthesize_report（省一次 LLM 调用），
+        供 cron 跨批合并场景使用——批内简报会被 merge_batch_results 丢弃，
+        无需合成。单批次独立分析（API 手动触发）仍默认合成。
+        """
         start = datetime.now()
         logger.info(f"[ResearchAnalyzer] Starting analysis sectors={sectors} top_n={top_n}")
 
@@ -82,9 +88,12 @@ class AnalyzerEngine:
         scored = self._screener.score(filtered)
         scored = self._enrich_with_market_context(scored)
 
-        report_md = self._synthesize_report(
-            sectors, all_aggregated, all_signals, scored, chain_view,
-        )
+        # 批内简报：cron 跨批合并场景会丢弃批 report_md，跳过省一次 LLM 调用
+        report_md = ""
+        if synthesize:
+            report_md = self._synthesize_report(
+                sectors, all_aggregated, all_signals, scored, chain_view,
+            )
 
         elapsed = (datetime.now() - start).total_seconds()
         logger.info(
@@ -101,6 +110,8 @@ class AnalyzerEngine:
             "report_md": report_md,
             "elapsed_seconds": round(elapsed, 1),
             "sector_details": sector_results,
+            # 暴露各板块聚合结果，供 merge_batch_results 合成全市场简报的"行业热点"章节
+            "aggregated": all_aggregated,
         }
 
     def merge_batch_results(self, batch_results: List[Dict], top_n: int = 30) -> Dict[str, Any]:
@@ -124,6 +135,10 @@ class AnalyzerEngine:
             ok_batches += 1
             merged_chain_view.extend(br.get("chain_view", []))
             merged_sector_details.update(br.get("sector_details", {}))
+            # 收集各板块聚合结果（themes/sentiment/summary），供全市场简报"行业热点"章节使用
+            for sector, agg in (br.get("aggregated") or {}).items():
+                if agg:
+                    merged_aggregated[sector] = agg
             # 收集失败板块
             for sec, det in br.get("sector_details", {}).items():
                 if det.get("error"):

@@ -60,6 +60,10 @@ const resultTab = ref('chain')
 const history = ref<HistoryItem[]>([])
 const currentResult = ref<AnalysisResult | null>(null)
 let pollTimer: ReturnType<typeof setInterval> | null = null
+let todayPollTimer: ReturnType<typeof setInterval> | null = null
+let todayPollStart = 0
+const TODAY_POLL_INTERVAL = 30000  // 30s 轮询今日精选生成进度
+const TODAY_POLL_MAX_MS = 60 * 60 * 1000  // 最长轮询 1 小时
 
 async function loadSectors() {
   try {
@@ -88,12 +92,51 @@ async function loadToday() {
     if (res.data?.success && res.data.data) {
       currentResult.value = res.data.data
       resultTab.value = res.data.data.report_md ? 'report' : 'chain'
+      stopTodayPolling()
       ElMessage.success(`今日精选已加载，${res.data.data.candidate_count} 只候选标的`)
     } else if (res.data?.success) {
-      ElMessage.info(res.data.message || '今日汇总尚未生成，盘后 17:30 自动运行')
+      const status = res.data.status
+      if (status === 'running') {
+        // 17:30 后 cron 正在生成，启动轻量轮询直到拿到结果
+        ElMessage.info(res.data.message || '今日研报分析正在生成中，将自动刷新')
+        startTodayPolling()
+      } else {
+        ElMessage.info(res.data.message || '今日汇总尚未生成，盘后 17:30 自动运行')
+      }
     }
   } catch {
     ElMessage.error('加载今日精选失败')
+  }
+}
+
+function startTodayPolling() {
+  stopTodayPolling()
+  todayPollStart = Date.now()
+  todayPollTimer = setInterval(async () => {
+    // 超过最长轮询时间则停止，避免页面长期空转
+    if (Date.now() - todayPollStart > TODAY_POLL_MAX_MS) {
+      stopTodayPolling()
+      ElMessage.info('今日精选生成耗时较长，请稍后手动刷新')
+      return
+    }
+    try {
+      const res = await researchApi.getToday()
+      if (res.data?.success && res.data.data) {
+        currentResult.value = res.data.data
+        resultTab.value = res.data.data.report_md ? 'report' : 'chain'
+        stopTodayPolling()
+        ElMessage.success(`今日精选已生成，${res.data.data.candidate_count} 只候选标的`)
+      }
+    } catch {
+      // 网络错误静默，继续轮询
+    }
+  }, TODAY_POLL_INTERVAL)
+}
+
+function stopTodayPolling() {
+  if (todayPollTimer) {
+    clearInterval(todayPollTimer)
+    todayPollTimer = null
   }
 }
 
@@ -257,6 +300,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopPolling()
+  stopTodayPolling()
 })
 </script>
 

@@ -903,11 +903,17 @@ def job_research_daily():
         msg = "研报全板块扫描已启动（后台）"
         logger.info(f"[cron] {msg}")
         _record_result("研报全板块扫描", True, msg)
-        _persist_cron_status("research_daily", _now().isoformat(), True, msg, inc_count=True)
+        # 仅标记已触发，不计 run_count——成功落库后由 _run_research_daily 统一计数，避免后台失败被误计为成功
+        _persist_cron_status("research_daily", _now().isoformat(), True, msg, inc_count=False)
     except Exception as e:
         logger.error(f"[cron] 研报扫描启动失败: {e}")
         _record_result("研报全板块扫描", False, str(e))
         _persist_cron_status("research_daily", _now().isoformat(), False, str(e)[:100])
+
+
+def _today_beijing() -> str:
+    """北京时间日期字符串 YYYY-MM-DD，与 _now() 落库时区一致，避免幂等/查询错位。"""
+    return _now().strftime("%Y-%m-%d")
 
 
 def _run_research_daily():
@@ -916,13 +922,12 @@ def _run_research_daily():
     幂等：今日已生成则跳过。失败板块跳过、汇总可用结果。
     """
     try:
-        from datetime import date
         from config.database import DatabaseConfig
         from modules.ai_research_report_analyzer.supply_chain import SupplyChainAggregator
         from modules.ai_research_report_analyzer.engine import AnalyzerEngine
         from modules.ai_research_report_analyzer.config import ResearchConfig
 
-        today = date.today().isoformat()[:10]
+        today = _today_beijing()
         db = DatabaseConfig.get_database()
 
         # 幂等：今日已有 cron_daily 汇总则跳过
@@ -933,6 +938,14 @@ def _run_research_daily():
             logger.info("[cron] 研报扫描：今日已生成汇总，跳过")
             return
 
+        # 前置检查：今日新研报入库数（注意 research_report_collect 18:00 才跑，
+        # 17:30 本任务主要依赖历史 90 天窗口；此处仅记录新鲜度，不阻断产出）
+        try:
+            today_new = db["research_reports"].count_documents({"date": today})
+            logger.info(f"[cron] 研报扫描：今日新研报 {today_new} 条（历史窗口 90 天）")
+        except Exception:
+            pass
+
         agg = SupplyChainAggregator()
         sectors = [s["name"] for s in agg.list_sectors()]
         if not sectors:
@@ -942,10 +955,11 @@ def _run_research_daily():
         batch_size = 5
         batch_results = []
         eng = AnalyzerEngine()
+        # max_workers=3 板块内并发降耗时；synthesize=False 跳过批内简报（合并阶段统一合成，省 6 次 LLM）
         for i in range(0, len(sectors), batch_size):
             batch = sectors[i:i + batch_size]
             try:
-                result = eng.analyze(sectors=batch, top_n=10)
+                result = eng.analyze(sectors=batch, top_n=10, max_workers=3, synthesize=False)
                 batch_results.append(result)
                 logger.info(f"[cron] 研报扫描完成批次 {i//batch_size+1}: {', '.join(batch)}")
             except Exception as e:
