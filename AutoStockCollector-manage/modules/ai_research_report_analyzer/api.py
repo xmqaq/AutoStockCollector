@@ -307,27 +307,36 @@ def get_today_summary():
             _today_cache["date"] = today
             return jsonify(payload)
 
-        # 无结果：查 cron_job_status 判断是"还没到点/未生成"还是"正在生成中"
+        # 无结果：查 cron_job_status 判断是"还没到点/未生成"、"正在生成中"还是"生成失败"
+        # （触发时写 last_ok=None 表示执行中；后台成功写 True、失败写 False）
         status = "pending"
         message = "今日汇总尚未生成，盘后 17:30 自动运行，请稍后刷新"
         try:
             js = db["cron_job_status"].find_one({"task_type": "research_daily"})
             if js and js.get("last_run"):
-                # 今日触发过但尚无结果 → 生成中
-                if str(js.get("last_run", ""))[:10] == today and js.get("last_ok") in (True, None):
-                    status = "running"
-                    message = "今日研报分析正在生成中，请稍候刷新"
+                last_run_day = str(js.get("last_run", ""))[:10]
+                last_ok = js.get("last_ok")
+                if last_run_day == today:
+                    if last_ok is True:
+                        # 状态显示成功但无结果文档：可能 insert 幂等跳过或缓存未刷新，视为就绪兜底
+                        status = "pending"
+                        message = "今日汇总尚未生成，请稍后刷新"
+                    elif last_ok is False:
+                        status = "failed"
+                        message = "今日研报分析生成失败，请检查日志或手动触发"
+                    else:  # None = 后台执行中
+                        status = "running"
+                        message = "今日研报分析正在生成中，请稍候刷新"
         except Exception:
             pass
 
         payload = {"success": True, "data": None, "status": status, "message": message}
-        # pending/running 状态缓存更短，便于前端及时拿到生成完成的结果
+        # running 状态缓存 60s（避免高频轮询打 Mongo）；failed/pending 不缓存，便于及时拿到重跑结果
         if status == "running":
             _today_cache["payload"] = payload
             _today_cache["at"] = now_ts
             _today_cache["date"] = today
         else:
-            # pending 不缓存，下次请求重新查（避免错过刚生成的结果）
             _today_cache["payload"] = None
         return jsonify(payload)
     except Exception as e:

@@ -229,12 +229,18 @@ class Screener:
             return {}
 
     def _fetch_valuations(self, codes: List[str]) -> Dict[str, Dict]:
-        """批量获取估值数据。"""
+        """批量获取估值数据（取每只股票最新一期，避免多期覆盖随机）。"""
         try:
-            docs = self._db["stock_valuation"].find(
-                {"code": {"$in": codes}},
-            )
-            return {d.get("code", ""): d for d in docs}
+            pipeline = [
+                {"$match": {"code": {"$in": codes}}},
+                {"$sort": {"updated_at": -1}},
+                {"$group": {
+                    "_id": "$code",
+                    "doc": {"$first": "$$ROOT"},
+                }},
+            ]
+            docs = self._db["stock_valuation"].aggregate(pipeline)
+            return {d["_id"]: d["doc"] for d in docs}
         except Exception as e:
             logger.warning(f"[Screener] fetch_valuations error: {e}")
             return {}
@@ -260,25 +266,27 @@ class Screener:
     @staticmethod
     def _pass_roe(fin: Dict, val: Dict) -> bool:
         roe = Screener._parse_pct(val.get("roe")) or Screener._parse_pct(fin.get("净资产收益率"))
+        # 缺失时放行：估值/财务未回写（新上市股、collector 未跑）不应直接过滤，
+        # 交给后续 score 压低分即可。注释原本就说"缺失通过"，此处修正代码与之相符。
         if roe is None:
-            return False
+            return True
         return roe > 5
 
     @staticmethod
     def _pass_revenue_growth(fin: Dict) -> bool:
         growth = fin.get("营业总收入同比增长率")
         if growth is None:
-            return False
+            return True  # 缺失放行
         try:
             return float(growth) > 0
         except (ValueError, TypeError):
-            return False
+            return True
 
     @staticmethod
     def _pass_valuation(val: Dict) -> bool:
         pe = val.get("pe_dynamic") or val.get("pe")
         if pe is None:
-            return False
+            return True  # 缺失放行
         try:
             pe_f = float(pe)
             if pe_f <= 0:

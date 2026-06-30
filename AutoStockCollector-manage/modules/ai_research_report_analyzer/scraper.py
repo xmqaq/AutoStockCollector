@@ -85,15 +85,18 @@ def _get_cached(sector: str, min_count: int) -> Tuple[Optional[List[Dict]], str]
 
 
 def _save_to_cache(sector: str, reports: List[Dict]):
-    """写入 MongoDB 缓存（去重）。"""
+    """写入 MongoDB 缓存（去重，批量 upsert）。"""
+    if not reports:
+        return
     try:
+        from pymongo import UpdateOne
         db = DatabaseConfig.get_database()
         coll = db[ResearchConfig.CACHE_COLLECTION]
         now = datetime.now()
-        inserted = 0
+        ops = []
         for r in reports:
             rid = _make_report_id(r)
-            result = coll.update_one(
+            ops.append(UpdateOne(
                 {"sector": sector, "report_id": rid},
                 {"$set": {
                     "sector": sector,
@@ -102,9 +105,9 @@ def _save_to_cache(sector: str, reports: List[Dict]):
                     "cached_at": now,
                 }},
                 upsert=True,
-            )
-            if result.upserted_id:
-                inserted += 1
+            ))
+        result = coll.bulk_write(ops, ordered=False)
+        inserted = result.upserted_count
         logger.info(
             f"[ResearchAnalyzer] Cache saved sector={sector} "
             f"total={len(reports)} new={inserted}"
@@ -138,45 +141,52 @@ def _fetch_from_research_reports(sector: str, days: int) -> List[Dict]:
     seen_ids = set()
     storage = ResearchReportStorage()
 
-    for stock in stock_codes:
-        code = stock.get("code", "")
+    # 代表股信息（用于补 name/link 字段）
+    stock_map = {s.get("code", ""): s for s in stock_codes if s.get("code")}
+    batch_codes = list(stock_map.keys())
+
+    # 一次查询所有代表股的研报（Mongo 端 code $in + date $gte 过滤），省去逐股 5 次往返
+    try:
+        reports = storage.find_many(
+            {"code": {"$in": batch_codes}, "date": {"$gte": cutoff_str}},
+            sort=[("date", -1)],
+            limit=500,
+        )
+    except Exception as e:
+        logger.warning(f"[ResearchAnalyzer] L2 batch fetch error: {e}")
+        return []
+
+    for r in reports:
+        code = r.get("code", "")
+        stock = stock_map.get(code, {})
         name = stock.get("name", "")
         link = stock.get("link", "")
-        if not code:
+        date_str = str(r.get("date", ""))[:10]
+        if date_str < cutoff_str:
             continue
 
-        try:
-            reports = storage.find_by_code(code, limit=100)
-        except Exception:
+        rid = r.get("report_id", "") or _make_report_id(r)
+        if rid in seen_ids:
             continue
+        seen_ids.add(rid)
 
-        for r in reports:
-            date_str = str(r.get("date", ""))[:10]
-            if date_str < cutoff_str:
-                continue
-
-            rid = r.get("report_id", "") or _make_report_id(r)
-            if rid in seen_ids:
-                continue
-            seen_ids.add(rid)
-
-            report = {
-                "code": r.get("code", code),
-                "name": r.get("name", name),
-                "stock_name": name,
-                "link_name": link,
-                "title": r.get("title", ""),
-                "date": date_str,
-                "org": r.get("org", ""),
-                "industry": r.get("industry", ""),
-                "rating": r.get("rating", ""),
-                "target_price_high": r.get("target_price_high"),
-                "target_price_low": r.get("target_price_low"),
-                "abstract": r.get("abstract", ""),
-                "generated_abstract": r.get("generated_abstract", ""),
-                "author": r.get("author", ""),
-            }
-            all_reports.append(report)
+        report = {
+            "code": r.get("code", code),
+            "name": r.get("name", name),
+            "stock_name": name,
+            "link_name": link,
+            "title": r.get("title", ""),
+            "date": date_str,
+            "org": r.get("org", ""),
+            "industry": r.get("industry", ""),
+            "rating": r.get("rating", ""),
+            "target_price_high": r.get("target_price_high"),
+            "target_price_low": r.get("target_price_low"),
+            "abstract": r.get("abstract", ""),
+            "generated_abstract": r.get("generated_abstract", ""),
+            "author": r.get("author", ""),
+        }
+        all_reports.append(report)
 
     logger.info(
         f"[ResearchAnalyzer] L2 research_reports sector={sector} "

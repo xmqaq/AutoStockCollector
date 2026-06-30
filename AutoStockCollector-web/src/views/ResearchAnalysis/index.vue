@@ -100,6 +100,9 @@ async function loadToday() {
         // 17:30 后 cron 正在生成，启动轻量轮询直到拿到结果
         ElMessage.info(res.data.message || '今日研报分析正在生成中，将自动刷新')
         startTodayPolling()
+      } else if (status === 'failed') {
+        stopTodayPolling()
+        ElMessage.warning(res.data.message || '今日研报分析生成失败，请手动触发')
       } else {
         ElMessage.info(res.data.message || '今日汇总尚未生成，盘后 17:30 自动运行')
       }
@@ -126,6 +129,10 @@ function startTodayPolling() {
         resultTab.value = res.data.data.report_md ? 'report' : 'chain'
         stopTodayPolling()
         ElMessage.success(`今日精选已生成，${res.data.data.candidate_count} 只候选标的`)
+      } else if (res.data?.status === 'failed') {
+        // 后台已失败，停止轮询
+        stopTodayPolling()
+        ElMessage.warning(res.data.message || '今日研报分析生成失败，请手动触发')
       }
     } catch {
       // 网络错误静默，继续轮询

@@ -903,8 +903,9 @@ def job_research_daily():
         msg = "研报全板块扫描已启动（后台）"
         logger.info(f"[cron] {msg}")
         _record_result("研报全板块扫描", True, msg)
-        # 仅标记已触发，不计 run_count——成功落库后由 _run_research_daily 统一计数，避免后台失败被误计为成功
-        _persist_cron_status("research_daily", _now().isoformat(), True, msg, inc_count=False)
+        # 触发时只标记"后台执行中"（last_ok=None），真正结果由 _run_research_daily
+        # 成功落库后写 True / 失败写 False。避免触发即 True 导致前端误判"生成中"。
+        _persist_cron_status("research_daily", _now().isoformat(), None, msg, inc_count=False)
     except Exception as e:
         logger.error(f"[cron] 研报扫描启动失败: {e}")
         _record_result("研报全板块扫描", False, str(e))
@@ -959,7 +960,10 @@ def _run_research_daily():
         for i in range(0, len(sectors), batch_size):
             batch = sectors[i:i + batch_size]
             try:
-                result = eng.analyze(sectors=batch, top_n=10, max_workers=3, synthesize=False)
+                result = eng.analyze(
+                    sectors=batch, top_n=10, max_workers=3,
+                    synthesize=False, enrich=False,
+                )
                 batch_results.append(result)
                 logger.info(f"[cron] 研报扫描完成批次 {i//batch_size+1}: {', '.join(batch)}")
             except Exception as e:
@@ -976,14 +980,21 @@ def _run_research_daily():
         ok_count = len(sectors) - len(failed)
         task_id = f"daily_{today.replace('-', '')}"
 
-        db[ResearchConfig.RESULTS_COLLECTION].insert_one({
-            "task_id": task_id,
-            "source": "cron_daily",
-            "sectors": ["全市场"],
-            "top_n": 30,
-            "result": merged,
-            "created_at": _now(),
-        })
+        try:
+            db[ResearchConfig.RESULTS_COLLECTION].insert_one({
+                "task_id": task_id,
+                "source": "cron_daily",
+                "sectors": ["全市场"],
+                "top_n": 30,
+                "result": merged,
+                "created_at": _now(),
+            })
+        except Exception as dup_err:
+            # task_id 唯一索引冲突（今日已有同名文档，如手动触发过）视为幂等成功，不算失败
+            if "duplicate key" in str(dup_err).lower() or "E11000" in str(dup_err):
+                logger.info(f"[cron] 研报扫描：今日文档已存在({task_id})，幂等跳过")
+            else:
+                raise
 
         msg = f"扫描 {len(sectors)} 板块完成(成功{ok_count}/失败{len(failed)})，候选 {merged.get('candidate_count', 0)} 只"
         logger.info(f"[cron] {msg}")
@@ -1016,7 +1027,7 @@ def job_research_report_summarize():
     """盘中持续摘要未处理的研报，每次处理 10 篇。"""
     try:
         from modules.research_report_collector.summarizer import summarize_pending_reports
-        result = summarize_pending_reports(max_reports=10, delay=12)
+        result = summarize_pending_reports(max_reports=20, delay=12)
         msg = f"摘要 {result.get('summarized', 0)} / {result.get('total', 0)} 篇"
         logger.info(f"[cron] {msg}")
         _record_result("研报AI摘要", True, msg)
@@ -1236,7 +1247,7 @@ def start_daily_jobs() -> None:
         _make_job("PA盘中扫描 30min",  job_pa_intraday_scan,        "interval", interval_minutes=30, task_type="pa_intraday_scan"),
         _make_job("PA全市场扫描 17:00", job_pa_scan,                "daily", 17,  0, task_type="pa_scan"),
         _make_job("研报全板块扫描 17:30", job_research_daily,       "daily", 17, 30, task_type="research_daily"),
-        _make_job("研报原始数据采集 18:00", job_research_report_collect, "daily", 18, 0, task_type="research_report_collect"),
+        _make_job("研报原始数据采集 16:30", job_research_report_collect, "daily", 16, 30, task_type="research_report_collect"),
         _make_job("研报AI摘要 30min",       job_research_report_summarize, "interval", interval_minutes=30, task_type="research_report_summarize"),
         _make_job("盘前竞价雷达 09:25",     job_auction_radar,           "daily", 9, 25, task_type="auction_radar"),
         _make_job("竞价自动平仓 14:50",     job_auction_auto_close,      "daily", 14, 50, task_type="auction_auto_close"),

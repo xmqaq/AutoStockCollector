@@ -176,6 +176,9 @@ class DatabaseConfig:
         cls._safe_index(db.pa_signal_history, [("created_at", -1)])
         cls._safe_index(db.pa_signal_history, [("signal", 1), ("created_at", -1)])
 
+        # 价格行为学 — 全市场快照（研报 enrich 取最近 24h 最新一条，按 created_at 倒序）
+        cls._safe_index(db.pa_signals, [("created_at", -1)])
+
         # 盘前竞价雷达
         cls._safe_index(db.auction_snapshots, [("date", 1), ("code", 1)])
         cls._safe_index(db.auction_results, [("date", 1)], unique=True)

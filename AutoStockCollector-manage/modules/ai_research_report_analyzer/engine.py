@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional
 
 from config.database import DatabaseConfig
+from utils.helpers import beijing_now, normalize_stock_code_flexible
 from utils.logger import get_logger
 
 from .config import ResearchConfig
@@ -13,7 +14,7 @@ from .extractor import ReportSignal, Extractor
 from .supply_chain import SupplyChainAggregator
 from .screener import Screener
 
-_PRICE_COLLECTION = "stock_daily"
+_PRICE_COLLECTION = "kline"  # 日线数据集合（旧值 "stock_daily" 从未被写入，导致价格 enrich 静默失效）
 _FUNDAMENTAL_COLLECTION = "stock_valuation"
 
 logger = get_logger(__name__)
@@ -36,12 +37,17 @@ class AnalyzerEngine:
         progress_callback: Optional[Callable[[int, str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
         synthesize: bool = True,
+        enrich: bool = True,
     ) -> Dict[str, Any]:
         """对多个板块执行研报分析。
 
         synthesize=False 时跳过批内 _synthesize_report（省一次 LLM 调用），
         供 cron 跨批合并场景使用——批内简报会被 merge_batch_results 丢弃，
         无需合成。单批次独立分析（API 手动触发）仍默认合成。
+
+        enrich=False 时跳过批内 _enrich_with_market_context（省 4 次 Mongo 查询
+        含 365 天聚合），供 cron 跨批合并场景使用——批内 enrich 结果会被
+        merge_batch_results 丢弃，统一在合并阶段做一次。
         """
         start = datetime.now()
         logger.info(f"[ResearchAnalyzer] Starting analysis sectors={sectors} top_n={top_n}")
@@ -86,7 +92,9 @@ class AnalyzerEngine:
 
         filtered = self._screener.filter(candidate_pool)
         scored = self._screener.score(filtered)
-        scored = self._enrich_with_market_context(scored)
+        # 批内 enrich：cron 跨批合并场景会丢弃批内 enrich 字段，跳过省 4 次 Mongo 查询
+        if enrich:
+            scored = self._enrich_with_market_context(scored)
 
         # 批内简报：cron 跨批合并场景会丢弃批 report_md，跳过省一次 LLM 调用
         report_md = ""
@@ -319,7 +327,12 @@ class AnalyzerEngine:
         return merged[:top_n]
 
     def _enrich_with_market_context(self, candidates: List[Dict]) -> List[Dict]:
-        """为候选标的补充价格上下文和 AI 监控信号。"""
+        """为候选标的补充价格上下文和 AI 监控信号。
+
+        候选 code 来自 research_reports，是纯数字（如 000001）；而 kline /
+        stock_valuation / monitor_signals 存的是带前缀码（SZ000001）。此处统一
+        归一化为带前缀码查询，再用 norm_map 反查回候选。
+        """
         if not candidates:
             return candidates
 
@@ -327,12 +340,17 @@ class AnalyzerEngine:
         if not codes:
             return candidates
 
+        # 纯数字 → 带前缀码（kline/stock_valuation/monitor_signals 均按前缀码存储）
+        norm_map = {c: normalize_stock_code_flexible(c) for c in codes}
+        norm_codes = list({v for v in norm_map.values()})
+
         # 1. 获取最新价格数据（限于近 365 天，确保 52周高/200日均 正确）
+        #    kline.date 存的是 datetime 类型（非字符串），cutoff 必须用 datetime 才能命中 $gte。
         prices = {}
-        one_year_ago = (datetime.now() - timedelta(days=365)).isoformat()[:10]
+        one_year_ago_dt = beijing_now() - timedelta(days=365)
         try:
             for doc in self._db[_PRICE_COLLECTION].aggregate([
-                {"$match": {"code": {"$in": codes}, "date": {"$gte": one_year_ago}}},
+                {"$match": {"code": {"$in": norm_codes}, "date": {"$gte": one_year_ago_dt}}},
                 {"$sort": {"date": -1}},
                 {"$group": {
                     "_id": "$code",
@@ -351,7 +369,7 @@ class AnalyzerEngine:
         valuations = {}
         try:
             for doc in self._db[_FUNDAMENTAL_COLLECTION].find(
-                {"code": {"$in": codes}},
+                {"code": {"$in": norm_codes}},
                 {"code": 1, "pe_dynamic": 1, "pb": 1, "total_mv": 1},
             ):
                 valuations[doc.get("code", "")] = doc
@@ -362,7 +380,7 @@ class AnalyzerEngine:
         monitor_signals = {}
         try:
             for doc in self._db["monitor_signals"].find(
-                {"code": {"$in": codes}},
+                {"code": {"$in": norm_codes}},
                 {"code": 1, "signal": 1, "composite_score": 1,
                  "technical_score": 1, "sentiment_score": 1, "fund_flow_score": 1,
                  "_id": 0},
@@ -371,9 +389,9 @@ class AnalyzerEngine:
         except Exception as e:
             logger.warning(f"[Research] monitor signal fetch error: {e}")
 
-        # 4. 获取 PA 信号（限最近 24h 内的分析结果）
+        # 4. 获取 PA 信号（限最近 24h 内的分析结果；pa_signals.results.symbol 为纯数字）
         pa_signals = {}
-        one_day_ago = datetime.now() - timedelta(hours=24)
+        one_day_ago = beijing_now() - timedelta(hours=24)
         try:
             for doc in self._db["pa_signals"].find(
                 {"created_at": {"$gte": one_day_ago}},
@@ -388,9 +406,10 @@ class AnalyzerEngine:
 
         for c in candidates:
             code = c["code"]
-            px = prices.get(code, {})
-            val = valuations.get(code, {})
-            monitor = monitor_signals.get(code, {})
+            norm = norm_map.get(code, code)
+            px = prices.get(norm, {})
+            val = valuations.get(norm, {})
+            monitor = monitor_signals.get(norm, {})
             pa = pa_signals.get(code, {})
 
             close = px.get("close", 0)

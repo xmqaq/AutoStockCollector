@@ -109,7 +109,7 @@ export const researchApi = {
       success: boolean
       data: AnalysisResult | null
       message?: string
-      status?: 'ready' | 'pending' | 'running'
+      status?: 'ready' | 'pending' | 'running' | 'failed'
     }>(
       '/api/v1/ai/research-analysis/today',
     )
