@@ -22,6 +22,12 @@ export interface Candidate {
   mention_count: number
   sectors: string[]
   confidence: number
+  /** 推荐原因（单板块原始，跨板块合并后可能为空，以 reasons 为准） */
+  reason?: string
+  /** 跨板块合并后的推荐原因列表，每条 {sector, reason} */
+  reasons?: { sector: string; reason: string }[]
+  /** reasons 拼接的兜底文本，供表格直接展示 */
+  reason_text?: string
   current_price?: number
   pct_from_52w_high?: number
   pct_from_ma200?: number
@@ -95,6 +101,12 @@ export const researchApi = {
   getHistory() {
     return client.get<{ success: boolean; count: number; data: HistoryItem[] }>(
       '/api/v1/ai/research-analysis/history',
+    )
+  },
+  /** 获取今日 cron 自动汇总结果（全市场研报精选） */
+  getToday() {
+    return client.get<{ success: boolean; data: AnalysisResult | null; message?: string }>(
+      '/api/v1/ai/research-analysis/today',
     )
   },
   /** 取消分析任务 */

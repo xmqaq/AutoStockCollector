@@ -164,6 +164,7 @@ class DatabaseConfig:
         cls._safe_index(db.research_analysis_results, [("task_id", 1)])
         cls._safe_index(db.research_analysis_results, [("sectors", 1)])
         cls._safe_index(db.research_analysis_results, [("created_at", -1)])
+        cls._safe_index(db.research_analysis_results, [("source", 1), ("created_at", -1)])
         cls._dedup_collection(db.research_llm_cache, "cache_key")
         cls._safe_index(db.research_llm_cache, [("cache_key", 1)], unique=True)
         cls._safe_index(db.research_llm_cache, [("created_at", -1)], expireAfterSeconds=86400 * 2)

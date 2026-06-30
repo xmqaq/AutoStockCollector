@@ -9,6 +9,7 @@
         <p class="subtitle">基于供应链视角的板块研报聚合与标的筛选引擎</p>
       </div>
       <div class="ra-head-right">
+        <el-button type="success" :icon="Star" @click="$emit('load-today')" round class="hover-btn">今日精选</el-button>
         <el-button :icon="Refresh" @click="$emit('load-history')" round class="hover-btn">刷新历史</el-button>
         <el-button 
           :icon="isCollapsed ? ArrowDown : ArrowUp" 
@@ -86,7 +87,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { MagicStick, Refresh, Filter, Loading, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
+import { MagicStick, Refresh, Filter, Loading, ArrowUp, ArrowDown, Star } from '@element-plus/icons-vue'
 
 const isCollapsed = ref(false)
 
@@ -105,6 +106,7 @@ const emit = defineEmits<{
   (e: 'update:selectedSectors', val: string[]): void
   (e: 'update:topN', val: number): void
   (e: 'load-history'): void
+  (e: 'load-today'): void
   (e: 'start-analysis'): void
   (e: 'cancel-analysis'): void
 }>()

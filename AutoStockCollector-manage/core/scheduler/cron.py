@@ -895,29 +895,88 @@ def job_pa_scan():
 # ─── 投资研报每日全板块扫描 ────────────────────────────────────────────────────
 
 def job_research_daily():
-    """每日盘后自动扫描所有板块研报，保存结果。"""
+    """每日盘后自动扫描所有板块研报，汇总落库（后台线程执行，不阻塞调度循环）。"""
     if not _is_weekday():
         return
     try:
+        threading.Thread(target=_run_research_daily, daemon=True).start()
+        msg = "研报全板块扫描已启动（后台）"
+        logger.info(f"[cron] {msg}")
+        _record_result("研报全板块扫描", True, msg)
+        _persist_cron_status("research_daily", _now().isoformat(), True, msg, inc_count=True)
+    except Exception as e:
+        logger.error(f"[cron] 研报扫描启动失败: {e}")
+        _record_result("研报全板块扫描", False, str(e))
+        _persist_cron_status("research_daily", _now().isoformat(), False, str(e)[:100])
+
+
+def _run_research_daily():
+    """后台执行：27 板块分批分析 → 跨批合并 → 落库 research_analysis_results(source=cron_daily)。
+
+    幂等：今日已生成则跳过。失败板块跳过、汇总可用结果。
+    """
+    try:
+        from datetime import date
+        from config.database import DatabaseConfig
         from modules.ai_research_report_analyzer.supply_chain import SupplyChainAggregator
         from modules.ai_research_report_analyzer.engine import AnalyzerEngine
+        from modules.ai_research_report_analyzer.config import ResearchConfig
+
+        today = date.today().isoformat()[:10]
+        db = DatabaseConfig.get_database()
+
+        # 幂等：今日已有 cron_daily 汇总则跳过
+        existing = db[ResearchConfig.RESULTS_COLLECTION].find_one(
+            {"source": "cron_daily", "created_at": {"$gte": today}},
+        )
+        if existing:
+            logger.info("[cron] 研报扫描：今日已生成汇总，跳过")
+            return
+
         agg = SupplyChainAggregator()
         sectors = [s["name"] for s in agg.list_sectors()]
         if not sectors:
             logger.info("[cron] 研报扫描：无可用板块，跳过")
             return
+
         batch_size = 5
+        batch_results = []
+        eng = AnalyzerEngine()
         for i in range(0, len(sectors), batch_size):
             batch = sectors[i:i + batch_size]
-            eng = AnalyzerEngine()
-            result = eng.analyze(sectors=batch, top_n=10)
-            logger.info(f"[cron] 研报扫描完成批次 {i//batch_size+1}: {', '.join(batch)}")
-        msg = f"扫描 {len(sectors)} 个板块完成"
+            try:
+                result = eng.analyze(sectors=batch, top_n=10)
+                batch_results.append(result)
+                logger.info(f"[cron] 研报扫描完成批次 {i//batch_size+1}: {', '.join(batch)}")
+            except Exception as e:
+                logger.warning(f"[cron] 研报扫描批次失败 {batch}: {e}")
+
+        if not batch_results:
+            logger.warning("[cron] 研报扫描：所有批次失败，无汇总")
+            _persist_cron_status("research_daily", _now().isoformat(), False, "所有批次失败")
+            return
+
+        # 跨批合并
+        merged = eng.merge_batch_results(batch_results, top_n=30)
+        failed = merged.get("failed_sectors", [])
+        ok_count = len(sectors) - len(failed)
+        task_id = f"daily_{today.replace('-', '')}"
+
+        db[ResearchConfig.RESULTS_COLLECTION].insert_one({
+            "task_id": task_id,
+            "source": "cron_daily",
+            "sectors": ["全市场"],
+            "top_n": 30,
+            "result": merged,
+            "created_at": _now(),
+        })
+
+        msg = f"扫描 {len(sectors)} 板块完成(成功{ok_count}/失败{len(failed)})，候选 {merged.get('candidate_count', 0)} 只"
         logger.info(f"[cron] {msg}")
         _record_result("研报全板块扫描", True, msg)
         _persist_cron_status("research_daily", _now().isoformat(), True, msg, inc_count=True)
     except Exception as e:
-        logger.error(f"[cron] 研报扫描失败: {e}")
+        logger.error(f"[cron] 研报扫描后台任务失败: {e}")
         _record_result("研报全板块扫描", False, str(e))
         _persist_cron_status("research_daily", _now().isoformat(), False, str(e)[:100])
 

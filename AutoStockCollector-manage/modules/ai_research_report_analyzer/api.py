@@ -88,6 +88,7 @@ def _run_analysis(task_id: str, sectors: list, top_n: int):
             db = DatabaseConfig.get_database()
             db[ResearchConfig.RESULTS_COLLECTION].insert_one({
                 "task_id": task_id,
+                "source": "manual",
                 "sectors": sectors,
                 "top_n": top_n,
                 "result": result,
@@ -257,4 +258,37 @@ def get_history():
         return jsonify({"success": True, "count": len(docs), "data": docs})
     except Exception as e:
         logger.warning(f"[ResearchAnalyzer] history error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@research_bp.route("/research-analysis/today", methods=["GET"])
+@login_required
+def get_today_summary():
+    """获取今日 cron 自动汇总的研报分析结果（全市场）。"""
+    try:
+        from datetime import date
+        from config.database import DatabaseConfig
+        from .config import ResearchConfig
+
+        db = DatabaseConfig.get_database()
+        today = date.today().isoformat()[:10]
+        doc = db[ResearchConfig.RESULTS_COLLECTION].find_one(
+            {"source": "cron_daily", "created_at": {"$gte": today}},
+            sort=[("created_at", -1)],
+        )
+        if doc and doc.get("result"):
+            doc.pop("_id", None)
+            return jsonify({
+                "success": True,
+                "data": doc["result"],
+                "task_id": doc.get("task_id", ""),
+                "created_at": doc.get("created_at"),
+            })
+        return jsonify({
+            "success": True,
+            "data": None,
+            "message": "今日汇总尚未生成，盘后 17:30 自动运行，请稍后刷新",
+        })
+    except Exception as e:
+        logger.warning(f"[ResearchAnalyzer] today summary error: {e}")
         return jsonify({"success": False, "error": str(e)}), 500

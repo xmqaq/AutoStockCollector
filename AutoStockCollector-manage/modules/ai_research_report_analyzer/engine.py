@@ -103,6 +103,98 @@ class AnalyzerEngine:
             "sector_details": sector_results,
         }
 
+    def merge_batch_results(self, batch_results: List[Dict], top_n: int = 30) -> Dict[str, Any]:
+        """跨批次合并多批 analyze() 结果为一份全市场汇总。
+
+        每批 candidates 已经过批内 _merge_candidates/screener/enrich，这里只需按 code
+        扁平去重合并（sectors/reasons/mention_count 累加），再统一 filter/score/enrich，
+        最后合成一份全市场简报。失败批次（success=False）跳过。
+        """
+        start = datetime.now()
+        merged_chain_view: List[Dict] = []
+        merged_sector_details: Dict[str, Any] = {}
+        merged_aggregated: Dict[str, Dict] = {}
+        seen: Dict[str, Dict] = {}
+        ok_batches = 0
+        failed_sectors: List[str] = []
+
+        for br in batch_results:
+            if not br or not br.get("success"):
+                continue
+            ok_batches += 1
+            merged_chain_view.extend(br.get("chain_view", []))
+            merged_sector_details.update(br.get("sector_details", {}))
+            # 收集失败板块
+            for sec, det in br.get("sector_details", {}).items():
+                if det.get("error"):
+                    failed_sectors.append(sec)
+            # 扁平合并 candidates（每批 candidates 已是批内合并产物）
+            for c in br.get("candidates", []):
+                code = c.get("code", "")
+                if not code:
+                    continue
+                if code not in seen:
+                    seen[code] = {**c}
+                    # 统一 reasons 结构：旧数据可能只有 reason 字段
+                    if "reasons" not in seen[code]:
+                        seen[code]["reasons"] = (
+                            [{"sector": s, "reason": c.get("reason", "")} for s in c.get("sectors", [])]
+                            if c.get("reason") else []
+                        )
+                    seen[code]["mention_count"] = c.get("mention_count", 1)
+                else:
+                    seen[code]["mention_count"] = (seen[code].get("mention_count", 1) +
+                                                  c.get("mention_count", 1))
+                    for s in c.get("sectors", []):
+                        if s not in seen[code].get("sectors", []):
+                            seen[code].setdefault("sectors", []).append(s)
+                    # 合并 reasons：把该批 candidate 的 reasons 追加（去重）
+                    for r in c.get("reasons", []) or (
+                        [{"sector": s, "reason": c.get("reason", "")} for s in c.get("sectors", [])]
+                        if c.get("reason") else []
+                    ):
+                        key = f"{r.get('sector')}|{r.get('reason')}"
+                        existing = {f"{x.get('sector')}|{x.get('reason')}" for x in seen[code].get("reasons", [])}
+                        if key not in existing:
+                            seen[code].setdefault("reasons", []).append(r)
+
+        # 重建 reason_text
+        for c in seen.values():
+            parts = [f"【{r['sector']}】{r['reason']}" for r in c.get("reasons", []) if r.get("reason")]
+            c["reason_text"] = "；".join(parts) if parts else (c.get("reason", "") or "")
+
+        candidate_pool = sorted(seen.values(), key=lambda x: x.get("mention_count", 0), reverse=True)
+        filtered = self._screener.filter(candidate_pool)
+        scored = self._screener.score(filtered)
+        scored = self._enrich_with_market_context(scored)
+
+        merged_chain_view.sort(key=lambda x: x.get("theme_score", 0), reverse=True)
+        all_sectors = list(merged_sector_details.keys())
+        report_md = self._synthesize_report(
+            all_sectors, merged_aggregated, [], scored, merged_chain_view,
+        )
+
+        elapsed = (datetime.now() - start).total_seconds()
+        total_sectors = len(all_sectors)
+        ok_sectors = total_sectors - len(failed_sectors)
+        logger.info(
+            f"[ResearchAnalyzer] merge_batch_results: batches={ok_batches} "
+            f"sectors={total_sectors}(ok={ok_sectors}, failed={len(failed_sectors)}) "
+            f"candidates={len(scored)} elapsed={elapsed:.1f}s"
+        )
+
+        return {
+            "success": True,
+            "sectors": ["全市场"],
+            "chain_view": merged_chain_view,
+            "candidates": scored[:top_n],
+            "candidate_count": len(scored),
+            "report_md": report_md,
+            "elapsed_seconds": round(elapsed, 1),
+            "sector_details": merged_sector_details,
+            "failed_sectors": failed_sectors,
+        }
+
     def _analyze_single(self, sector: str) -> Dict[str, Any]:
         """分析单个行业板块。"""
         try:
@@ -179,19 +271,35 @@ class AnalyzerEngine:
     def _merge_candidates(
         self, all_candidates: Dict[str, List], top_n: int,
     ) -> List[Dict]:
-        """跨行业去重合并候选标的。"""
+        """跨行业去重合并候选标的。
+
+        同一股票被多个板块命中时，合并 sectors/mention_count，并把每个板块的
+        推荐原因收集到 reasons 列表（避免后续板块的 reason 被丢弃），
+        同时拼一个 reason_text 字段供表格兜底展示。
+        """
         seen = {}
         for sector, stocks in all_candidates.items():
             for s in stocks:
                 code = s.get("code", "")
                 if not code:
                     continue
+                reason = s.get("reason", "") or ""
                 if code not in seen:
-                    seen[code] = {**s, "sectors": [sector], "mention_count": 1}
+                    seen[code] = {
+                        **s,
+                        "sectors": [sector],
+                        "reasons": [{"sector": sector, "reason": reason}],
+                        "mention_count": 1,
+                    }
                 else:
                     seen[code]["mention_count"] += 1
                     if sector not in seen[code]["sectors"]:
                         seen[code]["sectors"].append(sector)
+                    seen[code]["reasons"].append({"sector": sector, "reason": reason})
+        # 拼接 reason_text 供前端表格兜底展示
+        for c in seen.values():
+            parts = [f"【{r['sector']}】{r['reason']}" for r in c.get("reasons", []) if r.get("reason")]
+            c["reason_text"] = "；".join(parts) if parts else (c.get("reason", "") or "")
         merged = sorted(seen.values(), key=lambda x: x.get("mention_count", 0), reverse=True)
         return merged[:top_n]
 
@@ -347,7 +455,7 @@ class AnalyzerEngine:
                 )
 
             theme_scores = "\n".join(
-                f"- {cv['sector']}/{cv['link']}: score={cv['bottleneck_score']}, "
+                f"- {cv['sector']}/{cv['link']}: score={cv['theme_score']}, "
                 f"judgment={cv['judgment']}"
                 for cv in chain_view[:10]
             ) or "无数据"

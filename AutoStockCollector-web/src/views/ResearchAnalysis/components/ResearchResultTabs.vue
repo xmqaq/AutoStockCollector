@@ -170,6 +170,21 @@
                   </div>
                 </template>
               </el-table-column>
+              <el-table-column label="推荐原因" min-width="240">
+                <template #default="{ row }">
+                  <div v-if="row.reasons?.length" class="reason-list">
+                    <div v-for="(r, idx) in row.reasons" :key="idx" class="reason-item">
+                      <el-tag size="small" type="info" effect="plain" class="reason-tag">{{ r.sector }}</el-tag>
+                      <el-tooltip :content="r.reason" placement="top" :disabled="!r.reason">
+                        <span class="reason-text">{{ r.reason || '-' }}</span>
+                      </el-tooltip>
+                    </div>
+                  </div>
+                  <el-tooltip v-else :content="row.reason_text || ''" placement="top" :disabled="!row.reason_text">
+                    <span class="reason-text-single">{{ row.reason_text || '-' }}</span>
+                  </el-tooltip>
+                </template>
+              </el-table-column>
               <el-table-column label="操作" width="120" align="center" fixed="right">
                 <template #default="{ row }">
                   <div class="action-btns">
@@ -570,6 +585,33 @@ onUnmounted(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
+}
+.reason-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.reason-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.reason-tag {
+  flex-shrink: 0;
+}
+.reason-text,
+.reason-text-single {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--el-text-color-regular);
+}
+.reason-text-single {
+  display: block;
 }
 .action-btns {
   display: flex;
