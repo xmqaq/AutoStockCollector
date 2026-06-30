@@ -155,8 +155,16 @@
           <div v-if="summaryText" class="summary-content">
             <div class="summary-text" v-html="renderedSummary"></div>
           </div>
+          <div v-else-if="summaryLoading" class="summary-loading">
+            <el-icon class="is-loading"><Loading /></el-icon>
+            <p class="text-muted">正在调用 AI 生成摘要，约 10-20 秒…</p>
+          </div>
+          <div v-else-if="summaryError" class="summary-error">
+            <p>{{ summaryError }}</p>
+            <el-button size="small" type="primary" plain @click="requestSummary(selected!)">重试</el-button>
+          </div>
           <div v-else>
-            <p class="text-muted">后台自动分析中，稍后刷新即可查看</p>
+            <p class="text-muted">暂无 AI 摘要</p>
           </div>
         </div>
         <div v-if="selected.abstract && selected.abstract !== selected.title" class="detail-section">
@@ -179,7 +187,7 @@ import { ref, computed, onMounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { researchReportsApi, RATING_OPTIONS, type ResearchReport } from '@/api/researchReports'
 import { renderMd } from '@/utils/markdown'
-import { ArrowRightBold } from '@element-plus/icons-vue'
+import { ArrowRightBold, Loading } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const loading = ref(false)
@@ -211,6 +219,8 @@ const totalPages = computed(() => Math.ceil(total.value / (query.page_size || 50
 const drawerVisible = ref(false)
 const selected = ref<ResearchReport | null>(null)
 const summaryText = ref('')
+const summaryLoading = ref(false)
+const summaryError = ref('')
 
 const renderedSummary = computed(() => renderMd(summaryText.value))
 
@@ -307,7 +317,36 @@ function goToStock(code: string) {
 function showDetail(r: ResearchReport) {
   selected.value = r
   summaryText.value = r.generated_abstract || ''
+  summaryError.value = ''
+  // 已有摘要直接展示；否则打开抽屉后异步生成
+  if (!summaryText.value && r.report_id) {
+    requestSummary(r)
+  }
   drawerVisible.value = true
+}
+
+async function requestSummary(r: ResearchReport) {
+  if (!r.report_id) return
+  summaryLoading.value = true
+  summaryError.value = ''
+  summaryText.value = ''
+  try {
+    const res = await researchReportsApi.summarize(r.report_id)
+    const abstract = res.data?.data?.abstract || ''
+    if (abstract) {
+      summaryText.value = abstract
+      // 回写本地缓存，避免重复请求 + 同列表内其它条目复用
+      r.generated_abstract = abstract
+      const item = list.value.find(x => x.report_id === r.report_id)
+      if (item) item.generated_abstract = abstract
+    } else {
+      summaryError.value = '摘要生成失败，请稍后重试'
+    }
+  } catch (e: any) {
+    summaryError.value = e?.response?.data?.error || '摘要生成失败，请稍后重试'
+  } finally {
+    summaryLoading.value = false
+  }
 }
 
 function proxyPdfUrl(url: string): string {

@@ -1,4 +1,5 @@
 import hashlib
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
@@ -22,6 +23,60 @@ _META_KEY = "last_collect"
 
 _DEFAULT_WORKERS = 8
 _DEFAULT_DELAY = 0.4
+
+# 全局限流：reportapi.eastmoney.com 对高频请求会 429/封 IP，
+# 用 Semaphore 控并发 + 最小请求间隔保证 8 线程下整体 QPS 受控。
+_RATE_MAX_CONCURRENT = 4
+_RATE_MIN_INTERVAL = 0.5  # 两次请求间至少间隔 0.5s（全局，跨线程）
+_RATE_RETRY_MAX = 3
+_rate_sem = threading.Semaphore(_RATE_MAX_CONCURRENT)
+_rate_lock = threading.Lock()
+_rate_last_request = 0.0
+
+
+def _rate_throttle() -> None:
+    """全局节流：保证任意两次 HTTP 请求间隔不小于 _RATE_MIN_INTERVAL。"""
+    global _rate_last_request
+    with _rate_lock:
+        now = time.time()
+        elapsed = now - _rate_last_request
+        if elapsed < _RATE_MIN_INTERVAL:
+            time.sleep(_RATE_MIN_INTERVAL - elapsed)
+        _rate_last_request = time.time()
+
+
+def _rate_backoff(attempt: int) -> float:
+    return min(2 ** attempt * 2, 30)
+
+
+def _rate_get(url: str, params: Dict, timeout: int = 30) -> Optional[Dict]:
+    """带限流 + 429 退避的 GET，返回解析后的 JSON dict 或 None。"""
+    with _rate_sem:
+        _rate_throttle()
+        for attempt in range(1, _RATE_RETRY_MAX + 2):
+            try:
+                r = requests.get(url, params=params, headers=_EASTMONEY_HEADERS, timeout=timeout)
+                if r.status_code == 429:
+                    delay = _rate_backoff(attempt)
+                    logger.warning(f"[ResearchCollector] 429 from eastmoney, retry in {delay:.0f}s")
+                    time.sleep(delay)
+                    continue
+                r.raise_for_status()
+                return r.json()
+            except requests.ConnectionError as e:
+                if attempt > _RATE_RETRY_MAX:
+                    logger.warning(f"[ResearchCollector] connection error (giving up): {e}")
+                    return None
+                time.sleep(_rate_backoff(attempt))
+            except requests.Timeout as e:
+                if attempt > _RATE_RETRY_MAX:
+                    logger.warning(f"[ResearchCollector] timeout (giving up): {e}")
+                    return None
+                time.sleep(_rate_backoff(attempt))
+            except Exception as e:
+                logger.warning(f"[ResearchCollector] request error: {e}")
+                return None
+    return None
 
 
 def _make_report_id(report: Dict) -> str:
@@ -91,9 +146,9 @@ def _fetch_eastmoney_reports(raw_code: str, days: int = 365) -> List[Dict]:
     }
 
     try:
-        r = requests.get(url, params=params, headers=_EASTMONEY_HEADERS, timeout=30)
-        r.raise_for_status()
-        data_json = r.json()
+        data_json = _rate_get(url, params)
+        if data_json is None:
+            return []
     except Exception as e:
         logger.warning(f"[ResearchCollector] API error for {raw_code}: {e}")
         return []
@@ -106,9 +161,10 @@ def _fetch_eastmoney_reports(raw_code: str, days: int = 365) -> List[Dict]:
     for page in range(2, total_page + 1):
         params["pageNo"] = str(page)
         try:
-            r = requests.get(url, params=params, headers=_EASTMONEY_HEADERS, timeout=30)
-            r.raise_for_status()
-            more = r.json().get("data", [])
+            more_json = _rate_get(url, params)
+            if more_json is None:
+                break
+            more = more_json.get("data", [])
             records.extend(more)
         except Exception as e:
             logger.warning(f"[ResearchCollector] page {page} error: {e}")
@@ -236,8 +292,7 @@ class ResearchReportCollector:
                         f"{saved} saved, fetched={total_fetched}, errors={total_errors}"
                     )
                     all_reports_batch = []
-
-                time.sleep(delay)
+                # 请求节流已由 _rate_get 内部全局限流器接管，此处不再额外 sleep
 
         if all_reports_batch:
             saved, _ = self.storage.save_batch(all_reports_batch)
