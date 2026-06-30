@@ -2,7 +2,12 @@
   <el-dialog :model-value="visible" @update:model-value="closeDialog" :title="sellDialogTitle" width="520px" @close="resetSellForm">
     <div class="trade-dialog-header" v-if="sellTarget">
       <div>当前价：<b>{{ sellTarget.current_price.toFixed(2) }}</b> 元 &nbsp; 成本价：{{ sellTarget.avg_cost.toFixed(2) }} 元</div>
-      <div>持仓：{{ sellTarget.shares }} 股 &nbsp; 当前盈亏：
+      <div>
+        持仓：{{ sellTarget.shares }} 股 &nbsp; 可卖：<b>{{ sellTarget.available_shares ?? sellTarget.shares }}</b> 股
+        <el-tag v-if="(sellTarget.shares - (sellTarget.available_shares ?? sellTarget.shares)) > 0" type="warning" size="small" effect="light" style="margin-left: 6px;">
+          T+1 锁定 {{ sellTarget.shares - (sellTarget.available_shares ?? sellTarget.shares) }} 股
+        </el-tag>
+        &nbsp; 当前盈亏：
         <span :class="pnlColorClass(sellTarget.pnl_percent)">{{ formatPercent(sellTarget.pnl_percent) }}</span>
       </div>
     </div>
@@ -18,7 +23,7 @@
       <!-- 按股数 -->
       <template v-if="sellForm.mode === 'shares'">
         <el-form-item label="卖出数量">
-          <el-input-number v-model="sellForm.shares" :min="100" :max="sellTarget?.shares ?? 0" :step="100" style="width: 100%" />
+          <el-input-number v-model="sellForm.shares" :min="100" :max="sellAvailableShares" :step="100" style="width: 100%" />
         </el-form-item>
       </template>
 
@@ -68,8 +73,8 @@
     </el-form>
     <template #footer>
       <el-button @click="closeDialog">取消</el-button>
-      <el-button type="danger" :loading="tradeLoading" :disabled="sellConfirmShares <= 0" @click="doConfirmSell">
-        确认卖出
+      <el-button type="danger" :loading="tradeLoading" :disabled="sellConfirmShares <= 0 || sellAvailableShares <= 0" @click="doConfirmSell">
+        {{ isTradingTime ? '确认卖出' : '提交挂单' }}
       </el-button>
     </template>
   </el-dialog>
@@ -77,13 +82,14 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { paperApi, type PaperPosition } from '@/api/paper'
 import { formatAmount, formatPercent, pnlColorClass } from '../utils'
 
 const props = defineProps<{
   visible: boolean
   target: PaperPosition | null
+  isTradingTime?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -127,15 +133,18 @@ const sellDialogTitle = computed(() =>
     : '卖出'
 )
 
+// T+1：可卖股数 = 总持仓 - 当日买入 - 挂单冻结（后端已算好 available_shares，缺失时回退总持仓）
+const sellAvailableShares = computed(() => sellTarget.value?.available_shares ?? sellTarget.value?.shares ?? 0)
+
 const sellAmountShares = computed(() => {
   if (!sellTarget.value || sellTarget.value.current_price <= 0) return 0
   const raw = Math.floor(sellForm.value.amount / sellTarget.value.current_price / 100) * 100
-  return Math.min(raw, sellTarget.value.shares)
+  return Math.min(raw, sellAvailableShares.value)
 })
 
 const sellRatioShares = computed(() => {
   if (!sellTarget.value) return 0
-  const total = sellTarget.value.shares
+  const total = sellAvailableShares.value
   if (sellForm.value.ratio >= 100) return total
   const raw = Math.floor(total * sellForm.value.ratio / 100 / 100) * 100
   return Math.min(raw, total)
@@ -173,15 +182,37 @@ const sellProfit = computed(() => {
 
 async function doConfirmSell() {
   if (sellConfirmShares.value <= 0 || !sellTarget.value) return
+  if (sellAvailableShares.value <= 0) {
+    ElMessage.warning('当前可卖份额为 0（当日买入 T+1 锁定），不可卖出')
+    return
+  }
+
+  // 非连续竞价时段：提醒用户订单将转为挂单，开盘后自动撮合
+  if (!props.isTradingTime) {
+    try {
+      await ElMessageBox.confirm(
+        '当前非交易时段，订单将作为挂单保存，开盘后（9:30 连续竞价）自动按市价撮合成交。是否继续？',
+        '交易时段提醒',
+        { confirmButtonText: '继续下单', cancelButtonText: '取消', type: 'warning' },
+      )
+    } catch {
+      return
+    }
+  }
+
   tradeLoading.value = true
   try {
-    await paperApi.executeTrade({
+    const result = await paperApi.executeTrade({
       code: sellTarget.value.code,
       action: 'sell',
       shares: sellConfirmShares.value,
       price: sellTarget.value.current_price,
     })
-    ElMessage.success('卖出成功')
+    if (result.status === 'filled') {
+      ElMessage.success('卖出成功，已成交')
+    } else {
+      ElMessage.info('订单已挂单，开盘后将自动撮合成交（可在"挂单与委托"中查看/撤单）')
+    }
     closeDialog()
     emit('success')
   } catch (e: any) {

@@ -1,7 +1,7 @@
 """
 辅助函数工具库
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time as dtime
 from typing import List, Optional, Any, Dict, Set
 from zoneinfo import ZoneInfo
 import pandas as pd
@@ -107,6 +107,47 @@ def is_trading_day(date: datetime) -> bool:
         return date_str in calendar
     # 兜底：排除内置节假日
     return date_str not in _ASHARE_HOLIDAYS
+
+
+def get_market_session(now: Optional[datetime] = None) -> str:
+    """返回 A 股当前所处的市场时段，供模拟盘判断"能否即时成交"。
+
+    返回值：
+      - closed          非交易日 / 盘前 09:15 前 / 盘后 15:00 后
+      - pre_open        09:00-09:15 集合竞价前
+      - call_auction    09:15-09:25 开盘集合竞价（撮合价尚未确定，不撮合挂单）
+      - pre_open_gap    09:25-09:30 竞价结束到连续竞价之间的空档
+      - continuous      09:30-11:30 / 13:00-15:00 连续竞价（可即时成交）
+      - lunch           11:30-13:00 午间休市
+
+    集合竞价阶段（call_auction/pre_open_gap）按"开盘即按市价成交"的策略，
+    统一不在此时撮合，挂单等 09:30 连续竞价开盘后按实时价成交。
+    测试钩子：设置环境变量 PAPER_FORCE_SESSION 可强制返回指定时段。
+    """
+    import os
+    forced = os.environ.get("PAPER_FORCE_SESSION")
+    if forced:
+        return forced
+
+    now = now or beijing_now()
+    if not is_trading_day(now):
+        return "closed"
+    t = now.time()
+    if t < dtime(9, 0):
+        return "closed"
+    if t < dtime(9, 15):
+        return "pre_open"
+    if t < dtime(9, 25):
+        return "call_auction"
+    if t < dtime(9, 30):
+        return "pre_open_gap"
+    if t <= dtime(11, 30):
+        return "continuous"
+    if t < dtime(13, 0):
+        return "lunch"
+    if t <= dtime(15, 0):
+        return "continuous"
+    return "closed"
 
 
 def get_trading_days(start_date: str, end_date: str) -> List[str]:

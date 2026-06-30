@@ -1,6 +1,6 @@
 import math
 from datetime import datetime, time as dtime
-from utils.helpers import beijing_now
+from utils.helpers import beijing_now, is_trading_day, get_market_session
 from utils.logger import get_logger
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -12,13 +12,12 @@ STAMP_TAX_RATE = 0.001
 
 
 def is_trading_time() -> bool:
-    now = beijing_now()
-    if now.weekday() >= 5:
-        return False
-    t = now.time()
-    morning = dtime(9, 30) <= t <= dtime(11, 30)
-    afternoon = dtime(13, 0) <= t <= dtime(15, 0)
-    return morning or afternoon
+    """是否处于连续竞价时段（可即时成交）。节假日返回 False。
+
+    集合竞价（9:15-9:25）不算"可即时成交"——按"开盘即按市价成交"策略，
+    此时的挂单等 09:30 连续竞价开盘后统一按实时价撮合。
+    """
+    return get_market_session() == "continuous"
 
 
 class TradeEngine:
@@ -26,6 +25,7 @@ class TradeEngine:
         from config.database import DatabaseConfig
         db = DatabaseConfig.get_database()
         self._trades = db["trade_records"]
+        self._orders = db["paper_orders"]  # 订单表（pending/filled/cancelled）
 
     def _fees(self) -> Dict[str, float]:
         """读取平台费率配置；配置不可用时回退到模块默认常量。"""
@@ -200,6 +200,7 @@ class TradeEngine:
             b = book.setdefault(code, {
                 "name": code, "shares": 0, "cost": 0.0,
                 "prev_shares": None, "today_buy_amt": 0.0, "today_sell_amt": 0.0,
+                "today_buy_shares": 0,  # T+1：当日买入股数（当日不可卖）
             })
             if t.get("name"):
                 b["name"] = t["name"]
@@ -219,6 +220,7 @@ class TradeEngine:
                 b["cost"] += cost
                 if is_today:
                     b["today_buy_amt"] += amount
+                    b["today_buy_shares"] += shares  # T+1 锁定
                 sl = t.get("stop_loss")
                 tp = t.get("take_profit")
                 if sl:
@@ -237,6 +239,15 @@ class TradeEngine:
         # 批量拉行情：所有持仓一次 HTTP 取齐现价+昨收，避免逐只 2 次串行请求
         held_codes = [c for c, b in book.items() if b["shares"] > 0]
         quotes = self._batch_tencent_quotes(held_codes)
+
+        # T+1 / 挂单冻结：汇总该用户所有 pending 卖出单的股数，作为 frozen_shares。
+        # 挂卖单时只校验"可卖份额"，pending 期间这部分股数视为已冻结、不可重复挂卖。
+        frozen_by_code: Dict[str, int] = {}
+        for o in self._orders.find(
+            {"user_id": user_id, "action": "sell", "status": "pending"},
+            {"code": 1, "shares": 1, "_id": 0},
+        ):
+            frozen_by_code[o.get("code", "")] = frozen_by_code.get(o.get("code", ""), 0) + (o.get("shares") or 0)
 
         positions = []
         for code in held_codes:
@@ -285,10 +296,18 @@ class TradeEngine:
             if tp_price and price and price >= tp_price:
                 tp_hit = True
 
+            # T+1：可卖股数 = 总持仓 - 当日买入 - 卖出挂单冻结。
+            today_buy = b.get("today_buy_shares", 0)
+            frozen_shares = frozen_by_code.get(code, 0)
+            available_shares = max(0, shares_held - today_buy - frozen_shares)
+
             positions.append({
                 "code": code,
                 "name": b["name"],
                 "shares": shares_held,
+                "available_shares": available_shares,  # T+1 + 挂单冻结后可卖
+                "frozen_shares": frozen_shares,        # 卖出挂单冻结
+                "today_buy_shares": today_buy,         # 当日买入（T+1 锁定）
                 "avg_cost": round(avg_cost, 4),
                 "current_price": round(price, 2),
                 "market_value": round(market_value, 2),
@@ -329,21 +348,265 @@ class TradeEngine:
             tp_hit = pos.get("tp_hit", False)
             if not sl_hit and not tp_hit:
                 continue
+            # T+1：自动止损止盈只能平"可卖"份额，当日买入部分不可卖。
+            available = pos.get("available_shares", 0)
+            if available <= 0:
+                logger.info(f"[AutoExit] {code} 触发但 T+1 锁定无可卖份额，跳过")
+                continue
             reason = "止损" if sl_hit else "止盈"
+            sell_shares = available if available < pos["shares"] else pos["shares"]
             try:
                 from modules.paper_trading.account import PaperAccount
                 acc = PaperAccount()
                 record = self.sell(
-                    user_id, code, pos["shares"],
+                    user_id, code, sell_shares,
                     ai_signal={"source": "pa_auto_exit", "reason": reason},
                     account=acc,
                     price=price,
+                    immediate=True,  # 自动交易绕过挂单判断，直接成交
                 )
-                logger.info(f"[AutoExit] {code} {reason} 触发: {pos['shares']}股 @{price}")
+                logger.info(f"[AutoExit] {code} {reason} 触发: {sell_shares}股 @{price}")
                 exited.append(code)
             except Exception as e:
                 logger.warning(f"[AutoExit] {code} {reason} 失败: {e}")
         return exited
+
+    def _compute_fees(self, action: str, shares: int, price: float) -> Dict[str, float]:
+        """计算手续费。买入=佣金；卖出=佣金+印花税。返回 amount/commission/stamp_tax/total_cost/actual_gain。"""
+        fees = self._fees()
+        amount = shares * price
+        if action == "buy":
+            commission = round(max(fees["min_commission"], amount * fees["buy_commission_rate"]), 2)
+            return {
+                "amount": round(amount, 2),
+                "commission": commission,
+                "stamp_tax": 0.0,
+                "total_cost": round(amount + commission, 2),
+                "actual_gain": 0.0,
+            }
+        else:
+            stamp_tax = round(amount * fees["stamp_tax_rate"], 2)
+            commission = round(max(fees["min_commission"], amount * fees["sell_commission_rate"]), 2)
+            actual_gain = round(amount - stamp_tax - commission, 2)
+            return {
+                "amount": round(amount, 2),
+                "commission": commission,
+                "stamp_tax": stamp_tax,
+                "total_cost": 0.0,
+                "actual_gain": actual_gain,
+            }
+
+    def _create_order(
+        self, user_id: str, code: str, action: str, shares: int,
+        ai_signal: Dict[str, Any], account, price: Optional[float] = None,
+        stop_loss: Optional[float] = None, take_profit: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """创建一条 pending 订单。买入冻结资金，卖出冻结股数（股数冻结由 pending sell
+        order 的存在性在 get_positions 回放时体现，无需显式记账）。返回订单文档。"""
+        if price is None or price <= 0:
+            p, _ = self.get_current_price(code)
+            if not p or p <= 0:
+                raise ValueError(f"无法获取 {code} 的最新价格")
+            price = p
+
+        if shares % 100 != 0:
+            raise ValueError("下单数量必须为100的整数倍")
+
+        account_doc = account.get(user_id)
+        if not account_doc:
+            raise ValueError("账户未初始化，请先设置初始资金")
+
+        name = self._get_name(code) if action == "buy" else None
+        now = beijing_now().isoformat()
+        order = {
+            "user_id": user_id,
+            "code": code,
+            "name": name,
+            "action": action,
+            "shares": shares,
+            "price": round(price, 4),  # 下单参考价（展示用），成交价以撮合时实时价为准
+            "status": "pending",
+            "ai_signal": ai_signal,
+            "stop_loss": round(stop_loss, 2) if stop_loss else None,
+            "take_profit": round(take_profit, 2) if take_profit else None,
+            "created_at": now,
+            "filled_at": None,
+            "filled_price": None,
+            "cancel_reason": None,
+            "trade_record_id": None,
+        }
+
+        if action == "buy":
+            # 买入挂单冻结资金：用下单参考价预估冻结额，撮合时按实际价补差。
+            fees = self._compute_fees("buy", shares, price)
+            frozen = fees["total_cost"]
+            available_cash = account.get_available_cash(user_id)
+            if available_cash < frozen:
+                raise ValueError(f"可用资金不足，需要 {frozen:.2f} 元，可用 {available_cash:.2f} 元（含冻结）")
+            account.freeze_cash(user_id, frozen)
+            order["frozen_cash"] = frozen
+        else:
+            # 卖出挂单：校验可卖份额（T+1 + 已挂卖单冻结）。
+            pos_list, _ = self.get_positions(user_id)
+            pos = next((p for p in pos_list if p["code"] == code), None)
+            if not pos:
+                raise ValueError(f"未持有 {code}")
+            available = pos.get("available_shares", 0)
+            if available < shares:
+                raise ValueError(
+                    f"可卖份额不足，当前可卖 {available} 股（T+1锁定/挂单冻结），尝试卖出 {shares} 股"
+                )
+            if shares % 100 != 0 and shares != pos["shares"]:
+                raise ValueError("卖出数量必须为100的整数倍（或全部卖出）")
+            order["name"] = pos["name"]
+
+        result = self._orders.insert_one(order)
+        order["_id"] = result.inserted_id
+        return order
+
+    def _fill_now(
+        self, order: Dict[str, Any], account, price: Optional[float] = None,
+        force: bool = False,
+    ) -> Dict[str, Any]:
+        """把一条 pending 订单按给定价格（默认取实时价）撮合成交：写 trade_records +
+        订单标 filled + 资金从冻结转实扣/到账。force=True 跳过 T+1 校验（自动交易豁免）。"""
+        if order.get("status") != "pending":
+            raise ValueError(f"订单 {order.get('_id')} 非 pending 状态，无法成交")
+
+        user_id = order["user_id"]
+        code = order["code"]
+        action = order["action"]
+        shares = order["shares"]
+
+        if price is None or price <= 0:
+            p, _ = self.get_current_price(code)
+            if not p or p <= 0:
+                raise ValueError(f"无法获取 {code} 的最新价格")
+            price = p
+
+        if action == "sell" and not force:
+            # T+1 复核（pending 期间持仓可能变化）：再次校验可卖份额。
+            pos_list, _ = self.get_positions(user_id)
+            pos = next((p for p in pos_list if p["code"] == code), None)
+            if not pos:
+                raise ValueError(f"成交失败：已不持有 {code}")
+            available = pos.get("available_shares", 0)
+            if available < shares:
+                raise ValueError(f"成交失败：可卖份额不足（T+1），可卖 {available} 股")
+
+        fees = self._compute_fees(action, shares, price)
+        account_doc = account.get(user_id)
+        if not account_doc:
+            raise ValueError("账户未初始化，请先设置初始资金")
+        cash = account_doc["cash_balance"]
+
+        now = beijing_now().isoformat()
+        if action == "buy":
+            # 先解冻挂单时按参考价冻结的资金，再按实际成交价扣减现金。
+            frozen = order.get("frozen_cash") or fees["total_cost"]
+            account.unfreeze_cash(user_id, frozen)
+            cash_after = round(cash - fees["total_cost"], 2)
+            if cash_after < 0:
+                # 参考价低于成交价导致资金缺口，回滚冻结并撤单。
+                account.freeze_cash(user_id, frozen)
+                raise ValueError(f"成交价高于下单价，现金不足，需要 {fees['total_cost']:.2f} 元，可用 {cash:.2f} 元")
+            record = {
+                "user_id": user_id, "code": code, "name": self._get_name(code),
+                "action": "buy", "shares": shares, "price": round(price, 4),
+                "amount": fees["amount"], "commission": fees["commission"],
+                "total_cost": fees["total_cost"],
+                "stop_loss": order.get("stop_loss"), "take_profit": order.get("take_profit"),
+                "ai_signal": order.get("ai_signal"),
+                "cash_before": cash, "cash_after": cash_after, "traded_at": now,
+            }
+            self._trades.insert_one(record)
+            account.update_cash(user_id, cash_after)
+        else:
+            cost_price = 0.0
+            pos_list, _ = self.get_positions(user_id)
+            pos = next((p for p in pos_list if p["code"] == code), None)
+            if pos:
+                cost_price = pos["avg_cost"]
+            profit = round((price - cost_price) * shares - fees["stamp_tax"] - fees["commission"], 2)
+            cash_after = round(cash + fees["actual_gain"], 2)
+            record = {
+                "user_id": user_id, "code": code, "name": order.get("name") or code,
+                "action": "sell", "shares": shares, "price": round(price, 4),
+                "amount": fees["amount"], "stamp_tax": fees["stamp_tax"],
+                "commission": fees["commission"], "actual_gain": fees["actual_gain"],
+                "profit": profit, "ai_signal": order.get("ai_signal"),
+                "cash_before": cash, "cash_after": cash_after, "traded_at": now,
+            }
+            self._trades.insert_one(record)
+            account.update_cash(user_id, cash_after)
+
+        record.pop("_id", None)
+        self._orders.update_one(
+            {"_id": order["_id"]},
+            {"$set": {
+                "status": "filled", "filled_at": now, "filled_price": round(price, 4),
+                "trade_record_id": str(record.get("traded_at")),
+            }},
+        )
+        return {"status": "filled", "trade": record, "order_id": str(order["_id"])}
+
+    def _cancel_order(self, order_id: str, reason: str = "用户撤单") -> Dict[str, Any]:
+        """撤单：买入解冻资金，卖出无需处理（pending sell 不持币）。"""
+        from bson import ObjectId
+        try:
+            oid = ObjectId(order_id)
+        except Exception:
+            raise ValueError("无效的订单ID")
+        order = self._orders.find_one({"_id": oid})
+        if not order:
+            raise ValueError("订单不存在")
+        if order.get("status") != "pending":
+            raise ValueError(f"订单已 {order.get('status')}，无法撤单")
+
+        if order.get("action") == "buy" and order.get("frozen_cash"):
+            from modules.paper_trading.account import PaperAccount
+            PaperAccount().unfreeze_cash(order["user_id"], order["frozen_cash"])
+
+        self._orders.update_one(
+            {"_id": oid},
+            {"$set": {"status": "cancelled", "cancel_reason": reason,
+                      "filled_at": beijing_now().isoformat()}},
+        )
+        order["status"] = "cancelled"
+        order["cancel_reason"] = reason
+        order.pop("_id", None)
+        return order
+
+    def _match_pending_orders(self) -> int:
+        """盘中撮合：扫所有 pending 单，取实时价成交。返回成交笔数。
+        仅在连续竞价时段由 cron 调用；非交易时段直接返回 0。"""
+        if not is_trading_time():
+            return 0
+        from modules.paper_trading.account import PaperAccount
+        acc = PaperAccount()
+        matched = 0
+        orders = list(self._orders.find({"status": "pending"}, sort=[("created_at", 1)]))
+        for order in orders:
+            try:
+                self._fill_now(order, acc)
+                matched += 1
+                logger.info(f"[Match] 订单 {order['_id']} {order['action']} {order['code']} 成交")
+            except Exception as e:
+                # 成交失败（资金不足/T+1/取价失败）保持 pending，等下次撮合或收盘清算。
+                logger.warning(f"[Match] 订单 {order['_id']} 撮合失败: {e}")
+        return matched
+
+    def _market_close_settle(self) -> int:
+        """收盘清算：撤所有未成交 pending 单，解冻资金。返回撤单笔数。"""
+        orders = list(self._orders.find({"status": "pending"}))
+        cancelled = 0
+        for order in orders:
+            try:
+                self._cancel_order(str(order["_id"]), reason="收盘自动撤单（当日未成交）")
+                cancelled += 1
+            except Exception as e:
+                logger.warning(f"[CloseSettle] 订单 {order['_id']} 撤单失败: {e}")
+        return cancelled
 
     def buy(
         self,
@@ -355,51 +618,24 @@ class TradeEngine:
         price: Optional[float] = None,
         stop_loss: Optional[float] = None,
         take_profit: Optional[float] = None,
+        immediate: bool = False,
     ) -> Dict[str, Any]:
-        if price is None or price <= 0:
-            p, _ = self.get_current_price(code)
-            if not p or p <= 0:
-                raise ValueError(f"无法获取 {code} 的最新价格")
-            price = p
+        """提交买入订单。
 
-        if shares % 100 != 0:
-            raise ValueError("买入数量必须为100的整数倍")
-
-        fees = self._fees()
-        amount = shares * price
-        commission = round(max(fees["min_commission"], amount * fees["buy_commission_rate"]), 2)
-        total_cost = round(amount + commission, 2)
-
-        account_doc = account.get(user_id)
-        if not account_doc:
-            raise ValueError("账户未初始化，请先设置初始资金")
-
-        cash = account_doc["cash_balance"]
-        if cash < total_cost:
-            raise ValueError(f"现金不足，需要 {total_cost:.2f} 元，可用 {cash:.2f} 元")
-
-        cash_after = round(cash - total_cost, 2)
-        record = {
-            "user_id": user_id,
-            "code": code,
-            "name": self._get_name(code),
-            "action": "buy",
-            "shares": shares,
-            "price": round(price, 4),
-            "amount": round(amount, 2),
-            "commission": commission,
-            "total_cost": total_cost,
-            "stop_loss": round(stop_loss, 2) if stop_loss else None,
-            "take_profit": round(take_profit, 2) if take_profit else None,
-            "ai_signal": ai_signal,
-            "cash_before": cash,
-            "cash_after": cash_after,
-            "traded_at": beijing_now().isoformat(),
-        }
-        self._trades.insert_one(record)
-        account.update_cash(user_id, cash_after)
-        record.pop("_id", None)
-        return record
+        - immediate=True（自动交易）：建 pending 订单后立即撮合成交，等价旧的"即时成交"。
+        - immediate=False（手动下单，API 默认）：连续竞价时段立即成交；非交易时段仅挂单 pending，
+          等开盘后由 cron 撮合或收盘清算撤单。
+        返回 {status, trade?, order?}。
+        """
+        order = self._create_order(
+            user_id, code, "buy", shares, ai_signal, account,
+            price=price, stop_loss=stop_loss, take_profit=take_profit,
+        )
+        if immediate or is_trading_time():
+            return self._fill_now(order, account, price=price)
+        order_id = str(order["_id"])
+        order.pop("_id", None)
+        return {"status": "pending", "order": order, "order_id": order_id}
 
     def sell(
         self,
@@ -409,56 +645,18 @@ class TradeEngine:
         ai_signal: Dict[str, Any],
         account,
         price: Optional[float] = None,
+        immediate: bool = False,
+        force: bool = False,
     ) -> Dict[str, Any]:
-        pos_list, _ = self.get_positions(user_id)
-        pos = next((p for p in pos_list if p["code"] == code), None)
-        if not pos:
-            raise ValueError(f"未持有 {code}")
-        if pos["shares"] < shares:
-            raise ValueError(f"持仓不足，当前 {pos['shares']} 股，尝试卖出 {shares} 股")
+        """提交卖出订单。T+1：当日买入不可卖（force=True 可豁免，仅竞价雷达等自动日内策略用）。
 
-        if shares % 100 != 0 and shares != pos["shares"]:
-            raise ValueError("卖出数量必须为100的整数倍（或全部卖出）")
-
-        if price is None or price <= 0:
-            p, _ = self.get_current_price(code)
-            if not p or p <= 0:
-                raise ValueError(f"无法获取 {code} 的最新价格")
-            price = p
-
-        fees = self._fees()
-        amount = shares * price
-        stamp_tax = round(amount * fees["stamp_tax_rate"], 2)
-        commission = round(max(fees["min_commission"], amount * fees["sell_commission_rate"]), 2)
-        actual_gain = round(amount - stamp_tax - commission, 2)
-
-        cost_price = pos["avg_cost"]
-        profit = round((price - cost_price) * shares - stamp_tax - commission, 2)
-
-        account_doc = account.get(user_id)
-        if not account_doc:
-            raise ValueError("账户未初始化，请先设置初始资金")
-        cash = account_doc["cash_balance"]
-        cash_after = round(cash + actual_gain, 2)
-
-        record = {
-            "user_id": user_id,
-            "code": code,
-            "name": pos["name"],
-            "action": "sell",
-            "shares": shares,
-            "price": round(price, 4),
-            "amount": round(amount, 2),
-            "stamp_tax": stamp_tax,
-            "commission": commission,
-            "actual_gain": actual_gain,
-            "profit": profit,
-            "ai_signal": ai_signal,
-            "cash_before": cash,
-            "cash_after": cash_after,
-            "traded_at": beijing_now().isoformat(),
-        }
-        self._trades.insert_one(record)
-        account.update_cash(user_id, cash_after)
-        record.pop("_id", None)
-        return record
+        返回 {status, trade?, order?}。
+        """
+        order = self._create_order(
+            user_id, code, "sell", shares, ai_signal, account, price=price,
+        )
+        if immediate or is_trading_time():
+            return self._fill_now(order, account, price=price, force=force)
+        order_id = str(order["_id"])
+        order.pop("_id", None)
+        return {"status": "pending", "order": order, "order_id": order_id}

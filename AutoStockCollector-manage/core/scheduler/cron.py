@@ -1048,6 +1048,43 @@ def job_auction_auto_close():
         _persist_cron_status("auction_auto_close", _now().isoformat(), False, str(e)[:100])
 
 
+def job_paper_match_pending():
+    """模拟盘盘中撮合：扫所有 pending 订单，取实时价成交。仅连续竞价时段生效。"""
+    try:
+        from modules.paper_trading.trade_engine import TradeEngine, is_trading_time
+        if not is_trading_time():
+            return
+        engine = TradeEngine()
+        matched = engine._match_pending_orders()
+        if matched:
+            msg = f"模拟盘撮合成交{matched}笔"
+            logger.info(f"[cron] {msg}")
+            _record_result("模拟盘盘中撮合", True, msg)
+            _persist_cron_status("paper_match", _now().isoformat(), True, msg, inc_count=True)
+    except Exception as e:
+        logger.error(f"[cron] 模拟盘盘中撮合失败: {e}")
+        _record_result("模拟盘盘中撮合", False, str(e))
+
+
+def job_paper_market_close_settle():
+    """模拟盘收盘清算：15:00 撤所有未成交挂单并解冻资金。"""
+    try:
+        from utils.helpers import is_trading_day, beijing_now
+        if not is_trading_day(beijing_now()):
+            return
+        from modules.paper_trading.trade_engine import TradeEngine
+        engine = TradeEngine()
+        cancelled = engine._market_close_settle()
+        msg = f"模拟盘收盘清算撤单{cancelled}笔"
+        logger.info(f"[cron] {msg}")
+        _record_result("模拟盘收盘清算", True, msg)
+        _persist_cron_status("paper_close_settle", _now().isoformat(), True, msg, inc_count=True)
+    except Exception as e:
+        logger.error(f"[cron] 模拟盘收盘清算失败: {e}")
+        _record_result("模拟盘收盘清算", False, str(e))
+        _persist_cron_status("paper_close_settle", _now().isoformat(), False, str(e)[:100])
+
+
 # ─── 纯 Python 调度核心 ───────────────────────────────────────────────────────
 
 def _next_daily_run(hour: int, minute: int) -> datetime.datetime:
@@ -1189,6 +1226,8 @@ def start_daily_jobs() -> None:
         _make_job("研报AI摘要 30min",       job_research_report_summarize, "interval", interval_minutes=30, task_type="research_report_summarize"),
         _make_job("盘前竞价雷达 09:25",     job_auction_radar,           "daily", 9, 25, task_type="auction_radar"),
         _make_job("竞价自动平仓 14:50",     job_auction_auto_close,      "daily", 14, 50, task_type="auction_auto_close"),
+        _make_job("模拟盘盘中撮合 1min",    job_paper_match_pending,     "interval", interval_minutes=1, task_type="paper_match"),
+        _make_job("模拟盘收盘清算 15:00",   job_paper_market_close_settle, "daily", 15, 0, task_type="paper_close_settle"),
     ]
 
     # cron_trigger_lock 跨进程触发锁：建 TTL 索引，锁文档 1 天后自动过期，避免无限增长。

@@ -307,6 +307,8 @@ def _close_position(code: str, date: str, engine, account) -> Optional[float]:
             ai_signal={"source": "auction_radar_auto_close", "reason": "尾盘自动平仓"},
             account=account,
             price=price,
+            immediate=True,  # 尾盘自动平仓：即时成交，不走挂单
+            force=True,      # 竞价雷达为日内策略，当日建当日平，豁免 T+1
         )
         logger.info(f"[AutoClose] sold {code} {shares}sh @{price}")
         return price
@@ -384,7 +386,7 @@ def auto_trade_top_stocks(result: RadarResult):
             take_profit = round(price + atr * AUTO_TRADE_TP_ATR_MULTIPLIER, 2) if atr else None
 
             try:
-                record = _engine.buy(
+                result = _engine.buy(
                     user_id=user_id,
                     code=code_tencent,
                     shares=shares,
@@ -398,8 +400,11 @@ def auto_trade_top_stocks(result: RadarResult):
                     price=price,
                     stop_loss=stop_loss,
                     take_profit=take_profit,
+                    immediate=True,  # 竞价雷达自动建仓：竞价时段即时成交，不走挂单
                 )
-                trade_id = str(record.get("_id", ""))
+                # buy 返回 {status, trade, order_id}；取成交记录的 traded_at 作为本次建仓标识
+                record = result.get("trade") or {}
+                trade_id = str(record.get("traded_at", "") or result.get("order_id", ""))
                 mark_trade_id(s.symbol, result.date, trade_id)
                 trades_created += 1
                 _track_sector_exposure(s.industry, price * shares, sector_cash_map)

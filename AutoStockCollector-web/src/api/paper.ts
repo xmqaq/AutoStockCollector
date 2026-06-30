@@ -4,6 +4,7 @@ export interface PaperAccount {
   user_id: string
   initial_capital: number
   cash_balance: number
+  frozen_cash?: number  // 买入挂单冻结的资金（仍属总资产，但不计入可用现金）
   created_at: string
   updated_at: string
 }
@@ -12,6 +13,9 @@ export interface PaperPosition {
   code: string
   name: string
   shares: number
+  available_shares?: number   // T+1 + 挂单冻结后可卖
+  frozen_shares?: number      // 卖出挂单冻结
+  today_buy_shares?: number   // 当日买入（T+1 锁定）
   avg_cost: number
   current_price: number
   market_value: number
@@ -22,6 +26,25 @@ export interface PaperPosition {
   yesterday_close: number | null
   price_type: 'realtime' | 'close' | 'fallback' | 'unknown'
   position_ratio: number
+}
+
+export interface PaperOrder {
+  _id: string
+  user_id: string
+  code: string
+  name: string | null
+  action: 'buy' | 'sell'
+  shares: number
+  price: number | null
+  status: 'pending' | 'filled' | 'cancelled'
+  ai_signal?: AiSignal
+  stop_loss?: number | null
+  take_profit?: number | null
+  created_at: string
+  filled_at?: string | null
+  filled_price?: number | null
+  cancel_reason?: string | null
+  frozen_cash?: number
 }
 
 export interface TradeRecord {
@@ -42,6 +65,11 @@ export interface TradeRecord {
   cash_after: number
   traded_at: string
 }
+
+/** 下单结果：即时成交返回 filled（含成交记录），非交易时段挂单返回 pending（含订单）。 */
+export type TradeResult =
+  | { status: 'filled'; trade: TradeRecord; order_id: string }
+  | { status: 'pending'; order: PaperOrder; order_id: string }
 
 export interface PaperStats {
   total_trades: number
@@ -72,6 +100,7 @@ export interface RankingEntry {
   raw_username?: string
   initial_capital: number
   cash_balance: number
+  frozen_cash?: number
   market_value: number
   total_asset: number
   profit_pct: number
@@ -138,8 +167,22 @@ export const paperApi = {
     shares: number
     price?: number
     ai_signal?: AiSignal
-  }): Promise<TradeRecord> {
-    const res = await request.post<{ data: TradeRecord }>('/api/paper/trade', payload)
+  }): Promise<TradeResult> {
+    const res = await request.post<{ data: TradeResult }>('/api/paper/trade', payload)
+    return res.data.data
+  },
+
+  async getOrders(status: 'pending' | 'filled' | 'cancelled' | 'all' = 'all'): Promise<PaperOrder[]> {
+    try {
+      const res = await request.get<{ data: PaperOrder[] }>(`/api/paper/orders?status=${status}`)
+      return res.data?.data ?? []
+    } catch {
+      return []
+    }
+  },
+
+  async cancelOrder(orderId: string): Promise<PaperOrder> {
+    const res = await request.post<{ data: PaperOrder }>('/api/paper/orders/cancel', { order_id: orderId })
     return res.data.data
   },
 

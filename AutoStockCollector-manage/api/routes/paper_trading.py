@@ -141,16 +141,56 @@ def execute_trade():
 
     try:
         if action == "buy":
-            record = _engine.buy(user_id, code, shares, ai_signal, _account, price=price, stop_loss=stop_loss, take_profit=take_profit)
+            result = _engine.buy(user_id, code, shares, ai_signal, _account, price=price, stop_loss=stop_loss, take_profit=take_profit)
         elif action == "sell":
-            record = _engine.sell(user_id, code, shares, ai_signal, _account, price=price)
+            result = _engine.sell(user_id, code, shares, ai_signal, _account, price=price)
         else:
             return jsonify({"error": "action 必须为 buy 或 sell"}), 400
-        try:
-            _snapshot.record(user_id, _account, _engine)
-        except Exception as e:
-            logger.warning(f"快照记录失败: {e}")
-        return jsonify({"success": True, "data": record})
+        # 即时成交才记净值快照；挂单(pending)未改变持仓/现金，不记。
+        if result.get("status") == "filled":
+            try:
+                _snapshot.record(user_id, _account, _engine)
+            except Exception as e:
+                logger.warning(f"快照记录失败: {e}")
+        return jsonify({"success": True, "data": result})
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+@paper_bp.route("/orders", methods=["GET"])
+def get_orders():
+    """订单列表（含挂单/已成/已撤）。?status=pending|filled|cancelled|all 过滤。"""
+    _lazy_init()
+    user_id = _resolve_user_id()
+    status = (request.args.get("status") or "").strip()
+    query = {"user_id": user_id}
+    if status and status != "all":
+        query["status"] = status
+    try:
+        limit = int(request.args.get("limit", 100))
+    except (TypeError, ValueError):
+        limit = 100
+    orders = list(_engine._orders.find(query, sort=[("created_at", -1)], limit=limit))
+    for o in orders:
+        o["_id"] = str(o["_id"])
+    return jsonify({"success": True, "count": len(orders), "data": orders})
+
+
+@paper_bp.route("/orders/cancel", methods=["POST"])
+@login_required
+def cancel_order():
+    """手动撤单：仅 pending 可撤。买入单解冻冻结资金。"""
+    _lazy_init()
+    user_id = _resolve_user_id()
+    data = request.get_json() or {}
+    order_id = (data.get("order_id") or "").strip()
+    if not order_id:
+        return jsonify({"error": "order_id 为必填项"}), 400
+    try:
+        result = _engine._cancel_order(order_id, reason="用户手动撤单")
+        if result["user_id"] != user_id:
+            return jsonify({"error": "无权撤他人的订单"}), 403
+        return jsonify({"success": True, "data": result})
     except ValueError as e:
         return jsonify({"success": False, "error": str(e)}), 400
 
@@ -248,8 +288,9 @@ def _live_profit(uid):
     initial_capital = account_info["initial_capital"]
     positions, _ = _engine.get_positions(uid)
     cash = account_info["cash_balance"]
+    frozen = account_info.get("frozen_cash", 0)  # 挂单冻结资金仍属用户总资产
     market_value = sum(p["market_value"] for p in positions)
-    profit_amount = cash + market_value - initial_capital
+    profit_amount = cash + frozen + market_value - initial_capital
     profit_pct = (profit_amount / initial_capital * 100) if initial_capital > 0 else 0
     return profit_pct, profit_amount, initial_capital, account_info, positions
 
@@ -344,14 +385,16 @@ def get_ranking():
 
             account_doc = _account.get(query_uid) if _account else None
             stats = _stats.get_stats(query_uid) if account_doc else {"win_rate": 0.0, "total_trades": 0}
+            frozen_cash = (account_doc or {}).get("frozen_cash", 0)
             result.append({
                 "user_id": uid,
                 "username": user.get("nickname", user.get("username", uid)),
                 "raw_username": user.get("username", uid),
                 "initial_capital": round(initial_capital, 2),
                 "cash_balance": round(cash, 2),
+                "frozen_cash": round(frozen_cash, 2),
                 "market_value": round(market_value, 2),
-                "total_asset": round(cash + market_value, 2),
+                "total_asset": round(cash + frozen_cash + market_value, 2),
                 "profit_pct": round(profit_pct, 2),
                 "profit_amount": round(profit_amount, 2),
                 "today_pnl": round(today_pnl, 2),

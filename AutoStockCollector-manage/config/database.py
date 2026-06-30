@@ -143,6 +143,8 @@ class DatabaseConfig:
         # 模拟交易
         cls._safe_index(db.trade_records, [("user_id", 1), ("traded_at", -1)])
         cls._safe_index(db.paper_account, [("user_id", 1)], unique=True)
+        cls._safe_index(db.paper_orders, [("user_id", 1), ("status", 1), ("created_at", -1)])
+        cls._safe_index(db.paper_orders, [("user_id", 1), ("code", 1), ("status", 1)])
 
         # 价格行为学缓存 & 扫描结果
         cls._dedup_collection(db.pa_quotes_cache, "cache_key")

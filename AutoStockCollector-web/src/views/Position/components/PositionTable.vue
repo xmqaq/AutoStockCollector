@@ -34,6 +34,12 @@
       
       <!-- 右侧对齐数值（符合金融报表规范） -->
       <el-table-column prop="shares" label="持仓量" min-width="90" align="right" />
+      <el-table-column label="可卖" min-width="100" align="right">
+        <template #default="{ row }">
+          <span>{{ row.available_shares ?? row.shares }}</span>
+          <el-tag v-if="(row.shares - (row.available_shares ?? row.shares)) > 0" type="warning" size="small" effect="light" style="margin-left: 4px;">T+1</el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="成本价" min-width="90" align="right">
         <template #default="{ row }">{{ row.avg_cost.toFixed(2) }}</template>
       </el-table-column>

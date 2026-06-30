@@ -25,6 +25,13 @@
       </el-col>
     </el-row>
 
+    <!-- 挂单与委托（T+1 / 非交易时段挂单展示与撤单） -->
+    <el-row v-if="orders.length > 0" :gutter="20" style="margin-top: 20px">
+      <el-col :span="24">
+        <OrdersTable :orders="orders" v-model:cancelling="cancellingOrderId" @cancel="doCancelOrder" />
+      </el-col>
+    </el-row>
+
     <!-- 底部数据分析区：三列等分布局，解决高度不一产生的留白 -->
     <el-row :gutter="20" style="margin-top: 20px; display: flex; align-items: stretch;">
       
@@ -69,12 +76,14 @@
       :account="account"
       :net-value="netValue"
       :positions="positions"
+      :is-trading-time="isTradingTime"
       @success="loadAll"
     />
 
     <SellDialog
       v-model:visible="showSellDialog"
       :target="sellTarget"
+      :is-trading-time="isTradingTime"
       @success="loadAll"
     />
   </div>
@@ -83,10 +92,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { paperApi, type PaperAccount, type PaperPosition, type TradeRecord, type PaperStats, type NavPoint } from '@/api/paper'
+import { paperApi, type PaperAccount, type PaperPosition, type TradeRecord, type PaperOrder, type PaperStats, type NavPoint } from '@/api/paper'
 import ProfitChart from '@/components/ProfitChart/index.vue'
 import AccountOverview from './components/AccountOverview.vue'
 import PositionTable from './components/PositionTable.vue'
+import OrdersTable from './components/OrdersTable.vue'
 import TradingStats from './components/TradingStats.vue'
 import RecentTrades from './components/RecentTrades.vue'
 import FloatingStats from './components/FloatingStats.vue'
@@ -106,6 +116,8 @@ const tradeLoading = ref(false)
 
 const account = ref<PaperAccount | null>(null)
 const positions = ref<PaperPosition[]>([])
+const orders = ref<PaperOrder[]>([])
+const cancellingOrderId = ref<string | null>(null)
 const recentTrades = ref<TradeRecord[]>([])
 const stats = ref<PaperStats>({
   total_trades: 0, win_trades: 0, loss_trades: 0,
@@ -180,12 +192,13 @@ async function loadAll() {
   accountLoading.value = true
   posLoading.value = true
   try {
-    const [posResult, acct, trades, st, nav] = await Promise.all([
+    const [posResult, acct, trades, st, nav, ord] = await Promise.all([
       paperApi.getPositions(),
       paperApi.getAccount(),
       paperApi.getTrades(10),
       paperApi.getStats(),
       paperApi.getNav(),
+      paperApi.getOrders('all'),
     ])
     positions.value = posResult.positions
     isTradingTime.value = posResult.is_trading_time
@@ -193,6 +206,7 @@ async function loadAll() {
     recentTrades.value = trades
     stats.value = st
     navData.value = nav
+    orders.value = ord
   } finally {
     accountLoading.value = false
     posLoading.value = false
@@ -205,14 +219,40 @@ async function refreshPositions() {
     const posResult = await paperApi.getPositions()
     positions.value = posResult.positions
     isTradingTime.value = posResult.is_trading_time
-    const acct = await paperApi.getAccount()
+    const [acct, ord] = await Promise.all([paperApi.getAccount(), paperApi.getOrders('all')])
     account.value = acct
+    orders.value = ord
   } catch {
     // silent
   }
-  if (!isTradingTime.value && refreshTimer) {
+  // 非交易时段若无 pending 挂单，停止轮询；有 pending 则继续等待开盘撮合
+  const hasPending = orders.value.some(o => o.status === 'pending')
+  if (!isTradingTime.value && !hasPending && refreshTimer) {
     clearInterval(refreshTimer)
     refreshTimer = null
+  }
+}
+
+// --- 撤单 ---
+async function doCancelOrder(order: PaperOrder) {
+  try {
+    await ElMessageBox.confirm(
+      `确认撤销该${order.action === 'buy' ? '买入' : '卖出'}挂单（${order.name || order.code} ${order.shares}股）？`,
+      '撤单确认',
+      { confirmButtonText: '确认撤单', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  cancellingOrderId.value = order._id
+  try {
+    await paperApi.cancelOrder(order._id)
+    ElMessage.success('撤单成功，冻结资金已解冻')
+    loadAll()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error || '撤单失败')
+  } finally {
+    cancellingOrderId.value = null
   }
 }
 
@@ -221,7 +261,9 @@ function setupAutoRefresh() {
     clearInterval(refreshTimer)
     refreshTimer = null
   }
-  if (isTradingTime.value) {
+  // 交易时段：高频轮询持仓+挂单；非交易时段若有 pending 挂单，仍轮询等待开盘撮合状态变化
+  const hasPending = orders.value.some(o => o.status === 'pending')
+  if (isTradingTime.value || hasPending) {
     refreshTimer = setInterval(refreshPositions, REFRESH_INTERVAL)
   }
 }

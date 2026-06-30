@@ -100,7 +100,7 @@
     <template #footer>
       <el-button @click="closeDialog">取消</el-button>
       <el-button type="primary" :loading="tradeLoading" :disabled="buyConfirmShares <= 0 || buyCashInsufficient" @click="doConfirmBuy">
-        确认买入
+        {{ isTradingTime ? '确认买入' : '提交挂单' }}
       </el-button>
     </template>
   </el-dialog>
@@ -108,7 +108,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { WarningFilled } from '@element-plus/icons-vue'
 import { paperApi, type PaperAccount, type PaperPosition } from '@/api/paper'
 import { formatAmount } from '../utils'
@@ -119,6 +119,7 @@ const props = defineProps<{
   account: PaperAccount | null
   netValue: number
   positions: PaperPosition[]
+  isTradingTime?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -229,8 +230,15 @@ const buyAfterRatio = computed(() => {
   return (existingValue + buyConfirmAmount.value) / props.netValue * 100
 })
 
+// 可用现金 = 现金余额 - 挂单冻结资金（买入挂单会冻结资金，不可重复使用）
+const availableCash = computed(() => {
+  const acct = props.account
+  if (!acct) return 0
+  return (acct.cash_balance ?? 0) - (acct.frozen_cash ?? 0)
+})
+
 const buyAfterCash = computed(() =>
-  (props.account?.cash_balance ?? 0) - buyConfirmAmount.value - buyCommission.value
+  availableCash.value - buyConfirmAmount.value - buyCommission.value
 )
 
 const buyCashInsufficient = computed(() =>
@@ -239,8 +247,7 @@ const buyCashInsufficient = computed(() =>
 
 const buyMaxAffordableShares = computed(() => {
   if (!buyCurrentPrice.value || buyCurrentPrice.value <= 0) return 0
-  const cash = props.account?.cash_balance ?? 0
-  const raw = Math.floor(cash / (buyCurrentPrice.value * 1.0003) / 100) * 100
+  const raw = Math.floor(availableCash.value / (buyCurrentPrice.value * 1.0003) / 100) * 100
   return Math.max(0, raw)
 })
 
@@ -300,16 +307,34 @@ async function doConfirmBuy() {
   if (buyConfirmShares.value <= 0 || !buyCurrentPrice.value) return
   const code = buyTargetPosition.value?.code ?? normalizeCode(buyForm.value.code.trim())
   if (!code) { ElMessage.warning('请输入股票代码'); return }
-  if (buyCashInsufficient.value) { ElMessage.warning('现金不足'); return }
+  if (buyCashInsufficient.value) { ElMessage.warning('可用资金不足'); return }
+
+  // 非连续竞价时段：提醒用户订单将转为挂单，开盘后自动撮合
+  if (!props.isTradingTime) {
+    try {
+      await ElMessageBox.confirm(
+        '当前非交易时段，订单将作为挂单保存，开盘后（9:30 连续竞价）自动按市价撮合成交。是否继续？',
+        '交易时段提醒',
+        { confirmButtonText: '继续下单', cancelButtonText: '取消', type: 'warning' },
+      )
+    } catch {
+      return
+    }
+  }
+
   tradeLoading.value = true
   try {
-    await paperApi.executeTrade({
+    const result = await paperApi.executeTrade({
       code,
       action: 'buy',
       shares: buyConfirmShares.value,
       price: buyCurrentPrice.value,
     })
-    ElMessage.success('买入成功')
+    if (result.status === 'filled') {
+      ElMessage.success('买入成功，已成交')
+    } else {
+      ElMessage.info('订单已挂单，开盘后将自动撮合成交（可在"挂单与委托"中查看/撤单）')
+    }
     closeDialog()
     emit('success')
   } catch (e: any) {
