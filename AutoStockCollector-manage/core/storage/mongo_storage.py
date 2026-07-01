@@ -8,7 +8,7 @@ from datetime import datetime
 import pandas as pd
 from pymongo import UpdateOne, InsertOne, DeleteOne
 from pymongo.collection import Collection
-from pymongo.errors import BulkWriteError, DuplicateKeyError
+from pymongo.errors import BulkWriteError, DuplicateKeyError, OperationFailure
 from config.database import DatabaseConfig
 from utils.logger import get_logger
 from utils.helpers import chunk_list, beijing_now
@@ -266,6 +266,15 @@ class MongoStorage:
             )
             logger.info(f"Created index: {index_name}")
             return index_name
+        except OperationFailure as e:
+            # code 86 IndexKeySpecsConflict: 同名索引已存在但规格不同（如已建 unique，
+            # 本次请求非 unique）。索引已存在即数据完整性已保证，重建无意义，静默降级。
+            # 其他 OperationFailure 仍记 ERROR。
+            if e.code == 86:
+                logger.debug(f"Index already exists with conflicting spec (skipped): {e}")
+                return ""
+            logger.error(f"Create index failed: {e}")
+            return ""
         except Exception as e:
             logger.error(f"Create index failed: {e}")
             return ""
