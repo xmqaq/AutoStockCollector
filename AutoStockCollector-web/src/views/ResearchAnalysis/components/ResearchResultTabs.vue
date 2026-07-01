@@ -23,6 +23,17 @@
 
     <div class="ra-tabs-container">
       <el-collapse v-model="activeNames" class="ra-collapse">
+        <!-- 板块汇总 -->
+        <el-collapse-item name="sectors">
+          <template #title>
+            <span class="tab-label"><el-icon><Grid /></el-icon> 板块分析汇总 ({{ sectorCount }})</span>
+          </template>
+          <SectorSummary
+            :result="result"
+            @add-to-watchlist="(row) => $emit('add-to-watchlist', row)"
+            @price-action-jump="(row) => $emit('price-action-jump', row)"
+          />
+        </el-collapse-item>
         <!-- 主题分析 -->
         <el-collapse-item name="chain">
           <template #title>
@@ -245,9 +256,10 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { Download, Star, TrendCharts, Close, Timer, Filter, Connection, DataAnalysis, DataLine, Document, Warning } from '@element-plus/icons-vue'
+import { Download, Star, TrendCharts, Close, Timer, Filter, Connection, DataAnalysis, DataLine, Document, Warning, Grid } from '@element-plus/icons-vue'
 import { renderMd } from '@/utils/markdown'
 import type { AnalysisResult } from '@/api/researchAnalysis'
+import SectorSummary from './SectorSummary.vue'
 import * as echarts from 'echarts'
 
 const props = defineProps<{
@@ -263,7 +275,18 @@ const emit = defineEmits<{
   (e: 'price-action-jump', row: any): void
 }>()
 
-const activeNames = ref(['chain', 'heatmap', 'candidates', 'report', 'details'])
+const activeNames = ref(['sectors', 'chain', 'heatmap', 'candidates', 'report', 'details'])
+
+// 板块汇总数：sector_details 的 key ∪ chain_view/candidates 出现的 sector
+const sectorCount = computed(() => {
+  const r = props.result
+  if (!r) return 0
+  const s = new Set<string>()
+  Object.keys(r.sector_details || {}).forEach(k => s.add(k))
+  ;(r.chain_view || []).forEach(c => c.sector && s.add(c.sector))
+  ;(r.candidates || []).forEach(c => (c.sectors || []).forEach(x => s.add(x)))
+  return s.size
+})
 
 const heatmapRef = ref<HTMLDivElement | null>(null)
 let chartInstance: echarts.ECharts | null = null

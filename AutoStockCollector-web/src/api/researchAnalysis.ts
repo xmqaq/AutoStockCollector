@@ -7,6 +7,7 @@ export interface ChainViewItem {
   theme_score: number
   frequency: number
   confidence: number
+  description?: string
 }
 
 export interface Candidate {
@@ -42,6 +43,8 @@ export interface Candidate {
 export interface SectorDetail {
   report_count: number
   source: string
+  /** 板块整体情绪：bullish/bearish/neutral */
+  sentiment?: string
   error?: string
 }
 
@@ -54,6 +57,8 @@ export interface AnalysisResult {
   report_md: string
   elapsed_seconds: number
   sector_details: Record<string, SectorDetail>
+  /** 分析失败的板块列表 */
+  failed_sectors?: string[]
   task_id?: string
 }
 
