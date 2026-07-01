@@ -37,6 +37,11 @@
                   <span class="value">{{ agent.priority }}</span>
                 </div>
               </div>
+              <div class="skills-row" v-if="agent.skills && agent.skills.length">
+                <el-tag v-for="s in agent.skills" :key="s" size="small" type="info" effect="plain" class="skill-tag">
+                  {{ s }}
+                </el-tag>
+              </div>
             </div>
 
             <div class="card-footer">
@@ -83,6 +88,25 @@
             :rows="6"
             placeholder="定义此 Agent 的角色和行为规则..."
           />
+        </el-form-item>
+        <el-form-item label="技能绑定">
+          <el-select
+            v-model="form.skills"
+            multiple
+            collapse-tags
+            collapse-tags-tooltip
+            filterable
+            placeholder="选择要注入该 Agent system_prompt 的技能（可选）"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="s in skillOptions"
+              :key="s.skill_name || s.name"
+              :label="s.name + (s.description ? ' - ' + s.description : '')"
+              :value="s.skill_name || s.name"
+            />
+          </el-select>
+          <div class="skill-hint">绑定的技能正文会在分析时拼接到 system_prompt 末尾（单技能截断 2000 字符，总计 4000 字符）</div>
         </el-form-item>
         <el-row :gutter="20">
           <el-col :span="8">
@@ -170,11 +194,12 @@
 import { ref, onMounted } from 'vue'
 import { Plus, Edit, ChatDotRound, Delete, ChatLineRound, Position } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { aiAgentApi, type AIAgent } from '@/api/ai'
+import { aiAgentApi, skillApi, type AIAgent } from '@/api/ai'
 import { sanitizeHtml } from '@/utils/markdown'
 
 const loading = ref(false)
 const agents = ref<AIAgent[]>([])
+const skillOptions = ref<any[]>([])
 
 const showDialog = ref(false)
 const isEdit = ref(false)
@@ -197,9 +222,19 @@ const defaultForm = (): Partial<AIAgent> => ({
   max_tokens: 2000,
   priority: 99,
   enabled: true,
+  skills: [],
 })
 
 const form = ref<Partial<AIAgent>>(defaultForm())
+
+async function loadSkills() {
+  try {
+    const res = await skillApi.list()
+    skillOptions.value = res.data?.data || res.data || []
+  } catch {
+    skillOptions.value = []
+  }
+}
 
 async function loadAgents() {
   loading.value = true
@@ -221,7 +256,7 @@ function openAddDialog() {
 
 function openEditDialog(agent: AIAgent) {
   isEdit.value = true
-  form.value = { ...agent }
+  form.value = { ...agent, skills: agent.skills || [] }
   showDialog.value = true
 }
 
@@ -301,6 +336,7 @@ function formatResult(text: string): string {
 
 onMounted(() => {
   loadAgents()
+  loadSkills()
 })
 </script>
 
@@ -415,6 +451,24 @@ onMounted(() => {
   font-weight: 500;
   color: var(--text-primary);
   font-family: 'SF Mono', monospace;
+}
+
+.skills-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.skill-tag {
+  border-radius: 4px;
+}
+
+.skill-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin-top: 4px;
 }
 
 .card-footer {

@@ -510,6 +510,7 @@ export interface AIAgent {
   max_tokens: number
   enabled: boolean
   priority: number
+  skills?: string[]
   created_at?: string
   updated_at?: string
 }

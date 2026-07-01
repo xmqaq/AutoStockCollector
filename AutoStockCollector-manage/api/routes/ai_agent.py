@@ -4,9 +4,12 @@ AI Agent 管理相关接口
 from flask import Blueprint, request, jsonify
 from datetime import datetime
 from utils.helpers import beijing_now
+from utils.logger import get_logger
 from typing import Dict, Any
 
 ai_agent_bp = Blueprint("ai_agent", __name__, url_prefix="/api/v1/ai-agents")
+
+logger = get_logger(__name__)
 
 
 def _get_db():
@@ -80,6 +83,7 @@ def _default_agent_configs():
             "max_tokens": 2000,
             "enabled": True,
             "priority": 1,
+            "skills": ["market_analysis"],
             "created_at": beijing_now().isoformat(),
             "updated_at": beijing_now().isoformat()
         },
@@ -118,6 +122,7 @@ def _default_agent_configs():
             "max_tokens": 1500,
             "enabled": True,
             "priority": 2,
+            "skills": ["technical_analysis"],
             "created_at": beijing_now().isoformat(),
             "updated_at": beijing_now().isoformat()
         },
@@ -153,6 +158,7 @@ def _default_agent_configs():
             "max_tokens": 1500,
             "enabled": True,
             "priority": 3,
+            "skills": ["fund_flow"],
             "created_at": beijing_now().isoformat(),
             "updated_at": beijing_now().isoformat()
         },
@@ -192,6 +198,7 @@ def _default_agent_configs():
             "max_tokens": 2000,
             "enabled": True,
             "priority": 4,
+            "skills": ["fundamental"],
             "created_at": beijing_now().isoformat(),
             "updated_at": beijing_now().isoformat()
         },
@@ -231,6 +238,7 @@ def _default_agent_configs():
             "max_tokens": 1500,
             "enabled": True,
             "priority": 5,
+            "skills": ["risk_control"],
             "created_at": beijing_now().isoformat(),
             "updated_at": beijing_now().isoformat()
         },
@@ -266,6 +274,7 @@ def _default_agent_configs():
             "max_tokens": 1500,
             "enabled": True,
             "priority": 6,
+            "skills": ["sentiment"],
             "created_at": beijing_now().isoformat(),
             "updated_at": beijing_now().isoformat()
         },
@@ -437,6 +446,7 @@ def create_agent():
         "max_tokens": data.get("max_tokens", 2000),
         "enabled": data.get("enabled", True),
         "priority": data.get("priority", 99),
+        "skills": data.get("skills", []),
         "created_at": beijing_now().isoformat(),
         "updated_at": beijing_now().isoformat()
     }
@@ -469,7 +479,7 @@ def update_agent(agent_id: str):
         return jsonify({"success": False, "error": "Agent not found"}), 404
     
     update_fields = {}
-    allowed_fields = ["name", "description", "role", "system_prompt", "temperature", "max_tokens", "enabled", "priority"]
+    allowed_fields = ["name", "description", "role", "system_prompt", "temperature", "max_tokens", "enabled", "priority", "skills"]
     for field in allowed_fields:
         if field in data:
             update_fields[field] = data[field]

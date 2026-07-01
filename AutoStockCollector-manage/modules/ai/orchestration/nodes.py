@@ -126,6 +126,38 @@ def create_factor_calc_node():
     return factor_calc
 
 
+def _inject_skills(system_prompt: str, agent_doc: Dict) -> str:
+    """把 agent 绑定的 skill 正文拼到 system_prompt 末尾。
+
+    单 skill 截断 2000 字符，多 skill 总长截断 4000 字符，防撑爆 LLM context。
+    skill 正文已由 SkillRegistry.get_skill_prompt 剥离 frontmatter。
+    任何异常降级为原 prompt（不影响主分析）。
+    """
+    try:
+        from modules.ai.skills.registry import skill_registry
+        skill_names = (agent_doc or {}).get("skills", []) or []
+        if not skill_names:
+            return system_prompt
+        blocks = []
+        total = 0
+        for name in skill_names:
+            prompt = skill_registry.get_skill_prompt(name)
+            if not prompt:
+                continue
+            prompt = prompt[:2000]
+            block = f"\n\n【相关技能参考 - {name}】\n{prompt}"
+            if total + len(block) > 4000:
+                break
+            blocks.append(block)
+            total += len(block)
+        if not blocks:
+            return system_prompt
+        return system_prompt + "".join(blocks)
+    except Exception as e:
+        logger.warning(f"skill injection failed: {e}")
+        return system_prompt
+
+
 def create_analyst_node(agent_id: str, agent_name: str, tier: str = "quick",
                         use_tools: bool = True):
     def analyst(state: TradingState) -> Dict[str, Any]:
@@ -135,6 +167,7 @@ def create_analyst_node(agent_id: str, agent_name: str, tier: str = "quick",
             db = DatabaseConfig.get_database()
             agent_doc = db["ai_agents"].find_one({"id": agent_id})
             system_prompt = agent_doc["system_prompt"] if agent_doc else f"You are {agent_name}."
+            system_prompt = _inject_skills(system_prompt, agent_doc)
 
             router = LLMRouter()
             # ── 有界 ReAct：计划→取数 ──

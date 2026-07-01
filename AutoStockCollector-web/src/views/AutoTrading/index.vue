@@ -50,6 +50,13 @@
                 <el-table-column prop="breakdown.auction_score" label="竞价" width="60" align="center" />
                 <el-table-column prop="breakdown.pa_signal" label="PA" width="80" align="center" />
                 <el-table-column prop="breakdown.ai_score" label="AI" width="60" align="center" />
+                <el-table-column label="Agent" width="70" align="center">
+                  <template #default="{ row }">
+                    <span :class="['agent-score', agentScoreClass(row.breakdown?.agent_score)]">
+                      {{ row.breakdown?.agent_score > 0 ? row.breakdown.agent_score : '—' }}
+                    </span>
+                  </template>
+                </el-table-column>
                 <el-table-column label="理由" min-width="140">
                   <template #default="{ row }"><el-tooltip :content="row.reasons.join('; ')" placement="top"><span class="reasons-text">{{ row.reasons.join('; ') || '-' }}</span></el-tooltip></template>
                 </el-table-column>
@@ -181,6 +188,12 @@ function scoreTagType(s: number) { return s >= 75 ? 'success' : s >= 55 ? 'warni
 function signalTagType(s: string) { return s === 'strong_buy' || s === 'buy' ? 'success' : s === 'sell' || s === 'strong_sell' ? 'danger' : 'info' }
 function signalLabel(s: string) { return ({ strong_buy: '强力买入', buy: '买入', hold: '持有', sell: '卖出', strong_sell: '强力卖出', reduce: '减仓' })[s] || s }
 function exposureColor(p: number) { return p > 80 ? '#f56c6c' : p > 60 ? '#e6a23c' : '#67c23a' }
+function agentScoreClass(s: number | undefined) {
+  if (!s || s <= 0) return 'muted'
+  if (s >= 72) return 'bull'
+  if (s <= 30) return 'bear'
+  return 'neutral'
+}
 
 async function loadStatus() {
   const r = await autoTradingApi.getStatus()
@@ -249,5 +262,10 @@ onMounted(() => { loadStatus(); loadSignals(); loadHistory(); loadDrawdown() })
 .stat-value.down { color: #67c23a; }
 .card-header { display: flex; justify-content: space-between; align-items: center; }
 .reasons-text { font-size: 12px; color: #606266; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; max-width: 100%; }
+.agent-score { font-size: 13px; font-weight: 600; }
+.agent-score.bull { color: #f56c6c; }
+.agent-score.bear { color: #67c23a; }
+.agent-score.neutral { color: #909399; }
+.agent-score.muted { color: #c0c4cc; }
 .form-help { font-size: 12px; color: #909399; margin-top: 4px; }
 </style>

@@ -31,7 +31,7 @@
           v-for="s in filteredSkills"
           :key="s.name"
           class="skill-card"
-          @click="showSkill(s.name)"
+          @click="showSkill(s.skill_name || s.name)"
         >
           <div class="card-top">
             <div class="skill-icon">
@@ -62,6 +62,13 @@
         <template v-if="skillDetail">
           <div class="drawer-header">
             <h3>{{ skillDetail.name }}</h3>
+            <div class="bound-agents" v-if="boundAgents.length">
+              <span class="bound-label">被以下 Agent 绑定：</span>
+              <el-tag v-for="a in boundAgents" :key="a" size="small" type="success" effect="plain" class="bound-tag">{{ a }}</el-tag>
+            </div>
+            <div class="bound-agents" v-else>
+              <span class="bound-label muted">暂未被任何 Agent 绑定</span>
+            </div>
           </div>
           <div class="drawer-body">
             <div class="code-block-wrapper">
@@ -84,10 +91,11 @@
 import { ref, computed, onMounted } from 'vue'
 import { Search, Refresh, MagicStick, Setting, DocumentCopy } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { skillApi } from '@/api/ai'
+import { skillApi, aiAgentApi } from '@/api/ai'
 
 const skills = ref<any[]>([])
 const skillsLoading = ref(false)
+const agents = ref<any[]>([])
 
 const searchQuery = ref('')
 const categoryFilter = ref('')
@@ -95,6 +103,7 @@ const categoryFilter = ref('')
 const showSkillDetail = ref(false)
 const detailLoading = ref(false)
 const skillDetail = ref<{ name: string; content: string } | null>(null)
+const boundAgents = ref<string[]>([])
 
 // 提取所有唯一分类
 const categories = computed(() => {
@@ -130,13 +139,27 @@ async function loadSkills() {
   }
 }
 
+async function loadAgents() {
+  try {
+    const res = await aiAgentApi.list()
+    agents.value = res.data?.data || []
+  } catch {
+    agents.value = []
+  }
+}
+
 async function showSkill(name: string) {
   showSkillDetail.value = true
   detailLoading.value = true
   skillDetail.value = null
+  boundAgents.value = []
   try {
     const res = await skillApi.get(name)
     skillDetail.value = res.data?.data || null
+    // 反查：哪些 agent 绑定了该 skill（按 skill_name 目录名匹配）
+    boundAgents.value = agents.value
+      .filter(a => Array.isArray(a.skills) && (a.skills.includes(name) || a.skills.includes(skillDetail.value?.name)))
+      .map(a => a.name)
   } catch {
     ElMessage.error('获取技能详情失败')
   } finally {
@@ -154,6 +177,7 @@ function copyCode(text: string) {
 
 onMounted(() => {
   loadSkills()
+  loadAgents()
 })
 </script>
 
@@ -286,9 +310,31 @@ onMounted(() => {
 }
 
 .drawer-header h3 {
-  margin: 0 0 20px 0;
+  margin: 0 0 12px 0;
   font-size: 20px;
   color: var(--text-primary);
+}
+
+.bound-agents {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.bound-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.bound-label.muted {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.bound-tag {
+  border-radius: 4px;
 }
 
 .drawer-body {
