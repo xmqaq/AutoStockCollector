@@ -86,14 +86,16 @@ async function loadHistory() {
   } catch { /* ignore */ }
 }
 
-async function loadToday() {
+async function loadToday(silent = false) {
   try {
     const res = await researchApi.getToday()
     if (res.data?.success && res.data.data) {
       currentResult.value = res.data.data
       resultTab.value = res.data.data.report_md ? 'report' : 'chain'
       stopTodayPolling()
-      ElMessage.success(`今日精选已加载，${res.data.data.candidate_count} 只候选标的`)
+      if (!silent) {
+        ElMessage.success(`今日精选已加载，${res.data.data.candidate_count} 只候选标的`)
+      }
     } else if (res.data?.success) {
       const status = res.data.status
       if (status === 'running') {
@@ -103,12 +105,12 @@ async function loadToday() {
       } else if (status === 'failed') {
         stopTodayPolling()
         ElMessage.warning(res.data.message || '今日研报分析生成失败，请手动触发')
-      } else {
+      } else if (!silent) {
         ElMessage.info(res.data.message || '今日汇总尚未生成，盘后 17:30 自动运行')
       }
     }
   } catch {
-    ElMessage.error('加载今日精选失败')
+    if (!silent) ElMessage.error('加载今日精选失败')
   }
 }
 
@@ -302,7 +304,7 @@ function priceActionJump(row: any) {
 onMounted(() => {
   loadSectors()
   loadHistory()
-  loadToday()  // 默认加载今日 cron 汇总，无则显示历史
+  loadToday(true)  // 默认静默加载今日 cron 汇总，有则直接展示详情，无则显示历史
 })
 
 onUnmounted(() => {
