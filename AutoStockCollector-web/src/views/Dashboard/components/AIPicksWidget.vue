@@ -5,7 +5,7 @@
         <h2 class="title"><el-icon><MagicStick /></el-icon> AI 精选股票</h2>
         <span class="subtitle">今日最新推荐</span>
       </div>
-      <el-button class="modern-btn" text @click="router.push('/ai-picker')">
+      <el-button class="modern-btn" text @click="router.push('/fusion-pick')">
         查看全部 →
       </el-button>
     </div>

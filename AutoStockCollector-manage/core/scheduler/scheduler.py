@@ -489,7 +489,6 @@ class TaskScheduler:
                 TaskType.SECTOR_COLLECTION.value: self._execute_sector_task,
                 TaskType.MARGIN_COLLECTION.value: self._execute_margin_task,
                 TaskType.BLOCK_COLLECTION.value: self._execute_block_task,
-                TaskType.AI_PICK.value: self._execute_ai_pick_task,
             }
             handler = dispatch.get(task.task_type)
             if handler is None:
@@ -1139,24 +1138,6 @@ class TaskScheduler:
         try:
             records = collector.collect()
             task.complete(len(records), 0)
-        except Exception as e:
-            task.fail(str(e))
-
-    # ------------------------------------------------------------------ #
-    # AI 选股                                                              #
-    # ------------------------------------------------------------------ #
-
-    def _execute_ai_pick_task(self, task: Task):
-        from modules.ai.engines.picker import PickerEngine
-        task.update_progress(0, 1, 0, 0)
-        try:
-            result = PickerEngine().run(
-                strategy=task.params.get("strategy", "default"),
-                top_n=task.params.get("top_n", 10),
-                candidate_pool=task.params.get("candidate_pool", 50),
-            )
-            picks = result.get("picks", []) if isinstance(result, dict) else []
-            task.complete(len(picks), 0)
         except Exception as e:
             task.fail(str(e))
 

@@ -5,6 +5,7 @@
 import time
 import threading
 import datetime
+import os as _os
 from collections import deque as _deque
 from zoneinfo import ZoneInfo
 from utils.logger import get_logger
@@ -577,31 +578,7 @@ def job_index_kline():
         _persist_cron_status("index_kline", _now().isoformat(), False, str(e)[:100])
 
 
-# ─── AI 选股 ──────────────────────────────────────────────────────────────────
-
-import os as _os
-
-def get_cron_time() -> str:
-    # 16:15:晚于 K线增量(16:05)/资金流向(16:15)/估值缓存触发，确保选股用的是当日盘后数据。
-    # （旧默认 15:30 早于一切盘后采集，选股实际用的是 T-1 数据。）
-    return _os.environ.get("AI_PICK_CRON_TIME", "16:15")
-
-
-def run_ai_pick_job(scheduler=None) -> None:
-    try:
-        if scheduler is None:
-            from core.scheduler.scheduler import scheduler as _sched
-            scheduler = _sched
-        task_id = scheduler.create_task("ai_pick", {"strategy": "default", "top_n": 10, "candidate_pool": 50})
-        scheduler.start_task(task_id)
-        logger.info(f"Daily ai_pick task triggered: {task_id}")
-    except Exception as e:
-        logger.warning(f"Daily ai_pick job failed: {e}")
-
-
-def _ai_pick_wrapper():
-    if _is_weekday():
-        run_ai_pick_job()
+# ─── AI 选股（旧 ai_pick 已下线，由融合选股 job_fusion_pick_daily 取代） ─────────
 
 
 def job_portfolio_snapshot():
@@ -1456,12 +1433,6 @@ def start_daily_jobs() -> None:
             return
         _started = True
 
-    ai_time = get_cron_time()
-    try:
-        ai_hour, ai_minute = map(int, ai_time.split(":"))
-    except Exception:
-        ai_hour, ai_minute = 15, 30
-
     jobs = [
         _make_job("K线增量 16:05",       job_kline_incremental,   "daily", 16, 5,  task_type="kline"),
         _make_job("K线缺口回补 17:30",    job_kline_gap_backfill,  "daily", 17, 30, task_type="kline"),
@@ -1474,7 +1445,6 @@ def start_daily_jobs() -> None:
         _make_job("新闻增量 整点",        job_news_incremental,    "hourly", 0,  0,  task_type="news"),
         _make_job("股票信息 周一09:00",   job_stock_info_weekly,   "daily",  9,  0,  task_type="stock_info"),
         _make_job("财务数据 季度09:30",   job_financial_quarterly, "daily",  9, 30, task_type="financial"),
-        _make_job(f"AI选股 {ai_time}",   _ai_pick_wrapper,        "daily", ai_hour, ai_minute, task_type="ai_pick"),
         _make_job("净值快照 16:30",       job_portfolio_snapshot,  "daily", 16, 30, task_type="portfolio_snapshot"),
         _make_job("估值缓存 5min",       job_valuation_cache,     "interval", interval_minutes=5, task_type="valuation_cache"),
         _make_job("任务清理 03:30",      job_task_cleanup,        "daily",  3, 30, task_type="task_cleanup"),

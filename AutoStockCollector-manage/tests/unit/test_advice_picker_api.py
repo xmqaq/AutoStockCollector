@@ -31,29 +31,6 @@ class TestAdvicePickerAPI(unittest.TestCase):
             self.assertEqual(kwargs.get("cost"), 18.0)
             self.assertEqual(kwargs.get("position"), 0.3)
 
-    def test_pick_run_endpoint(self):
-        with patch("api.routes.PickerEngine") as MockEng:
-            MockEng.return_value.run.return_value = {}
-            resp = self.client.post("/api/v1/ai/pick/run", json={"top_n": 5, "candidate_pool": 20})
-        self.assertEqual(resp.status_code, 200)
-        body = resp.get_json()
-        self.assertTrue(body["success"])
-        # 异步返回，不含 data.picks；需要轮询结果
-        self.assertIn("message", body)
-
-    def test_pick_results_reads_latest(self):
-        fake_doc = {"strategy": "default", "picks": [], "timestamp": "t"}
-        with patch("api.routes._latest_pick_result", return_value=fake_doc):
-            resp = self.client.get("/api/v1/ai/pick/results")
-        self.assertEqual(resp.status_code, 200)
-        self.assertTrue(resp.get_json()["success"])
-
-    def test_pick_results_empty(self):
-        with patch("api.routes._latest_pick_result", return_value=None):
-            resp = self.client.get("/api/v1/ai/pick/results")
-        self.assertEqual(resp.status_code, 200)
-        self.assertIsNone(resp.get_json()["data"])
-
 
 if __name__ == "__main__":
     unittest.main()

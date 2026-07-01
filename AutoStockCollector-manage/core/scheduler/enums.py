@@ -26,4 +26,3 @@ class TaskType(Enum):
     SECTOR_COLLECTION = "sector"
     MARGIN_COLLECTION = "margin"
     BLOCK_COLLECTION = "block"
-    AI_PICK = "ai_pick"

@@ -38,7 +38,7 @@
     </el-col>
     <!-- Card 3: AI Picks -->
     <el-col :span="6">
-      <div class="metric-card" style="cursor: pointer" @click="router.push('/ai-picker')">
+      <div class="metric-card" style="cursor: pointer" @click="router.push('/fusion-pick')">
         <div class="metric-content">
           <div class="metric-label">今日 AI 推荐</div>
           <div class="metric-value-wrapper">

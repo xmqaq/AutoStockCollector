@@ -1269,13 +1269,6 @@ def stock_deep_analysis_ai_stream(code):
                              "X-Accel-Buffering": "no"})
 
 
-def _latest_pick_result():
-    """读 ai_pick_results 集合最近一条选股结果。"""
-    from config.database import DatabaseConfig
-    db = DatabaseConfig.get_database()
-    return db["ai_pick_results"].find_one({}, {"_id": 0}, sort=[("timestamp", -1)])
-
-
 @api_bp.route("/ai/stock/<code>/advice", methods=["POST"])
 def ai_stock_advice(code):
     """买卖参考建议。"""
@@ -1291,41 +1284,6 @@ def ai_stock_advice(code):
     except Exception as e:
         logger.error(f"AI advice failed for {code}: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
-
-
-_pick_running = False  # 简单互斥，防止重复触发
-
-@api_bp.route("/ai/pick/run", methods=["POST"])
-def ai_pick_run():
-    """触发 AI 智能选股（两阶段漏斗）。后台线程执行，立即返回。"""
-    global _pick_running
-    if _pick_running:
-        return jsonify({"success": False, "error": "已有选股任务正在运行，请稍后刷新结果"}), 409
-
-    data = request.get_json() or {}
-    strategy = data.get("strategy", "default")
-    top_n = data.get("top_n", 10)
-    candidate_pool = data.get("candidate_pool", 50)
-
-    def _run_async():
-        global _pick_running
-        _pick_running = True
-        try:
-            PickerEngine().run(strategy=strategy, top_n=top_n, candidate_pool=candidate_pool)
-        except Exception as e:
-            logger.error(f"AI pick run failed: {e}")
-            try:
-                from modules.ai.engines.picker import _update_progress
-                _update_progress(0, f"选股失败: {e}", is_running=False)
-            except Exception:
-                pass
-        finally:
-            _pick_running = False
-
-    import threading
-    t = threading.Thread(target=_run_async, daemon=True)
-    t.start()
-    return jsonify({"success": True, "message": "选股任务已启动，请 1-3 分钟后刷新结果"})
 
 
 @api_bp.route("/ai/chat", methods=["POST"])
@@ -1482,100 +1440,6 @@ def ai_analyze_news():
         logger.error(f"AI analyze-news failed: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
-@api_bp.route("/ai/pick/results", methods=["GET"])
-def ai_pick_results():
-    """读最近一次选股结果（缓存）。"""
-    try:
-        doc = _latest_pick_result()
-        if doc and doc.get("picks"):
-            for pick in doc["picks"]:
-                scores = pick.get("scores")
-                if (not scores or not all(k in scores for k in ("fundamental", "technical", "fund_flow", "valuation"))) and pick.get("score_details"):
-                    sd = pick["score_details"]
-                    scores = {}
-                    for dim in ("fundamental", "technical", "fund_flow", "valuation"):
-                        if dim in sd:
-                            scores[dim] = sd[dim].get("score", 0)
-                    if scores:
-                        scores["composite"] = pick.get("composite", 50)
-                        pick["scores"] = scores
-        return jsonify({"success": True, "data": doc})
-    except Exception as e:
-        logger.error(f"AI pick results failed: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
-@api_bp.route("/ai/pick/rebalance-advice", methods=["GET"])
-def ai_pick_rebalance_advice():
-    """根据最近一次量化选股结果（按评分加权成目标组合）+ 实时持仓/现金，生成再平衡买卖清单。
-
-    量化选股只产出排名+评分，这里用 build_score_weighted_targets 现算目标权重，
-    再交给 build_rebalance_orders 生成订单。
-    """
-    from modules.ai_selector.advisor import build_rebalance_orders, build_score_weighted_targets
-    from modules.paper_trading.trade_engine import TradeEngine
-    from modules.paper_trading.account import PaperAccount
-    from api.routes.paper_trading import _resolve_user_id
-
-    try:
-        buffer = float(request.args.get("buffer", 0.05))
-    except (TypeError, ValueError):
-        buffer = 0.05
-    try:
-        invest_ratio = float(request.args.get("ratio", 1.0))
-    except (TypeError, ValueError):
-        invest_ratio = 1.0
-
-    doc = _latest_pick_result()
-    picks = (doc or {}).get("picks") or []
-    if not picks:
-        return jsonify({"success": True, "data": {
-            "total_value": 0, "buffer": buffer, "cash": 0, "orders": [],
-            "message": "暂无量化选股结果，请先运行量化选股",
-        }})
-
-    uid = _resolve_user_id()
-    engine = TradeEngine()
-    positions, _ = engine.get_positions(uid)
-    acc = PaperAccount().get(uid)
-    cash = acc["cash_balance"] if acc else 0.0
-
-    # 先取价 + 算本金（现金+持仓市值），供 A1 整手可行性剔除买不起一手的高价票
-    codes = list({p["code"] for p in picks} | {p["code"] for p in positions})
-    quotes = engine._batch_tencent_quotes(codes)
-    prices = {c: (q.get("price") or 0) for c, q in quotes.items() if q.get("price")}
-    for p in positions:
-        prices.setdefault(p["code"], p.get("current_price") or 0)
-    capital = cash + sum((p.get("market_value") or 0) for p in positions)
-
-    targets = build_score_weighted_targets(picks, prices=prices, capital=capital,
-                                           invest_ratio=invest_ratio)
-    if not targets:
-        return jsonify({"success": True, "data": {
-            "total_value": 0, "buffer": buffer, "cash": 0, "orders": [],
-            "message": "暂无量化选股结果，请先运行量化选股",
-        }})
-
-    # 被 A1 剔除的高价票（评分入选但本金不足一手），回给前端做提示
-    target_codes = {t["code"] for t in targets}
-    dropped = [{"code": p["code"], "name": p.get("name", p["code"]), "price": prices.get(p["code"])}
-               for p in picks
-               if (p.get("composite") or 0) > 0 and p["code"] not in target_codes and prices.get(p["code"])]
-
-    advice = build_rebalance_orders(
-        target_positions=targets,
-        current_positions=positions,
-        cash=cash,
-        prices=prices,
-        buffer=buffer,
-        fees=engine._fees(),
-    )
-    advice["cash"] = round(cash, 2)
-    advice["dropped"] = dropped
-    advice["invest_ratio"] = invest_ratio
-    return jsonify({"success": True, "data": advice})
-
-
 @api_bp.route("/data/coverage", methods=["GET"])
 def data_coverage():
     """数据完整性体检：各数据源对全市场的覆盖率与缺口示例。"""
@@ -1584,38 +1448,6 @@ def data_coverage():
         return jsonify({"success": True, "data": compute_data_coverage()})
     except Exception as e:
         logger.error(f"data coverage failed: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
-@api_bp.route("/ai/pick/track", methods=["GET"])
-def ai_pick_track():
-    """选股效果跟踪：历史 picks 的后续 N 日收益与胜率。
-    参数：horizons=1,3,5,10（交易日）、limit=20（最近N次选股）、
-    strategy=default（按策略过滤，空则全部）。
-    """
-    try:
-        from modules.ai.engines.tracker import PickTracker
-        raw = request.args.get("horizons", "1,3,5,10")
-        horizons = [int(x) for x in raw.split(",") if x.strip().isdigit()] or [1, 3, 5, 10]
-        limit = min(int(request.args.get("limit", 20)), 100)
-        strategy = request.args.get("strategy") or None
-        data = PickTracker(strategy=strategy).evaluate(horizons=horizons, limit=limit)
-        return jsonify({"success": True, "data": data})
-    except Exception as e:
-        logger.error(f"AI pick track failed: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
-@api_bp.route("/ai/pick/progress", methods=["GET"])
-def ai_pick_progress():
-    """查询选股执行进度。"""
-    try:
-        from modules.ai.engines.picker import get_progress
-        prog = get_progress()
-        prog["updated_at"] = str(prog.get("updated_at", ""))
-        return jsonify({"success": True, "data": prog})
-    except Exception as e:
-        logger.error(f"AI pick progress failed: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 

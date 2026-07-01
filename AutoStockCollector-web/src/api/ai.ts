@@ -1,5 +1,4 @@
 import client from './client'
-import type { RebalanceAdvice } from './strategyPick'
 
 export interface AIKeyConfig {
   provider: string
@@ -123,15 +122,6 @@ export const aiKeyApi = {
   },
   fetchModels(provider: string) {
     return client.get(`/api/v1/ai-keys/${provider}/models`)
-  },
-}
-
-export const pickerApi = {
-  smartPick(topN = 10, factors = ['trend', 'volume', 'value', 'fund_flow']) {
-    return client.post('/api/v1/pick/smart', { top_n: topN, factors })
-  },
-  smartPickAdvanced(params: { strategy: string; top_n: number; min_score?: number }) {
-    return client.post('/api/v1/pick/smart-advanced', params)
   },
 }
 
@@ -479,24 +469,6 @@ export const aiServiceApi = {
   },
   advice(code: string, payload: { cost?: number; position?: number } = {}) {
     return client.post(`/api/v1/ai/stock/${code}/advice`, payload)
-  },
-  pickRun(payload: { strategy?: string; top_n?: number; candidate_pool?: number } = {}) {
-    return client.post('/api/v1/ai/pick/run', payload)
-  },
-  pickResults() {
-    return client.get('/api/v1/ai/pick/results')
-  },
-  pickProgress() {
-    return client.get('/api/v1/ai/pick/progress')
-  },
-  pickTrack(params: { horizons?: string; limit?: number; strategy?: string } = {}) {
-    return client.get('/api/v1/ai/pick/track', { params })
-  },
-  /** 基于最近量化选股结果 + 实时持仓/现金，生成再平衡买卖清单 */
-  pickRebalanceAdvice(buffer = 0.05, ratio = 1.0) {
-    return client.get<{ success: boolean; data: RebalanceAdvice }>(
-      '/api/v1/ai/pick/rebalance-advice', { params: { buffer, ratio } },
-    )
   },
 }
 

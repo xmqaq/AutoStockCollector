@@ -14,6 +14,8 @@ export interface FusedSignalBreakdown {
   pa_confidence: number
   ai_score: number
   ai_signal: string
+  agent_score: number
+  agent_signal: string
   industry?: string
 }
 
@@ -97,6 +99,7 @@ export interface AutoTradeConfig {
     auction: number
     pa: number
     ai_monitor: number
+    agent: number
   }
   thresholds: {
     buy: number
