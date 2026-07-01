@@ -175,6 +175,12 @@ const router = createRouter({
           meta: { title: 'AI实时监控' },
         },
         {
+          path: 'auto-trading',
+          name: 'AutoTrading',
+          component: () => import('@/views/AutoTrading/index.vue'),
+          meta: { title: '自动交易' },
+        },
+        {
           path: 'todo',
           name: 'Todo',
           component: () => import('@/views/Todo/index.vue'),

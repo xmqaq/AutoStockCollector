@@ -158,6 +158,7 @@ def register_routes(app):
     from modules.ai_research_report_analyzer.api import research_bp
     from modules.price_action_advisor.api import pa_bp
     from modules.pre_market_call_auction.api import auction_bp
+    from modules.auto_trading.api import auto_trade_bp
 
     app.register_blueprint(api_bp)
     app.register_blueprint(auth_bp)
@@ -176,6 +177,7 @@ def register_routes(app):
     app.register_blueprint(research_bp)
     app.register_blueprint(pa_bp)
     app.register_blueprint(auction_bp)
+    app.register_blueprint(auto_trade_bp)
 
     @app.route("/health", methods=["GET"])
     def health_check():

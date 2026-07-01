@@ -1042,6 +1042,10 @@ def job_auction_radar():
     """每日 9:25 盘前竞价雷达扫描。"""
     if not _is_weekday():
         return
+    from utils.helpers import is_trading_day
+    if not is_trading_day(_now()):
+        logger.info("[cron] 今日非交易日，跳过竞价雷达扫描")
+        return
     try:
         from modules.pre_market_call_auction.radar_service import run_auction_scan
         import threading
@@ -1059,6 +1063,10 @@ def job_auction_radar():
 def job_auction_auto_close():
     """14:50 自动平仓今日竞价雷达买入的仓位。"""
     if not _is_weekday():
+        return
+    from utils.helpers import is_trading_day
+    if not is_trading_day(_now()):
+        logger.info("[cron] 今日非交易日，跳过自动平仓")
         return
     try:
         from modules.pre_market_call_auction.intraday_tracker import auto_close_positions
@@ -1108,6 +1116,35 @@ def job_paper_market_close_settle():
         logger.error(f"[cron] 模拟盘收盘清算失败: {e}")
         _record_result("模拟盘收盘清算", False, str(e))
         _persist_cron_status("paper_close_settle", _now().isoformat(), False, str(e)[:100])
+
+
+def job_auto_trading_cycle():
+    """自动交易融合轮询 30min。"""
+    if not _is_weekday():
+        return
+    from utils.helpers import is_trading_day
+    if not is_trading_day(_now()):
+        logger.info("[cron] 今日非交易日，跳过自动交易轮询")
+        return
+    now = _now()
+    if now.hour < 9 or (now.hour == 9 and now.minute < 35) or now.hour >= 15:
+        logger.info("[cron] 非盘中时段，跳过自动交易轮询")
+        return
+    try:
+        from modules.auto_trading.executor import UnifiedAutoTrader
+        result = UnifiedAutoTrader().run_cycle()
+        buys = result.get("buys", 0)
+        sells = result.get("sells", 0)
+        adds = result.get("adds", 0)
+        errors = result.get("errors", 0)
+        msg = f"自动交易轮询: {buys}买/{sells}卖/{adds}加仓, {errors}错误"
+        logger.info(f"[cron] {msg}")
+        _record_result("自动交易", True, msg)
+        _persist_cron_status("auto_trading", _now().isoformat(), True, msg, inc_count=True)
+    except Exception as e:
+        logger.error(f"[cron] 自动交易轮询失败: {e}")
+        _record_result("自动交易", False, str(e))
+        _persist_cron_status("auto_trading", _now().isoformat(), False, str(e)[:100])
 
 
 # ─── 纯 Python 调度核心 ───────────────────────────────────────────────────────
@@ -1249,10 +1286,12 @@ def start_daily_jobs() -> None:
         _make_job("研报全板块扫描 17:30", job_research_daily,       "daily", 17, 30, task_type="research_daily"),
         _make_job("研报原始数据采集 16:30", job_research_report_collect, "daily", 16, 30, task_type="research_report_collect"),
         _make_job("研报AI摘要 30min",       job_research_report_summarize, "interval", interval_minutes=30, task_type="research_report_summarize"),
-        _make_job("盘前竞价雷达 09:25",     job_auction_radar,           "daily", 9, 25, task_type="auction_radar"),
+        _make_job("盘前竞价雷达 09:32",     job_auction_radar,           "daily", 9, 32, task_type="auction_radar"),
         _make_job("竞价自动平仓 14:50",     job_auction_auto_close,      "daily", 14, 50, task_type="auction_auto_close"),
         _make_job("模拟盘盘中撮合 1min",    job_paper_match_pending,     "interval", interval_minutes=1, task_type="paper_match"),
         _make_job("模拟盘收盘清算 15:00",   job_paper_market_close_settle, "daily", 15, 0, task_type="paper_close_settle"),
+        _make_job("自动交易轮询 30min",     job_auto_trading_cycle,       "interval",
+                  interval_minutes=30, task_type="auto_trading"),
     ]
 
     # cron_trigger_lock 跨进程触发锁：建 TTL 索引，锁文档 1 天后自动过期，避免无限增长。

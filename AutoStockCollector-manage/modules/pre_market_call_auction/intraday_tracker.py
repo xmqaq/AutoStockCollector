@@ -91,7 +91,7 @@ def update_realtime_prices(date: Optional[str] = None) -> int:
         db = DatabaseConfig.get_database()
         col = db[COLLECTION]
 
-        tracks = list(col.find({"date": date, "status": "active"}, {"code": 1, "open_price": 1, "_id": 0}))
+        tracks = list(col.find({"date": date, "status": {"$in": ["active", "traded"]}}, {"code": 1, "open_price": 1, "_id": 0}))
         if not tracks:
             return 0
 
@@ -178,8 +178,10 @@ def get_risk_summary(date: Optional[str] = None) -> Dict[str, Any]:
                 auto_trade_positions.append(p)
 
         sector_exposure: Dict[str, float] = {}
+        _code_to_industry = _build_code_industry_map(date)
         for p in positions:
-            sector = p.get("code", "其他")[:2]
+            raw_code = _strip_prefix_from_code(p.get("code", ""))
+            sector = _code_to_industry.get(raw_code, p.get("code", "其他")[:2])
             sector_exposure[sector] = sector_exposure.get(sector, 0) + p["market_value"]
 
         return {
@@ -235,6 +237,29 @@ def _find_auto_trade_record(code: str, date: str) -> Optional[Dict]:
 # ── Auto-Close at 14:50 ──────────────────────────────────────────────
 
 
+def _strip_prefix_from_code(code: str) -> str:
+    code_lower = code.lower()
+    for p in ("sh", "sz", "bj"):
+        if code_lower.startswith(p):
+            return code[len(p):]
+    return code
+
+
+def _build_code_industry_map(date: str) -> Dict[str, str]:
+    try:
+        from config.database import DatabaseConfig
+        db = DatabaseConfig.get_database()
+        result = {}
+        for doc in db[COLLECTION].find({"date": date}, {"code": 1, "industry": 1}):
+            result[doc["code"]] = doc.get("industry", "")
+        for doc in db[AuctionConfig.RESULT_COLLECTION].find({"date": date}, {"top_stocks.industry": 1, "top_stocks.symbol": 1}):
+            for s in doc.get("top_stocks") or []:
+                result[s.get("symbol", "")] = s.get("industry", "")
+        return result
+    except Exception:
+        return {}
+
+
 def auto_close_positions(date: Optional[str] = None) -> int:
     """14:50 自动平仓：查找今日 auto-trade 买入且仍持仓的股票，全部卖出。"""
     date = date or today_str()
@@ -247,13 +272,17 @@ def auto_close_positions(date: Optional[str] = None) -> int:
             logger.info("[AutoClose] no auto-trade records to close")
             return 0
 
+        # 一次性批量查询所有报价
+        codes = [t["code"] for t in tracked if t.get("code")]
+        prices = _batch_tencent_quotes(codes) if codes else {}
+
         closed = 0
         for t in tracked:
             code = t.get("code", "")
             trade_id = t.get("auto_trade_id", "")
             if not code or not trade_id:
                 continue
-            price = _close_position(code, date, _engine, _account)
+            price = _close_position(code, date, _engine, _account, prices.get(code))
             if price is not None:
                 _record_close_result(code, date, price, t)
                 closed += 1
@@ -284,7 +313,7 @@ def _get_traded_tracking_records(date: str) -> List[Dict]:
         return []
 
 
-def _close_position(code: str, date: str, engine, account) -> Optional[float]:
+def _close_position(code: str, date: str, engine, account, fallback_price: Optional[float] = None) -> Optional[float]:
     """卖出某只股票的全部持仓。返回成交价，失败返回 None。"""
     try:
         positions, _ = engine.get_positions("default")
@@ -293,9 +322,7 @@ def _close_position(code: str, date: str, engine, account) -> Optional[float]:
             logger.debug(f"[AutoClose] no position for {code}, already closed")
             return None
         shares = pos["shares"]
-        price = _get_latest_price(code)
-        if not price or price <= 0:
-            price = pos["current_price"]
+        price = fallback_price or pos["current_price"]
         if not price or price <= 0:
             logger.warning(f"[AutoClose] cannot get price for {code}, skipping")
             return None
@@ -346,6 +373,19 @@ AUTO_TRADE_SL_ATR_MULTIPLIER = 1.5
 AUTO_TRADE_TP_ATR_MULTIPLIER = 3.0
 
 
+def _ensure_account(user_id: str):
+    """确保 paper_account 存在，不存在则自动创建（默认 10 万初始资金）。"""
+    try:
+        from modules.paper_trading.account import PaperAccount
+        acc = PaperAccount()
+        doc = acc.get(user_id)
+        if not doc:
+            acc.init(100000, user_id)
+            logger.info(f"[AutoTrade] created paper_account for '{user_id}' with 100000 initial capital")
+    except Exception as e:
+        logger.warning(f"[AutoTrade] ensure account error: {e}")
+
+
 def auto_trade_top_stocks(result: RadarResult):
     if not AUTO_TRADE_ENABLED:
         return
@@ -356,6 +396,8 @@ def auto_trade_top_stocks(result: RadarResult):
         from api.routes.paper_trading import _lazy_init, _account, _engine, _snapshot
         _lazy_init()
         user_id = "default"
+
+        _ensure_account(user_id)
 
         today = result.date
         existing_codes = _existing_auto_trades_today(user_id, today)
@@ -452,8 +494,11 @@ def _existing_auto_trades_today(user_id: str, date: str) -> set:
         codes = set()
         for d in docs:
             raw = d.get("code", "")
-            for prefix in ("sh", "sz", "SH", "SZ"):
-                raw = raw.replace(prefix, "")
+            raw_lower = raw.lower()
+            for p in ("sh", "sz", "bj"):
+                if raw_lower.startswith(p):
+                    raw = raw[len(p):]
+                    break
             codes.add(raw)
         return codes
     except Exception:
@@ -462,7 +507,7 @@ def _existing_auto_trades_today(user_id: str, date: str) -> set:
 
 def _risk_check_allowed(user_id: str, stock: RadarStock, trades_so_far: int,
                         sector_cash_map: Dict[str, float]) -> bool:
-    """风控检查：ST/退市/次新股、最大持仓数、板块敞口。"""
+    """风控检查：ST/退市、最大持仓数、总敞口、板块敞口。"""
     name = stock.name or ""
     if "ST" in name.upper() or "*ST" in name.upper():
         return False
@@ -473,8 +518,6 @@ def _risk_check_allowed(user_id: str, stock: RadarStock, trades_so_far: int,
         logger.info(f"[Risk] skip {stock.symbol} — max positions reached ({AuctionConfig.MAX_POSITIONS_PER_DAY})")
         return False
 
-    sector = stock.industry or "其他"
-    sector_used = sector_cash_map.get(sector, 0)
     try:
         from modules.paper_trading.account import PaperAccount
         acc = PaperAccount()
@@ -482,17 +525,24 @@ def _risk_check_allowed(user_id: str, stock: RadarStock, trades_so_far: int,
         cash = doc.get("cash_balance", 0) if doc else 0
     except Exception:
         cash = 0
-    total_used = sum(sector_cash_map.values()) + sector_used
+    if cash <= 0:
+        return False
 
-    if cash > 0:
-        total_pct = total_used / cash
-        if total_pct >= AuctionConfig.MAX_TOTAL_EXPOSURE_PCT:
-            logger.info(f"[Risk] skip {stock.symbol} — total exposure {total_pct:.0%} >= {AuctionConfig.MAX_TOTAL_EXPOSURE_PCT:.0%}")
-            return False
-        sector_pct = (sector_used + stock.open_price * 100) / cash
-        if sector_pct >= AuctionConfig.MAX_SECTOR_EXPOSURE_PCT:
-            logger.info(f"[Risk] skip {stock.symbol} — sector {sector} exposure would be {sector_pct:.0%} >= {AuctionConfig.MAX_SECTOR_EXPOSURE_PCT:.0%}")
-            return False
+    # 预估本次交易的金额
+    this_budget = cash * AUTO_TRADE_MAX_POSITION_PCT
+    this_cost = min(this_budget, cash * AUTO_TRADE_MAX_POSITION_PCT)
+
+    total_used = sum(sector_cash_map.values())
+    if total_used + this_cost >= cash * AuctionConfig.MAX_TOTAL_EXPOSURE_PCT:
+        logger.info(f"[Risk] skip {stock.symbol} — total exposure would exceed {AuctionConfig.MAX_TOTAL_EXPOSURE_PCT:.0%}")
+        return False
+
+    sector = stock.industry or "其他"
+    sector_used = sector_cash_map.get(sector, 0)
+    if sector_used + this_cost >= cash * AuctionConfig.MAX_SECTOR_EXPOSURE_PCT:
+        logger.info(f"[Risk] skip {stock.symbol} — sector {sector} exposure would exceed {AuctionConfig.MAX_SECTOR_EXPOSURE_PCT:.0%}")
+        return False
+
     return True
 
 
@@ -525,7 +575,7 @@ def _estimate_atr(code: str, current_price: float) -> Optional[float]:
         from config.database import DatabaseConfig
         db = DatabaseConfig.get_database()
         klines = list(
-            db["kline"].find({"code": code}, {"high": 1, "low": 1, "close": 1, "_id": 0})
+            db["kline"].find({"code": code.upper()}, {"high": 1, "low": 1, "close": 1, "_id": 0})
             .sort("date", -1)
             .limit(6)
         )

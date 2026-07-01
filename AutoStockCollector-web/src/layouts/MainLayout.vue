@@ -187,6 +187,7 @@ const menuGroups = computed((): MenuGroup[] => [
       { key: '/position', label: '仓位管理',   icon: Wallet },
       { key: '/price-action', label: '价格行为学', icon: TrendCharts },
       { key: '/pre-market-radar', label: '盘前竞价雷达', icon: DataAnalysis },
+      { key: '/auto-trading', label: '自动交易', icon: Operation },
     ],
   },
   {
