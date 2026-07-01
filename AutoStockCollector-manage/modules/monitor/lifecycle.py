@@ -45,8 +45,11 @@ class MonitorLifecycle:
 
     def _latest_fusion_runs(self, n: int = 2):
         # run_id 必须投影出来——sync 用它做幂等去重；漏投会让 cur_run_id 恒为 None、幂等失效。
+        # 只取 daily(full) run：quick 盘中快照也写本集合(按 created_at 排)，不过滤会把 quick
+        # 当成"上一轮 daily"参与 consecutive_days 计算，导致连选口径失真(quick 不级联 refresh、
+        # 本就不该算进连续入选)。mode 字段由 engine.py 写入(full/quick)。
         return list(self.db[FUSION_RESULTS_COL]
-                    .find({}, {"picks": 1, "created_at": 1, "run_id": 1})
+                    .find({"mode": "full"}, {"picks": 1, "created_at": 1, "run_id": 1})
                     .sort("created_at", -1).limit(n))
 
     @staticmethod
