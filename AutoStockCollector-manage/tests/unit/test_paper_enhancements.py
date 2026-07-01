@@ -14,7 +14,8 @@ from modules.paper_trading.trade_engine import TradeEngine
 def _account_with_mocks():
     acc = PaperAccount.__new__(PaperAccount)
     acc._col = MagicMock()
-    acc._db = {"trade_records": MagicMock(), "portfolio_snapshots": MagicMock()}
+    acc._db = {"trade_records": MagicMock(), "portfolio_snapshots": MagicMock(),
+               "paper_orders": MagicMock()}
     return acc
 
 
@@ -161,6 +162,7 @@ class TestTradeEngineConfigurableFees(unittest.TestCase):
         from modules.paper_trading.trade_engine import TradeEngine
         engine = TradeEngine.__new__(TradeEngine)
         engine._trades = MagicMock()
+        engine._orders = MagicMock()  # T+1 挂单集合（_create_order 持久化挂单）
         return engine
 
     def test_buy_uses_configured_commission_rate(self):
@@ -173,9 +175,11 @@ class TestTradeEngineConfigurableFees(unittest.TestCase):
         })
         acct = MagicMock()
         acct.get.return_value = {"cash_balance": 100000.0, "initial_capital": 100000.0}
-        record = engine.buy("default", "SH600000", 500, {}, acct)
+        acct.get_available_cash.return_value = 100000.0  # T+1 挂单冻结校验需数值
+        record = engine.buy("default", "SH600000", 500, {}, acct, immediate=True)
+        # 1aff505 后 buy 返回 {status, trade, order_id}；cash_after 在 trade 里
         # amount=5000, commission=max(1, 5000*0.002=10)=10, total=5010 → 94990
-        self.assertAlmostEqual(record["cash_after"], 94990.0, places=2)
+        self.assertAlmostEqual(record["trade"]["cash_after"], 94990.0, places=2)
 
 
 if __name__ == "__main__":

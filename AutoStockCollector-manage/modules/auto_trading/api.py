@@ -22,7 +22,16 @@ from .executor import UnifiedAutoTrader
 logger = get_logger(__name__)
 auto_trade_bp = Blueprint("auto_trading", __name__, url_prefix="/api/v1/auto-trading")
 
-_trader = UnifiedAutoTrader()
+# 懒加载：避免模块顶层实例化即连库（UnifiedAutoTrader 构造里 PaperAccount 连 DB），
+# 否则 import 本模块（如跑单测）在无 MONGODB_URI 环境会 ValueError。首次请求才构造。
+_trader = None
+
+
+def _get_trader():
+    global _trader
+    if _trader is None:
+        _trader = UnifiedAutoTrader()
+    return _trader
 
 
 def _ok(data: Any = None, msg: str = "ok"):
@@ -54,13 +63,13 @@ def _resolve_user_id() -> str:
 
 @auto_trade_bp.route("/status", methods=["GET"])
 def get_status():
-    return _ok(_trader.get_stats(_resolve_user_id()))
+    return _ok(_get_trader().get_stats(_resolve_user_id()))
 
 
 @auto_trade_bp.route("/signals", methods=["GET"])
 def get_signals():
     date = request.args.get("date", beijing_now().strftime("%Y-%m-%d"))
-    signals = _trader.get_signals(date, _resolve_user_id())
+    signals = _get_trader().get_signals(date, _resolve_user_id())
     return _ok({"date": date, "signals": signals, "count": len(signals)})
 
 
@@ -72,7 +81,7 @@ def trigger_cycle():
         body = request.get_json(silent=True) or {}
         date = body.get("date")
         user_id = body.get("user_id", _resolve_user_id())
-    result = _trader.run_cycle(user_id, date)
+    result = _get_trader().run_cycle(user_id, date)
     if result.get("status") == "locked":
         return _err("Previous cycle still running", 429)
     if result.get("status") == "disabled":
@@ -91,7 +100,7 @@ def config():
         data = request.get_json(force=True) or {}
         cfg = store.save(data)
         # 清除信号缓存，使新权重立即生效
-        _trader._fusion.clear_cache()
+        _get_trader()._fusion.clear_cache()
         return _ok(store.to_dict(cfg))
     except ValueError as e:
         return _err(str(e), 400)
@@ -138,7 +147,7 @@ def close_all():
         user_id = request.get_json(silent=True).get("user_id", _resolve_user_id())
     else:
         user_id = _resolve_user_id()
-    result = _trader.close_all(user_id)
+    result = _get_trader().close_all(user_id)
     if result.get("error"):
         return _err(result["error"])
     return _ok(result)

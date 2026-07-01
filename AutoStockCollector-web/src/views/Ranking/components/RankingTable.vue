@@ -41,7 +41,7 @@
       </el-table-column>
 
       <!-- 资产状况 -->
-      <el-table-column label="资产状况" min-width="160" align="right" sortable :sort-by="row => row.total_asset">
+      <el-table-column label="资产状况" min-width="160" align="right" sortable :sort-by="(row: any) => row.total_asset">
         <template #default="{ row }">
           <div class="data-stack">
             <span class="primary-data asset-total">¥{{ formatAmount(row.total_asset) }}</span>
@@ -51,7 +51,7 @@
       </el-table-column>
 
       <!-- 累计收益 -->
-      <el-table-column label="累计收益" min-width="160" align="right" sortable :sort-by="row => row.profit_pct">
+      <el-table-column label="累计收益" min-width="160" align="right" sortable :sort-by="(row: any) => row.profit_pct">
         <template #default="{ row }">
           <div class="data-stack">
             <span :class="['primary-data', 'profit-text', getProfitColorClass(row.profit_pct)]">
@@ -71,7 +71,7 @@
       </el-table-column>
 
       <!-- 今日表现 -->
-      <el-table-column label="今日表现" min-width="140" align="right" sortable :sort-by="row => row.today_pnl">
+      <el-table-column label="今日表现" min-width="140" align="right" sortable :sort-by="(row: any) => row.today_pnl">
         <template #default="{ row }">
           <div :class="['profit-pill', getProfitBgClass(row.today_pnl)]">
             {{ row.today_pnl > 0 ? '+' : '' }}¥{{ formatAmount(row.today_pnl) }}
@@ -80,7 +80,7 @@
       </el-table-column>
 
       <!-- 交易统计 -->
-      <el-table-column label="交易统计" min-width="120" align="center" sortable :sort-by="row => row.win_rate">
+      <el-table-column label="交易统计" min-width="120" align="center" sortable :sort-by="(row: any) => row.win_rate">
         <template #default="{ row }">
           <div class="data-stack align-center">
             <span class="primary-data win-rate">{{ formatPct(row.win_rate) }}% 胜率</span>

@@ -307,6 +307,16 @@ class TestRiskManager(unittest.TestCase):
 
 # ── decision_engine 优先级 ─────────────────────────────────────
 class TestDecisionEngine(unittest.TestCase):
+    def setUp(self):
+        # decide_held 的"尾盘清仓"分支(#80)依赖 beijing_now() 实时时间——收盘后跑会
+        # 抢占 fusion 分支导致 hold/reduce/sell 用例全误判为 eod_close sell。patch 到
+        # 10:30 盘中，让被测的 fusion 分支正常执行。
+        from datetime import datetime
+        self._time_patch = patch("modules.auto_trading.decision_engine.beijing_now",
+                                 return_value=datetime(2026, 7, 1, 10, 30))
+        self._time_patch.start()
+        self.addCleanup(self._time_patch.stop)
+
     def _de(self, drawdown_verdict=None, risk_ok=True):
         fusion = MagicMock()
         drawdown = MagicMock()
