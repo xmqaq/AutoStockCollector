@@ -26,8 +26,9 @@ class Decision:
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
     reason: str = ""
-    source: str = "fusion"   # fusion|drawdown_stop|sl_tp|eod_close
+    source: str = "fusion"   # fusion|drawdown_stop|sl_tp|eod_close|eod_close_intraday|auction_radar
     priority: int = 0        # 大优先；sell/reduce 在前，buy/add 在后
+    force: bool = False      # 卖出时是否豁免 T+1（仅 eod_close_intraday=True）
 
 
 class DecisionEngine:
@@ -62,6 +63,12 @@ class DecisionEngine:
             return Decision(verdict.action, code, name, verdict.shares, price,
                             reason=verdict.reason, source="drawdown_stop",
                             priority=verdict.priority)
+
+        # 85: 日内竞价策略尾盘平仓（source=auction_radar 持仓，force 豁免 T+1）
+        if self._is_eod_close_time(cfg) and pos.get("_is_intraday"):
+            return Decision("sell", code, name, shares, price,
+                            reason="竞价日内策略尾盘平仓", source="eod_close_intraday",
+                            priority=85, force=True)
 
         # 80: 尾盘清仓
         if self._is_eod_close_time(cfg):
@@ -113,6 +120,11 @@ class DecisionEngine:
         cfg = self._cfg()
         code = cand.get("symbol", cand.get("code", ""))
         name = cand.get("name", "") or fused.name
+
+        # 竞价信号分支：source=auction_radar 走竞价专用阈值（MIN_AUCTION_SCORE/MIN_GAP）
+        if cand.get("source") == "auction_radar":
+            return self._decide_auction_candidate(cand, fused, cash, user_id, date, held_positions)
+
         price = fused.current_price or 0
         if price <= 0:
             return Decision("hold", code, name, 0, price, source="fusion", priority=0)
@@ -135,6 +147,54 @@ class DecisionEngine:
         return Decision("buy", code, name, shares, price, stop_loss=sl, take_profit=tp,
                         reason=fused.reasons or [f"融合分 {fused.overall_score}"],
                         source="fusion", priority=30)
+
+    def _decide_auction_candidate(self, cand: dict, fused, cash: float, user_id: str,
+                                  date: str, held_positions: List[dict]) -> Decision:
+        """竞价信号建仓：用竞价专用阈值，price 用 open_price（竞价价），source=auction_radar。"""
+        from modules.pre_market_call_auction.config import AuctionConfig
+        cfg = self._cfg()
+        code = cand.get("code", cand.get("symbol", ""))
+        name = cand.get("name", "") or fused.name
+        price = cand.get("open_price") or fused.current_price or 0
+        if price <= 0:
+            return Decision("hold", code, name, 0, price, source="auction_radar", priority=0)
+
+        score = cand.get("strength_score", 0) or fused.overall_score
+        gap = cand.get("gap_pct", 0) or 0
+        if score < AuctionConfig.AUTO_TRADE_MIN_SCORE or gap < AuctionConfig.AUTO_TRADE_MIN_GAP:
+            return Decision("hold", code, name, 0, price,
+                            reason=f"竞价信号未达标({score}/{gap}%)", source="auction_radar", priority=0)
+        if cand.get("trap_warning"):
+            return Decision("hold", code, name, 0, price, reason="竞价诱骗预警",
+                            source="auction_radar", priority=0)
+
+        shares = self._calc_buy_shares(cash, cfg.MAX_SINGLE_POSITION_PCT, price)
+        if shares < 100:
+            return Decision("hold", code, name, 0, price, reason="单票预算不足 100 股",
+                            source="auction_radar", priority=0)
+
+        prev_close = cand.get("prev_close")
+        ok, reason = self._risk.check_buy(user_id, code, fused, shares, price, date,
+                                          held_positions, prev_close=prev_close)
+        if not ok:
+            return Decision("hold", code, name, 0, price, reason=f"风控拦截: {reason}",
+                            source="auction_radar", priority=0)
+
+        # ATR SL/TP 用竞价专用倍数（日内策略）
+        from modules.pre_market_call_auction.radar_utils import estimate_atr
+        try:
+            atr = estimate_atr(code, price)
+        except Exception:
+            atr = None
+        if atr:
+            sl = round(price - atr * AuctionConfig.AUTO_TRADE_SL_ATR, 2)
+            tp = round(price + atr * AuctionConfig.AUTO_TRADE_TP_ATR, 2)
+        else:
+            sl = round(price * 0.98, 2)
+            tp = round(price * 1.04, 2)
+        return Decision("buy", code, name, shares, price, stop_loss=sl, take_profit=tp,
+                        reason=cand.get("strategy", "gap_up_momentum"),
+                        source="auction_radar", priority=30)
 
     # ── 辅助 ──────────────────────────────────────────────────────
     @staticmethod
@@ -162,8 +222,8 @@ class DecisionEngine:
     def _compute_sl_tp(code, price: float, cfg: AutoTradingConfig):
         """ATR 动态 SL/TP；取不到 ATR 时回退到固定百分比。"""
         try:
-            from modules.pre_market_call_auction.intraday_tracker import _estimate_atr
-            atr = _estimate_atr(code, price)
+            from modules.pre_market_call_auction.radar_utils import estimate_atr
+            atr = estimate_atr(code, price)
         except Exception:
             atr = None
         if atr:

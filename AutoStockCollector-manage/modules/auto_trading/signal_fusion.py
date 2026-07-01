@@ -41,6 +41,10 @@ class FusedSignal:
         self.ai_score: float = 50.0
         self.ai_signal: str = "hold"
 
+        # 第 4 路：AI Agent（TradingGraph 多空辩论 verdict）
+        self.agent_score: float = 0.0
+        self.agent_signal: str = "hold"
+
         self.reasons: List[str] = []
 
 
@@ -74,6 +78,7 @@ class SignalFusionEngine:
         self._merge_auction(fused, date)
         self._merge_pa(fused)
         self._merge_ai_monitor(fused)
+        self._merge_agent(fused, date)
         self._compute_overall(fused, cfg)
         self._build_reasons(fused, cfg)
 
@@ -83,15 +88,18 @@ class SignalFusionEngine:
 
     def _compute_overall(self, fused: FusedSignal, cfg: AutoTradingConfig):
         """分母 = 仅有数据的源的权重之和；分子 = 各源加权得分(0-1)。缺失源不参与。"""
-        w_a, w_p, w_m = cfg.AUCTION_WEIGHT, cfg.PA_WEIGHT, cfg.AI_MONITOR_WEIGHT
+        w_a, w_p, w_m, w_g = (cfg.AUCTION_WEIGHT, cfg.PA_WEIGHT,
+                              cfg.AI_MONITOR_WEIGHT, cfg.AGENT_WEIGHT)
 
         norm_a: Optional[float] = (w_a * fused.auction_score / 100.0) if fused.auction_score > 0 else None
         pa_raw = PA_SIGNAL_SCORES.get(fused.pa_signal, 50)
         pa_conf = fused.pa_confidence / PA_CONFIDENCE_MAX if fused.pa_confidence > 0 else 0.5
         norm_p: Optional[float] = (w_p * pa_raw / 100.0 * pa_conf) if fused.pa_signal != "NO_DATA" else None
         norm_m: Optional[float] = (w_m * fused.ai_score / 100.0) if fused.ai_score > 0 else None
+        # agent 信号必须 >0 才参与（0 表示无当日信号/被过期过滤）
+        norm_g: Optional[float] = (w_g * fused.agent_score / 100.0) if fused.agent_score > 0 else None
 
-        terms = [(w, v) for w, v in ((w_a, norm_a), (w_p, norm_p), (w_m, norm_m)) if v is not None]
+        terms = [(w, v) for w, v in ((w_a, norm_a), (w_p, norm_p), (w_m, norm_m), (w_g, norm_g)) if v is not None]
         active_weights = sum(w for w, _ in terms)
         if active_weights <= 0:
             fused.overall_score = 50.0
@@ -127,6 +135,10 @@ class SignalFusionEngine:
             reasons.append(f"AI监控 {fused.ai_score}分")
         if fused.ai_score <= 30:
             reasons.append(f"AI看空 {fused.ai_score}分")
+        if fused.agent_score >= 72:
+            reasons.append(f"AI Agent {fused.agent_score}分")
+        if fused.agent_score <= 30:
+            reasons.append(f"Agent看空 {fused.agent_score}分")
         fused.reasons = reasons
 
     # ── 三路合并 ──────────────────────────────────────────────────
@@ -192,6 +204,32 @@ class SignalFusionEngine:
                 fused.industry = doc.get("industry", "") or fused.industry
         except Exception as e:
             logger.warning(f"[fusion] AI monitor fetch failed: {e}")
+
+    def _merge_agent(self, fused: FusedSignal, date: str):
+        """第 4 路：AI Agent 信号（TradingGraph 多空辩论 verdict）。
+
+        与 _merge_ai_monitor 的关键差异：**必须带 trade_date 过滤**——隔夜/缺当日
+        信号的 code 返回 None，agent_score 保持 0.0，不参与融合分母。避免用盘前
+        旧信号误导盘中决策。ai_monitor 没有过期判断是既有缺陷，agent 这一路不继承。
+        """
+        try:
+            db = DatabaseConfig.get_database()
+            doc = db["agent_signals"].find_one(
+                {"code": fused.code, "trade_date": date},
+                sort=[("updated_at", -1)],
+            )
+            if not doc:
+                return
+            fused.agent_score = doc.get("agent_score", 0) or 0
+            fused.agent_signal = doc.get("agent_signal", "hold")
+            if not fused.current_price:
+                fused.current_price = doc.get("price", 0) or fused.current_price
+            if not fused.name:
+                fused.name = doc.get("name", "") or fused.name
+            if not fused.industry:
+                fused.industry = doc.get("industry", "") or fused.industry
+        except Exception as e:
+            logger.warning(f"[fusion] Agent signal fetch failed for {fused.code}: {e}")
 
     # ── 批量（并行） ──────────────────────────────────────────────
     def batch_fuse(self, codes: List[Dict[str, str]], date: str,

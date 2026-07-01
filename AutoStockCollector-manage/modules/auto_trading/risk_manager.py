@@ -8,9 +8,9 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from config.database import DatabaseConfig
-from modules.pre_market_call_auction.intraday_tracker import (
-    _strip_prefix_from_code,
-    _batch_tencent_quotes,
+from modules.pre_market_call_auction.radar_utils import (
+    strip_prefix_from_code as _strip_prefix_from_code,
+    batch_tencent_quotes as _batch_tencent_quotes,
 )
 from utils.helpers import beijing_now, parse_stock_name
 from utils.logger import get_logger

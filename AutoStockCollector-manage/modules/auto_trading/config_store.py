@@ -45,6 +45,8 @@ class ConfigStore:
             cfg.PA_WEIGHT = float(w["pa"])
         if "ai_monitor" in w:
             cfg.AI_MONITOR_WEIGHT = float(w["ai_monitor"])
+        if "agent" in w:
+            cfg.AGENT_WEIGHT = float(w["agent"])
 
         t = doc.get("thresholds", {}) or {}
         for k, attr in (("buy", "BUY_THRESHOLD"), ("add", "ADD_THRESHOLD"),
@@ -85,6 +87,10 @@ class ConfigStore:
         if "min_auction_gap" in aq:
             cfg.MIN_AUCTION_GAP = float(aq["min_auction_gap"])
 
+        gq = doc.get("agent_qual", {}) or {}
+        if "min_agent_score" in gq:
+            cfg.MIN_AGENT_SCORE = int(gq["min_agent_score"])
+
         cc = doc.get("cache", {}) or {}
         if "signal_cache_ttl_seconds" in cc:
             cfg.SIGNAL_CACHE_TTL_SECONDS = int(cc["signal_cache_ttl_seconds"])
@@ -99,6 +105,7 @@ class ConfigStore:
                 "auction": cfg.AUCTION_WEIGHT,
                 "pa": cfg.PA_WEIGHT,
                 "ai_monitor": cfg.AI_MONITOR_WEIGHT,
+                "agent": cfg.AGENT_WEIGHT,
             },
             "thresholds": {
                 "buy": cfg.BUY_THRESHOLD,
@@ -128,6 +135,9 @@ class ConfigStore:
                 "min_auction_score": cfg.MIN_AUCTION_SCORE,
                 "min_auction_gap": cfg.MIN_AUCTION_GAP,
             },
+            "agent_qual": {
+                "min_agent_score": cfg.MIN_AGENT_SCORE,
+            },
             "cache": {
                 "signal_cache_ttl_seconds": cfg.SIGNAL_CACHE_TTL_SECONDS,
                 "fusion_workers": cfg.FUSION_WORKERS,
@@ -141,7 +151,7 @@ class ConfigStore:
         merged = self.to_dict(cfg)  # 完整默认
         # 逐 section 浅合并用户输入
         for section in ("weights", "thresholds", "risk", "sl_tp", "timing",
-                        "auction_qual", "cache"):
+                        "auction_qual", "agent_qual", "cache"):
             if isinstance(d.get(section), dict):
                 merged[section] = {**merged[section], **d[section]}
         cfg2 = AutoTradingConfig()
@@ -167,9 +177,9 @@ class ConfigStore:
         """业务范围校验；不合法抛 ValueError，由 API 层转 400。"""
         if not (1 <= cfg.MAX_POSITIONS <= 50):
             raise ValueError(f"max_positions 必须在 1-50 之间（当前 {cfg.MAX_POSITIONS}）")
-        wsum = cfg.AUCTION_WEIGHT + cfg.PA_WEIGHT + cfg.AI_MONITOR_WEIGHT
+        wsum = cfg.AUCTION_WEIGHT + cfg.PA_WEIGHT + cfg.AI_MONITOR_WEIGHT + cfg.AGENT_WEIGHT
         if abs(wsum - 1.0) > 0.05:
-            raise ValueError(f"三路权重之和应≈1.0（当前 {wsum:.3f}）")
+            raise ValueError(f"四路权重之和应≈1.0（当前 {wsum:.3f}）")
         for name, val in (("BUY_THRESHOLD", cfg.BUY_THRESHOLD), ("ADD_THRESHOLD", cfg.ADD_THRESHOLD),
                           ("REDUCE_THRESHOLD", cfg.REDUCE_THRESHOLD), ("SELL_THRESHOLD", cfg.SELL_THRESHOLD)):
             if not (0 <= val <= 100):

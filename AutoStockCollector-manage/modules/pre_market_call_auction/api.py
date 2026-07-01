@@ -17,7 +17,9 @@ from .performance_tracker import (
 )
 from .position_sizer import AuctionPositionSizer
 from .schemas import RadarStock
-from .intraday_tracker import get_intraday_data, auto_close_positions, get_risk_summary
+from .intraday_pricer import get_intraday_data
+from .risk_dashboard import get_risk_summary
+from .signal_emitter import auto_close_positions
 
 logger = get_logger(__name__)
 
@@ -175,6 +177,113 @@ def radar_auto_close():
         return jsonify({"success": True, "data": {"closed": closed}})
     except Exception as e:
         logger.warning(f"[AuctionRadar] auto-close error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@auction_bp.route("/pre-market-radar/factor-detail", methods=["GET"])
+@login_required
+def radar_factor_detail():
+    """返回某日某股的 8 维因子明细 + 权重快照。?date=&code="""
+    date = request.args.get("date") or today_str()
+    code = request.args.get("code", "")
+    if not code:
+        return jsonify({"success": False, "error": "缺少 code 参数"}), 400
+    try:
+        from config.database import DatabaseConfig
+        db = DatabaseConfig.get_database()
+        doc = db[AuctionConfig.RESULT_COLLECTION].find_one({"date": date}, {"top_stocks": 1, "_id": 0})
+        if not doc:
+            return jsonify({"success": False, "error": f"{date} 尚无扫描结果"}), 404
+        for s in doc.get("top_stocks", []) or []:
+            if s.get("symbol") == code or s.get("code") == code:
+                return jsonify({"success": True, "data": {
+                    "code": code, "date": date,
+                    "strength_detail": s.get("strength_detail", {}),
+                    "trap_warning": s.get("trap_warning"),
+                    "strength_score": s.get("strength_score", 0),
+                }})
+        return jsonify({"success": False, "error": f"{code} 不在 {date} 的 top_stocks 中"}), 404
+    except Exception as e:
+        logger.warning(f"[AuctionRadar] factor-detail error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@auction_bp.route("/pre-market-radar/intraday/refresh", methods=["POST"])
+@login_required
+def radar_intraday_refresh():
+    """手动触发盘中报价刷新（配合 cron，替代原懒刷新）。"""
+    try:
+        from .intraday_pricer import IntradayPricer
+        date = request.json.get("date") if request.is_json else None
+        updated = IntradayPricer().update_realtime(date)
+        return jsonify({"success": True, "data": {"updated": updated}})
+    except Exception as e:
+        logger.warning(f"[AuctionRadar] intraday-refresh error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@auction_bp.route("/pre-market-radar/backtest", methods=["POST"])
+@login_required
+def radar_backtest():
+    """触发回测：body={start_date, end_date, exit_strategy?, top_n?, min_score?, weight_overrides?}"""
+    try:
+        from .backtest.replayer import AuctionBacktestReplayer
+        from .backtest.schemas import BacktestConfig
+        data = request.get_json(force=True) or {}
+        cfg = BacktestConfig(
+            start_date=data["start_date"],
+            end_date=data["end_date"],
+            exit_strategy=data.get("exit_strategy", "close"),
+            top_n=data.get("top_n", 30),
+            min_score=data.get("min_score", 0),
+            weight_overrides=data.get("weight_overrides", {}),
+        )
+        result = AuctionBacktestReplayer().run(cfg)
+        # 持久化结果（供 /backtest/results 查询）
+        try:
+            from config.database import DatabaseConfig
+            from utils.helpers import beijing_now
+            doc = result.model_dump()
+            doc["created_at"] = beijing_now().isoformat()
+            DatabaseConfig.get_database()["auction_backtest_results"].insert_one(doc)
+        except Exception as e:
+            logger.warning(f"[AuctionRadar] backtest persist error: {e}")
+        return jsonify({"success": True, "data": result.model_dump()})
+    except KeyError as e:
+        return jsonify({"success": False, "error": f"缺少参数 {e}"}), 400
+    except Exception as e:
+        logger.warning(f"[AuctionRadar] backtest error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@auction_bp.route("/pre-market-radar/backtest/results", methods=["GET"])
+@login_required
+def radar_backtest_results():
+    """查询最近回测结果。"""
+    try:
+        from config.database import DatabaseConfig
+        limit = min(int(request.args.get("limit", 5)), 20)
+        docs = list(DatabaseConfig.get_database()["auction_backtest_results"]
+                    .find({}, {"_id": 0}).sort("created_at", -1).limit(limit))
+        return jsonify({"success": True, "data": docs})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@auction_bp.route("/pre-market-radar/backtest/optimize", methods=["POST"])
+@login_required
+def radar_backtest_optimize():
+    """参数寻优：body={start_date, end_date, param_grid}"""
+    try:
+        from .backtest.optimizer import ParameterOptimizer
+        from .backtest.schemas import BacktestConfig
+        data = request.get_json(force=True) or {}
+        cfg = BacktestConfig(start_date=data["start_date"], end_date=data["end_date"])
+        grid = data.get("param_grid", {})
+        result = ParameterOptimizer().grid_search(cfg, grid)
+        return jsonify({"success": True, "data": result})
+    except Exception as e:
+        logger.warning(f"[AuctionRadar] optimize error: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 

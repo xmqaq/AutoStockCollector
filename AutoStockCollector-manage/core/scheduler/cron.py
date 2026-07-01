@@ -1118,8 +1118,15 @@ def job_auction_auto_close():
         logger.info("[cron] 今日非交易日，跳过自动平仓")
         return
     try:
-        from modules.pre_market_call_auction.intraday_tracker import auto_close_positions
-        closed = auto_close_positions()
+        # 14:50 委托 auto_trading.run_cycle：DecisionEngine 的 eod_close_intraday 分支
+        # 会对竞价日内持仓强制平仓（force 豁免 T+1）。auto_trading 不可用时回退到 signal_emitter。
+        try:
+            from modules.auto_trading.executor import UnifiedAutoTrader
+            result = UnifiedAutoTrader().run_cycle()
+            closed = result.get("sells", 0)
+        except Exception:
+            from modules.pre_market_call_auction.signal_emitter import auto_close_positions
+            closed = auto_close_positions()
         msg = f"竞价雷达自动平仓{closed}笔"
         logger.info(f"[cron] {msg}")
         _record_result("竞价雷达自动平仓", True, msg)
@@ -1128,6 +1135,32 @@ def job_auction_auto_close():
         logger.error(f"[cron] 竞价雷达自动平仓失败: {e}")
         _record_result("竞价雷达自动平仓", False, str(e))
         _persist_cron_status("auction_auto_close", _now().isoformat(), False, str(e)[:100])
+
+
+def job_auction_intraday_refresh():
+    """盘中每 3 分钟刷新竞价雷达追踪股票的实时盈亏（bug2 修复：原仅 API 懒触发）。"""
+    if not _is_weekday():
+        return
+    now = _now()
+    hour_min = now.hour * 100 + now.minute
+    # 仅连续竞价时段：9:35-11:30 / 13:00-14:55
+    if not (935 <= hour_min <= 1130 or 1300 <= hour_min <= 1455):
+        return
+    from utils.helpers import is_trading_day
+    if not is_trading_day(now):
+        return
+    try:
+        from modules.pre_market_call_auction.intraday_pricer import IntradayPricer
+        updated = IntradayPricer().update_realtime()
+        msg = f"竞价盘中刷新{updated}条"
+        if updated:
+            logger.info(f"[cron] {msg}")
+            _record_result("竞价盘中刷新", True, msg)
+            _persist_cron_status("auction_intraday_refresh", now.isoformat(), True, msg, inc_count=True)
+    except Exception as e:
+        logger.error(f"[cron] 竞价盘中刷新失败: {e}")
+        _record_result("竞价盘中刷新", False, str(e))
+        _persist_cron_status("auction_intraday_refresh", now.isoformat(), False, str(e)[:100])
 
 
 def job_paper_match_pending():
@@ -1194,6 +1227,138 @@ def job_auto_trading_cycle():
         logger.error(f"[cron] 自动交易轮询失败: {e}")
         _record_result("自动交易", False, str(e))
         _persist_cron_status("auto_trading", _now().isoformat(), False, str(e)[:100])
+
+
+# ─── Agent 信号刷新 ──────────────────────────────────────────────────────────
+
+AGENT_SIGNAL_MAX_CODES = 30  # 单轮 LLM 成本硬上限：TradingGraph 单只 8-10 次调用
+
+
+def job_agent_signal_refresh():
+    """盘前/盘中刷新 agent 信号 → agent_signals 集合（后台线程，不阻塞调度循环）。
+
+    错峰于 auto_trading(:00/:30) 与 monitor(10:00/13:30/14:45)：9:05 给当日首信号，
+    13:05 盘中刷新一次。每日 2 轮 × 最多 30 只，成本可控。
+    """
+    if not _is_weekday():
+        return
+    from utils.helpers import is_trading_day
+    if not is_trading_day(_now()):
+        logger.info("[cron] 今日非交易日，跳过 Agent 信号刷新")
+        return
+    now = _now()
+    # 9:00 前太早（数据未就绪），15:00 后盘后不再刷新（次日再说）
+    if now.hour < 9 or now.hour >= 15:
+        logger.info("[cron] 非盘中时段，跳过 Agent 信号刷新")
+        return
+    try:
+        threading.Thread(target=_run_agent_signal_refresh, daemon=True).start()
+        msg = "Agent 信号刷新已启动（后台）"
+        logger.info(f"[cron] {msg}")
+        _record_result("Agent信号刷新", True, msg)
+        _persist_cron_status("agent_signal", _now().isoformat(), None, msg, inc_count=False)
+    except Exception as e:
+        logger.error(f"[cron] Agent 信号刷新启动失败: {e}")
+        _record_result("Agent信号刷新", False, str(e))
+        _persist_cron_status("agent_signal", _now().isoformat(), False, str(e)[:100])
+
+
+def _collect_agent_signal_codes(trade_date: str):
+    """收集待刷新 code 列表：竞价雷达 top + 持仓 + 融合选股 top，去重，截断 30。"""
+    from config.database import DatabaseConfig
+    from modules.paper_trading.trade_engine import TradeEngine
+    from modules.pre_market_call_auction.radar_utils import strip_prefix_from_code as _strip_prefix_from_code
+
+    db = DatabaseConfig.get_database()
+    codes = []
+
+    # 1) 竞价雷达当日 top 20
+    try:
+        result = db["auction_results"].find_one(
+            {"date": trade_date}, sort=[("created_at", -1)]
+        )
+        for s in (result.get("top_stocks", []) or [])[:20]:
+            code = _strip_prefix_from_code(s.get("symbol", ""))
+            if code:
+                codes.append(code)
+    except Exception as e:
+        logger.warning(f"[cron] agent signal: auction codes fetch failed: {e}")
+
+    # 2) 当前持仓
+    try:
+        engine = TradeEngine()
+        positions, _ = engine.get_positions("default")
+        for p in positions or []:
+            code = _strip_prefix_from_code(p.get("code", ""))
+            if code:
+                codes.append(code)
+    except Exception as e:
+        logger.warning(f"[cron] agent signal: positions fetch failed: {e}")
+
+    # 3) 融合选股当日 top 10
+    try:
+        fp = db["fusion_pick_results"].find_one(
+            {}, sort=[("created_at", -1)]
+        )
+        for pick in (fp.get("picks", []) or [])[:10]:
+            code = _strip_prefix_from_code(pick.get("code", ""))
+            if code:
+                codes.append(code)
+    except Exception as e:
+        logger.warning(f"[cron] agent signal: fusion_pick codes fetch failed: {e}")
+
+    # 去重保序，截断硬上限
+    seen, unique = set(), []
+    for c in codes:
+        if c and c not in seen:
+            seen.add(c)
+            unique.append(c)
+        if len(unique) >= AGENT_SIGNAL_MAX_CODES:
+            break
+    return unique
+
+
+def _run_agent_signal_refresh():
+    """后台执行：对收集到的 code 逐只跑 TradingGraph，写 agent_signals。
+
+    单只失败跳过不阻断；幂等（upsert by code+trade_date）。
+    """
+    try:
+        from modules.ai.orchestration.graph import TradingGraph
+        from modules.ai.orchestration.agent_signal_writer import write_agent_signal
+
+        trade_date = _today_beijing()
+        codes = _collect_agent_signal_codes(trade_date)
+        if not codes:
+            msg = "Agent 信号刷新：无可刷新 code（竞价/持仓/选股均空）"
+            logger.info(f"[cron] {msg}")
+            _record_result("Agent信号刷新", True, msg)
+            _persist_cron_status("agent_signal", _now().isoformat(), True, msg)
+            return
+
+        graph = TradingGraph()
+        ok, fail = 0, 0
+        for code in codes:
+            try:
+                result = graph.run(code)
+                write_agent_signal(
+                    result.get("verdict") or {},
+                    result.get("final_decision") or {},
+                    trade_date,
+                )
+                ok += 1
+            except Exception as e:
+                fail += 1
+                logger.warning(f"[cron] agent signal: {code} failed: {e}")
+
+        msg = f"Agent 信号刷新完成：{ok} 成功 / {fail} 失败 / 共 {len(codes)} 只"
+        logger.info(f"[cron] {msg}")
+        _record_result("Agent信号刷新", fail == 0, msg)
+        _persist_cron_status("agent_signal", _now().isoformat(), fail == 0, msg, inc_count=True)
+    except Exception as e:
+        logger.error(f"[cron] Agent 信号刷新后台执行失败: {e}")
+        _record_result("Agent信号刷新", False, str(e))
+        _persist_cron_status("agent_signal", _now().isoformat(), False, str(e)[:100])
 
 
 # ─── 纯 Python 调度核心 ───────────────────────────────────────────────────────
@@ -1339,10 +1504,13 @@ def start_daily_jobs() -> None:
         _make_job("研报AI摘要 30min",       job_research_report_summarize, "interval", interval_minutes=30, task_type="research_report_summarize"),
         _make_job("盘前竞价雷达 09:32",     job_auction_radar,           "daily", 9, 32, task_type="auction_radar"),
         _make_job("竞价自动平仓 14:50",     job_auction_auto_close,      "daily", 14, 50, task_type="auction_auto_close"),
+        _make_job("竞价盘中刷新 3min",      job_auction_intraday_refresh, "interval", interval_minutes=3, task_type="auction_intraday_refresh"),
         _make_job("模拟盘盘中撮合 1min",    job_paper_match_pending,     "interval", interval_minutes=1, task_type="paper_match"),
         _make_job("模拟盘收盘清算 15:00",   job_paper_market_close_settle, "daily", 15, 0, task_type="paper_close_settle"),
         _make_job("自动交易轮询 30min",     job_auto_trading_cycle,       "interval",
                   interval_minutes=30, task_type="auto_trading"),
+        _make_job("Agent信号刷新 09:05", job_agent_signal_refresh, "daily", 9, 5, task_type="agent_signal"),
+        _make_job("Agent信号刷新 13:05", job_agent_signal_refresh, "daily", 13, 5, task_type="agent_signal"),
     ]
 
     # cron_trigger_lock 跨进程触发锁：建 TTL 索引，锁文档 1 天后自动过期，避免无限增长。
@@ -1351,6 +1519,15 @@ def start_daily_jobs() -> None:
         DatabaseConfig.get_database()["cron_trigger_lock"].create_index("at", expireAfterSeconds=86400)
     except Exception as e:
         logger.debug(f"[cron] trigger_lock TTL index skipped: {e}")
+
+    # agent_signals 集合 TTL：7 天自动过期，防止历史信号无限堆积。
+    try:
+        from config.database import DatabaseConfig
+        DatabaseConfig.get_database()["agent_signals"].create_index(
+            "updated_at", expireAfterSeconds=7 * 86400
+        )
+    except Exception as e:
+        logger.debug(f"[cron] agent_signals TTL index skipped: {e}")
 
     with _jobs_lock:
         _registered_jobs.clear()

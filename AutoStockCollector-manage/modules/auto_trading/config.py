@@ -5,9 +5,13 @@ from dataclasses import dataclass, field
 @dataclass
 class AutoTradingConfig:
     # ── Signal weights ──
-    AUCTION_WEIGHT: float = float(os.environ.get("AT_AUCTION_WEIGHT", "0.30"))
-    PA_WEIGHT: float = float(os.environ.get("AT_PA_WEIGHT", "0.35"))
-    AI_MONITOR_WEIGHT: float = float(os.environ.get("AT_AI_WEIGHT", "0.35"))
+    # 四路融合：竞价 / PA / AI监控 / AI Agent(辩论verdict)。默认和=1.00。
+    # PA/AI Monitor 盘中持续刷新权重最高；auction 盘前一次性、agent 每日两次刷新权重较低。
+    # env 可覆盖（注意四路和需≈1.0±0.05，否则 ConfigStore 校验报 400）。
+    AUCTION_WEIGHT: float = float(os.environ.get("AT_AUCTION_WEIGHT", "0.20"))
+    PA_WEIGHT: float = float(os.environ.get("AT_PA_WEIGHT", "0.30"))
+    AI_MONITOR_WEIGHT: float = float(os.environ.get("AT_AI_WEIGHT", "0.30"))
+    AGENT_WEIGHT: float = float(os.environ.get("AT_AGENT_WEIGHT", "0.20"))
 
     # ── Decision thresholds (combined score 0-100) ──
     BUY_THRESHOLD: float = float(os.environ.get("AT_BUY_THRESHOLD", "70"))
@@ -49,6 +53,9 @@ class AutoTradingConfig:
     # ── Auction qualification ──
     MIN_AUCTION_SCORE: int = int(os.environ.get("AT_MIN_AUCTION_SCORE", "70"))
     MIN_AUCTION_GAP: float = float(os.environ.get("AT_MIN_GAP", "2.0"))
+
+    # ── Agent signal qualification (候选池 agent 段过滤) ──
+    MIN_AGENT_SCORE: int = int(os.environ.get("AT_MIN_AGENT_SCORE", "65"))
 
     # ── Loss-adjusted sell (亏损股卖出阈值上浮) ──
     LOSS_ADJ_SELL_BUMP: float = float(os.environ.get("AT_LOSS_ADJ_BUMP", "10"))

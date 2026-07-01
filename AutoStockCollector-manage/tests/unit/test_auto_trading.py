@@ -39,7 +39,7 @@ class TestFusionDenominator(unittest.TestCase):
         eng._config_store.load.return_value = _cfg()
         return eng
 
-    def _db_mock(self, auction_top=None, monitor_doc=None):
+    def _db_mock(self, auction_top=None, monitor_doc=None, agent_doc=None):
         """单一 db mock，保证 __getitem__ 返回同一 collection mock。"""
         db = MagicMock()
         auction_col = MagicMock()
@@ -48,9 +48,12 @@ class TestFusionDenominator(unittest.TestCase):
         )
         monitor_col = MagicMock()
         monitor_col.find_one.return_value = monitor_doc
+        agent_col = MagicMock()
+        agent_col.find_one.return_value = agent_doc
         db.__getitem__.side_effect = lambda k: {
             "auction_results": auction_col,
             "monitor_signal_history": monitor_col,
+            "agent_signals": agent_col,
         }[k]
         return db
 
@@ -66,9 +69,10 @@ class TestFusionDenominator(unittest.TestCase):
                                                 "current_price": 10.0, "name": "浦发银行"}
         with patch("modules.auto_trading.signal_fusion.DatabaseConfig.get_database", return_value=db):
             fused = eng.fuse("600000", "2026-07-01", use_cache=False)
-        # 三源齐全：auction=90, PA=95*0.8=76(conf=4/5), ai=80
-        # norm = 0.3*0.9 + 0.35*0.95*0.8 + 0.35*0.8 = 0.27+0.266+0.28 = 0.816 → 81.6
-        self.assertAlmostEqual(fused.overall_score, 81.6, places=1)
+        # 三源齐全（agent 无当日信号不参与）：auction=90, PA=95*0.8=76(conf=4/5), ai=80
+        # 默认权重 0.20/0.30/0.30：norm = 0.20*0.9 + 0.30*0.95*0.8 + 0.30*0.8
+        #                      = 0.18 + 0.228 + 0.24 = 0.648; active=0.80 → 81.0
+        self.assertAlmostEqual(fused.overall_score, 81.0, places=1)
         self.assertEqual(fused.signal, "strong_buy")
 
     def test_missing_auction(self):
@@ -81,8 +85,47 @@ class TestFusionDenominator(unittest.TestCase):
         eng._pa_engine.analyze.return_value = {"signal": "BUY_SETUP", "confidence": 4, "current_price": 10.0}
         with patch("modules.auto_trading.signal_fusion.DatabaseConfig.get_database", return_value=db):
             fused = eng.fuse("600000", "2026-07-01", use_cache=False)
-        # PA=95*0.8=76 (w=0.35), AI=80 (w=0.35); norm_p=0.266, norm_m=0.28
-        # active_weights=0.70, numerator=0.546 → 0.546/0.70*100=78.0
+        # 缺 auction（agent 无当日信号也不参与）：PA=95*0.8=76(w=0.30), AI=80(w=0.30)
+        # norm_p=0.228, norm_m=0.24; active=0.60, numerator=0.468 → 78.0
+        self.assertAlmostEqual(fused.overall_score, 78.0, places=1)
+
+    def test_agent_signal_participates_in_fusion(self):
+        """第 4 路 agent 信号参与融合：auction=90, PA=BUY_SETUP(76), ai=80, agent=90。
+        四源齐全：norm = 0.20*0.9 + 0.30*0.95*0.8 + 0.30*0.8 + 0.20*0.9
+                = 0.18 + 0.228 + 0.24 + 0.18 = 0.828; active=1.00 → 82.8
+        对比 test_all_three_sources（agent 无数据 81.0），agent 90 分使 overall 上移到 82.8。"""
+        eng = self._engine()
+        db = self._db_mock(
+            auction_top=[{"symbol": "600000", "strength_score": 90, "gap_pct": 5.0,
+                          "trap_warning": {"is_trap": False}, "industry": "银行", "name": "浦发银行"}],
+            monitor_doc={"code": "600000", "composite": {"score": 80, "signal": "buy"},
+                         "price": 10.0, "name": "浦发银行"},
+            agent_doc={"code": "600000", "trade_date": "2026-07-01",
+                       "agent_score": 90, "agent_signal": "buy", "name": "浦发银行"},
+        )
+        eng._pa_engine.analyze.return_value = {"signal": "BUY_SETUP", "confidence": 4,
+                                                "current_price": 10.0, "name": "浦发银行"}
+        with patch("modules.auto_trading.signal_fusion.DatabaseConfig.get_database", return_value=db):
+            fused = eng.fuse("600000", "2026-07-01", use_cache=False)
+        self.assertAlmostEqual(fused.agent_score, 90.0, places=1)
+        self.assertAlmostEqual(fused.overall_score, 82.8, places=1)
+        self.assertEqual(fused.signal, "strong_buy")
+        self.assertIn("AI Agent 90分", fused.reasons)
+
+    def test_agent_signal_expired_not_used(self):
+        """隔夜 agent 信号（trade_date 不匹配当日）不应参与融合——被 date 过滤。"""
+        eng = self._engine()
+        db = self._db_mock(
+            auction_top=None,  # 也无 auction，确保 overall 只由 PA+AI 决定
+            monitor_doc={"code": "600000", "composite": {"score": 80, "signal": "buy"}, "price": 10.0},
+            # agent 文档存在但 trade_date 是昨天——_merge_agent 用 {code, trade_date:date} 查不到
+            agent_doc=None,
+        )
+        eng._pa_engine.analyze.return_value = {"signal": "BUY_SETUP", "confidence": 4, "current_price": 10.0}
+        with patch("modules.auto_trading.signal_fusion.DatabaseConfig.get_database", return_value=db):
+            fused = eng.fuse("600000", "2026-07-01", use_cache=False)
+        # agent_score 应为 0（被过滤），overall 与 test_missing_auction 同源同分 78.0
+        self.assertEqual(fused.agent_score, 0.0)
         self.assertAlmostEqual(fused.overall_score, 78.0, places=1)
 
     def test_all_missing_returns_neutral(self):
@@ -358,6 +401,37 @@ class TestDecisionEngine(unittest.TestCase):
         d = de.decide_candidate(cand, self._fused(80), 100000, "default", "2026-07-01", [])
         self.assertEqual(d.action, "hold")
 
+    def test_auction_radar_candidate_buy(self):
+        """竞价信号分支：source=auction_radar 走独立阈值，source=auction_radar。"""
+        de = self._de(risk_ok=True)
+        cand = {"code": "600000", "name": "浦发银行", "source": "auction_radar",
+                "strength_score": 85, "gap_pct": 4.0, "open_price": 10.0}
+        d = de.decide_candidate(cand, self._fused(50), 100000, "default", "2026-07-01", [])
+        self.assertEqual(d.action, "buy")
+        self.assertEqual(d.source, "auction_radar")
+        self.assertEqual(d.priority, 30)
+
+    def test_auction_radar_candidate_below_score_hold(self):
+        de = self._de(risk_ok=True)
+        cand = {"code": "600000", "source": "auction_radar", "strength_score": 60,
+                "gap_pct": 4.0, "open_price": 10.0}
+        d = de.decide_candidate(cand, self._fused(50), 100000, "default", "2026-07-01", [])
+        self.assertEqual(d.action, "hold")
+
+    def test_eod_close_intraday_force(self):
+        """14:50 对竞价日内持仓强制平仓，force=True 豁免 T+1。"""
+        de = self._de()
+        # mock _is_eod_close_time 返回 True
+        with patch.object(DecisionEngine, "_is_eod_close_time", return_value=True):
+            pos = {"code": "600000", "name": "浦发银行", "shares": 1000,
+                   "current_price": 10.0, "pnl_percent": 5, "_is_intraday": True,
+                   "sl_hit": False, "tp_hit": False}
+            d = de.decide_held(pos, self._fused(80), 100000, "default", "2026-07-01", [])
+        self.assertEqual(d.action, "sell")
+        self.assertEqual(d.source, "eod_close_intraday")
+        self.assertEqual(d.priority, 85)
+        self.assertTrue(d.force)
+
 
 # ── config_store ───────────────────────────────────────────────
 class TestConfigStore(unittest.TestCase):
@@ -369,7 +443,8 @@ class TestConfigStore(unittest.TestCase):
             m.return_value = MagicMock()
             m.return_value.__getitem__.return_value = col
             cfg = store.load()
-        self.assertEqual(cfg.AUCTION_WEIGHT, 0.30)
+        self.assertEqual(cfg.AUCTION_WEIGHT, 0.20)
+        self.assertEqual(cfg.AGENT_WEIGHT, 0.20)
         self.assertEqual(cfg.MAX_POSITIONS, 8)
 
     def test_save_validates_and_persists(self):
@@ -379,8 +454,9 @@ class TestConfigStore(unittest.TestCase):
             col.find_one.return_value = None
             m.return_value = MagicMock()
             m.return_value.__getitem__.return_value = col
-            cfg = store.save({"weights": {"auction": 0.40, "pa": 0.30, "ai_monitor": 0.30}})
-        self.assertEqual(cfg.AUCTION_WEIGHT, 0.40)
+            # 四路和需≈1.0：auction 0.35 + pa 0.20 + ai_monitor 0.25 + agent 默认 0.20 = 1.00
+            cfg = store.save({"weights": {"auction": 0.35, "pa": 0.20, "ai_monitor": 0.25}})
+        self.assertEqual(cfg.AUCTION_WEIGHT, 0.35)
         col.replace_one.assert_called_once()
 
     def test_save_rejects_bad_weights(self):

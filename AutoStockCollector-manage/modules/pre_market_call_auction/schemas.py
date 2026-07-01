@@ -6,16 +6,29 @@ from pydantic import BaseModel
 
 class StrengthScore(BaseModel):
     score: int = 0
+    # 原 4 维
     gap_score: float = 0.0
     volume_score: float = 0.0
     sector_score: float = 0.0
     deviation_score: float = 0.0
+    # 新 4 维
+    vol_ratio_score: float = 0.0          # 量比
+    order_imbalance_score: float = 0.0    # 委比（近似）
+    auction_turnover_score: float = 0.0   # 竞价换手
+    amount_percentile_score: float = 0.0  # 竞价金额分位
+    # 元数据
+    weights: Dict[str, float] = {}        # 实际使用的权重快照
+    factors_used: List[str] = []          # 参与计算的因子列表（缺失源不参与）
 
 
 class TrapWarning(BaseModel):
     is_trap: bool = False
-    trap_type: str = ""
+    trap_type: str = ""        # bull_trap | bear_trap
     reason: str = ""
+    # 增强：特征明细（供打分/前端展示）
+    signals: List[str] = []    # ["极端高开","无量高开","9:20撤单率高",...]
+    severity: str = "medium"   # low | medium | high
+    cancel_rate: Optional[float] = None  # 撤单率（若有二次采集）
 
 
 class RadarStock(BaseModel):

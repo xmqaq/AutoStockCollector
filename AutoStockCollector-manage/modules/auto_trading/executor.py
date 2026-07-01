@@ -12,9 +12,9 @@ from config.database import DatabaseConfig
 from modules.paper_trading.account import PaperAccount
 from modules.paper_trading.snapshot import PortfolioSnapshot
 from modules.paper_trading.trade_engine import TradeEngine
-from modules.pre_market_call_auction.intraday_tracker import (
-    AUTO_TRADE_ENABLED,
-    _strip_prefix_from_code,
+from modules.pre_market_call_auction.config import AuctionConfig
+from modules.pre_market_call_auction.radar_utils import (
+    strip_prefix_from_code as _strip_prefix_from_code,
 )
 from utils.helpers import beijing_now
 from utils.logger import get_logger
@@ -49,7 +49,7 @@ class UnifiedAutoTrader:
 
     # ── 单轮编排 ──────────────────────────────────────────────────
     def run_cycle(self, user_id: str = "default", date: Optional[str] = None) -> Dict[str, Any]:
-        if not AUTO_TRADE_ENABLED:
+        if not AuctionConfig.AUTO_TRADE_ENABLED:
             return {"status": "disabled", "message": "Auto-trade is globally disabled"}
         if not self._lock.acquire(blocking=False):
             return {"status": "locked", "message": "Previous cycle still running"}
@@ -86,10 +86,12 @@ class UnifiedAutoTrader:
             positions, _ = self._engine.get_positions(user_id)
             held_positions = positions or []
             pos_map = {}
+            intraday_codes = self._get_intraday_held_codes(user_id, date)
             for p in held_positions:
                 code = _strip_prefix_from_code(p.get("code", ""))
                 if code:
                     p.setdefault("industry", "")
+                    p["_is_intraday"] = code in intraday_codes  # 竞价日内策略持仓标记
                     pos_map[code] = p
 
             # ── 持仓决策 ──
@@ -106,14 +108,18 @@ class UnifiedAutoTrader:
                     logger.error(f"[auto-trader] Error processing held {code}: {e}")
                     summary["errors"] += 1
 
-            # ── 候选决策 ──
+            # ── 候选决策（auction_results top + 未消费的 auction_signals）──
             candidates = self._get_candidates(date, set(pos_map.keys()))
+            auction_signals = self._get_unconsumed_signals(date)
+            candidates.extend(auction_signals)
             cand_decisions: List[Decision] = []
+            seen_cand = set()
             for cand in candidates:
                 try:
                     code = _strip_prefix_from_code(cand.get("symbol", cand.get("code", "")))
-                    if not code or code in pos_map:
+                    if not code or code in pos_map or code in seen_cand:
                         continue
+                    seen_cand.add(code)
                     fused = self._fusion.fuse(code, date, name=cand.get("name", ""))
                     decision = self._decision.decide_candidate(
                         cand, fused, cash, user_id, date, held_positions
@@ -179,25 +185,31 @@ class UnifiedAutoTrader:
                 if not ok:
                     logger.info(f"[auto-trader] Skip sell {d.code}: {reason}")
                     return
-                self._do_trade("sell", user_id, raw_code, d.shares, ai_signal)
+                self._do_trade("sell", user_id, raw_code, d.shares, ai_signal, force=d.force)
                 summary["sells"] += 1
                 if d.source == "drawdown_stop":
                     self._stats["drawdown_sells"] += 1
+                # 竞价日内策略平仓 → 回写 TrackingStore closed
+                if d.source == "eod_close_intraday":
+                    self._close_intraday_track(d.code, user_id)
 
             elif d.action == "reduce":
                 ok, reason = self._risk.check_sell(d.code, d.price, self._pos_prev_close(d.code))
                 if not ok:
                     logger.info(f"[auto-trader] Skip reduce {d.code}: {reason}")
                     return
-                self._do_trade("sell", user_id, raw_code, d.shares, ai_signal)
+                self._do_trade("sell", user_id, raw_code, d.shares, ai_signal, force=d.force)
                 summary["reduces"] += 1
                 if d.source == "drawdown_stop":
                     self._stats["drawdown_reduces"] += 1
 
             elif d.action == "buy":
-                self._do_trade("buy", user_id, raw_code, d.shares, ai_signal,
-                               price=d.price, stop_loss=d.stop_loss, take_profit=d.take_profit)
+                result = self._do_trade("buy", user_id, raw_code, d.shares, ai_signal,
+                                       price=d.price, stop_loss=d.stop_loss, take_profit=d.take_profit)
                 summary["buys"] += 1
+                # 竞价信号建仓 → 标记信号 consumed + TrackingStore active→traded
+                if d.source == "auction_radar":
+                    self._on_auction_bought(d.code, user_id, date, result)
 
             elif d.action == "add":
                 self._do_trade("buy", user_id, raw_code, d.shares, ai_signal,
@@ -213,13 +225,57 @@ class UnifiedAutoTrader:
             logger.warning(f"[auto-trader] Execute {d.action} {d.code} failed: {e}")
             summary["errors"] += 1
 
+    def _on_auction_bought(self, code: str, user_id: str, date: str, result) -> None:
+        """竞价信号建仓成功后：标记信号 consumed + TrackingStore active→traded。"""
+        try:
+            from modules.pre_market_call_auction.signal_emitter import AuctionSignalEmitter
+            from modules.pre_market_call_auction.tracking_store import TrackingStore
+            trade_id = ""
+            if isinstance(result, dict):
+                trade = result.get("trade") or {}
+                trade_id = str(trade.get("traded_at", "") or result.get("order_id", ""))
+            emitter = AuctionSignalEmitter()
+            emitter.mark_consumed(code, date)
+            if trade_id:
+                TrackingStore().mark_traded(code, date, trade_id)
+        except Exception as e:
+            logger.warning(f"[auto-trader] on_auction_bought {code} error: {e}")
+
+    def _close_intraday_track(self, code: str, user_id: str) -> None:
+        """竞价日内策略平仓后：TrackingStore → closed + auction_performance → win/loss。"""
+        try:
+            from modules.pre_market_call_auction.tracking_store import TrackingStore
+            from config.database import DatabaseConfig
+            db = DatabaseConfig.get_database()
+            doc = db["auction_intraday_track"].find_one(
+                {"code": code}, sort=[("date", -1)],
+                projection={"date": 1, "open_price": 1, "_id": 0},
+            )
+            if not doc:
+                return
+            date = doc.get("date", "")
+            open_price = doc.get("open_price", 0)
+            # 取持仓现价作为 exit_price
+            exit_price = 0
+            positions, _ = self._engine.get_positions(user_id)
+            for p in positions or []:
+                if _strip_prefix_from_code(p.get("code", "")) == code:
+                    exit_price = p.get("current_price", 0)
+                    break
+            if open_price > 0 and exit_price > 0:
+                return_pct = round((exit_price - open_price) / open_price, 4)
+                TrackingStore().close_record(code, date, exit_price, return_pct, "竞价日内尾盘平仓")
+        except Exception as e:
+            logger.warning(f"[auto-trader] close_intraday_track {code} error: {e}")
+
     def _do_trade(self, action: str, user_id: str, raw_code: str, shares: int,
                   ai_signal: Dict, price: Optional[float] = None,
-                  stop_loss: Optional[float] = None, take_profit: Optional[float] = None):
+                  stop_loss: Optional[float] = None, take_profit: Optional[float] = None,
+                  force: bool = False):
         """统一执行 buy/sell，适配远程 paper_trading 的 T+1 + 挂单接口。
 
         - immediate=True：自动交易即时成交，不挂单。
-        - 不加 force：遵守 T+1（当日买入不可卖）。T+1 拦截会抛 ValueError，由调用方 try/except 记 error。
+        - force=False（默认）：遵守 T+1（当日买入不可卖）。竞价日内策略平仓 force=True 豁免 T+1。
         - 返回值 {status, trade?, order?}：pending（非交易时段挂单）视为未成交，仅记日志。
         """
         if action == "buy":
@@ -230,13 +286,14 @@ class UnifiedAutoTrader:
         else:
             result = self._engine.sell(
                 user_id, raw_code, shares, ai_signal, self._account,
-                price=price, immediate=True,
+                price=price, immediate=True, force=force,
             )
         status = result.get("status") if isinstance(result, dict) else None
         if status == "pending":
             logger.info(f"[auto-trader] {raw_code} {action} {shares} 挂单 pending（非交易时段），待撮合")
         elif status != "filled":
             logger.warning(f"[auto-trader] {raw_code} {action} 未成交，status={status}")
+        return result
 
     def _pos_prev_close(self, code: str) -> Optional[float]:
         """取持仓的昨收（用于卖出跌停检查）。"""
@@ -250,30 +307,90 @@ class UnifiedAutoTrader:
         return None
 
     # ── 候选获取 ──────────────────────────────────────────────────
+    def _get_intraday_held_codes(self, user_id: str, date: str) -> set:
+        """获取当日竞价建仓（source in auction_radar/auction_radar_auto）且仍持仓的裸代码集合。"""
+        try:
+            from config.database import DatabaseConfig
+            db = DatabaseConfig.get_database()
+            start = f"{date}T00:00:00"
+            end = f"{date}T23:59:59"
+            docs = db["trade_records"].find(
+                {"user_id": user_id, "action": "buy",
+                 "traded_at": {"$gte": start, "$lte": end},
+                 "ai_signal.source": {"$in": ["auction_radar", "auction_radar_auto"]}},
+                {"code": 1, "_id": 0},
+            )
+            return {_strip_prefix_from_code(d.get("code", "")).upper() for d in docs}
+        except Exception:
+            return set()
+
+    def _get_unconsumed_signals(self, date: str) -> List[Dict[str, Any]]:
+        """获取当日未消费的竞价信号，作为候选（source=auction_radar）。"""
+        try:
+            from modules.pre_market_call_auction.signal_emitter import AuctionSignalEmitter
+            return AuctionSignalEmitter().get_unconsumed(date)
+        except Exception as e:
+            logger.warning(f"[auto-trader] get unconsumed signals failed: {e}")
+            return []
+
     def _get_candidates(self, date: str, held_codes: set) -> List[Dict[str, Any]]:
+        """候选池两段独立收集后合并去重，避免 agent 选出的票（无竞价数据）
+        被 MIN_AUCTION_SCORE 误杀。
+
+        - auction 段：竞价雷达 top，过滤 strength_score/gap，保持原逻辑不变。
+        - agent 段：agent_signals 当日 agent_signal=="buy" 且 agent_score≥阈值。
+        auction 段优先，agent 段补充，整体截断 20。
+        """
         cfg = self._config_store.load()
         try:
             db = DatabaseConfig.get_database()
+            seen: set = set()
+            candidates: List[Dict[str, Any]] = []
+
+            # ── auction 段 ──
             result = db["auction_results"].find_one({"date": date}, sort=[("created_at", -1)])
-            if not result:
-                return []
-            candidates = []
-            for s in (result.get("top_stocks", []) or []):
-                code = _strip_prefix_from_code(s.get("symbol", ""))
-                if not code or code in held_codes:
-                    continue
-                trap = s.get("trap_warning", {}) or {}
-                if trap.get("is_trap"):
-                    continue
-                gap = s.get("gap_pct", 0.0) or 0.0
-                score = s.get("strength_score", 0) or 0
-                if score >= cfg.MIN_AUCTION_SCORE and gap >= cfg.MIN_AUCTION_GAP:
+            if result:
+                for s in (result.get("top_stocks", []) or []):
+                    code = _strip_prefix_from_code(s.get("symbol", ""))
+                    if not code or code in held_codes or code in seen:
+                        continue
+                    trap = s.get("trap_warning", {}) or {}
+                    if trap.get("is_trap"):
+                        continue
+                    gap = s.get("gap_pct", 0.0) or 0.0
+                    score = s.get("strength_score", 0) or 0
+                    if score >= cfg.MIN_AUCTION_SCORE and gap >= cfg.MIN_AUCTION_GAP:
+                        candidates.append({
+                            "symbol": code, "name": s.get("name", ""),
+                            "industry": s.get("industry", ""),
+                            "strength_score": score, "gap_pct": gap,
+                            "prev_close": s.get("prev_close"),
+                            "source": "auction",
+                        })
+                        seen.add(code)
+
+            # ── agent 段：agent_signals 当日 buy 且分数达标 ──
+            try:
+                for doc in db["agent_signals"].find(
+                    {"trade_date": date, "agent_signal": "buy",
+                     "agent_score": {"$gte": cfg.MIN_AGENT_SCORE}}
+                ).sort("agent_score", -1):
+                    code = _strip_prefix_from_code(doc.get("code", ""))
+                    if not code or code in held_codes or code in seen:
+                        continue
                     candidates.append({
-                        "symbol": code, "name": s.get("name", ""),
-                        "industry": s.get("industry", ""),
-                        "strength_score": score, "gap_pct": gap,
-                        "prev_close": s.get("prev_close"),
+                        "symbol": code,
+                        "name": doc.get("name", ""),
+                        "industry": doc.get("industry", ""),
+                        "strength_score": doc.get("agent_score", 0),
+                        "gap_pct": 0.0,
+                        "prev_close": None,
+                        "source": "agent",
                     })
+                    seen.add(code)
+            except Exception as e:
+                logger.warning(f"[auto-trader] agent candidates fetch failed: {e}")
+
             return candidates[:20]
         except Exception as e:
             logger.warning(f"[auto-trader] Get candidates failed: {e}")
@@ -345,7 +462,7 @@ class UnifiedAutoTrader:
             total_assets = total_mv + cash
             cfg = self._config_store.load()
             return {
-                "enabled": AUTO_TRADE_ENABLED,
+                "enabled": AuctionConfig.AUTO_TRADE_ENABLED,
                 "account_cash": round(cash, 2),
                 "initial_capital": round(acc.get("initial_capital", 0), 2),
                 "total_market_value": round(total_mv, 2),
@@ -358,7 +475,7 @@ class UnifiedAutoTrader:
                 "stats": self._stats,
             }
         except Exception as e:
-            return {"enabled": AUTO_TRADE_ENABLED, "error": str(e)}
+            return {"enabled": AuctionConfig.AUTO_TRADE_ENABLED, "error": str(e)}
 
     def get_signals(self, date: str, user_id: str = "default") -> List[Dict]:
         try:
@@ -391,6 +508,8 @@ class UnifiedAutoTrader:
                         "pa_confidence": f.pa_confidence,
                         "ai_score": f.ai_score,
                         "ai_signal": f.ai_signal,
+                        "agent_score": f.agent_score,
+                        "agent_signal": f.agent_signal,
                         "industry": f.industry,
                     },
                 }

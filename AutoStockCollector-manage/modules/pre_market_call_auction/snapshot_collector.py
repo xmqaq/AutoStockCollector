@@ -77,6 +77,7 @@ def _fetch_spot_batch() -> Optional[Dict[str, Dict]]:
                     "open": item.get("f17") or 0.0,
                     "pre_close": item.get("f18") or 0.0,
                     "turnover": item.get("f8") or 0.0,
+                    "volume_ratio": item.get("f10") or 0.0,  # 量比（f10）
                 }
             logger.info(f"[Auction] EastMoney spot fetched {len(result)} stocks")
             return result
@@ -173,6 +174,7 @@ def _build_snapshot(results: list, entry: Dict, today: str, now_iso: str):
         "amount": float(entry.get("amount", 0) or 0),
         "gap_pct": round(gap * 100, 2),
         "turnover": float(entry.get("turnover", 0) or 0),
+        "volume_ratio": float(entry.get("volume_ratio", 0) or 0),  # 量比（f10），8 维因子用
         "collected_at": now_iso,
     })
 

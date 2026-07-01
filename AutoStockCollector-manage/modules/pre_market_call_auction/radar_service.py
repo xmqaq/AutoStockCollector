@@ -1,5 +1,4 @@
 """盘前竞价雷达 — 编排器：采集 → 打分 → 诱骗识别 → 联动 → 存储。"""
-import time as _time
 import threading
 from typing import Any, Dict, List, Optional
 
@@ -8,7 +7,7 @@ from .config import AuctionConfig
 from .schemas import RadarResult, RadarStock
 from .snapshot_collector import collect_auction_data
 from .strength_calculator import compute_strength
-from .trap_detector import detect_trap
+from .trap_detector import detect_trap, compute_sector_trap_rate
 from .radar_utils import (
     batch_get_industries,
     compute_sector_gaps,
@@ -17,7 +16,8 @@ from .radar_utils import (
     today_str,
 )
 from .performance_tracker import record_scan_result
-from .intraday_tracker import init_tracking, auto_trade_top_stocks
+from .tracking_store import TrackingStore
+from .signal_emitter import AuctionSignalEmitter
 
 logger = get_logger(__name__)
 
@@ -46,13 +46,15 @@ def run_auction_scan(symbols: Optional[List[str]] = None) -> RadarResult:
         )
 
     _now = now_shanghai()
-    # 时间守卫：确保已过 9:30（A 股开盘后才有有效行情数据）
+    # 时间守卫（非阻塞，bug9 修复）：未到 9:30 返回 pending，不 sleep。
+    # cron 在 09:32 触发已过开盘；手动 /trigger 在盘前返回 pending 而非阻塞 HTTP。
     market_open = _now.replace(hour=9, minute=30, second=0, microsecond=0)
     if _now < market_open:
-        wait = (market_open - _now).total_seconds()
-        logger.info(f"[AuctionRadar] waiting {wait:.0f}s for market open")
-        _time.sleep(wait + 5)  # 多等 5 秒确保数据就绪
-        _now = now_shanghai()
+        logger.info(f"[AuctionRadar] 未到开盘时间(09:30)，返回 pending")
+        _SCAN_STATUS["status"] = "pending"
+        _SCAN_STATUS["scan_time"] = _now.isoformat()
+        return RadarResult(date=_now.strftime("%Y-%m-%d"), status="pending",
+                           summary="未到开盘时间，请 09:30 后重试")
 
     today = _now.strftime("%Y-%m-%d")
     _SCAN_STATUS["status"] = "running"
@@ -81,16 +83,21 @@ def run_auction_scan(symbols: Optional[List[str]] = None) -> RadarResult:
 
         # 3. 全市场金额列表（包含零值，保证百分位准确）
         all_amounts = [s.get("amount", 0) for s in snapshots]
+        all_turnovers = [s.get("turnover", 0) for s in snapshots]
         # 预排序 & 预计算阈值（一次 O(N log N)，而非每只股票一次）
         sorted_amounts_desc, neg_sorted_amounts_desc, amount_thresholds = compute_auction_thresholds(all_amounts)
+        sorted_turnover_desc = sorted(all_turnovers, reverse=True)
+        sector_trap_rate = compute_sector_trap_rate(snapshots, industry_map, amount_thresholds)
 
         # 4. 逐只分析
         radar_stocks: List[RadarStock] = []
 
         for snap in snapshots:
             code = snap.get("code", "")
-            strength = compute_strength(snap, sorted_amounts_desc, neg_sorted_amounts_desc, industry_map, sector_gap_map)
-            trap = detect_trap(snap, sorted_amounts_desc, amount_thresholds)
+            strength = compute_strength(snap, sorted_amounts_desc, neg_sorted_amounts_desc,
+                                        industry_map, sector_gap_map, sorted_turnover_desc)
+            trap = detect_trap(snap, sorted_amounts_desc, amount_thresholds,
+                               sector_trap_rate=sector_trap_rate)
 
             stock = RadarStock(
                 symbol=code,
@@ -110,8 +117,10 @@ def run_auction_scan(symbols: Optional[List[str]] = None) -> RadarResult:
         radar_stocks.sort(key=lambda s: s.strength_score, reverse=True)
         top_stocks = radar_stocks[:AuctionConfig.TOP_N]
 
-        # 6. 板块龙头 (仅基于 top_stocks)
-        sector_leaders = _compute_sector_leaders(top_stocks)
+        # 6. 板块龙头（全市场板块强度 + top_stocks 内取龙头，bug8 修复）
+        from .radar_utils import compute_sector_strength
+        sector_strength = compute_sector_strength(snapshots, industry_map)
+        sector_leaders = _compute_sector_leaders(top_stocks, sector_strength)
 
         # 7. 联动: 研报标记
         highlight_codes = _get_research_highlights(today)
@@ -149,14 +158,11 @@ def run_auction_scan(symbols: Optional[List[str]] = None) -> RadarResult:
         # 9. 保存结果到 MongoDB
         _save_result(result)
 
-        # 10. 记录性能追踪
-        record_scan_result(result)
+        # 10. 初始化盘中追踪 + 绩效统计（TrackingStore 统一写入，合并原 record_scan_result+init_tracking，bug12）
+        TrackingStore().init_tracking(result)
 
-        # 11. 初始化盘中追踪
-        init_tracking(result)
-
-        # 12. 自动创建模拟交易
-        auto_trade_top_stocks(result)
+        # 11. 发射竞价信号 → auction_signals（供 auto_trading 消费建仓，替代原 auto_trade_top_stocks 直接建仓，bug1）
+        AuctionSignalEmitter().emit(result)
 
         _SCAN_STATUS["status"] = "done"
         _SCAN_STATUS["date"] = today
@@ -175,15 +181,24 @@ def run_auction_scan(symbols: Optional[List[str]] = None) -> RadarResult:
         _SCAN_LOCK.release()
 
 
-def _compute_sector_leaders(stocks: List[RadarStock]) -> List[Dict[str, str]]:
+def _compute_sector_leaders(stocks: List[RadarStock],
+                            sector_strength: Optional[List[Dict]] = None) -> List[Dict[str, str]]:
+    """板块龙头：每个板块取 top_stocks 内最高分个股；按全市场板块强度排序（bug8 修复）。"""
     sectors: Dict[str, RadarStock] = {}
     for s in stocks:
         ind = s.industry or "其他"
         if ind not in sectors or s.strength_score > sectors[ind].strength_score:
             sectors[ind] = s
+    # 板块强度排序：优先用全市场 sector_strength，无则按龙头分数
+    if sector_strength:
+        strength_order = {ss["sector"]: ss["strength"] for ss in sector_strength}
+        order = sorted(sectors.items(),
+                       key=lambda x: strength_order.get(x[0], x[1].strength_score), reverse=True)
+    else:
+        order = sorted(sectors.items(), key=lambda x: x[1].strength_score, reverse=True)
     return [
         {"sector": ind, "leader": s.symbol, "name": s.name, "score": str(s.strength_score)}
-        for ind, s in sorted(sectors.items(), key=lambda x: x[1].strength_score, reverse=True)
+        for ind, s in order
     ]
 
 
