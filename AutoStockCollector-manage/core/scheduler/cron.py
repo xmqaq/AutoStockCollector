@@ -1529,6 +1529,15 @@ def start_daily_jobs() -> None:
     except Exception as e:
         logger.debug(f"[cron] agent_signals TTL index skipped: {e}")
 
+    # auto_trading_run_lock 集合 TTL：跨进程 run_cycle 锁租约 5 分钟自动过期，防崩溃死锁。
+    try:
+        from config.database import DatabaseConfig
+        DatabaseConfig.get_database()["auto_trading_run_lock"].create_index(
+            "at", expireAfterSeconds=300
+        )
+    except Exception as e:
+        logger.debug(f"[cron] auto_trading_run_lock TTL index skipped: {e}")
+
     with _jobs_lock:
         _registered_jobs.clear()
         _registered_jobs.extend(jobs)

@@ -52,12 +52,47 @@ class UnifiedAutoTrader:
         if not AuctionConfig.AUTO_TRADE_ENABLED:
             return {"status": "disabled", "message": "Auto-trade is globally disabled"}
         if not self._lock.acquire(blocking=False):
-            return {"status": "locked", "message": "Previous cycle still running"}
+            return {"status": "locked", "message": "Previous cycle still running (instance)"}
+        # 跨实例 Mongo 锁：防止 job_auction_auto_close(14:50) 与 job_auto_trading_cycle
+        # 在同一秒触发导致同一账户双 run_cycle（实例锁不跨进程）。
+        if not self._acquire_global_lock(user_id):
+            self._lock.release()
+            return {"status": "locked", "message": "Previous cycle still running (global)"}
 
         try:
             return self._do_cycle(user_id, date or beijing_now().strftime("%Y-%m-%d"))
         finally:
+            self._release_global_lock(user_id)
             self._lock.release()
+
+    _GLOBAL_LOCK_COLLECTION = "auto_trading_run_lock"
+    _GLOBAL_LOCK_TTL_SECONDS = 300  # 租约 5 分钟，防崩溃死锁
+
+    @classmethod
+    def _acquire_global_lock(cls, user_id: str) -> bool:
+        """跨进程原子抢占：insert 同一 _id 触发 DuplicateKeyError 即被占。
+        DB 不可用退化为 True（不阻塞，由实例锁兜底）。TTL 索引自动清理过期租约。"""
+        try:
+            from pymongo.errors import DuplicateKeyError
+            from config.database import DatabaseConfig
+            col = DatabaseConfig.get_database()[cls._GLOBAL_LOCK_COLLECTION]
+            try:
+                col.insert_one({"_id": f"cycle:{user_id}", "at": beijing_now()})
+                return True
+            except DuplicateKeyError:
+                return False
+        except Exception as e:
+            logger.warning(f"[auto-trader] global lock unavailable, fallback to instance lock: {e}")
+            return True
+
+    @classmethod
+    def _release_global_lock(cls, user_id: str):
+        try:
+            from config.database import DatabaseConfig
+            col = DatabaseConfig.get_database()[cls._GLOBAL_LOCK_COLLECTION]
+            col.delete_one({"_id": f"cycle:{user_id}"})
+        except Exception:
+            pass
 
     def _do_cycle(self, user_id: str, date: str) -> Dict[str, Any]:
         now = beijing_now()
@@ -206,15 +241,18 @@ class UnifiedAutoTrader:
             elif d.action == "buy":
                 result = self._do_trade("buy", user_id, raw_code, d.shares, ai_signal,
                                        price=d.price, stop_loss=d.stop_loss, take_profit=d.take_profit)
-                summary["buys"] += 1
+                # 仅 filled 才计入 buys；pending（非交易时段跳过）不计，避免统计虚高
+                if isinstance(result, dict) and result.get("status") == "filled":
+                    summary["buys"] += 1
                 # 竞价信号建仓 → 标记信号 consumed + TrackingStore active→traded
-                if d.source == "auction_radar":
+                if d.source == "auction_radar" and isinstance(result, dict) and result.get("status") == "filled":
                     self._on_auction_bought(d.code, user_id, date, result)
 
             elif d.action == "add":
-                self._do_trade("buy", user_id, raw_code, d.shares, ai_signal,
+                result = self._do_trade("buy", user_id, raw_code, d.shares, ai_signal,
                                price=d.price, stop_loss=d.stop_loss, take_profit=d.take_profit)
-                summary["adds"] += 1
+                if isinstance(result, dict) and result.get("status") == "filled":
+                    summary["adds"] += 1
 
             summary["details"].append({
                 "action": d.action, "code": d.code, "name": d.name, "shares": d.shares,
@@ -276,9 +314,19 @@ class UnifiedAutoTrader:
 
         - immediate=True：自动交易即时成交，不挂单。
         - force=False（默认）：遵守 T+1（当日买入不可卖）。竞价日内策略平仓 force=True 豁免 T+1。
+        - 非连续竞价时段（午休/集合竞价）：buy 跳过避免按非实时价建仓，sell/reduce 继续（风控优先）。
         - 返回值 {status, trade?, order?}：pending（非交易时段挂单）视为未成交，仅记日志。
         """
         if action == "buy":
+            # 午休/集合竞价时段不即时买入：此时腾讯返回午间收盘价，与实盘不符。
+            # sell/reduce 不挡——平仓是风控，错过比按可疑价成交更危险。
+            try:
+                from modules.paper_trading.trade_engine import is_trading_time
+                if not is_trading_time():
+                    logger.info(f"[auto-trader] 非连续竞价时段，跳过买入 {raw_code}（待下轮）")
+                    return {"status": "pending", "reason": "non_trading_hours"}
+            except Exception:
+                pass
             result = self._engine.buy(
                 user_id, raw_code, shares, ai_signal, self._account,
                 price=price, stop_loss=stop_loss, take_profit=take_profit, immediate=True,

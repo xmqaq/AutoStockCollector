@@ -77,7 +77,7 @@ class SignalFusionEngine:
         fused = FusedSignal(code, name)
         self._merge_auction(fused, date)
         self._merge_pa(fused)
-        self._merge_ai_monitor(fused)
+        self._merge_ai_monitor(fused, date)
         self._merge_agent(fused, date)
         self._compute_overall(fused, cfg)
         self._build_reasons(fused, cfg)
@@ -184,11 +184,13 @@ class SignalFusionEngine:
         except Exception as e:
             logger.warning(f"[fusion] PA analysis failed for {fused.code}: {e}")
 
-    def _merge_ai_monitor(self, fused: FusedSignal):
+    def _merge_ai_monitor(self, fused: FusedSignal, date: str):
         try:
             db = DatabaseConfig.get_database()
+            # 带 signal_date 过滤：隔夜/缺当日监控分不参与融合（与 _merge_agent 对齐）。
+            # ai_monitor 当日未刷新时返回 None，ai_score 保持默认 50 不进分母，避免用旧分。
             doc = db["monitor_signal_history"].find_one(
-                {"code": fused.code},
+                {"code": fused.code, "signal_date": date},
                 sort=[("updated_at", -1)],
             )
             if not doc:
@@ -208,9 +210,9 @@ class SignalFusionEngine:
     def _merge_agent(self, fused: FusedSignal, date: str):
         """第 4 路：AI Agent 信号（TradingGraph 多空辩论 verdict）。
 
-        与 _merge_ai_monitor 的关键差异：**必须带 trade_date 过滤**——隔夜/缺当日
-        信号的 code 返回 None，agent_score 保持 0.0，不参与融合分母。避免用盘前
-        旧信号误导盘中决策。ai_monitor 没有过期判断是既有缺陷，agent 这一路不继承。
+        带 trade_date 过滤：隔夜/缺当日信号的 code 返回 None，agent_score 保持 0.0，
+        不参与融合分母。与 _merge_ai_monitor 的 signal_date 过滤一致，避免用旧信号
+        误导盘中决策。
         """
         try:
             db = DatabaseConfig.get_database()

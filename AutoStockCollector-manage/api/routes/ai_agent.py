@@ -17,6 +17,22 @@ def _get_db():
     return DatabaseConfig.get_database()
 
 
+def _apply_skills(agent: Dict[str, Any]) -> Dict[str, Any]:
+    """把 agent 绑定的 skill 正文注入 system_prompt（就地修改并返回 agent）。
+
+    单股 analyze/test 与 TradingGraph 编排保持一致：绑定的 skill 都生效。
+    任何异常降级为原 prompt（不影响主流程）。延迟导入避免重依赖。
+    """
+    if not agent or not agent.get("skills"):
+        return agent
+    try:
+        from modules.ai.orchestration.nodes import _inject_skills
+        agent["system_prompt"] = _inject_skills(agent.get("system_prompt", ""), agent)
+    except Exception as e:
+        logger.warning(f"skill inject failed for {agent.get('id')}: {e}")
+    return agent
+
+
 def _ensure_collection():
     """确保 ai_agents 集合存在并补全缺失的默认 Agent"""
     db = _get_db()
@@ -27,13 +43,24 @@ def _ensure_collection():
 
 
 def _sync_default_agents():
-    """同步默认 Agent 配置（覆盖 system_prompt/description/role 等关键字段，保留用户新增的 agent）"""
+    """同步默认 Agent 配置（覆盖 system_prompt/description/role 等关键字段，保留用户新增的 agent）。
+
+    skills 字段用 $setOnInsert：仅在首次创建默认 agent 时写入预绑值，
+    后续不覆盖用户在前端绑定的 skill，避免「绑定后下次 list 被冲回默认」。
+    """
     db = _get_db()
     for agent in _default_agent_configs():
         agent["updated_at"] = beijing_now().isoformat()
+        # $set 覆盖关键字段（不含 skills），$setOnInsert 仅首次写入 skills 默认值
+        set_fields = {k: v for k, v in agent.items()
+                      if k not in ("created_at", "skills")}
         db["ai_agents"].update_one(
             {"id": agent["id"]},
-            {"$set": {k: v for k, v in agent.items() if k != "created_at"}},
+            {
+                "$set": set_fields,
+                "$setOnInsert": {"skills": agent.get("skills", []),
+                                 "created_at": beijing_now().isoformat()},
+            },
             upsert=True
         )
 
@@ -515,6 +542,8 @@ def test_agent(agent_id: str):
     if not agent:
         return jsonify({"success": False, "error": "Agent not found"}), 404
 
+    _apply_skills(agent)
+
     data = request.get_json() or {}
     test_message = data.get("message", "")
     stock_code = data.get("code")
@@ -694,6 +723,8 @@ def batch_analyze():
     if not agent:
         return jsonify({"success": False, "error": "Agent not found"}), 404
 
+    _apply_skills(agent)
+
     results = []
     for code in codes:
         try:
@@ -763,6 +794,8 @@ def analyze_with_agent_stream(agent_id: str):
     agent = db["ai_agents"].find_one({"id": agent_id}, {"_id": 0})
     if not agent:
         return jsonify({"success": False, "error": "Agent not found"}), 404
+
+    _apply_skills(agent)
 
     data = request.get_json() or {}
     stock_code = data.get("code")
@@ -1011,6 +1044,8 @@ def analyze_with_agent(agent_id: str):
     agent = db["ai_agents"].find_one({"id": agent_id}, {"_id": 0})
     if not agent:
         return jsonify({"success": False, "error": "Agent not found"}), 404
+
+    _apply_skills(agent)
 
     data = request.get_json() or {}
     stock_code = data.get("code")
