@@ -1,5 +1,5 @@
 """信号生成器 — 融合市场结构 + 供需区 + 形态确认，生成交易信号。"""
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from utils.logger import get_logger
 from .config import PAConfig
