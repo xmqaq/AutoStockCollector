@@ -1,6 +1,7 @@
 """模拟盘交易 API — /api/paper/*"""
 import time
 import threading
+from typing import Any, Dict
 from flask import Blueprint, request, jsonify, g
 from utils.logger import get_logger
 from api.auth_utils import login_required
@@ -17,6 +18,12 @@ _snapshot = None
 _ranking_live_cache = {"payload": None, "at": 0.0}
 _ranking_live_lock = threading.Lock()
 _RANKING_LIVE_TTL = 15.0
+
+# 非实时（快照）排行榜缓存：快照数据盘后不变，盘中也只 16:30 更新一次，
+# 60s 缓存可挡住首页卡片/排行榜页的重复请求，避免每次 N+1 查快照+回放 trade_records。
+_ranking_snapshot_cache = {"payload": None, "at": 0.0}
+_ranking_snapshot_lock = threading.Lock()
+_RANKING_SNAPSHOT_TTL = 60.0
 
 
 def _lazy_init():
@@ -198,8 +205,8 @@ def cancel_order():
 @paper_bp.route("/positions", methods=["GET"])
 def get_positions():
     _lazy_init()
-    # admin 旧数据存于 'default'：显式传入的 user_id 也需同样映射，否则排行榜明细查 'admin' 为空
-    _, user_id = _resolve_ranking_uid(request.args.get("user_id") or _resolve_user_id())
+    # 排行榜明细抽屉传 ?user_id=xxx 查指定用户；未传则回退当前登录用户。
+    user_id = request.args.get("user_id") or _resolve_user_id()
     positions, trading = _engine.get_positions(user_id)
     return jsonify({
         "success": True,
@@ -236,8 +243,8 @@ def get_price():
 def get_trades():
     from config.database import DatabaseConfig
     _lazy_init()
-    # 同 /positions：admin→default 映射，保证排行榜明细能查到旧数据
-    _, user_id = _resolve_ranking_uid(request.args.get("user_id") or _resolve_user_id())
+    # 同 /positions：排行榜明细抽屉按 user_id 查指定用户成交记录。
+    user_id = request.args.get("user_id") or _resolve_user_id()
     try:
         limit = int(request.args.get("limit", 50))
     except (TypeError, ValueError):
@@ -316,6 +323,12 @@ def get_ranking():
             cache = _ranking_live_cache
             if cache["payload"] is not None and (time.time() - cache["at"]) < _RANKING_LIVE_TTL:
                 return jsonify({**cache["payload"], "cached": True})
+    else:
+        # 非实时模式：快照数据低频变化，用更长 TTL 缓存挡住重复请求。
+        with _ranking_snapshot_lock:
+            cache = _ranking_snapshot_cache
+            if cache["payload"] is not None and (time.time() - cache["at"]) < _RANKING_SNAPSHOT_TTL:
+                return jsonify({**cache["payload"], "cached": True})
 
     db = DatabaseConfig.get_database()
 
@@ -335,19 +348,26 @@ def get_ranking():
         else:
             users.append({"user_id": uid, "username": uid, "nickname": uid})
 
-    # 各用户累计手续费（佣金 + 印花税），一次聚合取齐
-    fee_map = {}
-    try:
-        for r in db["trade_records"].aggregate([
-            {"$group": {"_id": "$user_id", "fee": {"$sum": {"$add": [
-                {"$ifNull": ["$commission", 0]}, {"$ifNull": ["$stamp_tax", 0]},
-            ]}}}},
-        ]):
-            fee_map[r["_id"]] = r.get("fee", 0)
-    except Exception:
-        pass
-
     _lazy_init()
+
+    # live 模式并行预取各用户实时净值：原串行 N 次 get_positions→批量行情 HTTP
+    # 是排行榜首请求的主要瓶颈（N 用户 = N 次串行行情拉取）。ThreadPool 并行化，
+    # 单次 wall-clock≈最慢一个用户而非全部之和。非 live 模式走快照无需此开销。
+    live_computed: Dict[str, Any] = {}
+    if live and users:
+        from concurrent.futures import ThreadPoolExecutor
+        uids_live = [u["user_id"] for u in users]
+
+        def _safe_live(uid):
+            try:
+                return uid, _live_profit(uid)
+            except Exception as e:
+                logger.warning(f"[Ranking] live_profit uid={uid} failed: {e}")
+                return uid, None
+
+        with ThreadPoolExecutor(max_workers=min(8, len(uids_live))) as pool:
+            for uid, computed in pool.map(_safe_live, uids_live):
+                live_computed[uid] = computed
 
     result = []
     for user in users:
@@ -356,7 +376,7 @@ def get_ranking():
             query_uid = uid
 
             if live:
-                computed = _live_profit(query_uid)
+                computed = live_computed.get(query_uid)
                 if computed is None:
                     continue
                 profit_pct, profit_amount, initial_capital, account_doc, positions = computed
@@ -384,7 +404,7 @@ def get_ranking():
                     today_pnl = sum(p.get("today_pnl_amount", 0.0) for p in positions)
 
             account_doc = _account.get(query_uid) if _account else None
-            stats = _stats.get_stats(query_uid) if account_doc else {"win_rate": 0.0, "total_trades": 0}
+            stats = _stats.get_stats(query_uid) if account_doc else {"win_rate": 0.0, "total_trades": 0, "total_fee": 0.0}
             frozen_cash = (account_doc or {}).get("frozen_cash", 0)
             result.append({
                 "user_id": uid,
@@ -398,7 +418,8 @@ def get_ranking():
                 "profit_pct": round(profit_pct, 2),
                 "profit_amount": round(profit_amount, 2),
                 "today_pnl": round(today_pnl, 2),
-                "total_fee": round(fee_map.get(query_uid, 0), 2),
+                # 复用 get_stats 回放时已算出的 total_fee，避免再跑一次聚合
+                "total_fee": round(stats.get("total_fee", 0.0), 2),
                 "win_rate": round(stats.get("win_rate", 0.0), 2),
                 "total_trades": stats.get("total_trades", 0),
             })
@@ -406,7 +427,8 @@ def get_ranking():
             logger.warning(f"[Ranking] user={user.get('user_id','?')} skipped: {e}")
             continue
 
-    result.sort(key=lambda x: x["profit_pct"], reverse=True)
+    # 排序加次级键 total_asset：profit_pct 相同时按总资产降序，保证同分排名稳定
+    result.sort(key=lambda x: (-x["profit_pct"], -x["total_asset"]))
     for i, r in enumerate(result, 1):
         r["rank"] = i
 
@@ -426,4 +448,8 @@ def get_ranking():
         with _ranking_live_lock:
             _ranking_live_cache["payload"] = payload
             _ranking_live_cache["at"] = time.time()
+    else:
+        with _ranking_snapshot_lock:
+            _ranking_snapshot_cache["payload"] = payload
+            _ranking_snapshot_cache["at"] = time.time()
     return jsonify(payload)

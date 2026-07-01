@@ -29,13 +29,14 @@ let _redirecting = false
 client.interceptors.response.use(
   (response) => {
     const data = response.data
-    if (data && data.success === false) {
+    if (data && data.success === false && !(response.config as any).skipErrorMessage) {
       const msg = data.message || data.error || '请求失败'
       ElMessage.error(msg)
     }
     return response
   },
   (error) => {
+    const skipToast = error.config && (error.config as any).skipErrorMessage
     if (error.response) {
       const status = error.response.status
       if (status === 401 && !_redirecting) {
@@ -45,12 +46,14 @@ client.interceptors.response.use(
         window.location.href = '/login'
         return Promise.reject(error)
       }
-      const msg = error.response.data?.message || error.response.data?.error || error.message
-      ElMessage.error(`请求错误 ${status}: ${msg}`)
+      if (!skipToast) {
+        const msg = error.response.data?.message || error.response.data?.error || error.message
+        ElMessage.error(`请求错误 ${status}: ${msg}`)
+      }
     } else if (error.request) {
-      ElMessage.error('网络错误，无法连接到服务器')
+      if (!skipToast) ElMessage.error('网络错误，无法连接到服务器')
     } else {
-      ElMessage.error(error.message || '未知错误')
+      if (!skipToast) ElMessage.error(error.message || '未知错误')
     }
     return Promise.reject(error)
   }

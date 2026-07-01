@@ -222,9 +222,11 @@ export const paperApi = {
     }
   },
 
-  async getRanking(live = false): Promise<RankingEntry[]> {
+  async getRanking(live = false, silent = false): Promise<RankingEntry[]> {
     try {
-      const res = await request.get<{ data: RankingEntry[] }>(`/api/paper/ranking${live ? '?live=1' : ''}`)
+      const res = await request.get<{ data: RankingEntry[] }>(`/api/paper/ranking${live ? '?live=1' : ''}`, {
+        skipErrorMessage: silent,
+      } as any)
       return res.data?.data ?? []
     } catch {
       return []

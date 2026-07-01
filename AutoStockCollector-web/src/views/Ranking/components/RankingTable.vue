@@ -41,7 +41,7 @@
       </el-table-column>
 
       <!-- 资产状况 -->
-      <el-table-column label="资产状况" min-width="160" align="right">
+      <el-table-column label="资产状况" min-width="160" align="right" sortable :sort-by="row => row.total_asset">
         <template #default="{ row }">
           <div class="data-stack">
             <span class="primary-data asset-total">¥{{ formatAmount(row.total_asset) }}</span>
@@ -51,11 +51,11 @@
       </el-table-column>
 
       <!-- 累计收益 -->
-      <el-table-column label="累计收益" min-width="160" align="right">
+      <el-table-column label="累计收益" min-width="160" align="right" sortable :sort-by="row => row.profit_pct">
         <template #default="{ row }">
           <div class="data-stack">
             <span :class="['primary-data', 'profit-text', getProfitColorClass(row.profit_pct)]">
-              {{ row.profit_pct > 0 ? '+' : '' }}{{ row.profit_pct }}%
+              {{ row.profit_pct > 0 ? '+' : '' }}{{ formatPct(row.profit_pct) }}%
             </span>
             <span :class="['secondary-data', getProfitColorClass(row.profit_amount, true)]">
               {{ row.profit_amount > 0 ? '+' : '' }}¥{{ formatAmount(row.profit_amount) }}
@@ -71,7 +71,7 @@
       </el-table-column>
 
       <!-- 今日表现 -->
-      <el-table-column label="今日表现" min-width="140" align="right">
+      <el-table-column label="今日表现" min-width="140" align="right" sortable :sort-by="row => row.today_pnl">
         <template #default="{ row }">
           <div :class="['profit-pill', getProfitBgClass(row.today_pnl)]">
             {{ row.today_pnl > 0 ? '+' : '' }}¥{{ formatAmount(row.today_pnl) }}
@@ -80,10 +80,10 @@
       </el-table-column>
 
       <!-- 交易统计 -->
-      <el-table-column label="交易统计" min-width="120" align="center">
+      <el-table-column label="交易统计" min-width="120" align="center" sortable :sort-by="row => row.win_rate">
         <template #default="{ row }">
           <div class="data-stack align-center">
-            <span class="primary-data win-rate">{{ row.win_rate }}% 胜率</span>
+            <span class="primary-data win-rate">{{ formatPct(row.win_rate) }}% 胜率</span>
             <span class="secondary-data">{{ row.total_trades }} 笔交易</span>
           </div>
         </template>
@@ -133,6 +133,12 @@ function tableRowClassName({ row }: { row: RankingEntry }) {
 function formatAmount(v: number) {
   if (Math.abs(v) >= 1e4) return (v / 1e4).toFixed(2) + '万'
   return v.toFixed(2)
+}
+
+// 百分比前端兜底格式化：即使后端未 round 也保证两位小数，避免显示 12.345%
+function formatPct(v: number) {
+  const n = Number(v) || 0
+  return n.toFixed(2)
 }
 
 function getProfitColorClass(val: number, isLight = false) {

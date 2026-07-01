@@ -14,6 +14,14 @@
         </span>
       </div>
       <div class="header-actions">
+        <el-input
+          v-model="searchQuery"
+          placeholder="搜索交易员..."
+          clearable
+          size="default"
+          class="search-input"
+          :prefix-icon="Search"
+        />
         <span v-if="lastUpdated" class="last-updated">最后更新于 {{ lastUpdated }}</span>
         <el-button type="primary" :loading="loading || refreshing" @click="fetchRanking(false)" round plain>
           <el-icon><Refresh /></el-icon> 刷新榜单
@@ -21,7 +29,13 @@
       </div>
     </div>
 
-    <RankingTable :ranking="ranking" :loading="loading" @view-user="openDrawer" />
+    <div v-if="errorMsg && !loading" class="error-banner">
+      <el-icon><WarningFilled /></el-icon>
+      <span>加载失败：{{ errorMsg }}</span>
+      <el-button size="small" type="primary" plain @click="fetchRanking(false)">重试</el-button>
+    </div>
+
+    <RankingTable :ranking="filteredRanking" :loading="loading" @view-user="openDrawer" />
 
     <UserPositionsDrawer
       v-model="drawerVisible"
@@ -32,8 +46,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
-import { Refresh, Trophy as TrophyBase } from '@element-plus/icons-vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { Refresh, Trophy as TrophyBase, Search, WarningFilled } from '@element-plus/icons-vue'
 import { paperApi } from '@/api/paper'
 import type { RankingEntry } from '@/api/paper'
 import RankingTable from './components/RankingTable.vue'
@@ -43,10 +57,23 @@ const ranking = ref<RankingEntry[]>([])
 const loading = ref(false)
 const refreshing = ref(false)
 const lastUpdated = ref('')
+const errorMsg = ref('')
+const searchQuery = ref('')
 const drawerVisible = ref(false)
 const drawerUserId = ref('')
 const drawerUsername = ref('')
 let _pollTimer: ReturnType<typeof setInterval> | undefined
+
+// 搜索过滤：按用户名/原始用户名/user_id 模糊匹配，保留原排名顺序
+const filteredRanking = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase()
+  if (!q) return ranking.value
+  return ranking.value.filter(r =>
+    (r.username || '').toLowerCase().includes(q) ||
+    (r.raw_username || '').toLowerCase().includes(q) ||
+    (r.user_id || '').toLowerCase().includes(q)
+  )
+})
 
 function openDrawer(userId: string, username: string) {
   drawerUserId.value = userId
@@ -68,13 +95,21 @@ async function fetchRanking(silent = false) {
     refreshing.value = true
   } else {
     loading.value = true
+    errorMsg.value = ''
   }
   try {
-    ranking.value = await paperApi.getRanking(true)
-    const d = new Date()
-    lastUpdated.value = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
-  } catch {
-    // handled by interceptor
+    // silent（轮询）模式：skipErrorMessage 抑制全局 toast，避免失败时每 15s 刷屏
+    const data = await paperApi.getRanking(true, silent)
+    if (data.length === 0 && !silent) {
+      errorMsg.value = '暂无排行数据'
+    } else {
+      ranking.value = data
+      const d = new Date()
+      lastUpdated.value = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
+    }
+  } catch (e: any) {
+    // 仅显式请求失败才设错误态；轮询失败静默（保留旧数据）
+    if (!silent) errorMsg.value = e?.message || '未知错误'
   } finally {
     loading.value = false
     refreshing.value = false
@@ -146,6 +181,23 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 16px;
+}
+
+.search-input {
+  width: 200px;
+}
+
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  border-radius: 8px;
+  background: var(--el-color-danger-light-9);
+  border: 1px solid var(--el-color-danger-light-5);
+  color: var(--el-color-danger);
+  font-size: 14px;
 }
 
 .last-updated {
