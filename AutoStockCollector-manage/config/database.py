@@ -184,6 +184,8 @@ class DatabaseConfig:
         cls._safe_index(db.auction_results, [("date", 1)], unique=True)
         cls._safe_index(db.auction_performance, [("date", -1), ("strength_score", -1)])
         cls._safe_index(db.auction_performance, [("code", 1), ("date", 1)])
+        cls._safe_index(db.auction_intraday_track, [("date", 1), ("status", 1)])
+        cls._safe_index(db.auction_intraday_track, [("code", 1), ("date", 1)])
 
         logger.info("Database indexes ensured successfully")
 

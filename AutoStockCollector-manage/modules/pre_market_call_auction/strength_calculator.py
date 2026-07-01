@@ -85,16 +85,17 @@ def _score_sector_resonance(
 
 
 def _score_deviation(gap_pct: float) -> float:
-    """乖离分: 3~5% 最理想。使用分段线性插值消除不连续。"""
-    abs_gap = abs(gap_pct)
-    if abs_gap >= 8.0:
-        return max(0.0, 60.0 - (abs_gap - 8.0) * 10.0)
-    if abs_gap >= 5.0:
-        return 60.0 + (8.0 - abs_gap) / 3.0 * 40.0
-    if abs_gap >= 3.0:
+    """乖离分: 仅对正跳空评分，3~5% 最理想。负跳空（低开）不计分。"""
+    if gap_pct <= 0:
+        return 0.0
+    if gap_pct >= 8.0:
+        return max(0.0, 60.0 - (gap_pct - 8.0) * 10.0)
+    if gap_pct >= 5.0:
+        return 60.0 + (8.0 - gap_pct) / 3.0 * 40.0
+    if gap_pct >= 3.0:
         return 100.0
-    if abs_gap >= 1.0:
-        return 70.0 + (abs_gap - 1.0) / 2.0 * 30.0
-    if abs_gap >= 0.5:
-        return 40.0 + (abs_gap - 0.5) / 0.5 * 30.0
-    return abs_gap / 0.5 * 40.0
+    if gap_pct >= 1.0:
+        return 70.0 + (gap_pct - 1.0) / 2.0 * 30.0
+    if gap_pct >= 0.5:
+        return 40.0 + (gap_pct - 0.5) / 0.5 * 30.0
+    return gap_pct / 0.5 * 40.0

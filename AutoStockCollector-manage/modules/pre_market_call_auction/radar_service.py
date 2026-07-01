@@ -1,4 +1,5 @@
 """盘前竞价雷达 — 编排器：采集 → 打分 → 诱骗识别 → 联动 → 存储。"""
+import time as _time
 import threading
 from typing import Any, Dict, List, Optional
 
@@ -45,6 +46,14 @@ def run_auction_scan(symbols: Optional[List[str]] = None) -> RadarResult:
         )
 
     _now = now_shanghai()
+    # 时间守卫：确保已过 9:30（A 股开盘后才有有效行情数据）
+    market_open = _now.replace(hour=9, minute=30, second=0, microsecond=0)
+    if _now < market_open:
+        wait = (market_open - _now).total_seconds()
+        logger.info(f"[AuctionRadar] waiting {wait:.0f}s for market open")
+        _time.sleep(wait + 5)  # 多等 5 秒确保数据就绪
+        _now = now_shanghai()
+
     today = _now.strftime("%Y-%m-%d")
     _SCAN_STATUS["status"] = "running"
     _SCAN_STATUS["scan_time"] = _now.isoformat()
