@@ -9,6 +9,10 @@ export interface ChartTheme {
   tooltipBorder: string
   tooltipText: string
   legendText: string
+  /** A 股惯例：涨为红 */
+  upColor: string
+  /** A 股惯例：跌为绿 */
+  downColor: string
 }
 
 const dark: ChartTheme = {
@@ -20,6 +24,8 @@ const dark: ChartTheme = {
   tooltipBorder: '#3b4758',
   tooltipText: '#f8fafc',
   legendText: '#cbd5e1',
+  upColor: '#f23645',
+  downColor: '#11c27e',
 }
 
 const light: ChartTheme = {
@@ -31,6 +37,8 @@ const light: ChartTheme = {
   tooltipBorder: '#cbd5e1',
   tooltipText: '#0f172a',
   legendText: '#334155',
+  upColor: '#f23645',
+  downColor: '#11c27e',
 }
 
 export function getChartTheme(): ChartTheme {

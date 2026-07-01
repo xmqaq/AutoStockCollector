@@ -109,6 +109,9 @@
         </div>
       </div>
 
+      <!-- 多周期融合 -->
+      <MultiTfPanel v-if="result.multi_tf" :multi-tf="result.multi_tf" :warning="result.trend_warning" />
+
       <!-- 价格梯 -->
       <div v-if="hasLevels" class="pa-ladder-card">
         <div class="pa-ladder">
@@ -123,10 +126,17 @@
         </div>
       </div>
 
-      <!-- K 线图 -->
+      <!-- K 线图（复用全站 KlineChart，markLine 颜色正常 + 回测交易点标注） -->
       <el-card v-if="hasKline" shadow="never" class="pa-card pa-chart-card">
         <template #header><span>📊 K 线图</span></template>
-        <v-chart ref="klineChartRef" :option="chartOption" style="width:100%;height:450px" autoresize />
+        <KlineChartPanel
+          :bars="result.kline_bars"
+          :code="result.symbol"
+          :trade-plan="result.trade_plan"
+          :fib-levels="result.fib_levels"
+          :zones="result.zones"
+          :backtest="result.backtest"
+        />
       </el-card>
 
       <div class="pa-body-grid">
@@ -183,27 +193,7 @@
         </div>
 
         <div class="pa-side-col">
-          <template v-if="result.backtest && result.backtest.total_trades >= 5">
-            <el-card shadow="never" class="pa-card pa-bt-card">
-              <template #header><span>📊 回测验证</span></template>
-              <div class="pa-bt-grid">
-                <div class="pa-bt-item"><span class="pa-bt-label">交易次数</span><span class="pa-bt-val">{{ result.backtest.total_trades }}</span></div>
-                <div class="pa-bt-item"><span class="pa-bt-label">胜率</span><span class="pa-bt-val" :class="result.backtest.win_rate >= 40 ? 'pa-bt-green' : 'pa-bt-red'">{{ result.backtest.win_rate }}%</span></div>
-                <div class="pa-bt-item"><span class="pa-bt-label">平均R</span><span class="pa-bt-val">{{ result.backtest.avg_r }}</span></div>
-                <div class="pa-bt-item"><span class="pa-bt-label">夏普</span><span class="pa-bt-val" :class="result.backtest.sharpe_ratio >= 1 ? 'pa-bt-green' : ''">{{ result.backtest.sharpe_ratio }}</span></div>
-                <div class="pa-bt-item"><span class="pa-bt-label">盈亏比</span><span class="pa-bt-val">{{ result.backtest.profit_factor }}</span></div>
-                <div class="pa-bt-item"><span class="pa-bt-label">最大回撤</span><span class="pa-bt-val pa-bt-red">{{ result.backtest.max_drawdown_pct }}%</span></div>
-                <div class="pa-bt-item"><span class="pa-bt-label">期望值</span><span class="pa-bt-val" :class="result.backtest.expectancy > 0 ? 'pa-bt-green' : 'pa-bt-red'">{{ result.backtest.expectancy }}</span></div>
-                <div class="pa-bt-item"><span class="pa-bt-label">连续亏损</span><span class="pa-bt-val pa-bt-red">{{ result.backtest.max_consecutive_losses }}</span></div>
-              </div>
-            </el-card>
-          </template>
-          <template v-else-if="result.backtest?.message">
-            <el-card shadow="never" class="pa-card">
-              <template #header><span>📊 回测</span></template>
-              <div class="pa-ai-na">{{ result.backtest.message }}</div>
-            </el-card>
-          </template>
+          <BacktestPanel :backtest="result.backtest" />
 
           <div v-if="result.trade_plan" class="pa-trade-card">
             <div class="pa-trade-header" :class="result.trade_plan.direction === 'long' ? 'pa-trade-buy' : 'pa-trade-sell'">
@@ -324,14 +314,10 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, TrendCharts } from '@element-plus/icons-vue'
-import { priceActionApi, type PaSignal, type PaKlineBar } from '@/api/priceAction'
-import VChart from 'vue-echarts'
-import { use } from 'echarts/core'
-import { CandlestickChart, BarChart, LineChart } from 'echarts/charts'
-import { TooltipComponent, GridComponent, DataZoomComponent, LegendComponent, MarkLineComponent, MarkAreaComponent } from 'echarts/components'
-import { CanvasRenderer } from 'echarts/renderers'
-
-use([CandlestickChart, BarChart, LineChart, TooltipComponent, GridComponent, DataZoomComponent, LegendComponent, MarkLineComponent, MarkAreaComponent, CanvasRenderer])
+import { priceActionApi, type PaSignal } from '@/api/priceAction'
+import KlineChartPanel from './components/KlineChartPanel.vue'
+import MultiTfPanel from './components/MultiTfPanel.vue'
+import BacktestPanel from './components/BacktestPanel.vue'
 
 const route = useRoute()
 
@@ -368,7 +354,6 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 let pollTimeoutTimer: ReturnType<typeof setTimeout> | null = null
 let scanPollTimer: ReturnType<typeof setInterval> | null = null
 const POLL_TIMEOUT_MS = 5 * 60 * 1000 // 5分钟
-const klineChartRef = ref<InstanceType<typeof VChart> | null>(null)
 
 const hasKline = computed(() => !!result.value?.kline_bars?.length)
 
@@ -412,110 +397,6 @@ const statusTagText = computed(() => {
   if (scanStatus.value?.latest) return `✅ ${scanStatus.value.latest.signal_count}个信号`
   return ''
 })
-
-function calcMA(bars: PaKlineBar[], period: number): (number | string)[] {
-  const result: (number | string)[] = []
-  for (let i = 0; i < bars.length; i++) {
-    if (i < period - 1) { result.push('-'); continue }
-    let sum = 0
-    for (let j = 0; j < period; j++) sum += bars[i - j].close
-    result.push(+(sum / period).toFixed(2))
-  }
-  return result
-}
-
-const chartOption = computed(() => {
-  const bars = result.value?.kline_bars
-  if (!bars?.length) return {}
-  const dates = bars.map(b => b.time.slice(5, 10))
-  const ohlc = bars.map(b => [b.open, b.close, b.low, b.high])
-  const volumes = bars.map(b => b.volume)
-  const ma5 = calcMA(bars, 5)
-  const ma10 = calcMA(bars, 10)
-  const ma20 = calcMA(bars, 20)
-
-  const markLines: { yAxis: number; label: { formatter: string; color: string }; lineStyle: { color: string; type?: string } }[] = []
-  const markAreas: { yAxis: number; itemStyle: { color: string; opacity: number } }[] = []
-
-  const tp = result.value?.trade_plan
-  if (tp?.stop_loss) markLines.push({ yAxis: tp.stop_loss, label: { formatter: `止损 ${tp.stop_loss}`, color: 'var(--el-color-danger)' }, lineStyle: { color: 'var(--el-color-danger)', type: 'dashed' } })
-  if (tp?.take_profit) markLines.push({ yAxis: tp.take_profit, label: { formatter: `止盈 ${tp.take_profit}`, color: 'var(--el-color-success)' }, lineStyle: { color: 'var(--el-color-success)', type: 'dashed' } })
-  if (tp?.entry) markLines.push({ yAxis: tp.entry, label: { formatter: `入场 ${tp.entry}`, color: '#409eff' }, lineStyle: { color: '#409eff' } })
-
-  const fibs = result.value?.fib_levels
-  if (fibs) Object.entries(fibs).forEach(([k, v]) => {
-    markLines.push({ yAxis: v as number, label: { formatter: `Fib ${k} ${v}`, color: 'var(--el-color-warning)' }, lineStyle: { color: 'var(--el-color-warning)', type: 'dashed' } })
-  })
-
-  const zones = result.value?.zones || []
-  zones.forEach((z: any) => {
-    const hi = z.high ?? z.price_max
-    const lo = z.low ?? z.price_min
-    if (hi && lo) {
-      markLines.push({ yAxis: hi, label: { formatter: `区顶 ${hi}`, color: 'var(--text-muted)' }, lineStyle: { color: 'var(--text-muted)', type: 'dotted' } })
-      markLines.push({ yAxis: lo, label: { formatter: `区底 ${lo}`, color: 'var(--text-muted)' }, lineStyle: { color: 'var(--text-muted)', type: 'dotted' } })
-    }
-  })
-
-  return {
-    backgroundColor: 'transparent',
-    animation: false,
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: { type: 'cross' },
-      backgroundColor: 'rgba(30,30,30,0.85)',
-      borderWidth: 0,
-      borderRadius: 8,
-      padding: 12,
-      textStyle: { color: 'var(--text-secondary)', fontSize: 12 },
-      formatter(params: unknown[]) {
-        const arr = params as { seriesName: string; dataIndex: number }[]
-        const idx = arr?.[0]?.dataIndex
-        if (idx === undefined || !bars[idx]) return ''
-        const b = bars[idx]
-        const chg = ((b.close - b.open) / b.open * 100).toFixed(2)
-        const chgClr = b.close >= b.open ? 'var(--el-color-danger)' : 'var(--el-color-success)'
-        const row = (k: string, v: string, c = 'var(--text-secondary)') => `<div style="display:flex;justify-content:space-between;gap:18px;line-height:1.6"><span style="color:var(--text-muted)">${k}</span><span style="color:${c};font-weight:500">${v}</span></div>`
-        return `<div style="padding:4px 6px;min-width:150px"><div style="font-weight:bold;margin-bottom:4px">${b.time}</div>${row('开盘', b.open.toFixed(2))}${row('最高', b.high.toFixed(2), 'var(--el-color-danger)')}${row('最低', b.low.toFixed(2), 'var(--el-color-success)')}${row('收盘', b.close.toFixed(2))}${row('涨跌幅', `${chg}%`, chgClr)}${row('成交量', (b.volume / 100 / 1e4).toFixed(2) + '万手')}</div>`
-      },
-    },
-    legend: { top: 4, left: 'center', textStyle: { color: '#ccc' }, data: ['K线', 'MA5', 'MA10', 'MA20', '成交量'] },
-    grid: [
-      { left: 50, right: 20, top: 36, bottom: '28%' },
-      { left: 50, right: 20, top: '75%', bottom: 50 },
-    ],
-    xAxis: [
-      { type: 'category', data: dates, scale: true, boundaryGap: false, axisLine: { lineStyle: { color: '#444' } }, splitLine: { show: false }, axisLabel: { color: '#999', fontSize: 10 }, gridIndex: 0 },
-      { type: 'category', data: dates, scale: true, boundaryGap: false, axisLine: { lineStyle: { color: '#444' } }, splitLine: { show: false }, axisLabel: { show: false }, gridIndex: 1 },
-    ],
-    yAxis: [
-      { scale: true, splitArea: { show: false }, axisLine: { lineStyle: { color: '#444' } }, splitLine: { lineStyle: { color: '#333', type: 'dashed' } }, axisLabel: { color: '#999', fontSize: 10 }, gridIndex: 0 },
-      { scale: true, splitArea: { show: false }, axisLine: { lineStyle: { color: '#444' } }, splitLine: { show: false }, axisLabel: { color: '#999', fontSize: 10, formatter: (v: number) => (v / 100 / 1e4).toFixed(0) + '万' }, gridIndex: 1 },
-    ],
-    dataZoom: [
-      { type: 'inside', xAxisIndex: [0, 1], start: 0, end: 100 },
-      { type: 'slider', xAxisIndex: [0, 1], bottom: 8, height: 18, start: 0, end: 100, textStyle: { color: '#999' }, borderColor: 'transparent', fillerColor: 'rgba(63,127,174,0.1)', handleStyle: { color: '#888', opacity: 0.5 }, dataBackground: { lineStyle: { opacity: 0 }, areaStyle: { opacity: 0 } }, selectedDataBackground: { lineStyle: { opacity: 0 }, areaStyle: { opacity: 0 } } },
-    ],
-    series: [
-      {
-        name: 'K线', type: 'candlestick', data: ohlc,
-        itemStyle: { color: RISE_COLOR, color0: FALL_COLOR, borderColor: RISE_COLOR, borderColor0: FALL_COLOR },
-        xAxisIndex: 0, yAxisIndex: 0,
-        markLine: { silent: true, symbol: ['none', 'none'], data: markLines },
-      },
-      { name: 'MA5', type: 'line', data: ma5, smooth: true, lineStyle: { width: 1, color: '#ffc107' }, showSymbol: false, xAxisIndex: 0, yAxisIndex: 0 },
-      { name: 'MA10', type: 'line', data: ma10, smooth: true, lineStyle: { width: 1, color: '#9c27b0' }, showSymbol: false, xAxisIndex: 0, yAxisIndex: 0 },
-      { name: 'MA20', type: 'line', data: ma20, smooth: true, lineStyle: { width: 1, color: '#2196f3' }, showSymbol: false, xAxisIndex: 0, yAxisIndex: 0 },
-      {
-        name: '成交量', type: 'bar', data: volumes.map(v => ({ value: v, itemStyle: { color: '#888' } })),
-        xAxisIndex: 1, yAxisIndex: 1,
-      },
-    ],
-  }
-})
-
-const RISE_COLOR = 'var(--el-color-danger)'
-const FALL_COLOR = 'var(--el-color-success)'
 
 const stepDefs = [
   { label: '数据获取', pct: 20 },
@@ -843,12 +724,7 @@ onMounted(() => {
 onUnmounted(() => {
   stopPolling()
   if (statusPollTimer) { clearInterval(statusPollTimer); statusPollTimer = null }
-})
-
-watch(() => result.value?.kline_bars, () => {
-  nextTick(() => {
-    klineChartRef.value?.resize()
-  })
+  if (scanPollTimer) { clearInterval(scanPollTimer); scanPollTimer = null }
 })
 </script>
 

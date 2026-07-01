@@ -12,6 +12,16 @@ export interface PaTradePlan {
   r_r_ratio: string
 }
 
+export interface PaBacktestTrade {
+  entry_date: string
+  exit_date: string
+  entry_price: number
+  exit_price: number
+  outcome: string
+  direction: string
+  r_multiple?: number
+}
+
 export interface PaBacktest {
   total_trades: number
   win_rate: number
@@ -22,6 +32,8 @@ export interface PaBacktest {
   max_consecutive_losses: number
   expectancy: number
   message?: string
+  equity_curve?: number[]
+  trades?: PaBacktestTrade[]
 }
 
 export interface PaKlineBar {
@@ -31,6 +43,18 @@ export interface PaKlineBar {
   low: number
   close: number
   volume: number
+}
+
+export interface PaMultiTfEntry {
+  trend: string
+  structure: string
+}
+
+export interface PaMultiTf {
+  daily: PaMultiTfEntry
+  weekly: PaMultiTfEntry | null
+  monthly: PaMultiTfEntry | null
+  resonance: string
 }
 
 export interface PaSignal {
@@ -52,6 +76,11 @@ export interface PaSignal {
   error?: string
   ai_commentary?: string
   kline_bars?: PaKlineBar[]
+  /** 多周期融合视图（daily+weekly+monthly） */
+  multi_tf?: PaMultiTf
+  /** HTF 趋势（兼容旧字段，取 weekly） */
+  htf_trend?: string | null
+  trend_warning?: string
 }
 
 export const priceActionApi = {

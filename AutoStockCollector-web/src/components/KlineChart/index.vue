@@ -179,9 +179,9 @@ const chartOption = computed(() => {
         yAxis: level.price,
         label: {
           formatter: `支撑 ${level.price.toFixed(2)}`,
-          color: 'var(--el-color-success)',
+          color: ct().downColor,
         },
-        lineStyle: { color: 'var(--el-color-success)' },
+        lineStyle: { color: ct().downColor },
       })
     })
     props.resistanceLevels.forEach(level => {
@@ -189,9 +189,9 @@ const chartOption = computed(() => {
         yAxis: level.price,
         label: {
           formatter: `压力 ${level.price.toFixed(2)}`,
-          color: 'var(--el-color-danger)',
+          color: ct().upColor,
         },
-        lineStyle: { color: 'var(--el-color-danger)' },
+        lineStyle: { color: ct().upColor },
       })
     })
   }
@@ -318,7 +318,7 @@ const chartOption = computed(() => {
         const amtStr = Number.isFinite(amt) && amt > 0
           ? (amt >= 1e8 ? `${(amt / 1e8).toFixed(2)} 亿` : `${(amt / 1e4).toFixed(2)} 万`)
           : '--'
-        const chgColor = Number.isFinite(chg) ? (chg >= 0 ? 'var(--el-color-danger)' : 'var(--el-color-success)') : ct().tooltipText
+        const chgColor = Number.isFinite(chg) ? (chg >= 0 ? ct().upColor : ct().downColor) : ct().tooltipText
         const chgStr = Number.isFinite(chg) ? `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%` : '--'
         const row = (k: string, v: string, color = ct().tooltipText) =>
           `<div style="display:flex;justify-content:space-between;gap:18px;line-height:1.6"><span style="color:var(--text-muted)">${k}</span><span style="color:${color};font-weight:500">${v}</span></div>`
