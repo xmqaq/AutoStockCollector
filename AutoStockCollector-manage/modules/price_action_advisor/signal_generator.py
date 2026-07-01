@@ -109,12 +109,17 @@ def generate_signal(
     bars: List[Dict],
     market_struct: Dict[str, Any],
     sd_result: Dict[str, Any],
+    current_price_override: Optional[float] = None,
 ) -> Dict[str, Any]:
-    """综合判断，生成买卖信号。"""
+    """综合判断，生成买卖信号。
+
+    current_price_override: 优先使用的实时价（来自 get_spot，带守护）；
+        None 时回退 bars[-1]["close"]。
+    """
     if not bars or len(bars) < 20:
         return {"symbol": code, "signal": "NO_DATA", "message": "数据不足"}
 
-    current_price = bars[-1]["close"]
+    current_price = current_price_override if (current_price_override and current_price_override > 0) else bars[-1]["close"]
     trend = market_struct.get("trend", "Ranging")
     patterns = _detect_candlestick_patterns(bars)
     fibs = _calculate_fib_levels(bars, trend, market_struct.get("recent_high", current_price), market_struct.get("recent_low", current_price))

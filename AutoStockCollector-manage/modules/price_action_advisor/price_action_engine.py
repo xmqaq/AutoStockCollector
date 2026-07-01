@@ -10,6 +10,7 @@ from .market_structure import detect_market_structure
 from .supply_demand import analyze_supply_demand
 from .signal_generator import generate_signal
 from .risk_manager import calculate_trade_plan
+from .multi_timeframe import fuse_timefaces
 from .backtest import backtest_signal, get_backtest_cache, save_backtest_cache, _backtest_cache_key
 
 logger = get_logger(__name__)
@@ -26,6 +27,7 @@ class PriceActionEngine:
         account_balance: float = 100000.0,
         use_ai: bool = False,
         progress_callback: Optional[Callable[[int, str], None]] = None,
+        multi_tf_depth: str = "full",
     ) -> Dict[str, Any]:
         """对单只股票执行全链路分析。
 
@@ -36,6 +38,8 @@ class PriceActionEngine:
             account_balance: 账户总资金
             use_ai: 是否启用 LLM 分析解读
             progress_callback: 进度回调 (progress%, message)
+            multi_tf_depth: 多周期融合深度 — "full" 拉 weekly+monthly 三级；
+                "fast" 仅 weekly 两级（扫描用，防超时）。默认 full。
         Returns:
             signal dict
         """
@@ -59,15 +63,18 @@ class PriceActionEngine:
 
             spot_data = get_spot([symbol])
             name = ""
+            spot_price = 0.0
             if spot_data:
                 norm = _normalize_code(symbol)
                 entry = spot_data.get(norm) or spot_data.get(symbol) or None
                 if entry:
                     name = entry.get("name", "")
+                    spot_price = float(entry.get("price") or entry.get("current_price") or 0.0)
                 else:
                     for v in spot_data.values():
                         if v.get("name"):
                             name = v["name"]
+                            spot_price = float(v.get("price") or v.get("current_price") or 0.0)
                             break
 
             if not name:
@@ -82,112 +89,72 @@ class PriceActionEngine:
                 except Exception:
                     pass
 
+            # 实时价守护：spot_price>0 且未偏离 K线收盘价 11% 以上才采用（防停牌/涨停板异常价），
+            # 否则回退 bars[-1]["close"]（akshare 回退路径下为昨收，仍优于 0）。
+            kline_close = bars[-1].get("close", 0.0) if bars else 0.0
+            if spot_price > 0 and (kline_close <= 0 or abs(spot_price - kline_close) / kline_close <= 0.11):
+                current_price = spot_price
+            else:
+                current_price = kline_close
+
             report(35, "实时行情获取完成")
 
             market_struct = detect_market_structure(bars)
             report(50, "市场结构分析完成")
 
-            # 多周期融合：自动拉高一个周期做趋势过滤
-            htf_map = {"5m": "30m", "15m": "60m", "30m": "daily", "60m": "daily", "daily": "weekly", "weekly": "monthly"}
-            htf = htf_map.get(timeframe, "daily")
-            if htf != timeframe:
-                htf_bars = get_kline(symbol, htf, count=PAConfig.KLINE_DAYS)
-                if htf_bars and len(htf_bars) >= PAConfig.MIN_KLINE_BARS:
-                    htf_struct = detect_market_structure(htf_bars)
-                    htf_trend = htf_struct.get("trend", "Ranging")
-                    htf_structure = htf_struct.get("structure", "Ranging")
-                    current_trend = market_struct.get("trend", "Ranging")
-                    is_htf_bullish = htf_trend in ("Bullish", "Strong Bullish")
-                    is_htf_bearish = htf_trend in ("Bearish", "Strong Bearish")
-                    is_tf_bullish = current_trend in ("Bullish", "Strong Bullish")
-                    is_tf_bearish = current_trend in ("Bearish", "Strong Bearish")
-
-                    market_struct["htf_trend"] = htf_trend
-                    market_struct["htf_timeframe"] = htf
-                    market_struct["htf_structure"] = htf_structure
-                    market_struct["htf_swing_high"] = htf_struct.get("last_swing_high")
-                    market_struct["htf_swing_low"] = htf_struct.get("last_swing_low")
-
-                    # HTF 趋势成熟度判断：Strong Bullish 表示已经 3 次 HH，可能接近末端
-                    htf_mature = htf_structure in ("Strong Bullish", "Strong Bearish")
-                    market_struct["htf_mature"] = htf_mature
-
-                    # HTF 支撑/阻力距离
-                    current_price = bars[-1]["close"]
-                    htf_high = htf_struct.get("last_swing_high")
-                    htf_low = htf_struct.get("last_swing_low")
-                    if htf_high and current_price:
-                        htf_resist_pct = (htf_high - current_price) / current_price * 100
-                        market_struct["htf_resist_pct"] = round(htf_resist_pct, 1)
-                    if htf_low and current_price:
-                        htf_support_pct = (current_price - htf_low) / current_price * 100
-                        market_struct["htf_support_pct"] = round(htf_support_pct, 1)
-
-                    trend_conflict = False
-                    warnings = []
-                    if is_tf_bullish and is_htf_bearish:
-                        trend_conflict = True
-                        warnings.append(f"次级上升但{htf}下降 — 逆大势信号降级")
-                    elif is_tf_bearish and is_htf_bullish:
-                        trend_conflict = True
-                        warnings.append(f"次级下降但{htf}上升 — 逆大势信号降级")
-
-                    if htf_mature:
-                        mature_dir = "上升" if htf_trend == "Bullish" else "下降"
-                        warnings.append(f"{htf}趋势已到第3次HH，{mature_dir}可能接近末端")
-                        if is_tf_bullish and htf_trend == "Bullish":
-                            warnings.append(f"{htf}趋势成熟，做多需谨慎")
-
-                    # 价格靠近 HTF 阻力/支撑
-                    if htf_high and current_price and abs(htf_resist_pct) < 3:
-                        warnings.append(f"价格接近{htf}阻力 {htf_high}")
-                    if htf_low and current_price and abs(htf_support_pct) < 3:
-                        warnings.append(f"价格接近{htf}支撑 {htf_low}")
-
-                    market_struct["trend_conflict"] = "conflict" if trend_conflict else None
-                    market_struct["trend_warning"] = "; ".join(warnings) if warnings else ""
-                else:
-                    market_struct["htf_trend"] = None
-                    market_struct["trend_conflict"] = None
-                    market_struct["trend_warning"] = ""
-            else:
-                market_struct["htf_trend"] = None
-                market_struct["trend_conflict"] = None
-                market_struct["trend_warning"] = ""
+            # 多周期融合：daily(触发) + weekly(中期) + monthly(宏观)，权重 monthly>weekly>daily
+            tf_structs = self._collect_tf_structs(symbol, timeframe, market_struct, multi_tf_depth)
+            fusion = fuse_timefaces(tf_structs)
+            report(60, f"多周期融合完成（{fusion['resonance']}）")
 
             sd_result = analyze_supply_demand(bars)
             report(65, "供需区识别完成")
 
-            signal = generate_signal(symbol, name, bars, market_struct, sd_result)
+            signal = generate_signal(symbol, name, bars, market_struct, sd_result,
+                                     current_price_override=current_price)
             report(75, "信号生成完成")
 
-            # 若高周期趋势冲突或成熟，降级信号（互斥：冲突 > 成熟）
-            conflict = market_struct.get("trend_conflict")
-            htf_mature = market_struct.get("htf_mature", False)
-            sig_type = signal.get("signal", "NO_TRADE")
-            downgraded = False
-            if conflict and sig_type in ("BUY_SETUP", "SELL_SETUP"):
-                downgrade_map = {"BUY_SETUP": "WEAK_BUY", "SELL_SETUP": "WEAK_SELL"}
-                signal["signal"] = downgrade_map.get(sig_type, sig_type)
+            # 融合结果作为宏观约束覆盖触发信号：
+            # - fusion NO_TRADE（逆月线）→ 强制 NO_TRADE
+            # - fusion WEAK_* → generate_signal 的强信号降为弱信号
+            # - fusion NEUTRAL → 保持原值（大周期无趋势，由触发条件决定）
+            # - fusion BUY_SETUP/SELL_SETUP → 保持 generate_signal 原值（共振不强行提升，触发条件仍需满足）
+            hint = fusion["signal_hint"]
+            orig_signal = signal.get("signal", "NO_TRADE")
+            if hint == "NO_TRADE" and orig_signal not in ("NO_TRADE", "NO_DATA", "ERROR"):
+                signal["signal"] = "NO_TRADE"
+                signal["confidence"] = 0
+                signal["reasons"].insert(0, f"⚠️ {fusion['resonance']}，逆大势不做")
+            elif hint == "WEAK_BUY" and orig_signal == "BUY_SETUP":
+                signal["signal"] = "WEAK_BUY"
                 signal["confidence"] = max(signal["confidence"] - 1, 1)
-                signal["reasons"].insert(0, f"⚠️ {market_struct.get('trend_warning', '')}")
-                downgraded = True
-            elif htf_mature and not downgraded:
-                # HTF 趋势成熟时，同向信号也降一级；若已有冲突降级则不再叠加
-                is_long = sig_type in ("BUY_SETUP", "WEAK_BUY")
-                htf_bull = market_struct.get("htf_trend") in ("Bullish", "Strong Bullish")
-                if is_long and htf_bull:
-                    if sig_type == "BUY_SETUP":
-                        signal["signal"] = "WEAK_BUY"
-                    signal["confidence"] = max(signal["confidence"] - 1, 1)
-                    signal["reasons"].insert(0, f"⚠️ {market_struct.get('trend_warning', '')}")
-                elif not is_long and not htf_bull:
-                    if sig_type == "SELL_SETUP":
-                        signal["signal"] = "WEAK_SELL"
-                    signal["confidence"] = max(signal["confidence"] - 1, 1)
-                    signal["reasons"].insert(0, f"⚠️ {market_struct.get('trend_warning', '')}")
+                signal["reasons"].insert(0, f"⚠️ {fusion['resonance']}，强信号降级")
+            elif hint == "WEAK_SELL" and orig_signal == "SELL_SETUP":
+                signal["signal"] = "WEAK_SELL"
+                signal["confidence"] = max(signal["confidence"] - 1, 1)
+                signal["reasons"].insert(0, f"⚠️ {fusion['resonance']}，强信号降级")
 
-            current_price = bars[-1]["close"]
+            # 融合置信度调整（三周期共振 +1 封顶 5；月线逆势 -1 最低 1）
+            if fusion["confidence_delta"] != 0 and signal.get("confidence", 0) > 0:
+                signal["confidence"] = max(min(signal["confidence"] + fusion["confidence_delta"], 5), 1)
+
+            # 融合警告（成熟度/冲突）追加到 reasons，不二次降级
+            for w in fusion["warnings"]:
+                signal["reasons"].append(f"⚠️ {w}")
+
+            # 回写 htf_* 与 multi_tf 到 signal（修 P1：storage 读这些字段）
+            weekly_struct = tf_structs.get("weekly") or {}
+            monthly_struct = tf_structs.get("monthly") or {}
+            signal["htf_trend"] = weekly_struct.get("trend")
+            signal["htf_timeframe"] = "weekly" if weekly_struct else None
+            signal["htf_structure"] = weekly_struct.get("structure")
+            signal["htf_mature"] = (weekly_struct.get("structure") in ("Strong Bullish", "Strong Bearish")) if weekly_struct else False
+            signal["htf_swing_high"] = weekly_struct.get("last_swing_high")
+            signal["htf_swing_low"] = weekly_struct.get("last_swing_low")
+            signal["trend_warning"] = "; ".join(fusion["warnings"]) if fusion["warnings"] else ""
+            signal["trend_conflict"] = None  # 旧字段兼容，融合后不再用 conflict 降级
+            signal["multi_tf"] = fusion["multi_tf"]
+
             demand_zones = sd_result.get("demand_zones", [])
             supply_zones = sd_result.get("supply_zones", [])
             atr = sd_result.get("atr", 0)
@@ -254,6 +221,9 @@ class PriceActionEngine:
                         "sharpe_ratio": bt_result["sharpe_ratio"],
                         "max_consecutive_losses": bt_result["max_consecutive_losses"],
                         "expectancy": bt_result["expectancy"],
+                        # 透传权益曲线与交易明细，供前端可视化（trades 末20条/equity_curve≤20点，增<2KB）
+                        "equity_curve": bt_result.get("equity_curve", []),
+                        "trades": bt_result.get("trades", []),
                     }
                     report(82, "回测验证完成")
                 else:
@@ -298,3 +268,38 @@ class PriceActionEngine:
             logger.error(f"[PAEngine] {symbol} failed: {e}")
             report(100, f"分析失败: {e}")
             return {"symbol": symbol, "signal": "ERROR", "error": str(e)}
+
+    def _collect_tf_structs(
+        self,
+        symbol: str,
+        timeframe: str,
+        daily_struct: Dict[str, Any],
+        depth: str = "full",
+    ) -> Dict[str, Dict[str, Any]]:
+        """收集多周期市场结构供融合。depth=full 拉 weekly+monthly，fast 仅 weekly。
+
+        主周期(daily/指定 timeframe)结构由调用方已算好传入，避免重复计算。
+        HTF 周期映射：daily→weekly→monthly；其他周期升一级（5m→30m 等）。
+        """
+        tf_structs = {timeframe: daily_struct}
+        htf_map = {
+            "5m": "30m", "15m": "60m", "30m": "daily", "60m": "daily",
+            "daily": "weekly", "weekly": "monthly",
+        }
+        # fast: 只升一级；full: 升两级（daily→weekly→monthly）
+        chain = [htf_map.get(timeframe, "daily")]
+        if depth == "full" and htf_map.get(htf_map.get(timeframe)):
+            chain.append(htf_map[htf_map[timeframe]])
+        for htf in chain:
+            if htf == timeframe or htf in tf_structs:
+                continue
+            try:
+                htf_bars = get_kline(symbol, htf, count=PAConfig.KLINE_DAYS)
+                if htf_bars and len(htf_bars) >= PAConfig.MIN_KLINE_BARS:
+                    tf_structs[htf] = detect_market_structure(htf_bars)
+            except Exception as e:
+                logger.warning(f"[PAEngine] {symbol} {htf} struct fetch failed: {e}")
+        # 归一化 key：把主周期统一记为 daily（融合函数按 daily/weekly/monthly 取）
+        if timeframe != "daily" and "daily" not in tf_structs:
+            tf_structs["daily"] = daily_struct
+        return tf_structs

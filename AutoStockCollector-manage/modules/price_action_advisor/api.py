@@ -382,7 +382,7 @@ def _run_scan(scan_id: str, symbols: list, timeframe: str, risk_pct: float, bala
             if not symbol or not SYMBOL_RE.match(symbol):
                 return
             try:
-                sig = engine.analyze(symbol, timeframe=timeframe, risk_pct=risk_pct, account_balance=balance, use_ai=False)
+                sig = engine.analyze(symbol, timeframe=timeframe, risk_pct=risk_pct, account_balance=balance, use_ai=False, multi_tf_depth="fast")
                 if sig.get("signal") in ("BUY_SETUP", "SELL_SETUP", "WEAK_BUY", "WEAK_SELL"):
                     with _scan_results_lock:
                         results.append(sig)
