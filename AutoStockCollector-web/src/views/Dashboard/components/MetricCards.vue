@@ -72,7 +72,6 @@ import { fmtAmount } from '@/utils/format'
 import { Wallet, Trophy, MagicStick, Odometer } from '@element-plus/icons-vue'
 import { paperApi } from '@/api/paper'
 import { strategyPickApi } from '@/api/strategyPick'
-import { monitorApi } from '@/api/monitor'
 
 const props = defineProps<{
   dataLoaded: boolean
@@ -107,11 +106,10 @@ function getSentimentText(score: number) {
 
 async function loadData() {
   try {
-    const [accRes, statsRes, picksRes, sentimentRes, rankingRes] = await Promise.all([
+    const [accRes, statsRes, picksRes, rankingRes] = await Promise.all([
       paperApi.getAccount(),
       paperApi.getStats(),
       strategyPickApi.getHistory(), // Just get latest to see if it's today
-      monitorApi.getSectorSentiment(),
       paperApi.getRanking(true) // Get live ranking for accurate total_asset
     ])
     
@@ -170,10 +168,8 @@ async function loadData() {
       }
     }
     
-    if (sentimentRes.data?.data) {
-      // Aggregate the sector sentiment or just take a default
-      sentimentScore.value = 55 // hardcoded fallback or calculate average
-    }
+    // 板块舆情接口已随监控重构移除，保留中性默认值
+    sentimentScore.value = 55
   } catch (err) {
     console.error('Failed to load metric card data', err)
   }

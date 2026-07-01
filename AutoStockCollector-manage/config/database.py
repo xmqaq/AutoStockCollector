@@ -146,6 +146,13 @@ class DatabaseConfig:
         cls._safe_index(db.paper_orders, [("user_id", 1), ("status", 1), ("created_at", -1)])
         cls._safe_index(db.paper_orders, [("user_id", 1), ("code", 1), ("status", 1)])
 
+        # AI 监控实时快照（独立集合，不污染 fund_flow 日级数据）
+        cls._safe_index(db.monitor_realtime, [("code", 1)], unique=True)
+        cls._safe_index(db.monitor_realtime, [("updated_at", -1)])
+        # AI 监控 LLM 预测当日缓存（控成本：同股同日不重复调 LLM）
+        cls._safe_index(db.monitor_ai_advice_cache, [("code", 1), ("date", 1)], unique=True)
+        cls._safe_index(db.monitor_ai_advice_cache, [("date", 1)])
+
         # 价格行为学缓存 & 扫描结果
         cls._dedup_collection(db.pa_quotes_cache, "cache_key")
         cls._safe_index(db.pa_quotes_cache, [("cache_key", 1)], unique=True)

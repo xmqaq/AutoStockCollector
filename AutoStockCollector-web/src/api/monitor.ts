@@ -39,6 +39,30 @@ export interface TradingAdvice {
     change_pct: number
     summary: string
   }
+  /** LLM 预测建议（与规则 advice 并列，由 /signals/<code>/ai-advice 或 cron 写入） */
+  ai_advice?: AiAdvice
+}
+
+export interface AiAdvice {
+  action: string
+  confidence: number
+  target_price: number
+  stop_loss: number
+  reason: string
+  predicted_at?: string
+  code?: string
+}
+
+export interface RealtimeQuote {
+  code: string
+  price: number
+  change_rate: number
+  volume_ratio: number
+  turnover: number
+  main_net_inflow: number
+  main_inflow?: number
+  main_outflow?: number
+  total_amount?: number
 }
 
 export interface SectorFlow {
@@ -114,6 +138,9 @@ export interface MonitorSignal {
   price: number
   change_rate: number
   industry: string
+  sources?: MonitorSource[]
+  consecutive_days?: number
+  strong_signal?: boolean
   concepts?: string[]
   concept_details?: { name: string; change_pct: number; net_flow: number }[]
   sector_flow?: SectorFlow
@@ -181,11 +208,11 @@ export const monitorApi = {
   scan() {
     return client.get('/api/v1/monitor/scan')
   },
-  getSectorSentiment() {
-    return client.get('/api/v1/monitor/sector-sentiment')
+  getRealtime() {
+    return client.get('/api/v1/monitor/realtime')
   },
-  getFundFlowAnomalies(days = 5, limit = 100) {
-    return client.get('/api/v1/monitor/fund-flow-anomalies', { params: { days, limit } })
+  getAiAdvice(code: string, force = false) {
+    return client.post(`/api/v1/monitor/signals/${encodeURIComponent(code)}/ai-advice${force ? '?force=1' : ''}`)
   },
   getPortfolio() {
     return client.get('/api/v1/monitor/portfolio')
@@ -195,9 +222,9 @@ export const monitorApi = {
   },
 }
 
-// ── 监控调仓（三来源：持仓 / 自选股 / AI智选候选）──
+// ── 监控调仓（四来源：持仓 / 自选股 / AI智选 / 投研分析）──
 
-export type MonitorSource = 'position' | 'watchlist' | 'fusion_pick'
+export type MonitorSource = 'position' | 'watchlist' | 'fusion_pick' | 'research'
 
 // 组合建议单项 = 身份 + 生命周期字段 + 现有 trading_advice 全部字段
 export interface MonitorAdvice extends TradingAdvice {
@@ -263,17 +290,20 @@ export interface FundFlowAnomaly {
   name: string
   latest_date: string
   latest_net: number
-  latest_amount: number
-  latest_price: number
-  latest_change: number
-  latest_turnover: number
-  avg_net: number
-  std_net: number
+  latest_amount?: number
+  latest_price?: number
+  latest_change?: number
+  latest_turnover?: number
+  avg_net?: number
+  std_net?: number
   z_score: number
   consecutive_days: number
-  net_ratio: number
+  net_ratio?: number
   reversal: boolean
   anomaly_score: number
   anomaly_type: string
-  data_days: number
+  data_days?: number
+  is_holding?: boolean
+  in_monitor?: boolean
+  monitor_sources?: string[]
 }

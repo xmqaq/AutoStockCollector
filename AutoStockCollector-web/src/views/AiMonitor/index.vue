@@ -256,9 +256,18 @@ function showStockDetail(code: string) {
   if (s) showDetail(s)
 }
 
+function isTradingNow(): boolean {
+  const now = new Date()
+  const day = now.getDay()
+  if (day === 0 || day === 6) return false
+  const t = now.getHours() * 60 + now.getMinutes()
+  return (t >= 570 && t <= 690) || (t >= 780 && t <= 900) // 9:30-11:30 / 13:00-15:00
+}
+
 onMounted(() => {
   fetchSignals()
-  refreshTimer = setInterval(fetchSignals, 60000)
+  // 盘中 30s 拿实时数据，非交易时段 60s
+  refreshTimer = setInterval(fetchSignals, isTradingNow() ? 30000 : 60000)
 })
 
 onUnmounted(() => {

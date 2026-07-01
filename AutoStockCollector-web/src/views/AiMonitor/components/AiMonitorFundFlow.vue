@@ -160,9 +160,20 @@ function handleRowClick(row: FundFlowAnomaly) {
 async function fetchData() {
   loading.value = true
   try {
-    const res = await monitorApi.getFundFlowAnomalies()
-    items.value = res.data?.data ?? []
-    summary.value = res.data?.summary ?? summary.value
+    // 异动数据来自 /portfolio 的 anomaly_alerts（重构后统一由 anomaly.py 产出）
+    const res = await monitorApi.getPortfolio()
+    const data = res.data?.data
+    items.value = (data?.anomaly_alerts as FundFlowAnomaly[]) ?? []
+    // 汇总摘要（anomaly_alerts 无 summary，按 anomaly_type 统计）
+    const types = items.value.map(i => i.anomaly_type)
+    summary.value = {
+      total: items.value.length,
+      big_inflow: types.filter(t => t === '大幅流入').length,
+      big_outflow: types.filter(t => t === '大幅流出').length,
+      consec_inflow: types.filter(t => t === '连续流入').length,
+      consec_outflow: types.filter(t => t === '连续流出').length,
+      reversals: items.value.filter(i => i.reversal).length,
+    }
   } catch {
     items.value = []
   } finally {

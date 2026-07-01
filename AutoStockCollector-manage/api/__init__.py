@@ -56,9 +56,6 @@ def create_app():
     from api.routes import register_routes
     register_routes(app)
 
-    from api.routes.news_hotspot import news_hotspot_bp
-    app.register_blueprint(news_hotspot_bp)
-
     _bootstrap(app)
 
     return app

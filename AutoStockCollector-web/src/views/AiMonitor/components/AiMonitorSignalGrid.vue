@@ -82,6 +82,9 @@
             <el-tag :type="adviceTagType(s.trading_advice?.action_signal)" size="small" effect="dark" class="pp-action-tag">
               {{ s.trading_advice?.action || '--' }}
             </el-tag>
+            <el-tag v-if="s.trading_advice?.ai_advice" type="primary" size="small" effect="plain" class="pp-action-tag" title="AI预测：置信度与理由">
+              AI:{{ s.trading_advice.ai_advice.action }}·{{ (s.trading_advice.ai_advice.confidence * 100).toFixed(0) }}%
+            </el-tag>
             <span class="pp-row-target">目标 <strong class="up">{{ fmtPrice(s.price_prediction.target_price) }}</strong></span>
             <span class="pp-row-stop">止损 <strong class="down">{{ fmtPrice(s.price_prediction.stop_loss) }}</strong></span>
             <span class="pp-row-return">预期 <strong :class="s.price_prediction.expected_return >= 0 ? 'up' : 'down'">{{ s.price_prediction.expected_return >= 0 ? '+' : '' }}{{ s.price_prediction.expected_return.toFixed(1) }}%</strong></span>

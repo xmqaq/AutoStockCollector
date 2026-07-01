@@ -7,10 +7,11 @@ logger = get_logger(__name__)
 
 
 class MonitorStorage:
-    """AI 监控数据存储 — 信号 + 历史轨迹 + 配置"""
+    """AI 监控数据存储 — 信号 + 历史轨迹 + 实时快照"""
 
     SIGNALS_COL = "monitor_signals"
     HISTORY_COL = "monitor_signal_history"
+    REALTIME_COL = "monitor_realtime"  # 实时行情+资金流快照（独立集合，不污染 fund_flow 日级数据）
 
     def __init__(self):
         from config.database import DatabaseConfig
@@ -92,3 +93,28 @@ class MonitorStorage:
         for d in docs:
             d.pop("_id", None)
         return docs
+
+    # ── 实时快照（独立集合，不写 fund_flow） ──
+
+    def upsert_realtime(self, code: str, doc: Dict[str, Any]):
+        doc = dict(doc)
+        doc["code"] = code
+        doc["updated_at"] = datetime.now()
+        self.db[self.REALTIME_COL].update_one(
+            {"code": code}, {"$set": doc}, upsert=True,
+        )
+
+    def get_realtime(self, code: str) -> Optional[Dict[str, Any]]:
+        d = self.db[self.REALTIME_COL].find_one({"code": code})
+        if d:
+            d.pop("_id", None)
+        return d
+
+    def get_realtime_many(self, codes: List[str]) -> Dict[str, Dict[str, Any]]:
+        if not codes:
+            return {}
+        out: Dict[str, Dict[str, Any]] = {}
+        for d in self.db[self.REALTIME_COL].find({"code": {"$in": codes}}):
+            d.pop("_id", None)
+            out[d.get("code", "")] = d
+        return out

@@ -1,8 +1,10 @@
-"""
-AI 实时监控 API 路由 — 主力资金流量 + 研报分析，长短线投资建议
+"""AI 实时监控 API 路由 — 四来源股票池 + 实时数据 + 规则/LLM 双建议
+
+重构后：删除 backtest/sector-sentiment/fund-flow-anomalies（噪音或重复），
+新增 /realtime（池中股票实时快照）、/signals/<code>/ai-advice（单股LLM预测）。
+异动检测统一走 anomaly.py，由 /portfolio 的 anomaly_alerts 返回。
 """
 import threading
-from typing import Dict
 from flask import Blueprint, jsonify, request, g
 
 from modules.monitor.storage import MonitorStorage
@@ -19,8 +21,7 @@ _refresh_lock = threading.Lock()
 
 
 def _get_user_stock_codes(user_id: str) -> set:
-    """用户监控名单的股票代码集合（持仓 + 自选 + AI智选候选）。
-    统一走 MonitorEngine._collect_stocks，不再重复维护查询逻辑。"""
+    """用户监控名单的股票代码集合（持仓 + 自选 + AI智选 + 投研分析）。"""
     try:
         return {s["code"] for s in _get_engine()._collect_stocks(user_id) if s.get("code")}
     except Exception as e:
@@ -80,14 +81,46 @@ def get_signal_history(code: str):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@monitor_bp.route("/signals/<code>/ai-advice", methods=["POST"])
+@login_required
+def get_ai_advice(code: str):
+    """单股 LLM 买卖建议（按需触发，受当日缓存+limit约束）。"""
+    try:
+        from modules.monitor.ai_advisor import LLMAiAdvisor
+        force = request.args.get("force") in ("1", "true", "True")
+        advice = LLMAiAdvisor().predict(code, force=force)
+        if not advice:
+            return jsonify({"success": True, "data": None,
+                            "message": "已达每日预测上限或数据不足，请稍后再试"})
+        return jsonify({"success": True, "data": advice})
+    except Exception as e:
+        logger.error(f"AI advice {code} failed: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@monitor_bp.route("/realtime", methods=["GET"])
+@login_required
+def get_realtime():
+    """池中股票的实时行情+资金流快照（来自 monitor_realtime 集合）。"""
+    try:
+        from modules.monitor.realtime import RealtimeRefresher
+        codes = list(_get_user_stock_codes(g.current_user["user_id"]))
+        if not codes:
+            return jsonify({"success": True, "data": [], "count": 0})
+        rt_map = RealtimeRefresher().get_realtime_map(codes)
+        data = [{"code": c, **rt_map[c]} for c in codes if c in rt_map]
+        return jsonify({"success": True, "count": len(data), "data": data})
+    except Exception as e:
+        logger.error(f"Get realtime failed: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @monitor_bp.route("/refresh", methods=["POST"])
 @login_required
 def refresh_all():
     if _refresh_lock.locked():
         return jsonify({"success": False, "error": "刷新任务正在运行中，请稍候再试"}), 429
 
-    # 必须在起线程前取 user_id：daemon 线程里没有请求上下文，g 不可用。
-    # 旧实现 refresh_all() 默认 user_id="default"，导致非 default 用户点刷新只更新了 default 的监控。
     user_id = g.current_user["user_id"]
 
     def _run():
@@ -126,260 +159,27 @@ def scan_once():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-@monitor_bp.route("/backtest/<code>", methods=["GET"])
-def get_backtest(code: str):
-    """获取单只股票信号回测结果"""
-    try:
-        from modules.monitor.backtest import SignalBacktest
-        days = int(request.args.get("days", 60))
-        result = SignalBacktest().evaluate(code, days)
-        return jsonify({"success": True, "data": result})
-    except Exception as e:
-        logger.error(f"Backtest {code} failed: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
-@monitor_bp.route("/backtest", methods=["GET"])
-def get_backtest_all():
-    """获取所有信号回测结果（可能较慢）"""
-    import threading
-    results = []
-    exception = [None]
-
-    def _run():
-        try:
-            from modules.monitor.backtest import SignalBacktest
-            r = SignalBacktest().evaluate_all()
-            results.extend(r)
-        except Exception as e:
-            exception[0] = e
-
-    t = threading.Thread(target=_run, daemon=True)
-    t.start()
-    t.join(timeout=20)
-    if t.is_alive():
-        return jsonify({
-            "success": True,
-            "count": 0,
-            "data": [],
-            "message": "回测查询超时（远程数据库较慢），请稍后重试或使用单个股票回测"
-        })
-    if exception[0]:
-        logger.error(f"Backtest all failed: {exception[0]}")
-        return jsonify({"success": False, "error": str(exception[0])}), 500
-    return jsonify({"success": True, "count": len(results), "data": results})
-
-
-@monitor_bp.route("/sector-sentiment", methods=["GET"])
-def get_sector_sentiment():
-    """板块舆情热度排行 — 按行业聚合新闻情感评分"""
-    try:
-        from config.database import DatabaseConfig
-        db = DatabaseConfig.get_database()
-        signals = list(db["monitor_signals"].find(
-            {"analysis.news_sentiment": {"$exists": True}},
-            {"industry": 1, "analysis.news_sentiment": 1, "name": 1, "code": 1, "_id": 0},
-        ))
-
-        sector_map: Dict[str, Dict] = {}
-        for s in signals:
-            industry = s.get("industry", "") or "未知"
-            ns = s.get("analysis", {}).get("news_sentiment", {})
-            overall = ns.get("overall", {})
-            score = overall.get("score", 50)
-            pos = ns.get("positive_count", 0)
-            neg = ns.get("negative_count", 0)
-            total = ns.get("news_count", 0)
-            bullish = overall.get("bullish", False)
-
-            if industry not in sector_map:
-                sector_map[industry] = {
-                    "industry": industry,
-                    "stock_count": 0,
-                    "total_score": 0.0,
-                    "total_news": 0,
-                    "positive_news": 0,
-                    "negative_news": 0,
-                    "bullish_stocks": 0,
-                    "top_stocks": [],
-                }
-            sec = sector_map[industry]
-            sec["stock_count"] += 1
-            sec["total_score"] += score
-            sec["total_news"] += total
-            sec["positive_news"] += pos
-            sec["negative_news"] += neg
-            if bullish:
-                sec["bullish_stocks"] += 1
-            if total > 0:
-                sec["top_stocks"].append({
-                    "code": s.get("code", ""),
-                    "name": s.get("name", ""),
-                    "news_count": total,
-                    "sentiment_score": round(score, 1),
-                    "bullish": bullish,
-                })
-
-        result = []
-        for industry, sec in sector_map.items():
-            avg_score = sec["total_score"] / sec["stock_count"] if sec["stock_count"] > 0 else 50
-            sec["top_stocks"].sort(key=lambda x: x["news_count"], reverse=True)
-            result.append({
-                "industry": industry,
-                "stock_count": sec["stock_count"],
-                "avg_sentiment_score": round(avg_score, 1),
-                "total_news": sec["total_news"],
-                "positive_news": sec["positive_news"],
-                "negative_news": sec["negative_news"],
-                "bullish_stock_ratio": round(sec["bullish_stocks"] / sec["stock_count"] * 100, 1) if sec["stock_count"] > 0 else 0,
-                "top_stocks": sec["top_stocks"][:5],
-                "signal": "bullish" if avg_score >= 60 else "bearish" if avg_score <= 40 else "neutral",
-            })
-
-        result.sort(key=lambda x: x["avg_sentiment_score"], reverse=True)
-        return jsonify({"success": True, "count": len(result), "data": result})
-    except Exception as e:
-        logger.error(f"Sector sentiment failed: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
-@monitor_bp.route("/fund-flow-anomalies", methods=["GET"])
-@login_required
-def get_fund_flow_anomalies():
-    """主力资金异动监测: 最近5日异常净流入/流出、连续异动、趋势反转"""
-    try:
-        from config.database import DatabaseConfig
-        import numpy as np
-        db = DatabaseConfig.get_database()
-        days = int(request.args.get("days", 5))
-        limit = int(request.args.get("limit", 100))
-
-        from datetime import datetime, timedelta
-        cutoff = (datetime.now() - timedelta(days=days * 2)).strftime("%Y-%m-%d")
-        pipe = [
-            {"$match": {"date": {"$gte": cutoff}}},
-            {"$sort": {"date": -1}},
-            {"$group": {
-                "_id": "$code",
-                "name": {"$first": "$name"},
-                "latest_date": {"$first": "$date"},
-                "latest_net": {"$first": "$main_net_inflow"},
-                "latest_amount": {"$first": "$total_amount"},
-                "latest_price": {"$first": "$price"},
-                "latest_change": {"$first": "$change_pct"},
-                "latest_turnover": {"$first": "$turnover_rate"},
-                "latest_amount": {"$first": "$total_amount"},
-                "nets": {"$push": "$main_net_inflow"},
-                "count": {"$sum": 1},
-            }},
-            {"$match": {"count": {"$gte": days - 1}}},
-        ]
-
-        results = []
-        for doc in db["fund_flow"].aggregate(pipe, allowDiskUse=True):
-            code = doc["_id"]
-            nets = [float(x or 0) for x in doc["nets"]]
-            latest_net = float(doc["latest_net"] or 0)
-            if len(nets) < 2:
-                continue
-
-            avg_net = float(np.mean(nets))
-            std_net = float(np.std(nets)) if len(nets) > 1 else 1
-            z_score = (latest_net - avg_net) / std_net if std_net > 0 else 0
-
-            # 连续正/负天数
-            consec = 0
-            for v in nets:
-                if v > 0: consec += 1
-                elif v < 0: consec -= 1
-                else: break
-
-            # 趋势反转判断: 前3天 vs 最近2天
-            first_half = float(np.mean(nets[:-2])) if len(nets) > 2 else avg_net
-            second_half = float(np.mean(nets[:2])) if len(nets) >= 2 else latest_net
-            reversal = second_half > 0 > first_half or second_half < 0 < first_half
-
-            # 净流入占比
-            latest_amount = float(doc["latest_amount"] or 1)
-            net_ratio = latest_net / latest_amount if latest_amount > 0 else 0
-
-            anomaly_score = abs(z_score) * 40 + abs(consec) * 8 + (20 if reversal else 0) + abs(net_ratio) * 10
-
-            anomaly_type = "大幅流入" if latest_net > 0 and z_score > 1.5 else \
-                           "大幅流出" if latest_net < 0 and z_score < -1.5 else \
-                           "连续流入" if consec >= 3 else \
-                           "连续流出" if consec <= -3 else \
-                           "趋势反转" if reversal else "关注"
-
-            results.append({
-                "code": code,
-                "name": doc.get("name", code),
-                "latest_date": doc["latest_date"],
-                "latest_net": round(latest_net, 2),
-                "latest_amount": round(latest_amount, 2) if latest_amount else 0,
-                "latest_price": round(float(doc["latest_price"] or 0), 2),
-                "latest_change": round(float((doc.get("latest_change", "") or "0").replace("%", "")), 2),
-                "latest_turnover": round(float((doc.get("latest_turnover", "") or "0").replace("%", "")), 2),
-                "avg_net": round(avg_net, 2),
-                "std_net": round(std_net, 2),
-                "z_score": round(z_score, 2),
-                "consecutive_days": consec,
-                "net_ratio": round(net_ratio, 4),
-                "reversal": reversal,
-                "anomaly_score": round(anomaly_score, 1),
-                "anomaly_type": anomaly_type,
-                "data_days": len(nets),
-            })
-
-        results.sort(key=lambda r: r["anomaly_score"], reverse=True)
-
-        # 统计摘要
-        total = len(results)
-        big_inflow = sum(1 for r in results if r["anomaly_type"] == "大幅流入")
-        big_outflow = sum(1 for r in results if r["anomaly_type"] == "大幅流出")
-        consec_inflow = sum(1 for r in results if r["anomaly_type"] == "连续流入")
-        consec_outflow = sum(1 for r in results if r["anomaly_type"] == "连续流出")
-        reversals = sum(1 for r in results if r["reversal"])
-
-        return jsonify({
-            "success": True,
-            "count": len(results[:limit]),
-            "data": results[:limit],
-            "summary": {
-                "total": total,
-                "big_inflow": big_inflow,
-                "big_outflow": big_outflow,
-                "consec_inflow": consec_inflow,
-                "consec_outflow": consec_outflow,
-                "reversals": reversals,
-            },
-        })
-    except Exception as e:
-        logger.error(f"Fund flow anomalies failed: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
 @monitor_bp.route("/lifecycle-status", methods=["GET"])
 @login_required
 def get_lifecycle_status():
-    """当前监控名单的来源分布统计（持仓/自选/智选数量 + 重叠 + 强化信号数）。"""
+    """当前监控名单的来源分布统计（持仓/自选/智选/投研 + 重叠 + 强化信号数）。"""
     try:
         stocks = _get_engine()._collect_stocks(g.current_user["user_id"])
         pos = {s["code"] for s in stocks if "position" in (s.get("sources") or [])}
         watch = {s["code"] for s in stocks if "watchlist" in (s.get("sources") or [])}
         fusion = {s["code"] for s in stocks if "fusion_pick" in (s.get("sources") or [])}
+        research = {s["code"] for s in stocks if "research" in (s.get("sources") or [])}
         strong = sum(1 for s in stocks
                      if "fusion_pick" in (s.get("sources") or [])
                      and (s.get("consecutive_days", 0) or 0) >= 3)
         return jsonify({"success": True, "data": {
             "total": len(stocks),
             "by_source": {"position": len(pos), "watchlist": len(watch),
-                          "fusion_pick": len(fusion)},
+                          "fusion_pick": len(fusion), "research": len(research)},
             "overlap": {
                 "position_and_watchlist": len(pos & watch),
                 "position_and_fusion": len(pos & fusion),
                 "watchlist_and_fusion": len(watch & fusion),
-                "all_three": len(pos & watch & fusion),
             },
             "strong_signal_count": strong,
         }})
@@ -391,7 +191,7 @@ def get_lifecycle_status():
 @monitor_bp.route("/portfolio", methods=["GET"])
 @login_required
 def get_monitor_portfolio():
-    """读最近一次 refresh_all 的双轨道调仓建议 + 组合概览 + 异动预警。"""
+    """读最近一次 refresh_all 的调仓建议 + 组合概览 + 异动预警。"""
     try:
         from config.database import DatabaseConfig
         db = DatabaseConfig.get_database()

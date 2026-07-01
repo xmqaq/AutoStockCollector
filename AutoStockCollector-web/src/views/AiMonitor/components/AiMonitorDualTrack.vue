@@ -113,10 +113,11 @@ const SOURCE_GROUPS: { key: MonitorSource; title: string; tag: string }[] = [
   { key: 'position', title: '持仓', tag: 'danger' },
   { key: 'watchlist', title: '自选股', tag: 'primary' },
   { key: 'fusion_pick', title: 'AI智选候选', tag: 'success' },
+  { key: 'research', title: '投研分析', tag: 'warning' },
 ]
 
-const SRC_LABEL: Record<MonitorSource, string> = { position: '持仓', watchlist: '自选', fusion_pick: '智选' }
-const SRC_TYPE: Record<MonitorSource, string> = { position: 'danger', watchlist: 'primary', fusion_pick: 'success' }
+const SRC_LABEL: Record<MonitorSource, string> = { position: '持仓', watchlist: '自选', fusion_pick: '智选', research: '投研' }
+const SRC_TYPE: Record<MonitorSource, string> = { position: 'danger', watchlist: 'primary', fusion_pick: 'success', research: 'warning' }
 function srcLabel(s: MonitorSource): string { return SRC_LABEL[s] || s }
 function srcType(s: MonitorSource): string { return SRC_TYPE[s] || 'info' }
 

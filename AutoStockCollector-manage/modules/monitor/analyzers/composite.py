@@ -1,38 +1,33 @@
 """
 综合评分器 — 将各维度分析结果融合为短线和长线投资建议
 
-参考量化选股+策略选股评分体系，扩展六维度评分:
-
+重构后估值维度并入 fundamental（valuation.py 已删），composite 不再单独算估值：
 短期信号权重:
-  - 资金流向短期 (30%) — 短期资金博弈主导
-  - 技术面短期 (25%) — 价格趋势确认
-  - 研报短期 momentum (15%) — 催化剂
-  - 估值面 (15%) — 安全边际参考
+  - 资金流向短期 (35%) — 短期资金博弈主导（原30%+估值15%重分配）
+  - 技术面短期 (30%) — 价格趋势确认（原25%+5%）
+  - 研报短期 momentum (20%) — 催化剂（原15%+5%）
   - 新闻舆情 (15%) — 利好/利空催化剂
 
 长期信号权重:
-  - 基本面 (30%) — 盈利质量
+  - 基本面 (40%) — 盈利质量+估值（原30%+估值15%）
   - 资金流向长期 (25%) — 长线资金
   - 研报长期 (20%) — 成长性
-  - 估值面 (15%) — 估值水位
-  - 技术面 (10%) — 趋势辅助
+  - 技术面 (15%) — 趋势辅助（原10%+5%）
 """
 from typing import Any, Dict, Optional
 
 class CompositeAnalyzer:
     SHORT_WEIGHTS = {
-        "fund_flow": 0.30,
-        "technical": 0.25,
-        "research": 0.15,
-        "valuation": 0.15,
+        "fund_flow": 0.35,
+        "technical": 0.30,
+        "research": 0.20,
         "news_sentiment": 0.15,
     }
     LONG_WEIGHTS = {
-        "fundamental": 0.30,
+        "fundamental": 0.40,
         "fund_flow": 0.25,
         "research": 0.20,
-        "valuation": 0.15,
-        "technical": 0.10,
+        "technical": 0.15,
     }
 
     SIGNAL_ORDER = ["strong_buy", "buy", "hold", "sell", "strong_sell"]
@@ -50,11 +45,11 @@ class CompositeAnalyzer:
         research: Dict[str, Any],
         technical: Dict[str, Any],
         fundamental: Dict[str, Any],
-        valuation: Dict[str, Any],
+        valuation: Optional[Dict[str, Any]] = None,  # 保留参数兼容旧调用，实际不再使用
         news_sentiment: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        short = self._compose_short(fund_flow, research, technical, valuation, news_sentiment)
-        long_ = self._compose_long(fund_flow, research, fundamental, valuation, technical)
+        short = self._compose_short(fund_flow, research, technical, news_sentiment)
+        long_ = self._compose_long(fund_flow, research, fundamental, technical)
         final = self._final_advice(short, long_)
         return {
             "short_term": short,
@@ -67,7 +62,6 @@ class CompositeAnalyzer:
         fund_flow: Dict,
         research: Dict,
         technical: Dict,
-        valuation: Dict,
         news_sentiment: Optional[Dict] = None,
     ) -> Dict:
         scores = []
@@ -86,10 +80,6 @@ class CompositeAnalyzer:
         if research.get("short_term", {}).get("recent_count", 0) > 0:
             r_rs = research.get("short_term", {}).get("reasons", [])[:1]
             reasons.extend(r_rs)
-
-        val_score = valuation.get("score", 50)
-        scores.append(("估值", val_score, self.SHORT_WEIGHTS["valuation"]))
-        self._add_reason(reasons, valuation, val_score)
 
         ns_score = (news_sentiment or {}).get("overall", {}).get("score", 50)
         scores.append(("舆情", ns_score, self.SHORT_WEIGHTS["news_sentiment"]))
@@ -115,7 +105,6 @@ class CompositeAnalyzer:
         fund_flow: Dict,
         research: Dict,
         fundamental: Dict,
-        valuation: Dict,
         technical: Dict,
     ) -> Dict:
         scores = []
@@ -134,10 +123,6 @@ class CompositeAnalyzer:
         if research.get("long_term", {}).get("total_reports", 0) > 0:
             r_rs = research.get("long_term", {}).get("reasons", [])[:1]
             reasons.extend(r_rs)
-
-        val_score = valuation.get("score", 50)
-        scores.append(("估值", val_score, self.LONG_WEIGHTS["valuation"]))
-        self._add_reason(reasons, valuation, val_score)
 
         tech_score = technical.get("long_term", {}).get("score", 50)
         scores.append(("技术面", tech_score, self.LONG_WEIGHTS["technical"]))

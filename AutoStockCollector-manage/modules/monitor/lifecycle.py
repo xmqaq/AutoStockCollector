@@ -1,5 +1,5 @@
 """监控生命周期管理：维护 monitor_signals 中每只股票的 sources 来源
-（position / watchlist / fusion_pick）与 AI 智选连续入选追踪。
+（position / watchlist / fusion_pick / research）与 AI 智选连续入选追踪。
 
 职责单一：只负责"谁该被监控、来源怎么变"，不做深度分析（那是 MonitorEngine）。
 """
@@ -8,7 +8,7 @@ from typing import Any, Dict
 
 from config.database import DatabaseConfig
 from core.storage.mongo_storage import WatchlistStorage
-from utils.helpers import beijing_now, get_trading_days
+from utils.helpers import beijing_now, get_trading_days, normalize_stock_code_flexible
 from utils.logger import get_logger
 
 from .storage import MonitorStorage
@@ -16,6 +16,7 @@ from .storage import MonitorStorage
 logger = get_logger(__name__)
 
 FUSION_RESULTS_COL = "fusion_pick_results"
+RESEARCH_RESULTS_COL = "research_analysis_results"
 SIGNALS_COL = MonitorStorage.SIGNALS_COL
 
 
@@ -154,6 +155,53 @@ class MonitorLifecycle:
                 self.storage.remove_source(d["code"], "fusion_pick")
                 removed += 1
         return {"expired_removed": removed}
+
+    # ── 投研分析追踪 ──
+
+    def sync_research_tracking(self, user_id: str = "default") -> Dict[str, Any]:
+        """投研分析每日完成后调用，把最新一轮 candidates 标记 research 来源。
+
+        幂等：用 research 文档的 task_id 去重，同一轮重复调用跳过。
+        research 候选 code 是纯数字，需归一化为带前缀码再写 monitor_signals。
+        连续入选计数复用 fusion_pick 的 consecutive_days（research 不单独计）。
+        """
+        latest = self.db[RESEARCH_RESULTS_COL].find_one(
+            {"source": "cron_daily"},
+            {"result.candidates": 1, "task_id": 1, "created_at": 1},
+            sort=[("created_at", -1)],
+        )
+        if not latest:
+            return {"updated": 0, "no_research_data": True}
+        task_id = latest.get("task_id")
+        candidates = ((latest.get("result") or {}).get("candidates")) or []
+        now = self._now_iso()
+        new_cnt = upd_cnt = skipped = 0
+        for cand in candidates:
+            raw_code = cand.get("code", "")
+            code = normalize_stock_code_flexible(raw_code) if raw_code else ""
+            if not code:
+                continue
+            doc = self.db[SIGNALS_COL].find_one(
+                {"code": code}, {"sources": 1, "last_research_task_id": 1})
+            # 同一轮已计过 → 幂等跳过
+            if doc and task_id and doc.get("last_research_task_id") == task_id:
+                skipped += 1
+                continue
+            self.db[SIGNALS_COL].update_one(
+                {"code": code},
+                {"$set": {"last_research_at": now, "last_research_task_id": task_id,
+                          "research_score": cand.get("score", 0)},
+                 "$addToSet": {"sources": "research"},
+                 "$setOnInsert": {"code": code, "name": cand.get("name", ""),
+                                  "placeholder": True, "created_at": now}},
+                upsert=True,
+            )
+            if doc:
+                upd_cnt += 1
+            else:
+                new_cnt += 1
+        return {"updated": upd_cnt, "new": new_cnt, "skipped_same_task": skipped,
+                "current_candidates": len(candidates), "task_id": task_id}
 
     # ── 自选股增删联动 ──
 

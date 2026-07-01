@@ -813,31 +813,68 @@ def job_collect_watchlist_news():
         _persist_cron_status("watchlist_news", _now().isoformat(), False, str(e)[:100])
 
 
-def job_detect_hotspot():
-    """交易日 10:00 / 14:00 检测全市场热点个股/板块，结果存 news_hotspot_results
-    （仅保留最近 10 条）。"""
-    if not _is_weekday():
-        return
+def job_monitor_realtime_refresh():
+    """盘中每 3 分钟刷新池中股票实时行情 + 即时资金流，写 monitor_realtime。
+    仅连续竞价时段执行（非交易时段无实时数据）。"""
     try:
-        from modules.monitor.hotspot import NewsHotspotDetector
+        from modules.monitor.realtime import RealtimeRefresher
+        from modules.monitor.engine import MonitorEngine
+        from modules.paper_trading.account import PaperAccount
         from config.database import DatabaseConfig
-        result = NewsHotspotDetector().detect(hours=24, top_n=20)
-        col = DatabaseConfig.get_database()["news_hotspot_results"]
-        col.insert_one(dict(result))
-        # 只保留最近 10 条
-        stale = [d["_id"] for d in
-                 col.find({}, {"_id": 1}).sort("detected_at", -1).skip(10)]
-        if stale:
-            col.delete_many({"_id": {"$in": stale}})
-        n = len(result.get("hot_stocks", []))
-        msg = f"热点个股{n}只"
-        logger.info(f"[cron] 热点检测完成：{msg}")
-        _record_result("热点检测", True, msg)
-        _persist_cron_status("hotspot_detect", _now().isoformat(), True, msg, inc_count=True)
+        from utils.helpers import is_trading_day, beijing_now
+        if not is_trading_day(beijing_now()):
+            return
+        db = DatabaseConfig.get_database()
+        uids = db["paper_account"].distinct("user_id") or ["default"]
+        total = 0
+        for uid in uids:
+            try:
+                r = RealtimeRefresher().refresh(uid)
+                total += r.get("refreshed", 0)
+            except Exception as e:
+                logger.warning(f"[cron] realtime refresh user={uid} failed: {e}")
+        if total:
+            msg = f"实时数据刷新{total}只"
+            logger.info(f"[cron] {msg}")
+            _record_result("监控实时刷新", True, msg)
     except Exception as e:
-        logger.error(f"[cron] 热点检测失败: {e}")
-        _record_result("热点检测", False, str(e))
-        _persist_cron_status("hotspot_detect", _now().isoformat(), False, str(e)[:100])
+        logger.error(f"[cron] 监控实时刷新失败: {e}")
+        _record_result("监控实时刷新", False, str(e))
+
+
+def job_monitor_ai_predict():
+    """盘中对池中股票做 LLM 预测：开盘(9:35)/收盘(14:50) 各触发一次，
+    对持仓+异动股生成 AI 买卖建议（控成本：当日同股缓存 + 每日 limit）。"""
+    try:
+        from modules.monitor.ai_advisor import LLMAiAdvisor
+        from modules.monitor.engine import MonitorEngine
+        from modules.paper_trading.account import PaperAccount
+        from config.database import DatabaseConfig
+        from utils.helpers import is_trading_day, beijing_now
+        if not is_trading_day(beijing_now()):
+            return
+        db = DatabaseConfig.get_database()
+        uids = db["paper_account"].distinct("user_id") or ["default"]
+        predicted = 0
+        for uid in uids:
+            try:
+                stocks = MonitorEngine()._collect_stocks(uid)
+                # 优先预测持仓股 + 智选/投研股（成本可控）
+                codes = [s["code"] for s in stocks
+                         if {"position", "fusion_pick", "research"} & set(s.get("sources") or [])]
+                codes = codes[:20]  # 单次上限，控成本
+                r = LLMAiAdvisor().predict_pool(codes, trigger="cron")
+                predicted += r.get("predicted", 0)
+            except Exception as e:
+                logger.warning(f"[cron] ai predict user={uid} failed: {e}")
+        msg = f"AI预测{predicted}只"
+        logger.info(f"[cron] {msg}")
+        _record_result("监控AI预测", True, msg)
+        _persist_cron_status("monitor_ai_predict", _now().isoformat(), True, msg, inc_count=True)
+    except Exception as e:
+        logger.error(f"[cron] 监控AI预测失败: {e}")
+        _record_result("监控AI预测", False, str(e))
+        _persist_cron_status("monitor_ai_predict", _now().isoformat(), False, str(e)[:100])
 
 
 # ─── 价格行为学全市场扫描 ────────────────────────────────────────────────────
@@ -1000,6 +1037,18 @@ def _run_research_daily():
         logger.info(f"[cron] {msg}")
         _record_result("研报全板块扫描", True, msg)
         _persist_cron_status("research_daily", _now().isoformat(), True, msg, inc_count=True)
+
+        # 级联：投研候选落库后刷新监控（让 research 来源股票进入监控池），仿 fusion_pick_daily
+        try:
+            from modules.monitor.engine import MonitorEngine
+            from config.database import DatabaseConfig
+            for uid in DatabaseConfig.get_database()["paper_account"].distinct("user_id") or ["default"]:
+                try:
+                    MonitorEngine().refresh_all(uid)
+                except Exception as ce:
+                    logger.warning(f"[cron] research→monitor cascade user={uid} failed: {ce}")
+        except Exception as ce:
+            logger.warning(f"[cron] research→monitor cascade failed: {ce}")
     except Exception as e:
         logger.error(f"[cron] 研报扫描后台任务失败: {e}")
         _record_result("研报全板块扫描", False, str(e))
@@ -1279,8 +1328,10 @@ def start_daily_jobs() -> None:
         _make_job("个股新闻采集 11:30", job_collect_watchlist_news, "daily", 11, 30, task_type="watchlist_news"),
         _make_job("个股新闻采集 13:00", job_collect_watchlist_news, "daily", 13,  0, task_type="watchlist_news"),
         _make_job("个股新闻采集 15:30", job_collect_watchlist_news, "daily", 15, 30, task_type="watchlist_news"),
-        _make_job("热点检测 10:00",     job_detect_hotspot,         "daily", 10,  0, task_type="hotspot_detect"),
-        _make_job("热点检测 14:00",     job_detect_hotspot,         "daily", 14,  0, task_type="hotspot_detect"),
+        _make_job("监控实时刷新 3min", job_monitor_realtime_refresh, "interval",
+                  interval_minutes=3, task_type="monitor_realtime"),
+        _make_job("监控AI预测 09:35", job_monitor_ai_predict, "daily", 9, 35, task_type="monitor_ai_predict"),
+        _make_job("监控AI预测 14:50", job_monitor_ai_predict, "daily", 14, 50, task_type="monitor_ai_predict"),
         _make_job("PA盘中扫描 30min",  job_pa_intraday_scan,        "interval", interval_minutes=30, task_type="pa_intraday_scan"),
         _make_job("PA全市场扫描 17:00", job_pa_scan,                "daily", 17,  0, task_type="pa_scan"),
         _make_job("研报全板块扫描 17:30", job_research_daily,       "daily", 17, 30, task_type="research_daily"),
