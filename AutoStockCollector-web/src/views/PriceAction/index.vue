@@ -130,7 +130,7 @@
       <el-card v-if="hasKline" shadow="never" class="pa-card pa-chart-card">
         <template #header><span>📊 K 线图</span></template>
         <KlineChartPanel
-          :bars="result.kline_bars"
+          :bars="result.kline_bars ?? []"
           :code="result.symbol"
           :trade-plan="result.trade_plan"
           :fib-levels="result.fib_levels"
