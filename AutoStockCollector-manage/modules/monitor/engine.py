@@ -85,6 +85,12 @@ class MonitorEngine:
                         continue
                     self._attach_lifecycle_fields(result, s)
                     self._storage.upsert_signal(result["code"], result)
+                    # 写历史快照供 auto_trading._merge_ai_monitor 读取（修 history 断写）。
+                    # 盘中 3min 刷新会写多条，_expire_at TTL 90 天自动过期防膨胀。
+                    try:
+                        self._storage.save_history(result["code"], result)
+                    except Exception as e:
+                        logger.warning(f"save_history {result['code']} failed: {e}")
                     advice.append(self._advice_item(result))
                     analyzed += 1
 
@@ -368,6 +374,14 @@ class MonitorEngine:
         action, sig, reasons, source = merge_advice(sell, buy, hold)
         trading_advice = build_advice(ctx, action, sig, reasons, source)
 
+        # 采集三路外部信号（PA/竞价/agent 快照）+ 算综合融合分
+        from .analyzers.external_signals import collect_external_signals
+        from utils.helpers import beijing_now
+        ext = collect_external_signals(
+            code, composite.get("composite_score", 50),
+            beijing_now().strftime("%Y-%m-%d"),
+        )
+
         result = {
             "code": code,
             "name": name or info.get("A股简称", info.get("name", "")),
@@ -383,6 +397,7 @@ class MonitorEngine:
                 "label": composite["composite_label"],
                 "divergence": composite["divergence"],
             },
+            "external_signals": ext,  # {pa, auction, agent, fusion_score, fusion_breakdown, fusion_weights}
             "price_prediction": price_prediction,
             "analysis": {
                 "fund_flow": fund_flow,

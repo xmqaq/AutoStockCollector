@@ -31,6 +31,11 @@
         </template>
       </el-tab-pane>
       <el-tab-pane label="监控调仓" name="dual_track" />
+      <el-tab-pane label="信号中枢" name="hub">
+        <template #label>
+          <span>📡 信号中枢</span>
+        </template>
+      </el-tab-pane>
     </el-tabs>
 
     <!-- Signal View -->
@@ -81,6 +86,9 @@
     <!-- Dual-Track Rebalance View -->
     <AiMonitorDualTrack v-if="activeTab === 'dual_track'" />
 
+    <!-- 信号中枢 View -->
+    <AiMonitorHub v-if="activeTab === 'hub'" :signals="signals" />
+
     <!-- Detail Dialog -->
     <AiMonitorDetailDialog
       v-model:visible="detailVisible"
@@ -104,6 +112,7 @@ import AiMonitorDetailDialog from './components/AiMonitorDetailDialog.vue'
 import AiMonitorFundFlow from './components/AiMonitorFundFlow.vue'
 import AiMonitorPositionAdvice from './components/AiMonitorPositionAdvice.vue'
 import AiMonitorDualTrack from './components/AiMonitorDualTrack.vue'
+import AiMonitorHub from './components/AiMonitorHub.vue'
 
 const signals = ref<MonitorSignal[]>([])
 const loading = ref(false)

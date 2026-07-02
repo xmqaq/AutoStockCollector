@@ -131,6 +131,39 @@ export interface PricePrediction {
   volatility: number
 }
 
+export interface ExternalPaSignal {
+  signal: string
+  confidence: number
+  trade_plan?: any
+  scanned_at: string
+  timeframe: string
+}
+
+export interface ExternalAuctionSignal {
+  score: number
+  gap_pct: number
+  trap: boolean
+  name?: string
+  industry?: string
+  date: string
+}
+
+export interface ExternalAgentSignal {
+  score: number
+  signal: string
+  trade_date: string
+  tendency?: string
+}
+
+export interface ExternalSignals {
+  pa?: ExternalPaSignal | null
+  auction?: ExternalAuctionSignal | null
+  agent?: ExternalAgentSignal | null
+  fusion_score?: number
+  fusion_breakdown?: Record<string, number>
+  fusion_weights?: Record<string, number>
+}
+
 export interface MonitorSignal {
   code: string
   name: string
@@ -156,6 +189,8 @@ export interface MonitorSignal {
     label: string
     divergence: string
   }
+  /** 三路外部信号(PA/竞价/agent) + 综合融合分 */
+  external_signals?: ExternalSignals
   price_prediction?: PricePrediction
   trading_advice?: TradingAdvice
   analysis: {
@@ -219,6 +254,9 @@ export const monitorApi = {
   },
   getLifecycleStatus() {
     return client.get('/api/v1/monitor/lifecycle-status')
+  },
+  getFusionDetail(code: string) {
+    return client.get(`/api/v1/monitor/signals/${encodeURIComponent(code)}/fusion-detail`)
   },
 }
 

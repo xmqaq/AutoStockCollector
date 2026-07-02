@@ -13,8 +13,18 @@
   - 资金流向长期 (25%) — 长线资金
   - 研报长期 (20%) — 成长性
   - 技术面 (15%) — 趋势辅助（原10%+5%）
+
+COMPOSITE_V2（env=1 启用）：去掉 short/long 层的双重 stretch，只在 _final_advice
+做一次 stretch。原实现 short/long 各 stretch 一次再 final stretch 一次，40-60 区间
+被放大到 20-80 再叠加再拉，55 分可能变 70 分（买入），fusion 读这个分当 ai_score
+被放大。V2 让 breakdown 保持原始加权分（前端展示不失真），composite 最终分只 stretch 一次。
 """
+import os
 from typing import Any, Dict, Optional
+
+# V2 灰度开关：env COMPOSITE_V2=1 启用单次 stretch（去掉双重放大）
+_COMPOSITE_V2 = os.environ.get("COMPOSITE_V2", "0") in ("1", "true", "True")
+
 
 class CompositeAnalyzer:
     SHORT_WEIGHTS = {
@@ -88,7 +98,8 @@ class CompositeAnalyzer:
             reasons.extend(ns_reasons[:1])
 
         raw_score = sum(s * w for _, s, w in scores)
-        total_score = self._stretch(raw_score)
+        # V2: 不在 short 层 stretch（避免双重放大），只在 _final_advice stretch 一次
+        total_score = raw_score if _COMPOSITE_V2 else self._stretch(raw_score)
         signal = self._score_to_signal(total_score)
 
         return {
@@ -129,7 +140,8 @@ class CompositeAnalyzer:
         self._add_reason(reasons, technical.get("long_term", {}), tech_score)
 
         raw_score = sum(s * w for _, s, w in scores)
-        total_score = self._stretch(raw_score)
+        # V2: 不在 long 层 stretch（避免双重放大），只在 _final_advice stretch 一次
+        total_score = raw_score if _COMPOSITE_V2 else self._stretch(raw_score)
         signal = self._score_to_signal(total_score)
 
         return {

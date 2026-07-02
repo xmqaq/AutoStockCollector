@@ -81,6 +81,45 @@ def get_signal_history(code: str):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@monitor_bp.route("/signals/<code>/fusion-detail", methods=["GET"])
+def get_fusion_detail(code: str):
+    """返回该股票的综合融合分明细：composite(6维) + 三路外部信号(PA/竞价/agent) + fusion_score/权重。
+
+    供前端"信号中枢"视图展示四路信号雷达图与融合分构成。不调 auto_trading
+    （前端可同时调两个 API 自行对比监控分 vs 执行分）。
+    """
+    try:
+        storage = MonitorStorage()
+        signal = storage.get_signal(code)
+        if not signal:
+            return jsonify({"success": False, "error": "未找到该股票信号"}), 404
+        ext = signal.get("external_signals") or {}
+        composite = signal.get("composite") or {}
+        return jsonify({
+            "success": True,
+            "data": {
+                "code": code,
+                "name": signal.get("name", ""),
+                "composite": composite,
+                "short_term": signal.get("short_term", {}),
+                "long_term": signal.get("long_term", {}),
+                "external_signals": {
+                    "pa": ext.get("pa"),
+                    "auction": ext.get("auction"),
+                    "agent": ext.get("agent"),
+                },
+                "fusion_score": ext.get("fusion_score", composite.get("score", 50)),
+                "fusion_breakdown": ext.get("fusion_breakdown", {}),
+                "fusion_weights": ext.get("fusion_weights", {}),
+                # 6 维分析明细
+                "analysis": signal.get("analysis", {}),
+            },
+        })
+    except Exception as e:
+        logger.error(f"Get fusion detail for {code} failed: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @monitor_bp.route("/signals/<code>/ai-advice", methods=["POST"])
 @login_required
 def get_ai_advice(code: str):

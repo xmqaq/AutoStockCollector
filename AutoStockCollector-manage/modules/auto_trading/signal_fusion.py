@@ -40,6 +40,7 @@ class FusedSignal:
 
         self.ai_score: float = 50.0
         self.ai_signal: str = "hold"
+        self.ai_monitor_stale: bool = False  # AI 监控分是否非当日(回退当前态)
 
         # 第 4 路：AI Agent（TradingGraph 多空辩论 verdict）
         self.agent_score: float = 0.0
@@ -185,19 +186,29 @@ class SignalFusionEngine:
             logger.warning(f"[fusion] PA analysis failed for {fused.code}: {e}")
 
     def _merge_ai_monitor(self, fused: FusedSignal, date: str):
+        """优先读当日 history（refresh_all 已写），miss 时回退 monitor_signals 当前态
+        并标记 stale。绝不静默用旧分——stale 标记供前端展示"AI监控分非当日"。
+        """
         try:
             db = DatabaseConfig.get_database()
-            # 带 signal_date 过滤：隔夜/缺当日监控分不参与融合（与 _merge_agent 对齐）。
-            # ai_monitor 当日未刷新时返回 None，ai_score 保持默认 50 不进分母，避免用旧分。
+            # 当日 history（按 created_at 排序，save_history 写的是 created_at 非 updated_at）
             doc = db["monitor_signal_history"].find_one(
                 {"code": fused.code, "signal_date": date},
-                sort=[("updated_at", -1)],
+                sort=[("created_at", -1)],
             )
+            stale = False
+            if not doc:
+                # 回退：读 monitor_signals 当前态（可能是昨日的 upsert），标记 stale
+                doc = db["monitor_signals"].find_one({"code": fused.code})
+                stale = True
             if not doc:
                 return
             comp = doc.get("composite", {}) or {}
             fused.ai_score = comp.get("score", 50)
             fused.ai_signal = comp.get("signal", "hold")
+            fused.ai_monitor_stale = stale
+            if stale:
+                fused.reasons.append("AI监控分非当日(回退当前态)")
             if not fused.current_price:
                 fused.current_price = doc.get("price", 0) or fused.current_price
             if not fused.name:

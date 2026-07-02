@@ -91,9 +91,27 @@
             <span :class="['pp-row-risk', riskLevelClass(s.price_prediction.risk_level)]">{{ s.price_prediction.risk_level }}</span>
           </div>
 
+          <!-- 四路外部信号（PA/竞价/Agent + fusion_score） -->
+          <div v-if="s.external_signals" class="ext-row">
+            <span class="ext-fusion" :class="extScoreClass(s.external_signals.fusion_score)" :title="`综合融合分 ${s.external_signals.fusion_score ?? '—'}`">
+              融{{ s.external_signals.fusion_score != null ? s.external_signals.fusion_score.toFixed(0) : '—' }}
+            </span>
+            <span class="ext-item" :title="`PA 信号 ${s.external_signals.pa?.signal || '无'}`">
+              <span class="ext-label">PA</span>
+              <span :class="extScoreClass(paToScore(s.external_signals.pa?.signal))">{{ s.external_signals.pa ? paToScore(s.external_signals.pa.signal).toFixed(0) : '—' }}</span>
+            </span>
+            <span class="ext-item" :title="`竞价分 ${s.external_signals.auction?.score ?? '无'}`">
+              <span class="ext-label">竞</span>
+              <span :class="extScoreClass(s.external_signals.auction?.score)">{{ s.external_signals.auction ? s.external_signals.auction.score.toFixed(0) : '—' }}</span>
+            </span>
+            <span class="ext-item" :title="`Agent 分 ${s.external_signals.agent?.score ?? '无'}`">
+              <span class="ext-label">Ag</span>
+              <span :class="extScoreClass(s.external_signals.agent?.score)">{{ s.external_signals.agent ? s.external_signals.agent.score.toFixed(0) : '—' }}</span>
+            </span>
+          </div>
+
           <!-- Divergence -->
-          <div v-if="s.composite.divergence" class="divergence-tip">
-            {{ s.composite.divergence }}
+          <div v-if="s.composite.divergence" class="divergence-tip">            {{ s.composite.divergence }}
           </div>
         </el-card>
       </el-col>
@@ -153,6 +171,21 @@ function scoreColor(score: number): string {
   if (score >= 60) return 'var(--el-color-warning)'
   if (score >= 40) return 'var(--text-muted)'
   return 'var(--el-color-success)'
+}
+
+// PA 信号 → 0-100 分（与后端 external_signals.PA_SIGNAL_SCORES 对齐）
+function paToScore(signal?: string): number {
+  if (!signal) return 50
+  const m: Record<string, number> = { BUY_SETUP: 95, WEAK_BUY: 70, NEUTRAL: 50, WEAK_SELL: 30, SELL_SETUP: 5, NO_DATA: 50, NO_TRADE: 50 }
+  return m[signal] ?? 50
+}
+
+// 分数 → 涨跌色 class（A 股红涨绿跌）
+function extScoreClass(score?: number): string {
+  if (score == null) return 'ext-na'
+  if (score >= 62) return 'up'
+  if (score < 38) return 'down'
+  return 'flat'
 }
 
 function adviceTagType(signal?: string): string {
@@ -314,6 +347,35 @@ function riskLevelClass(level: string): string {
 .limit-down-badge { font-size: 10px; padding: 0 4px; height: 18px; line-height: 18px; }
 .concept-chip { font-size: 10px; padding: 0 4px; height: 18px; line-height: 18px; color: #F23645; border-color: #F23645; }
 .action-mini-badge { font-size: 10px; font-weight: 700; padding: 0 4px; height: 18px; line-height: 18px; }
+
+/* 四路外部信号行 */
+.ext-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 4px 6px;
+  background: var(--bg-soft);
+  border-radius: 6px;
+  font-size: 11px;
+}
+.ext-fusion {
+  font-weight: 700;
+  font-family: var(--font-mono);
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+}
+.ext-fusion.up { background: rgba(242,54,69,0.12); color: #f23645; }
+.ext-fusion.down { background: rgba(17,194,126,0.12); color: #11c27e; }
+.ext-fusion.flat { background: var(--bg-soft); color: var(--text-muted); }
+.ext-item { display: flex; align-items: center; gap: 2px; }
+.ext-label { color: var(--text-faint); font-size: 10px; }
+.ext-item .up { color: #f23645; font-weight: 600; }
+.ext-item .down { color: #11c27e; font-weight: 600; }
+.ext-item .flat { color: var(--text-muted); }
+.ext-na { color: var(--text-faint); }
 
 .divergence-tip {
   margin-top: 6px;

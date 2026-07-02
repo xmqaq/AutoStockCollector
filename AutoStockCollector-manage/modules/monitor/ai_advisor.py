@@ -109,8 +109,10 @@ class LLMAiAdvisor:
         return {"trigger": trigger, "predicted": done, "total": len(codes)}
 
     def _build_prompt(self, code: str, context: str, factors: Dict) -> str:
-        factor_text = "\n".join(f"- {k}: {v}" for k, v in (factors or {}).items()
-                                if not isinstance(v, (dict, list)))[:15]
+        # 取前 15 个非 dict/list 因子（原 [:15] 误作用于 join 后字符串，截断成 15 字符）
+        factor_items = [f"- {k}: {v}" for k, v in (factors or {}).items()
+                        if not isinstance(v, (dict, list))][:15]
+        factor_text = "\n".join(factor_items)
         return f"""你是 A 股短线交易顾问。基于以下实时数据与量化因子，给出明确的买卖建议。
 
 股票代码：{code}

@@ -16,6 +16,14 @@ class MonitorStorage:
     def __init__(self):
         from config.database import DatabaseConfig
         self.db = DatabaseConfig.get_database()
+        # monitor_signal_history TTL：created_at 是 isoformat 字符串无法直接做 TTL，
+        # 用独立 BSON Date 字段 _expire_at 驱动 90 天自动过期，防盘中 3min 刷新膨胀。
+        try:
+            self.db[self.HISTORY_COL].create_index(
+                "_expire_at", expireAfterSeconds=90 * 86400
+            )
+        except Exception:
+            pass  # 索引已存在或不可用，忽略
 
     # ── 当前信号 ──
 
@@ -77,9 +85,11 @@ class MonitorStorage:
     def save_history(self, code: str, snapshot: Dict[str, Any]):
         doc = dict(snapshot)
         doc["code"] = code
-        doc["created_at"] = datetime.now().isoformat()
+        now = datetime.now()
+        doc["created_at"] = now.isoformat()
+        doc["_expire_at"] = now  # BSON Date，驱动 TTL 索引 90 天自动过期
         if "signal_date" not in doc:
-            doc["signal_date"] = datetime.now().strftime("%Y-%m-%d")
+            doc["signal_date"] = now.strftime("%Y-%m-%d")
         self.db[self.HISTORY_COL].insert_one(doc)
 
     def get_history(self, code: str, days: int = 30) -> List[Dict[str, Any]]:
