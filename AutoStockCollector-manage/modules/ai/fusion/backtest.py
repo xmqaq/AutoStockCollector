@@ -39,6 +39,25 @@ def _avg(rets: List[float]) -> Optional[float]:
     return round(sum(rets) / len(rets), 2)
 
 
+def _excess_spread(pairs: List[Tuple[float, float]]) -> float:
+    """按得分中位数分高低两组，返回高分组 excess 均值 - 低分组 excess 均值。
+
+    pairs: [(dim_score, excess5), ...]。样本<4 返回 0.0（归一化时压 0）。
+    正值 → 该维高分股超额更高 → 权重上调；负值/零 → 不参与（max(c,0) 在调用方处理）。
+    用排序索引切分（前一半 low / 后一半 high），避免中位数=众数时某组为空。
+    """
+    n = len(pairs)
+    if n < 4:
+        return 0.0
+    ordered = sorted(pairs, key=lambda p: p[0])
+    mid = n // 2
+    low = [p[1] for p in ordered[:mid]]
+    high = [p[1] for p in ordered[mid:]]
+    if len(high) < 2 or len(low) < 2:
+        return 0.0
+    return round(sum(high) / len(high) - sum(low) / len(low), 3)
+
+
 def _load_snapshots(limit: int) -> List[Dict[str, Any]]:
     from config.database import DatabaseConfig
     db = DatabaseConfig.get_database()
@@ -60,7 +79,8 @@ class FusionBacktest:
     def _records(self, limit: int) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """返回 (扁平记录列表, PickTracker.evaluate 原始结果)。
         每条记录：{market_state, source_count, sources, fusion_score, factor_score,
-                  scores{dim}, ret5}
+                  scores{dim}, ret5, excess5}
+        excess5 可能为 None（基准缺失时 PickTracker 不塞该 horizon 的 excess）。
         """
         from modules.ai.engines.tracker import PickTracker
 
@@ -69,14 +89,19 @@ class FusionBacktest:
         tracker = PickTracker(results_loader=lambda lim: runs[:lim])
         base = tracker.evaluate(horizons=(1, 3, 5, 10), limit=limit)
 
-        # (timestamp, code) → 5日收益
+        # (timestamp, code) → 5日收益 / 5日超额收益
         ret_map: Dict[Tuple[str, str], float] = {}
+        excess_map: Dict[Tuple[str, str], float] = {}
         for run in base.get("runs", []):
             ts = str(run.get("timestamp", ""))
             for p in run.get("picks", []):
+                code = p.get("code", "")
                 r = (p.get("returns") or {}).get(str(_PRIMARY_HORIZON))
                 if r is not None:
-                    ret_map[(ts, p.get("code", ""))] = r
+                    ret_map[(ts, code)] = r
+                e = (p.get("excess") or {}).get(str(_PRIMARY_HORIZON))
+                if e is not None:
+                    excess_map[(ts, code)] = e
 
         records: List[Dict[str, Any]] = []
         for snap in runs:
@@ -96,6 +121,7 @@ class FusionBacktest:
                     "debate_bonus": float(p.get("debate_bonus", 0) or 0),
                     "scores": p.get("scores", {}) or {},
                     "ret5": float(ret5),
+                    "excess5": float(excess_map[(ts, code)]) if (ts, code) in excess_map else None,
                 })
         return records, base
 
@@ -162,17 +188,21 @@ class FusionBacktest:
 
         for st in ("bull", "bear", "volatile"):
             srecs = [r for r in records if r["market_state"] == st]
-            rets = [r["ret5"] for r in srecs]
             sample_counts[st] = len(srecs)
-            state_perf[st] = {"win_rate": _win_rate(rets), "sample_size": len(srecs)}
+            # 超额胜率（excess>0 占比）；state_perf 用 excess5 口径
+            exc = [r["excess5"] for r in srecs if r["excess5"] is not None]
+            state_perf[st] = {"win_rate": _win_rate(exc), "sample_size": len(srecs)}
 
+            # 分组超额差：按各维得分中位数分高低组，算高分 excess 均值 - 低分 excess 均值
+            # 正差 → 该维高分股超额更高 → 权重上调；全非正 → 回退预设
+            srecs_exc = [r for r in srecs if r["excess5"] is not None]
             corrs: Dict[str, float] = {}
             for dim in _DIMS:
-                xs = [float((r["scores"] or {}).get(dim, 0) or 0) for r in srecs]
-                corrs[dim] = _pearson(xs, rets)
+                pairs = [(float((r["scores"] or {}).get(dim, 0) or 0), r["excess5"])
+                         for r in srecs_exc]
+                corrs[dim] = _excess_spread(pairs)
             dim_corr[st] = corrs
 
-            # 建议权重：正相关归一化；全非正则回退预设
             positives = {d: max(c, 0.0) for d, c in corrs.items()}
             tot = sum(positives.values())
             if tot > 0:
@@ -181,8 +211,13 @@ class FusionBacktest:
                 suggested[st] = dict(presets[st])
 
         total = len(records)
-        reliable = total >= 100 and all(sample_counts.get(s, 0) >= 10
-                                        for s in ("bull", "bear", "volatile"))
+        # reliable：总量≥100 + 每态≥10 + 每态有效 excess 样本≥6（高低组各≥3，避免噪声 diff）
+        valid_counts = {s: sum(1 for r in records
+                               if r["market_state"] == s and r["excess5"] is not None)
+                        for s in ("bull", "bear", "volatile")}
+        reliable = (total >= 100
+                    and all(sample_counts.get(s, 0) >= 10 for s in ("bull", "bear", "volatile"))
+                    and all(valid_counts.get(s, 0) >= 6 for s in ("bull", "bear", "volatile")))
 
         return {
             "state_performance": state_perf,

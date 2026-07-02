@@ -17,7 +17,7 @@
       </h4>
       <el-table :data="optRows(st)" size="small" border>
         <el-table-column prop="label" label="维度" width="110" />
-        <el-table-column label="与5日收益相关性">
+        <el-table-column label="5日超额收益差">
           <template #default="{ row }"><span :class="bonusClass(row.corr)">{{ row.corr.toFixed(3) }}</span></template>
         </el-table-column>
         <el-table-column label="建议权重">
@@ -26,7 +26,7 @@
       </el-table>
     </div>
   </template>
-  <el-empty v-else description="点击「加载优化信号」查看各维度与收益的相关性及建议权重" />
+  <el-empty v-else description="点击「加载优化信号」查看各维度高低分组的5日超额收益差及建议权重" />
 </template>
 
 <script setup lang="ts">
