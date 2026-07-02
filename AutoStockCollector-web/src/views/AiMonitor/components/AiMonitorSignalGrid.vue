@@ -111,7 +111,7 @@
           </div>
 
           <!-- Divergence -->
-          <div v-if="s.composite.divergence" class="divergence-tip">            {{ s.composite.divergence }}
+          <div v-if="s.composite.divergence" class="divergence-tip">{{ s.composite.divergence }}
           </div>
         </el-card>
       </el-col>
