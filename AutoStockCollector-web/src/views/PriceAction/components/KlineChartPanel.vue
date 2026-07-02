@@ -17,7 +17,7 @@ import type { KlineRecord, PriceLevel, AIAnnotation } from '@/types'
 import type { PaKlineBar, PaTradePlan, PaBacktest } from '@/api/priceAction'
 
 const props = defineProps<{
-  bars: PaKlineBar[]
+  bars?: PaKlineBar[]
   code?: string
   tradePlan?: PaTradePlan | null
   fibLevels?: Record<string, number> | null
