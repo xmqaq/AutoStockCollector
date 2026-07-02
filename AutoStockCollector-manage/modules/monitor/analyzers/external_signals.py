@@ -23,6 +23,8 @@ PA_SIGNAL_SCORES = {
     "BUY_SETUP": 95, "WEAK_BUY": 70, "NEUTRAL": 50,
     "WEAK_SELL": 30, "SELL_SETUP": 5, "NO_DATA": 50, "NO_TRADE": 50,
 }
+# PA confidence 值域上限（与 signal_fusion.PA_CONFIDENCE_MAX 对齐，0-5 整数）
+PA_CONFIDENCE_MAX = 5
 
 
 def _strip_prefix(code: str) -> str:
@@ -63,20 +65,22 @@ def fetch_pa_snapshot(code: str) -> Optional[Dict[str, Any]]:
 
 
 def fetch_agent_signal(code: str, trade_date: str) -> Optional[Dict[str, Any]]:
-    """查 agent_signals {code, trade_date}，返回 {score, signal, trade_date}。"""
+    """查 agent_signals {code, trade_date}，返回 {score, signal, trade_date}。
+
+    存储的 code 一律裸码（cron collector 全程 strip_prefix_from_code），故精确匹配
+    裸码即可，与 _merge_agent 对齐。缺失返回 None（不回退 50，避免静默进分母）。
+    """
     try:
         db = DatabaseConfig.get_database()
         bare = _strip_prefix(code)
-        # code 可能带前缀，用正则或裸码匹配
         doc = db["agent_signals"].find_one(
-            {"$or": [{"code": bare}, {"code": code}, {"code": {"$regex": bare + "$"}}],
-             "trade_date": trade_date},
+            {"code": bare, "trade_date": trade_date},
             sort=[("updated_at", -1)],
         )
         if not doc:
             return None
         return {
-            "score": doc.get("agent_score", 50),
+            "score": doc.get("agent_score", 0) or 0,
             "signal": doc.get("agent_signal", "hold"),
             "trade_date": doc.get("trade_date", ""),
             "tendency": doc.get("tendency", ""),
@@ -122,7 +126,8 @@ def compute_fusion_score(
     缺失源不参与分母。返回 {fusion_score, breakdown, weights}。
     """
     # 各路 0-100 分
-    pa_score = PA_SIGNAL_SCORES.get(pa.get("signal", "NO_DATA") if pa else "NO_DATA", 50) if pa else None
+    pa_signal = pa.get("signal", "NO_DATA") if pa else "NO_DATA"
+    pa_score = PA_SIGNAL_SCORES.get(pa_signal, 50) if pa else None
     auction_score = auction.get("score", 0) if auction else None
     agent_score = agent.get("score", 50) if agent else None
     monitor_score = composite_score if composite_score and composite_score > 0 else None
@@ -130,8 +135,11 @@ def compute_fusion_score(
     terms = []
     if auction_score and auction_score > 0:
         terms.append(("auction", W_AUCTION, W_AUCTION * auction_score / 100.0))
-    if pa_score is not None:
-        terms.append(("pa", W_PA, W_PA * pa_score / 100.0))
+    # PA 与 _compute_overall 对齐：confidence 缩放（0-5 归一，缺失回退 0.5）+ NO_DATA 不计分
+    if pa_score is not None and pa_signal != "NO_DATA":
+        pa_conf = pa.get("confidence", 0) or 0
+        pa_conf = pa_conf / PA_CONFIDENCE_MAX if pa_conf > 0 else 0.5
+        terms.append(("pa", W_PA, W_PA * pa_score / 100.0 * pa_conf))
     if monitor_score:
         terms.append(("ai_monitor", W_AI_MONITOR, W_AI_MONITOR * monitor_score / 100.0))
     if agent_score and agent_score > 0:

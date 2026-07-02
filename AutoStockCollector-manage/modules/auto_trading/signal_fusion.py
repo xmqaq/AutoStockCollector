@@ -187,7 +187,8 @@ class SignalFusionEngine:
 
     def _merge_ai_monitor(self, fused: FusedSignal, date: str):
         """优先读当日 history（refresh_all 已写），miss 时回退 monitor_signals 当前态
-        并标记 stale。绝不静默用旧分——stale 标记供前端展示"AI监控分非当日"。
+        仅回填事实字段(name/price/industry)，旧分不计入融合——与 _merge_agent 口径一致：
+        过期信号不进分母。ai_monitor_stale 标志供前端展示"AI监控分非当日"。
         """
         try:
             db = DatabaseConfig.get_database()
@@ -198,17 +199,20 @@ class SignalFusionEngine:
             )
             stale = False
             if not doc:
-                # 回退：读 monitor_signals 当前态（可能是昨日的 upsert），标记 stale
+                # 回退：读 monitor_signals 当前态（可能是昨日的 upsert），仅取事实字段
                 doc = db["monitor_signals"].find_one({"code": fused.code})
                 stale = True
             if not doc:
                 return
-            comp = doc.get("composite", {}) or {}
-            fused.ai_score = comp.get("score", 50)
-            fused.ai_signal = comp.get("signal", "hold")
-            fused.ai_monitor_stale = stale
             if stale:
-                fused.reasons.append("AI监控分非当日(回退当前态)")
+                # 过期不计分：ai_score 保持 0.0，_compute_overall 的 >0 门控会排除出分母
+                fused.ai_monitor_stale = True
+                fused.reasons.append("AI监控分非当日(不计入融合)")
+            else:
+                comp = doc.get("composite", {}) or {}
+                fused.ai_score = comp.get("score", 50)
+                fused.ai_signal = comp.get("signal", "hold")
+            # 事实字段无论是否 stale 都可回填（股票名/现价/行业用昨日值无害）
             if not fused.current_price:
                 fused.current_price = doc.get("price", 0) or fused.current_price
             if not fused.name:

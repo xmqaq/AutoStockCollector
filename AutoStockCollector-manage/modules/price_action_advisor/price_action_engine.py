@@ -278,18 +278,17 @@ class PriceActionEngine:
     ) -> Dict[str, Dict[str, Any]]:
         """收集多周期市场结构供融合。depth=full 拉 weekly+monthly，fast 仅 weekly。
 
-        主周期(daily/指定 timeframe)结构由调用方已算好传入，避免重复计算。
-        HTF 周期映射：daily→weekly→monthly；其他周期升一级（5m→30m 等）。
+        fuse_timefaces 是三槽融合器（daily键=触发周期 / weekly / monthly），
+        daily 键语义是「触发周期结构」而非「日线 HTF」。因此无论触发周期是
+        daily 还是 30m/60m，触发结构统一存 daily 键；HTF 一律取 weekly→monthly，
+        对日内周期跳过「真日线」这一层（三槽无它的位置，避免真日线误占 daily
+        键导致触发周期被丢弃、融合拿日线当触发周期给出错误信号）。
         """
-        tf_structs = {timeframe: daily_struct}
-        htf_map = {
-            "5m": "30m", "15m": "60m", "30m": "daily", "60m": "daily",
-            "daily": "weekly", "weekly": "monthly",
-        }
-        # fast: 只升一级；full: 升两级（daily→weekly→monthly）
-        chain = [htf_map.get(timeframe, "daily")]
-        if depth == "full" and htf_map.get(htf_map.get(timeframe)):
-            chain.append(htf_map[htf_map[timeframe]])
+        tf_structs = {"daily": daily_struct}  # 触发周期结构，统一占 daily 键
+        # HTF 链：daily 触发→weekly→monthly；日内触发(30m/60m)同样取 weekly→monthly
+        chain = ["weekly"]
+        if depth == "full":
+            chain.append("monthly")
         for htf in chain:
             if htf == timeframe or htf in tf_structs:
                 continue
@@ -299,7 +298,4 @@ class PriceActionEngine:
                     tf_structs[htf] = detect_market_structure(htf_bars)
             except Exception as e:
                 logger.warning(f"[PAEngine] {symbol} {htf} struct fetch failed: {e}")
-        # 归一化 key：把主周期统一记为 daily（融合函数按 daily/weekly/monthly 取）
-        if timeframe != "daily" and "daily" not in tf_structs:
-            tf_structs["daily"] = daily_struct
         return tf_structs
