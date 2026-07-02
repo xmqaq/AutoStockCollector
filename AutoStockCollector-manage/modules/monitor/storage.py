@@ -102,6 +102,7 @@ class MonitorStorage:
         )
         for d in docs:
             d.pop("_id", None)
+            d.pop("_expire_at", None)  # TTL 内部字段，勿外泄（datetime 会让 jsonify 崩）
         return docs
 
     # ── 实时快照（独立集合，不写 fund_flow） ──
